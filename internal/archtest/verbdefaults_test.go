@@ -3,6 +3,7 @@ package archtest
 import (
 	"flag"
 	"fmt"
+	"github.com/stainless-code/verdict/internal/loop"
 	"os"
 	"path/filepath"
 	"sort"
@@ -81,6 +82,8 @@ func defaultsRows() [][]string {
 		[]string{"demo", "--timeout", runcore.DefaultTimeoutS},
 		[]string{"run", "--timeout", run.DefaultTimeoutS},
 		[]string{"run", "--rounds", run.DefaultRounds},
+		[]string{"loop", "--max-rounds", loop.DefaultMaxRounds},
+		[]string{"loop", "--budget", loop.DefaultBudget},
 	)
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i][0] != rows[j][0] {

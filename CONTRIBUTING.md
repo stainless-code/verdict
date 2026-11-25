@@ -304,7 +304,7 @@ layout, the eval-case contract, and the verification checklist for each.
 
 Verbs are: `demo`, `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
-`fetch-local`, `run`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
+`fetch-local`, `run`, `loop`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
 `trend`, `risk`, `index`, `journal`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`,
 `serve`, `lsp`
 — plus the hidden `mcp` stdio transport. If your change adds or

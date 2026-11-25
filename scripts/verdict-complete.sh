@@ -3,12 +3,13 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve config drain acp lsp
+  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run loop panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve config drain acp lsp
 }
 
 _verdict_flags() { # $1 = verb
   case "$1" in
     demo) printf '%s\n' --agent --keep --timeout --json;;
+    loop) printf '%s\n' --agent --max-rounds --max-cost-usd --budget --output --fix-prompt --print --json;;
     fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --summary --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;

@@ -6,6 +6,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
+	loopcore "github.com/stainless-code/verdict/internal/core/loop"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/repro"
@@ -614,6 +615,12 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RiskChurn](), name: "riskChurn"},
 		{typ: reflect.TypeFor[RiskCategory](), name: "riskCategory"},
 		{typ: reflect.TypeFor[RiskRung](), name: "riskRung"},
+		{typ: reflect.TypeFor[loopcore.Data](), name: "loopData"},
+		{typ: reflect.TypeFor[loopcore.Round](), name: "loopRound"},
+		{typ: reflect.TypeFor[loopcore.Fix](), name: "loopFix"},
+		{typ: reflect.TypeFor[loopcore.Verify](), name: "loopVerify"},
+		{typ: reflect.TypeFor[loopcore.Refusal](), name: "loopRefusal"},
+		{typ: reflect.TypeFor[loopcore.PlanStep](), name: "loopPlanStep"},
 		{typ: reflect.TypeFor[RiskData](), name: "riskData"},
 		{typ: reflect.TypeFor[RiskBands](), name: "riskBands"},
 		{typ: reflect.TypeFor[RiskRow](), name: "riskRow"},

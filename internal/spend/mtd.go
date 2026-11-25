@@ -73,15 +73,34 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 		}
 		aggregateBundle(filepath.Join(stateDir, e.Name()), month, sum, &known, &unknown)
 	}
-	// A partially priced receipt contributes to the sum without being
-	// priced, so the exact amount is reported whenever any row contributed
-	// one, not only when a fully priced row did.
+	m.settle(sum, known, unknown)
+	return m
+}
+
+// BundleMTD sums one bundle's cost receipts for the month of now under the
+// same single-source rule [AggregateMTD] applies to every bundle, so a caller
+// that budgets per bundle (the self-review loop's per-round cost) and the
+// monthly aggregate can never disagree about the same receipts.
+func BundleMTD(bundleDir string, now time.Time) MTD {
+	month := MonthFor(now)
+	m := MTD{Month: month}
+	sum := new(big.Rat)
+	known := 0
+	unknown := 0
+	aggregateBundle(bundleDir, month, sum, &known, &unknown)
+	m.settle(sum, known, unknown)
+	return m
+}
+
+// settle fills the aggregate's totals. A partially priced receipt contributes
+// to the sum without being priced, so the exact amount is reported whenever
+// any row contributed one, not only when a fully priced row did.
+func (m *MTD) settle(sum *big.Rat, known, unknown int) {
 	if known > 0 || sum.Sign() != 0 {
 		m.KnownUSD = FormatRat(sum)
 		m.KnownCount = known
 	}
 	m.UnknownCount = unknown
-	return m
 }
 
 // stateDirWarning reports the MTD warning for a failed state directory

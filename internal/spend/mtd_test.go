@@ -452,3 +452,33 @@ func TestMTDNullProjectionWithoutSubtotalStaysUnknown(t *testing.T) {
 		t.Fatalf("unpriced MTD = %+v, want no known amount and 2 unknown rows", got)
 	}
 }
+
+// TestBundleMTDReadsOneBundle proves the per-bundle sum: the bundle's own
+// in-month cost record counts, a neighbor bundle's does not, and an unpriced
+// record stays unknown rather than free.
+func TestBundleMTDReadsOneBundle(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	mine := writeCost(t, root, "local-loop-1", `[{"at":"2026-05-15T11:00:00Z","est_usd":0.25},{"at":"2026-05-15T11:30:00Z"}]`)
+	writeCost(t, root, "local-loop-2", `{"at":"2026-05-15T11:00:00Z","est_usd":9}`)
+	got := spend.BundleMTD(mine, now)
+	if got.KnownUSD != "0.25" || got.KnownCount != 1 || got.UnknownCount != 1 {
+		t.Fatalf("BundleMTD = %+v, want 0.25 known from one record and one unknown", got)
+	}
+	if all := spend.AggregateMTD(stateDirOf(root), now); all.KnownUSD != "9.25" {
+		t.Fatalf("AggregateMTD = %+v, want both bundles (9.25)", all)
+	}
+}
+
+// writeCost plants one bundle's cost.json and returns the bundle directory.
+func writeCost(t *testing.T, root, bundle, body string) string {
+	t.Helper()
+	dir := filepath.Join(stateDirOf(root), bundle)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cost.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}

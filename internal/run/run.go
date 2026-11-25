@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -108,11 +107,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // repository config can never define one: the typed repo parser refuses the
 // key, and this read addresses only the XDG/HOME settings path.
 func personalAgents(env map[string]string) ([]config.PersonalAgent, *spend.Policy, *core.RefusalError) {
-	prefs, ref := config.LoadPersonal(config.SettingsPath(env["HOME"], env["XDG_CONFIG_HOME"]))
-	if ref != nil {
-		return nil, nil, ref
-	}
-	return prefs.Agents, personalPolicy(prefs.Spend), nil
+	return runcore.Personal(env)
 }
 
 // refuse renders a run refusal, preserving the agent's own exit code when the
@@ -371,22 +366,6 @@ func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
 	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
 	command += findersTail(f.finders)
 	ref.Message += "\nre-run with: " + command + " -- " + row.Launch.PermissionHint
-}
-
-const personalFloatBits = 64
-
-func personalPolicy(settings config.PersonalSpend) *spend.Policy {
-	if (settings == config.PersonalSpend{}) {
-		return nil
-	}
-	policy := &spend.Policy{RequireKnown: settings.RequireKnownEstimate, EnforceCap: settings.EnforceCap}
-	if settings.BudgetUSD != nil {
-		policy.Personal = strconv.FormatFloat(*settings.BudgetUSD, 'f', -1, personalFloatBits)
-	}
-	if settings.MonthlyBudgetUSD != nil {
-		policy.MonthlyCap = strconv.FormatFloat(*settings.MonthlyBudgetUSD, 'f', -1, personalFloatBits)
-	}
-	return policy
 }
 
 func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {

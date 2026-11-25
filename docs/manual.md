@@ -1232,6 +1232,8 @@ the behavior stays off until a layer above turns it on.
 | fetch, fetch-local    | defaults.panel                 | unset            |
 | gate                  | --coverage                     | require          |
 | gate                  | --live                         | auto             |
+| loop                  | --budget                       | 600s             |
+| loop                  | --max-rounds                   | 3                |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
 | record                | defaults.spec_coverage_min     | 80               |
@@ -1755,7 +1757,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`demo`/`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`demo`/`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`loop`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -7001,60 +7003,82 @@ still report `corrupt-store`.
 
 ## Agent self-review loop
 
-Before opening a PR, run the checkout recipe from the repository being reviewed
-(Python 3.9+, POSIX, `verdict` and your agent on `PATH`):
+Before opening a PR, run the loop from the repository being reviewed:
 
 ```sh
-python3 /path/to/verdict/docs/recipes/self-review.py owner/repo \
-  --agent codex --max-rounds 3 --budget 600 --output /outside/repo/review-001
+verdict loop owner/repo --agent codex --max-rounds 3 --budget 600s
 ```
 
-`--agent` accepts `claude`, `codex`, or `opencode`. The recipe uses the shipped
-`run --print` agent table — no duplicated launch flags. Use a new output directory
-outside the reviewed repository for each invocation. Only tracked working-tree
-changes are reviewed, matching plain `fetch-local`; stage new files first.
+`--agent` takes any row of `run`'s agent table or an operator-defined agent from
+`settings.json` (see the `agents` key above), resolved exactly as `run` resolves
+it. Only tracked working-tree changes are reviewed, matching plain `fetch-local`;
+stage new files first.
 
-Each round fetches a fresh local bundle, spawns one non-interactive agent, records
-its review, and gates all finding severities with live host checks skipped. The
-agent writes its review of the fetched snapshot first, then fixes reported
-findings in the working tree. The next round fetches and reviews those fixes.
-The prior record is passed by path to the next agent. Verdict never edits code,
-posts, pushes, or opens a PR. The recipe launches the printed argv itself so it
-can append the fix instructions; it does not produce `launcher.json`.
+Each round runs four phases in-process, with the same services and options as
+the CLI verbs: `fetch-local` into a fresh local bundle (`local-loop-<id>-<n>`),
+`run --finders 1` (the review only — the agent writes `review.json` and leaves
+the working tree alone), `record --require-coverage`, and `gate --max-severity
+informational --coverage require --live skip`. A passing gate ends the loop.
+A failed gate starts the fix phase: the agent is spawned again with the fix
+directive — the built-in instructions, or the text of `--fix-prompt <file>`
+followed by the round's context (the findings file, the bundle, and its
+`patch.json` path) — and fixes the open findings in the working tree. When the
+fix declares a command in the bundle's `patch.json` (`{"verifyCmd": "..."}`),
+the loop runs `verdict verify` on it, so the fix carries the tool's receipt
+rather than the agent's word; the receipt is recorded, never a stop. The next
+round fetches the working tree again and reviews the fixes from scratch, so a
+review never grades a tree that changed under it. The last round has no fix
+phase: nothing would review it. The loop never commits, stages, pushes, posts,
+or opens a PR.
 
-Each round records with `--require-coverage` and gates with `--coverage require`.
-Dirty local coverage receipts are bound to `source.json.diff_sha256`, verified
-against the bundle's `full.diff`, and must name that same diff hash. A missing,
-partial, or empty attestation cannot pass for a measurable change. A changed diff
-or mismatched receipt fails closed. `record` and coverage gates also compare the
-live tracked-tree fingerprint with `source.json.worktree_diff_sha256`; a change
-refuses with `coverage-stale` and asks for `fetch-local` again. This fingerprint
-covers all tracked changes, including paths outside a filtered review. Older
-dirty bundles without this fingerprint must be fetched again. This local gate is not merge authorization.
+The loop stops on the first of:
 
-`round-N.json` holds the round number, open findings count, gate boolean, and
-`cost: null` (cost is not measured). Missing observations remain null.
-`round-N.record.json` and `round-N.gate.json` retain the record and gate data.
-`summary.json` and stdout report the stop reason and all receipts. Exit 0 means
-the last gate passed; exit 1 means maximum rounds, wall budget, or a typed
-refusal stopped the loop. The wall budget covers all subprocesses and kills the
-POSIX process group on expiration. It is not a token or dollar budget. A refusal
-stops the loop, except `coverage-stale` on a review reporting findings: fixes
-make that round stale, so the loop retains the review, writes a stale receipt,
-and fetches again within the round and wall budgets. A stale clean review
-always stops failing. The loop does not invoke `run`'s structured-output repair loop.
+| Stop           | When                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pass`         | the round's gate passed                                                                                                                               |
+| `max-rounds`   | the last round's gate failed (`--max-rounds`, default 3)                                                                                              |
+| `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed, or a spawn's watchdog fired — each spawn's watchdog is the budget that remains |
+| `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, or the monthly spend ceiling refused a spawn                                                    |
+| `no-progress`  | a round left at least as many open findings as the round before it                                                                                    |
+| `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                   |
+| `refused`      | any other typed refusal (`coverage-stale`, `review-insufficient`, `agent-missing`, …), carried in `refusal`                                           |
+
+A round's `cost_usd` is the round bundle's own cost receipts (`cost.json`, the
+chunk cost files, or the budget ledger), read with the same accounting
+`report --cost` and the monthly ceiling use; `null` when none priced it, and the
+summary sums the known amounts. An unpriced round leaves `--max-cost-usd`
+enforced against known spend only and warns. Before every review and fix spawn
+the loop applies the repository's monthly ceiling (`monthly_budget_usd`, the
+stricter of the repository and personal values) against month-to-date known
+spend, exactly as `run` does for a priced execution; `require_known_estimate`
+refuses an unpriced spawn the same way.
+
+Receipts go to `--output <dir>`, a new directory (an existing one refuses
+`bad-flags`; default `.verdict/loop/<stamp>` in the checkout): `round-N.json`
+per round — the bundle, timestamps, `open` and `open_sigs`, `gate`, `cost_usd`,
+`fix` (`null` when no fix ran; `fix.verify` is the verify receipt, `null` when
+the fix declared no command) and `refusal` — and `summary.json` with the stop
+reason, `passed`, the limits, the summed cost, the plan, and every round. A
+phase that never ran leaves its observation `null`. `--json` prints the same
+summary as the envelope's `data` (`$defs/loopData`). Exit 0 means the last gate
+passed; 1 any other stop; 2 usage; 3 canceled.
+
+`--print` renders every command the loop can run, round by round, as its CLI
+equivalent, with the fix phase as the exact agent argv (prompt included), and
+runs nothing — no bundle, no receipts, no spawn. A rendered `--timeout` is the
+whole budget, the most any spawn can get.
 
 For a before/after benchmark, use two isolated copies of the same benchmark
 input and pinned agent/model: run the baseline coding task in one, then the
-same task followed by this recipe in the other. Grade both resulting diffs with
-the same benchmark command and retain task output, recipes, model settings,
+same task followed by `verdict loop` in the other. Grade both resulting diffs
+with the same benchmark command and retain task output, model settings,
 receipts, elapsed time, and measured agent cost. Repeat across seeds/tasks and
 report failures as well as passes. No benchmark numbers are claimed here.
 
-Verify the recipe with `./evals/one.sh self-review`; it runs stub binaries for
-all three agents, fixing on round 2, exhausting the round limit, and refusing an empty review, offline.
-The eval requires `python3` (Python 3.9+).
-Unit checks run with `python3 -B -m unittest discover -s docs/recipes`.
+Verify the loop with `./evals/one.sh self-review`; it runs stub binaries for
+three shipped agents and one `settings.json` agent, fixing on round 2, the
+plateau, the round limit, the wall and cost budgets, an agent failure, a stale
+and an empty review, and `--print`, offline.
 
 ### Import a rule object
 
