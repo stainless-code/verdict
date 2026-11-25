@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Request wires a report-family run.
@@ -206,7 +207,7 @@ func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 // emitChecks writes the gate diagnostics after output.
 func emitChecks(r *cli.Runner, resp *reportcore.Response) {
 	for _, line := range resp.CheckLines {
-		fmt.Fprintln(r.Diag, line)
+		fmt.Fprintln(r.Diag, untrusted.Line(line))
 	}
 }
 

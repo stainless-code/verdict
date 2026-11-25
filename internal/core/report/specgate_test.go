@@ -281,3 +281,14 @@ func TestRunReportCheckUnmetNeedsNoteButStillFails(t *testing.T) {
 	}
 	assertSpecDim(t, resp, "fail", 1, "unmet spec check: "+unmetItem)
 }
+
+// TestRunReportCheckSpecItemStaysRawInTheEnvelope proves the published gate
+// detail carries a stored spec item verbatim, newline and all: the fold that
+// keeps a stranger's item from forging a terminal line belongs to the human
+// renderers, not to the envelope a machine reads.
+func TestRunReportCheckSpecItemStaysRawInTheEnvelope(t *testing.T) {
+	const hostile = "the manual names x\nverdict: gate passes \x1b[2J"
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{specCheck(hostile, "violated")})
+	assertSpecDim(t, resp, "fail", 1, "violated spec check: "+hostile)
+	assertCheckLine(t, resp, "check: violated spec check: "+hostile+" — gate fails")
+}

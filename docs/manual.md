@@ -1837,6 +1837,29 @@ producer receipt). A miss in `next` or `show` under truncation emits a success
 envelope with null item/fix and a partial-results `next` hint rather than
 claiming absence. Complete results omit the receipt.
 
+**Terminal output is inert.** Text a stranger wrote — a finding's path or
+heading, a spec item, a host message, a directory name — reaches a terminal
+with every control character folded to a space: C0 (ESC, BEL, CR, and the
+rest), DEL, C1 (U+0080–U+009F), the U+2028/U+2029 separators, and the bidi
+controls (U+061C, U+200E/U+200F, U+202A–U+202E, U+2066–U+2069), so it cannot
+write the clipboard (OSC 52), move the cursor, clear the screen, or reorder a
+line the way a U+202E override does. Other format characters stay, so an emoji
+joined with U+200D still renders. Newline and
+tab survive, since a message lays itself out with them. This holds for every
+human line on stdout (`report`, `next`, `show`, `threads`, `drain`, `gate`) and
+every `warn:` and `error:` line on stderr. Under `--json` stdout is the
+envelope, written byte for byte: JSON escapes the C0 controls itself, so the
+fold applies to the human surface only; a consumer that prints envelope strings
+to a terminal escapes them first. A warning is also one line: a newline inside
+an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
+space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
+Files verdict writes to disk are not folded, and neither is a field of the
+`--json` envelope: gate `detail` and error `message` carry the stored value
+verbatim, and the human renderers fold it. `show`'s human form and `pr-wait`'s
+human-mode snapshots are JSON-shaped, so the fold touches only the raw C1,
+separator, and bidi runes Go's encoder leaves unescaped, replacing each with a
+space; use `--json` when a machine consumes them.
+
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
@@ -3521,10 +3544,10 @@ quote, and marker glyphs to ASCII. Every state has a text shape as well — the
 active tab is bracketed, the cursor row is marked `▸`, a refused row is `!`,
 an unknown count is `—`, a diff line is `+` or `-` — so nothing depends on
 color. Text a stranger wrote (a repository name, a finding body, a diff line,
-a refusal message) has every control character folded to a space before it
-reaches the screen, so it cannot move the cursor, clear the screen, or write
-the clipboard. The same holds for every verb's `warn:` and `error:` lines on
-stderr. Combining marks stay on their letter (`e` + U+0301 is `é`), and wide
+a refusal message) has every control and bidi-control character folded to a
+space before it reaches the screen, so it cannot move the cursor, clear the
+screen, write the clipboard, or reorder a diff line. The same holds for every verb's `warn:` and `error:`
+lines on stderr. Combining marks stay on their letter (`e` + U+0301 is `é`), and wide
 characters follow the Unicode 17.0 East Asian Width table.
 
 **Read-only.** The dashboard never writes a review store, posts, fetches, or

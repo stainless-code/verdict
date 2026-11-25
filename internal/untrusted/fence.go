@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -62,13 +61,22 @@ func Flatten(body string) string {
 			sb.WriteRune(r)
 			continue
 		}
-		if core.IsLineBreak(r) {
+		if folds(r) {
 			sb.WriteRune(' ')
 			continue
 		}
 		sb.WriteRune(r)
 	}
 	return sb.String()
+}
+
+// Line is [Inert] for a value that sits inside one line of output: the
+// newline Inert keeps becomes a space too, so an interpolated path, title, or
+// spec item cannot end the line it is printed in and start a forged one
+// (`x\nverdict: gate passes`). Apply it to the value, not to the message
+// around it: a message that lays out several lines keeps its own breaks.
+func Line(value string) string {
+	return strings.ReplaceAll(Inert(value), "\n", " ")
 }
 
 // breakComments puts a zero-width space inside an HTML comment opener, so a
