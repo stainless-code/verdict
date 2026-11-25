@@ -259,12 +259,16 @@ func TestSanitizeTailRedactsCredentialsSplitByEscapes(t *testing.T) {
 		"osc":    "ghp_\x1b]0;title\x07abcdefghijklmnop1234 done",
 	} {
 		t.Run(name, func(t *testing.T) {
-			got := sanitizeTail(in, environ)
-			for _, leak := range []string{"api03-1234", "abcdefgh12345678", "supersecretvalue123", "abcdefghijklmnop1234"} {
-				if strings.Contains(got, leak) {
-					t.Fatalf("sanitizeTail(%q) = %q leaks %q", in, got, leak)
-				}
-			}
+			requireNoLeak(t, in, sanitizeTail(in, environ))
 		})
+	}
+}
+
+func requireNoLeak(t *testing.T, in, got string) {
+	t.Helper()
+	for _, leak := range []string{"api03-1234", "abcdefgh12345678", "supersecretvalue123", "abcdefghijklmnop1234"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("sanitizeTail(%q) = %q leaks %q", in, got, leak)
+		}
 	}
 }

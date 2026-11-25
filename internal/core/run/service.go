@@ -956,13 +956,13 @@ const messageTailCap = 600
 // refusal message. The agent's own error — a provider's out-of-credit reply, a
 // refused write — is printed there, and without it every failure reads as the
 // same bare exit code. It is empty when the agent printed nothing. The whole
-// capture (the watchdog caps it at 1 MiB) runs through the same sanitizer
-// verify's tail uses (terminal escapes stripped first, then environment values,
-// token shapes, bearer and authorization headers, userinfo URLs), then the
-// argv secrets are scrubbed from the escape-free text, and only then is it cut. Cutting first would let a credential split by the cut keep
-// a recognizable half, and a bounded window is no safer: sanitizing the rest of
-// it can shrink the text until a token at the window's left edge lands in the
-// tail.
+// capture (the watchdog caps it at 1 MiB) runs through verify's sanitizer
+// (escapes stripped first, then environment values, token shapes, bearer and
+// authorization headers, userinfo URLs), the argv secrets are scrubbed from
+// the escape-free text, and only then is it cut. Cutting first would let a
+// credential split by the cut keep a recognizable half, and a bounded window
+// is no safer: sanitizing the rest of it can shrink the text until a token at
+// the window's left edge lands in the tail.
 func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 	_, argSecrets := st.displayArgv(args)
 	clean := scrubSecrets(verifycore.SanitizeTail(res.Stdout+res.Stderr, st.req.Environ), st.req.Environ, argSecrets)
