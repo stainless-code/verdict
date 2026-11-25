@@ -4,6 +4,7 @@ package verifycore_test
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -53,4 +54,24 @@ func checkOwnSecretsWarning(t *testing.T, warnings []string, value string, want 
 	if got != want {
 		t.Fatalf("own-secrets warning present = %t, want %t: %q", got, want, warnings)
 	}
+}
+
+// TestSandboxExecGroupWarnsAboutOwnSecrets pins the same warning on the deep
+// group path: `verify --group … --sandbox` builds the same wrapper, so a
+// secret in verdict's environment is named there too, without its value.
+func TestSandboxExecGroupWarnsAboutOwnSecrets(t *testing.T) {
+	requireSandboxHost(t)
+	const value = "ghp_0123456789abcdefSECRET"
+	root := groupBundle(t)
+	testkit.WriteFile(t, filepath.Join(root, ".git", "HEAD"), "ref: refs/heads/main\n")
+	home := sandboxHomeFixture(t)
+	req := groupRequest(root, "group-a1", "go test ./...", &groupSandboxCommander{})
+	req.Sandbox = true
+	req.Environ = []string{"PATH=/bin", "HOME=" + home, "GH_TOKEN=" + value}
+	verifycore.SetAccountHomeForTest(req, home)
+	resp, ref := verifycore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run: %v", ref)
+	}
+	checkOwnSecretsWarning(t, resp.Warnings, value, true)
 }
