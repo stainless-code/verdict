@@ -669,3 +669,41 @@ func checkMissingArtifactHint(t *testing.T, pass []string, want bool) {
 		t.Fatalf("permission hint present = %v, want %v: %s", got, want, diag)
 	}
 }
+
+// TestRunAgentFailureCarriesTheAgentsOwnError pins that a non-zero agent exit
+// reaches the operator with what the agent printed, and never with a key.
+func TestRunAgentFailureCarriesTheAgentsOwnError(t *testing.T) {
+	f := newFixture(t)
+	f.plantAs(t, "claude", "exit")
+	t.Setenv("FAKE_EXIT", "3")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-testkey-0123456789")
+	code, out, diag := runVerb(t, f, "--agent", "claude", "--rounds", "1")
+	if code != 3 {
+		t.Fatalf("exit = %d, want the agent's 3: %s %s", code, out, diag)
+	}
+	if !strings.Contains(diag, "exited 3") || !strings.Contains(diag, "the model refused the request") {
+		t.Fatalf("refusal hides the agent's output: %s", diag)
+	}
+	if strings.Contains(diag, "sk-ant-testkey-0123456789") {
+		t.Fatalf("refusal leaks the key: %s", diag)
+	}
+}
+
+// TestRunTwoFinderPermissionRefusalKeepsClaudeHint covers the default launch:
+// both finders exit 0 without a review, which must stay no-review-artifact so
+// the catalog's printed permission hint still reaches the operator.
+func TestRunTwoFinderPermissionRefusalKeepsClaudeHint(t *testing.T) {
+	f := newFixture(t)
+	f.plantAs(t, "claude", "silent")
+	writeFile(t, filepath.Join(f.dir, "run.json"), `{"schema_version":"1"}`)
+	writeFile(t, filepath.Join(f.dir, "PR.json"), `{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)
+	writeFile(t, filepath.Join(f.dir, "procedure.md"), "authoritative procedure")
+	code, out, diag := runVerb(t, f, "--finders", "2", "--agent", "claude", "--rounds", "1")
+	if code != 1 {
+		t.Fatalf("exit = %d: %s %s", code, out, diag)
+	}
+	if strings.Contains(diag, "review-insufficient") || !strings.Contains(diag, "wrote no") ||
+		!strings.Contains(diag, "--finders 2 -- --permission-mode acceptEdits") {
+		t.Fatalf("diagnostic lost the cause or the hint: %s", diag)
+	}
+}

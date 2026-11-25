@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/recipe"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -34,6 +35,7 @@ const (
 	DefaultTimeoutS = "300"
 	// The launcher's own refusal family. Each names its remedy in the hint table.
 	codeAgentMissing     = "agent-missing"
+	codeAgentMismatch    = "agent-mismatch"
 	codeAgentSpawnFailed = "agent-spawn-failed"
 	codeAgentTimeout     = "agent-timeout"
 	codeAgentFailed      = "agent-failed"
@@ -382,7 +384,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 	}
 	commander := st.commander()
 	if commander == nil {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
 	}
 	pctx, cancel := context.WithTimeout(ctx, st.probeBudget())
@@ -402,7 +404,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		out = out[:probeOutputCap]
 	}
 	if result := probeFailure(pctx, out, res, err, args.def.ProbeMatch); result != "" {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
 	}
 	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
@@ -949,18 +951,45 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 			"%s ran past the %ds watchdog and was killed (raise --timeout, or pass its fast flags after '--')",
 			args.def.Name, args.timeout))
 	case res.ExitCode != 0:
-		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode))
+		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode)+st.agentOutput(args, res))
 	}
-	return st.artifactRefusal(args, art)
+	return st.artifactRefusal(args, art, res)
+}
+
+// messageTailCap bounds the agent output a refusal message carries. The full
+// stream stays in .run.out and the recorded tail in launcher.json; the message
+// only has to name the cause (an HTTP 402, a refused write) at a glance.
+const messageTailCap = 600
+
+// agentOutput is the tail of what the agent printed, formatted to append to a
+// refusal message. The agent's own error — a provider's out-of-credit reply, a
+// refused write — is printed there, and without it every failure reads as the
+// same bare exit code. It is empty when the agent printed nothing. The whole
+// capture (the watchdog caps it at 1 MiB) runs through verify's sanitizer
+// (escapes stripped first, then environment values, token shapes, bearer and
+// authorization headers, userinfo URLs), the argv secrets are scrubbed from
+// the escape-free text, and only then is it cut. Cutting first would let a
+// credential split by the cut keep a recognizable half, and a bounded window
+// is no safer: sanitizing the rest of it can shrink the text until a token at
+// the window's left edge lands in the tail.
+func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
+	_, argSecrets := st.displayArgv(args)
+	clean := scrubSecrets(verifycore.SanitizeTail(res.Stdout+res.Stderr, st.req.Environ),
+		st.req.Environ, verifycore.StripControlledSecrets(argSecrets))
+	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(clean, messageTailCap), ""))
+	if tail == "" {
+		return ""
+	}
+	return "\nagent output (tail, redacted):\n" + tail
 }
 
 // artifactRefusal is the artifact contract: exactly one fresh review file,
 // at the bundle's review path, written after the launch record.
-func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.RefusalError {
+func (st *state) artifactRefusal(args *launchArgs, art artifactState, res *core.Result) *core.RefusalError {
 	switch {
 	case !art.exists:
 		return st.refuse(codeNoArtifact, fmt.Sprintf(
-			"%s exited 0 but wrote no %s", args.def.Name, args.artifact))
+			"%s exited 0 but wrote no %s", args.def.Name, args.artifact)+st.agentOutput(args, res))
 	case !art.regular:
 		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the artifact must be one JSON file")
 	case !art.fresh:
