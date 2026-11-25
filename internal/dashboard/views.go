@@ -54,24 +54,6 @@ const (
 	colCount
 )
 
-// tab is one dashboard view. The interactive loop switches between them on
-// their digit; --once draws the Overview.
-type tab uint8
-
-const (
-	tabOverview tab = iota
-	tabQueue
-)
-
-var tabLabels = [...]string{tabOverview: "1 Overview", tabQueue: "2 Queue"}
-
-// frameState is everything a frame is composed from.
-type frameState struct {
-	snap *snapshot // nil while the first compose runs
-	tab  tab
-	live bool // an interactive session (key hints) rather than a --once snapshot
-}
-
 // compose draws one whole frame. It reads the snapshot and writes cells;
 // nothing here knows about escape sequences or the terminal.
 func compose(st *frameState, w, h int, lk look) *grid {
@@ -86,22 +68,31 @@ func compose(st *frameState, w, h int, lk look) *grid {
 		}
 		return g
 	}
+	st.width, st.page = w, h-bodyTop-footerRows
 	drawHeader(g, st, lk.cs)
 	drawTabs(g, st.tab, lk.cs)
 	g.rule(rowRule, lk.cs)
-	body := box{top: bodyTop, rows: h - bodyTop - footerRows}
-	switch {
-	case st.snap == nil:
-		g.text(margin, body.top, w, "composing…", roleMuted, lk.cs)
-	case st.tab == tabQueue:
-		drawQueue(g, st.snap, body, lk.cs)
-	default:
-		drawOverview(g, st.snap, body, lk.cs)
-	}
+	drawBody(g, st, box{top: bodyTop, rows: st.page}, lk.cs)
 	g.rule(h-footerRows, lk.cs)
-	drawStatus(g, st.snap, h-2, lk.cs)
-	drawKeys(g, st.live, h-1, lk.cs)
+	drawStatus(g, st, h-2, lk.cs)
+	drawKeys(g, st, h-1, lk.cs)
 	return g
+}
+
+// drawBody draws the active tab, or the overlay that owns the keyboard.
+func drawBody(g *grid, st *frameState, b box, cs charset) {
+	switch {
+	case st.help:
+		drawHelp(g, b, cs)
+	case st.picker != nil:
+		drawPicker(g, st.picker, b, cs)
+	case st.snap == nil:
+		g.text(margin, b.top, g.w, "composing…", roleMuted, cs)
+	case st.tab == tabOverview:
+		drawOverview(g, st.snap, b, cs)
+	default:
+		drawTab(g, st, b, cs)
+	}
 }
 
 // box is the body's row range.
@@ -138,7 +129,8 @@ func drawTabs(g *grid, active tab, cs charset) {
 	}
 }
 
-func drawStatus(g *grid, s *snapshot, y int, cs charset) {
+func drawStatus(g *grid, st *frameState, y int, cs charset) {
+	s := st.snap
 	if s == nil {
 		return
 	}
@@ -164,12 +156,47 @@ func drawStatus(g *grid, s *snapshot, y int, cs charset) {
 	if len(s.warnings) > 0 {
 		put(plural(len(s.warnings), "warning"), roleWarn)
 	}
+	for _, extra := range st.statusExtras() {
+		put(extra.text, extra.role)
+	}
 }
 
-func drawKeys(g *grid, live bool, y int, cs charset) {
+type statusItem struct {
+	text string
+	role role
+}
+
+// statusExtras are the live session's transient states, after the
+// snapshot's own: a compose in flight, the `/` filter, a one-shot note.
+func (st *frameState) statusExtras() []statusItem {
+	var out []statusItem
+	if st.composing {
+		out = append(out, statusItem{"composing…", roleMuted})
+	}
+	if st.searching || st.search != "" {
+		out = append(out, statusItem{"/" + st.search, roleTitle})
+	}
+	if st.note != "" {
+		out = append(out, statusItem{st.note, roleWarn})
+	}
+	return out
+}
+
+// tabHints are each tab's key row, the six or so keys that tab answers.
+var tabHints = [tabCount]string{
+	"1-7 tabs  Enter queue  r refresh  ? help  q quit",
+	"j/k move  Enter detail  / search  r refresh  ? help  q quit",
+	"j/k move  Enter diff  y copy fix  / search  Esc back  ? help",
+	"j/k scroll  Tab next file  u split  / search  Esc back  ? help",
+	"j/k move  b baseline  / search  Esc back  ? help  q quit",
+	"j/k move  Tab grouping  / search  r refresh  ? help  q quit",
+	"j/k move  Tab grouping  / search  r refresh  ? help  q quit",
+}
+
+func drawKeys(g *grid, st *frameState, y int, cs charset) {
 	hint := "--once snapshot; run verdict dashboard in a terminal for the live view"
-	if live {
-		hint = "1 overview   2 queue   q quit"
+	if st.live {
+		hint = tabHints[st.tab]
 	}
 	g.text(margin, y, g.w-margin-1, hint, roleMuted, cs)
 }
@@ -203,7 +230,7 @@ func drawOverview(g *grid, s *snapshot, b box, cs charset) {
 // (a refused or truncated bundle makes any sum a lie) each shows the unknown
 // glyph, never a smaller number.
 func drawTotals(g *grid, c *counts, y int, cs charset) {
-	names := [...]string{"bundles", "open", "deferred", "addressed", "terminal"}
+	names := [...]string{"bundles", statusOpen, "deferred", "addressed", "terminal"}
 	var values [len(names)]string
 	for i := range values {
 		values[i] = string(cs.unknown)
@@ -216,7 +243,7 @@ func drawTotals(g *grid, c *counts, y int, cs charset) {
 	x := indent
 	for i, name := range names {
 		x += g.text(x, y, g.w, name+space, roleMuted, cs)
-		x += g.text(x, y, g.w, values[i], countRole(c != nil, names[i] == "open", values[i]), cs) + indent
+		x += g.text(x, y, g.w, values[i], countRole(c != nil, names[i] == statusOpen, values[i]), cs) + indent
 	}
 }
 
@@ -279,26 +306,6 @@ func planQueue(w int) queueCols {
 	bundle := flex * bundleShare / percent
 	repo := flex * repoShare / percent
 	return queueCols{bundle: bundle, repo: repo, model: flex - bundle - repo}
-}
-
-// drawQueue draws one row per bundle in the layer's order. A refused bundle
-// keeps its row, marked `!`, with every count unknown.
-func drawQueue(g *grid, s *snapshot, b box, cs charset) {
-	cols := planQueue(g.w)
-	queueRow(g, b.top, cols, &[colCount]string{"BUNDLE", "REPO", "OPEN", "DEFER", "ADDR", "TERM", "MODEL", "HEAD"},
-		roleMuted, roleMuted, cs)
-	if len(s.rows) == 0 {
-		g.text(indent, b.top+1, g.w, "no review bundles under .verdict/state", roleMuted, cs)
-		return
-	}
-	list(g, len(s.rows), b.top+1, b.top+b.rows, cs, func(i, y int) {
-		r := s.rows[i]
-		if r.refused {
-			g.text(margin, y, markCol, "!", roleBad, cs)
-		}
-		cells, countsRole := queueCells(&r, string(cs.unknown))
-		queueRow(g, y, cols, &cells, rolePlain, countsRole, cs)
-	})
 }
 
 // queueCells is one bundle's column text and the role its counts take: a

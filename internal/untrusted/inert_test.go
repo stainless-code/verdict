@@ -3,6 +3,7 @@ package untrusted
 import (
 	"bytes"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -224,5 +225,28 @@ func TestInertWriterReleasesATailWhenOutputGoesMachine(t *testing.T) {
 	}
 	if got, want := buf.String(), "\u202ex"; got != want {
 		t.Fatalf("wrote %q, want %q", got, want)
+	}
+}
+
+// FuzzFlatten holds the sanitizer's one promise for any input: no control,
+// line-separator, or bidi rune survives except the newline, and Inert keeps
+// only the newline and tab. A stranger's text can then never start a terminal
+// sequence.
+func FuzzFlatten(f *testing.F) {
+	for _, seed := range []string{"plain", "a\x1b]52;c;eA==\x07b", "\u009b2J \r\n\t", "\xc2", "\xe2\x80"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		checkNoControls(t, Flatten(s), "\n")
+		checkNoControls(t, Inert(s), "\n\t")
+	})
+}
+
+func checkNoControls(t *testing.T, got, kept string) {
+	t.Helper()
+	for _, r := range got {
+		if folds(r) && !strings.ContainsRune(kept, r) {
+			t.Fatalf("%q kept control %U", got, r)
+		}
 	}
 }

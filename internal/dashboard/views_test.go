@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -28,14 +30,76 @@ func TestViewGoldens(t *testing.T) {
 // forged clear-screen and the OSC 52 clipboard write are both inert.
 func TestFrameCarriesNoStrangerEscape(t *testing.T) {
 	t.Parallel()
-	for _, tb := range []tab{tabOverview, tabQueue} {
-		got := frame(partialFixture(), tb, 120, 30, charsetUnicode)
-		if strings.ContainsAny(got, "\x1b\x07") {
-			t.Fatalf("tab %d frame carries a control byte:\n%q", tb, got)
-		}
+	for tb := range tabCount {
+		st := tabState(t, tb, hostileState)
+		poison(st)
+		checkFrameInert(t, tb, compose(st, 120, 30, look{pal: &paletteMono, cs: charsetUnicode}).lines())
 	}
 	if got := frame(partialFixture(), tabQueue, 120, 30, charsetUnicode); !strings.Contains(got, "acme/api [2Jforged") {
 		t.Fatalf("queue frame lost the flattened repo text:\n%s", got)
+	}
+}
+
+// hostile is what a stranger can put in any field: an OSC 52 clipboard
+// write, a C1 CSI, a clear screen, a carriage return, a tab, a line
+// separator, and the bidi override and isolate that reorder a line.
+const hostile = "\x1b]52;c;eA==\x07\u009b2J\x1b[2J\r\t\u2028\u202e\u2066end"
+
+// bidiControls are the directional controls a frame must never carry, by
+// literal code point.
+const bidiControls = "\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
+
+// hostileState points every bundle tab at one bundle and gives Compare a
+// baseline, so each tab has a decoded view for poison to write into.
+func hostileState(st *frameState) {
+	st.target, st.baseline = target{root: "a1b2c3d4e5f6", bundle: "4232"}, "4301"
+}
+
+// poison writes the hostile string into every decoded field the active tab
+// draws. It dereferences that tab's view unconditionally, so a tab whose view
+// failed to load fails the test instead of passing with nothing poisoned.
+func poison(st *frameState) {
+	st.snap.roots[0].path += hostile
+	for i := range st.snap.rows {
+		st.snap.rows[i].bundle += hostile
+		st.snap.rows[i].model += hostile
+	}
+	switch st.tab {
+	case tabDetail:
+		st.detail.repo, st.detail.head = hostile, hostile
+		st.detail.items[0].body += hostile
+		st.detail.items[0].locator += hostile
+	case tabDiff:
+		st.diff.lanes[0].lane += hostile
+		st.diff.files[0].path += hostile
+		st.diff.files[0].hunks[0].header += hostile
+		st.diff.files[0].hunks[0].lines[0].text += hostile
+	case tabCompare:
+		st.cmp.baseline += hostile
+		st.cmp.buckets[0][0].claim += hostile
+		st.cmp.buckets[0][0].path += hostile
+	case tabCost:
+		poisonTable(st.cost)
+	case tabPrecision:
+		poisonTable(st.prec)
+	default:
+	}
+}
+
+func poisonTable(tbl *tableData) {
+	tbl.by, tbl.note = hostile, hostile
+	tbl.rows[0][0] += hostile
+}
+
+// checkFrameInert fails unless a frame holds no control, separator, or bidi
+// rune but the newline that ends each row: the rule a stranger's text must not
+// break on any tab.
+func checkFrameInert(t *testing.T, tb tab, frame string) {
+	t.Helper()
+	for _, r := range frame {
+		if r != '\n' && (core.IsLineBreak(r) || strings.ContainsRune(bidiControls, r)) {
+			t.Fatalf("tab %d frame carries control %U:\n%q", tb, r, frame)
+		}
 	}
 }
 
@@ -66,7 +130,7 @@ func TestComposingFrame(t *testing.T) {
 	if got := lines[bodyTop]; got != " composing…" {
 		t.Fatalf("body = %q, want the composing marker", got)
 	}
-	if got := lines[minRows-1]; got != " 1 overview   2 queue   q quit" {
+	if got := lines[minRows-1]; got != " 1-7 tabs  Enter queue  r refresh  ? help  q quit" {
 		t.Fatalf("key row = %q", got)
 	}
 }
@@ -153,4 +217,117 @@ func TestFrameTextFoldsBidiControls(t *testing.T) {
 	if got := g.lines(); !strings.Contains(got, "a b c d e f g") || strings.ContainsAny(got, "\u202e\u202c\u2066\u2069\u200e\u061c") {
 		t.Fatalf("frame = %q; want the bidi controls folded to spaces", got)
 	}
+}
+
+// tabState composes one tab through the same job --once runs, so a golden
+// shows exactly what the layer's view decodes to.
+func tabState(t *testing.T, tb tab, mutate func(st *frameState)) *frameState {
+	t.Helper()
+	src := partialFixture()
+	st := &frameState{tab: tb}
+	if mutate != nil {
+		mutate(st)
+	}
+	res := runJob(t.Context(), src, pickTarget(st))
+	if res.snap == nil {
+		t.Fatalf("compose failed: %v", res.err)
+	}
+	st.snap = filterRepo(res.snap, st.repo)
+	installView(st, &res.want, res.view, res.err)
+	return st
+}
+
+func tabFrame(t *testing.T, tb tab, w, h int, mutate func(st *frameState)) string {
+	t.Helper()
+	return compose(tabState(t, tb, mutate), w, h, look{pal: &paletteMono, cs: charsetUnicode}).lines()
+}
+
+// TestTabGoldens pins every PR B tab at the 80×24 minimum, the split diff at
+// 100 columns, the help overlay, and the baseline picker.
+func TestTabGoldens(t *testing.T) {
+	t.Parallel()
+	golden.Check(t, "detail-80x24", tabFrame(t, tabDetail, minCols, minRows, nil))
+	golden.Check(t, "diff-80x24", tabFrame(t, tabDiff, minCols, minRows, nil))
+	golden.Check(t, "diff-split-100x30", tabFrame(t, tabDiff, splitCols, 30, func(st *frameState) { st.split = true }))
+	golden.Check(t, "compare-80x24", tabFrame(t, tabCompare, minCols, minRows, func(st *frameState) {
+		st.target, st.baseline = target{root: "a1b2c3d4e5f6", bundle: "4232"}, "4301"
+	}))
+	golden.Check(t, "compare-nobaseline-80x24", tabFrame(t, tabCompare, minCols, minRows, nil))
+	golden.Check(t, "cost-80x24", tabFrame(t, tabCost, minCols, minRows, nil))
+	golden.Check(t, "precision-80x24", tabFrame(t, tabPrecision, minCols, minRows, nil))
+	golden.Check(t, "help-80x24", tabFrame(t, tabQueue, minCols, minRows, func(st *frameState) { st.help = true }))
+	golden.Check(t, "picker-80x24", tabFrame(t, tabCompare, minCols, minRows, func(st *frameState) {
+		st.target = target{root: "a1b2c3d4e5f6", bundle: "4232"}
+		st.picker = &picker{rows: []string{"local-feature-branch-with-a-very-long-name", "4301"}, pos: 1}
+	}))
+}
+
+// TestDetailRefusalShowsInTheTab opens the refused bundle: its Detail body
+// is the refusal, and the rest of the frame still draws.
+func TestDetailRefusalShowsInTheTab(t *testing.T) {
+	t.Parallel()
+	got := tabFrame(t, tabDetail, minCols, minRows, func(st *frameState) {
+		st.target = target{root: "a1b2c3d4e5f6", bundle: "77"}
+	})
+	if !strings.Contains(got, " 77: bundle-unreadable: findings.json is a FIFO") || !strings.Contains(got, "[3 Detail]") {
+		t.Fatalf("frame lacks the refusal in the Detail body:\n%s", got)
+	}
+}
+
+// FuzzDecode feeds arbitrary JSON to every view decoder and draws the
+// result: a payload of any shape decodes to rows or to nothing, never a
+// panic, and the frame still holds no control byte.
+func FuzzDecode(f *testing.F) {
+	for _, seed := range []string{
+		`{}`, `{"rows":[{"open":1}],"counts":null}`, `{"report":{"items":[{"body":"\u001b[2J"}]}}`,
+		`{"files":[{"hunks":[{"lines":[{"kind":"add","new_no":-3}]}]}]}`, `{"cost":{"rows":[{"est_usd":1e308}]}}`, `[1,2]`,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(checkDecodeAny)
+}
+
+func checkDecodeAny(t *testing.T, raw []byte) {
+	v, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return
+	}
+	data := asObj(v)
+	view := &query.View{Data: data}
+	st := &frameState{
+		snap: decode(view, view), detail: decodeDetail(view), diff: decodeDiff(view),
+		cmp: decodeCompare(view), cost: decodeCost(view), prec: decodePrecision(view),
+	}
+	for tb := range tabCount {
+		st.tab = tb
+		checkFrameInert(t, tb, compose(st, minCols, minRows, look{pal: &paletteMono, cs: charsetUnicode}).lines())
+	}
+}
+
+// TestOnceFramesNameNoKeys proves a --once frame never tells its reader to
+// press a key it cannot press, while the live frame keeps the hint.
+func TestOnceFramesNameNoKeys(t *testing.T) {
+	t.Parallel()
+	for _, live := range []bool{false, true} {
+		frames := hintFrames(t, live)
+		for _, hint := range []string{"press b", "press Enter"} {
+			if strings.Contains(frames, hint) != live {
+				t.Fatalf("live=%v: %q present=%v, want %v:\n%s", live, hint, !live, live, frames)
+			}
+		}
+	}
+	if frames := hintFrames(t, false); !strings.Contains(frames, "no readable bundle to show") {
+		t.Fatalf("--once Detail with no bundle lacks its plain message:\n%s", frames)
+	}
+}
+
+// hintFrames composes the two frames that carry a key hint in the live
+// view: Compare with no baseline, and Detail with no readable bundle.
+func hintFrames(t *testing.T, live bool) string {
+	t.Helper()
+	cmp := tabState(t, tabCompare, nil)
+	cmp.live = live
+	empty := &frameState{tab: tabDetail, live: live, snap: &snapshot{}}
+	lk := look{pal: &paletteMono, cs: charsetUnicode}
+	return compose(cmp, minCols, minRows, lk).lines() + compose(empty, minCols, minRows, lk).lines()
 }

@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview   2 Queue   3 Detail  [4 Diff]  5 Compare   6 Cost   7 Precision
+────────────────────────────────────────────────────────────────────────────────
+ source 1f +2/-1 · tests 1f +1/-0                                      unified
+ ── src/auth.go  source  +2/-1
+   @@ -40,3 +40,4 @@ func check
+     40    40   func check(t string) bool {
+     41       -  return t == secret
+ ▸         41 +  ok := t == secret
+           42 +  return ok
+     42    43   }
+ ── src/auth_test.go  tests  +1/-0
+   @@ -1 +1,2 @@
+      1     1   package src
+            2 + // TestCheck covers the token path.
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

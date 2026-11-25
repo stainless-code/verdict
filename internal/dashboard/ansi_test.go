@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +16,7 @@ type screen struct {
 	runes        [][]rune
 	marks        [][][maxMarks]rune
 	sgr          [][]string
+	clipboard    []string
 	w, h, cx, cy int
 	cups         int
 	alt, sync    bool
@@ -92,6 +94,9 @@ func (s *screen) combine(t *testing.T, r rune) {
 // escape applies the one CSI sequence at the head of b and returns its length.
 func (s *screen) escape(t *testing.T, b []byte) int {
 	t.Helper()
+	if len(b) > 1 && b[1] == ']' {
+		return s.osc(t, b)
+	}
 	end := 2
 	for end < len(b) && strings.IndexByte("?;0123456789", b[end]) >= 0 {
 		end++
@@ -108,6 +113,18 @@ func (s *screen) escape(t *testing.T, b []byte) int {
 	default:
 		s.mode(t, seq)
 	}
+	return end + 1
+}
+
+// osc accepts exactly one operating-system command, the OSC 52 clipboard
+// write `y` sends, and records its payload.
+func (s *screen) osc(t *testing.T, b []byte) int {
+	t.Helper()
+	end := bytes.IndexByte(b, '\a')
+	if end < 0 || !strings.HasPrefix(string(b), escClipboard) {
+		t.Fatalf("OSC %q is outside the dashboard's vocabulary", b[:min(len(b), 16)])
+	}
+	s.clipboard = append(s.clipboard, string(b[len(escClipboard):end]))
 	return end + 1
 }
 
