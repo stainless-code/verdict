@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -41,6 +43,33 @@ func hungServer(cfg *Config) (*Server, func()) {
 	cfg.expire = nil
 	cfg.eval = func(p string) (string, error) { <-gate; return p, nil }
 	return New(cfg), release
+}
+
+// volPaths makes n distinct absolute OS paths (never created: the walks are
+// faked) with the given leaf prefix, under one temp directory, so they are
+// absolute on every OS, drive letter included.
+func volPaths(t *testing.T, prefix string, n int) []string {
+	t.Helper()
+	base := t.TempDir()
+	out := make([]string, 0, n)
+	for i := range n {
+		out = append(out, filepath.Join(base, fmt.Sprintf("%s%02d", prefix, i)))
+	}
+	return out
+}
+
+// slashOf is the slash spelling the server keeps for an OS path.
+func slashOf(p string) string {
+	return newServedRoot(osRoot(p), runtime.GOOS == "windows").slash
+}
+
+// slashOfAll maps slashOf over paths.
+func slashOfAll(paths []string) []string {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, slashOf(p))
+	}
+	return out
 }
 
 // expectf fails the test, and carries on, when ok is false.
@@ -107,7 +136,7 @@ func TestRootsResolveConcurrently(t *testing.T) {
 }
 
 func rootsResolveConcurrently(t *testing.T) {
-	paths := []string{"/vol/a", "/vol/b", "/vol/c", "/vol/d"}
+	paths := volPaths(t, "r", 4)
 	var arrived atomic.Int64
 	all := make(chan struct{})
 	var closeAll sync.Once
@@ -125,7 +154,10 @@ func rootsResolveConcurrently(t *testing.T) {
 	start := time.Now()
 	roots := s.rootsOf(paths)
 	expectf(t, time.Since(start) == 0, "resolving %d roots took %s, want the walks to overlap", len(paths), time.Since(start))
-	want := []string{"/vol/a /vol/a-physical", "/vol/b /vol/b-physical", "/vol/c /vol/c-physical", "/vol/d /vol/d-physical"}
+	var want []string
+	for _, slashed := range slashOfAll(paths) {
+		want = append(want, slashed+" "+slashed+"-physical")
+	}
 	got := rootSpellings(roots)
 	expectf(t, slices.Equal(got, want), "roots = %q, want %q", got, want)
 }
@@ -155,33 +187,31 @@ func hungRoots(t *testing.T) {
 	cfg.MaxRoots = MaxRoots
 	cfg.eval = func(string) (string, error) { started.Add(1); <-gate; return "", errNeverResolved }
 	s := New(cfg)
-	var paths []string
-	for i := range maxResolvers + 2 {
-		paths = append(paths, fmt.Sprintf("/vol/%02d", i))
-	}
+	paths := volPaths(t, "r", maxResolvers+2)
+	slashed := slashOfAll(paths)
 	start := time.Now()
 	roots := s.rootsOf(paths)
 	expectf(t, time.Since(start) == resolveBudget, "a hung batch took %s, want one budget (%s)", time.Since(start), resolveBudget)
 	expectf(t, started.Load() == maxResolvers, "%d walks started, want exactly the %d slots", started.Load(), maxResolvers)
-	expectf(t, len(roots) == len(paths) && roots[0].slash == "/vol/00" && roots[len(roots)-1].slash == "/vol/09",
+	expectf(t, len(roots) == len(paths) && roots[0].slash == slashed[0] && roots[len(roots)-1].slash == slashed[len(slashed)-1],
 		"roots out of order or missing: %d roots", len(roots))
-	checkMissLines(t, queuedLogs(s), len(paths))
+	checkMissLines(t, queuedLogs(s), slashed)
 }
 
 // checkMissLines wants one line per path in input order: the budget message
 // for the first maxResolvers, the no-slot message for the rest.
-func checkMissLines(t *testing.T, lines []string, n int) {
+func checkMissLines(t *testing.T, lines, paths []string) {
 	t.Helper()
-	if len(lines) != n {
-		t.Fatalf("%d lines queued, want %d: %q", len(lines), n, lines)
+	if len(lines) != len(paths) {
+		t.Fatalf("%d lines queued, want %d: %q", len(lines), len(paths), lines)
 	}
 	for i, line := range lines {
 		kind, other := "took longer", "skipped"
 		if i >= maxResolvers {
 			kind, other = other, kind
 		}
-		if !strings.Contains(line, fmt.Sprintf("/vol/%02d", i)) || !strings.Contains(line, kind) || strings.Contains(line, other) {
-			t.Errorf("line %d = %q, want it to name /vol/%02d with the %q message", i, line, i, kind)
+		if !strings.Contains(line, paths[i]) || !strings.Contains(line, kind) || strings.Contains(line, other) {
+			t.Errorf("line %d = %q, want it to name %s with the %q message", i, line, paths[i], kind)
 		}
 	}
 }
@@ -200,7 +230,11 @@ func clientRootsVetted(t *testing.T) {
 	cfg.expire = nil
 	cfg.checkout = func(string) string { <-gate; return "" }
 	s := New(cfg)
-	cands := []rootCandidate{{uri: "file:///vol/a"}, {uri: "file:///vol/b"}, {uri: "file:///vol/c"}}
+	dirs := volPaths(t, "client", 3)
+	var cands []rootCandidate
+	for _, d := range dirs {
+		cands = append(cands, rootCandidate{uri: newServedRootURI(d)})
+	}
 	start := time.Now()
 	kept := s.acceptedRoots(cands)
 	expectf(t, time.Since(start) == resolveBudget, "three hung probes took %s, want one budget (%s)", time.Since(start), resolveBudget)
@@ -209,8 +243,10 @@ func clientRootsVetted(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("%d warnings, want 3: %q", len(got), got)
 	}
-	for i, want := range []string{"/vol/a", "/vol/b", "/vol/c"} {
-		expectf(t, strings.Contains(got[i], "workspace root "+want+" dropped"), "warning %d = %q, want it to name %s", i, got[i], want)
+	for i, dir := range dirs {
+		leaf := filepath.Base(dir)
+		expectf(t, strings.Contains(got[i], "workspace root ") && strings.Contains(got[i], leaf+" dropped"),
+			"warning %d = %q, want it to name %s", i, got[i], leaf)
 	}
 }
 
@@ -260,7 +296,7 @@ func TestSlowWalkLogsBeforeThePublish(t *testing.T) {
 func TestSlowRootWalkLogsBeforeTheRootsInstall(t *testing.T) {
 	t.Parallel()
 	first, second := fixtureRoot(t), checkout(t)
-	gate := newGatedEval(t, second)
+	gate := newGatedEval(t, slashOf(second)) // eval sees the slash spelling
 	gate.armed.Store(true)
 	cfg := newConfig()
 	cfg.eval, cfg.expire = gate.eval, gate.expire
@@ -343,7 +379,7 @@ func TestSlowWatcherBaselineNeverStallsTheReadLoop(t *testing.T) {
 func TestCancelDuringAHungResolveEndsTheSession(t *testing.T) {
 	t.Parallel()
 	first, second := fixtureRoot(t), checkout(t)
-	gate := newGatedEval(t, second)
+	gate := newGatedEval(t, slashOf(second)) // eval sees the slash spelling
 	gate.armed.Store(true)
 	cfg := newConfig() // its budget never runs out
 	cfg.eval = gate.eval
