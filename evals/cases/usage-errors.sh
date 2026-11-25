@@ -88,7 +88,7 @@ set +e
 st=$?
 set -e
 if [ "$st" -eq 2 ] && head -n 1 "$EVAL_SANDBOX/u-err.txt" | matches '^error: no target given' \
-  && ! grep -q settings "$EVAL_SANDBOX/u-err.txt"; then
+  && [ "$(grep -c settings "$EVAL_SANDBOX/u-err.txt" || true)" = 0 ]; then
   good "U3 corrupt settings + missing target still refuses target-unresolved (exit 2)"
 else
   bad "U3 corrupt-settings gate exits $st"
