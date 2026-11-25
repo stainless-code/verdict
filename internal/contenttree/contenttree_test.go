@@ -173,6 +173,11 @@ func TestSnapshotCopiesTheContent(t *testing.T) {
 // leave no marker behind.
 func TestSnapshotCleansLikeGitAddAndRunsNoRepoCode(t *testing.T) {
 	root, g := repo(t)
+	// The `ident` path is written as git's checkout writes it, and under
+	// `* text=auto` that checkout's line endings follow core.eol, which
+	// defaults to CRLF on Windows. This test is about cleaning and running
+	// no program, so it pins the checkout's endings to LF on every host.
+	commandConfig(t, "core.eol", "lf")
 	markers := t.TempDir()
 	armRepoCode(t, root, markers)
 	write(t, root, "crlf.txt", "one\r\ntwo\r\n")
