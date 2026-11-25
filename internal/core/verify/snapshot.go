@@ -165,6 +165,25 @@ func (st *state) warnLeftOut(c *contenttree.Content) {
 	if len(c.Gitlinks) > 0 {
 		st.warn(fmt.Sprintf("%d submodule(s) are empty in the snapshot: %s", len(c.Gitlinks), shownList(c.Gitlinks)))
 	}
+	for _, f := range c.Filtered {
+		st.warn(filteredNote(f) + " — a PR's VERIFIED claim cannot bind to this run; a fetch-local bundle of this checkout still can")
+	}
+}
+
+// lfsDriver is the filter driver git-lfs installs.
+const lfsDriver = "lfs"
+
+// filteredNote says what a filter driver verify never ran leaves in the
+// snapshot, naming git-lfs for its driver: a commit stores what the driver
+// would have made, which only running it could re-derive.
+func filteredNote(f contenttree.Filtered) string {
+	stored := "the `" + f.Driver + "` filter driver's output"
+	if f.Driver == lfsDriver {
+		stored = "the Git LFS pointers"
+	}
+	return fmt.Sprintf("%d path(s) use the `%s` filter, which verify never runs (%s): the snapshot holds their "+
+		"working-tree content, not %s a commit stores, so its tree matches no commit", len(f.Paths), f.Driver,
+		shownList(f.Paths), stored)
 }
 
 func shownList(items []string) string {

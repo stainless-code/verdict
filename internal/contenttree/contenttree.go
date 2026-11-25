@@ -6,11 +6,16 @@
 //
 // The content is the paths in the index — what a working-tree bundle's diff
 // covers: tracked files and intent-to-add (`git add -N`) entries — each with
-// its working-tree bytes exactly as on disk. Untracked and ignored files are
-// outside it, as they are outside the bundle. Every blob is hashed with
-// `hash-object --no-filters` and every file is copied as-is, so no
-// line-ending conversion, ident expansion, clean/smudge filter (git-lfs
-// included), fsmonitor, or hook program runs or changes a byte, and the
+// its working-tree bytes cleaned as `git add` cleans them: git's built-in
+// conversions (core.autocrlf, core.eol, the text/eol attributes, ident,
+// working-tree-encoding) apply, so a CRLF checkout of an LF commit names that
+// commit's tree. No program runs: every configured filter driver is switched
+// off for the call ([gitcmd.FilterOptions]), so a path a clean or process
+// filter (git-lfs included) would handle is named by its working-tree bytes,
+// and no fsmonitor or hook runs. A snapshot holds the cleaned bytes — the
+// blobs the tree names — so a command runs on the committed form, as CI's
+// checkout would on a platform without conversions. Untracked and ignored
+// files are outside the content, as they are outside the bundle, and the
 // command sees no dependency or config the checkout keeps in ignored files.
 //
 // Naming writes the blobs and the tree into the repository's object store —
@@ -51,6 +56,10 @@ type Git struct {
 	Cmdr core.Commander
 	Root string
 	Env  []string
+	// exact names the bytes on disk as they are, with no clean step: a
+	// snapshot already holds cleaned blobs, and its re-check must name
+	// exactly those, not clean them again.
+	exact bool
 }
 
 // Content is what a snapshot holds and what it left out.
@@ -65,6 +74,12 @@ type Content struct {
 	Ignored []string
 	// Gitlinks are submodules: recorded by their commit, left empty.
 	Gitlinks []string
+	// Filtered are the paths whose attributes select a configured filter
+	// driver and whose bytes are not what the index records, by driver:
+	// verdict ran none, so the tree holds their working-tree bytes and
+	// matches no commit that stores what the driver would have (a git-lfs
+	// pointer).
+	Filtered []Filtered
 }
 
 // Worktree returns the tree id of the checkout's content: every index path's
@@ -79,7 +94,8 @@ func (g Git) Worktree(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return g.name(ctx, entries, kept, "")
+	tree, _, err := g.name(ctx, entries, kept, "")
+	return tree, err
 }
 
 // Snapshot copies the checkout's content into dest (an absent or empty
@@ -106,7 +122,7 @@ func (g Git) Snapshot(ctx context.Context, dest string) (content Content, err er
 		return Content{}, err
 	}
 	content.Gitlinks = gitlinks(entries)
-	if content.Tree, err = g.name(ctx, entries, kept, staging); err != nil {
+	if content.Tree, content.Filtered, err = g.name(ctx, entries, kept, staging); err != nil {
 		return Content{}, err
 	}
 	if err := g.materialize(ctx, content.Tree, staging, dest); err != nil {
@@ -117,7 +133,8 @@ func (g Git) Snapshot(ctx context.Context, dest string) (content Content, err er
 }
 
 // materialize makes dest a linked worktree at a commit of tree holding the
-// staged bytes, then re-names it: what the command will see must be the tree.
+// staged bytes, then re-names them as they are: what the command will see
+// must be the tree.
 func (g Git) materialize(ctx context.Context, tree, staging, dest string) error {
 	commit, err := g.commitTree(ctx, tree)
 	if err != nil {
@@ -128,7 +145,7 @@ func (g Git) materialize(ctx context.Context, tree, staging, dest string) error 
 	if _, err := g.runEnv(ctx, nil, cmdWorktree, "add", "--no-checkout", "--detach", "--quiet", dest, commit); err != nil {
 		return err
 	}
-	in := Git{Cmdr: g.Cmdr, Root: dest, Env: g.Env}
+	in := Git{Cmdr: g.Cmdr, Root: dest, Env: g.Env, exact: true}
 	if err := in.fill(ctx, staging); err != nil {
 		return err
 	}

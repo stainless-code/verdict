@@ -15,7 +15,8 @@
 // GIT_EXEC_PATH, and GIT_CONFIG_PARAMETERS are dropped. Clean and process
 // filters still run where git needs them to read a working tree as git
 // itself sees it (status, a working-tree diff, add); a call that writes a
-// working tree passes [FilterOptions] so no filter runs at all.
+// working tree, or cleans one into the blobs a receipt names, passes
+// [FilterOptions] so no filter runs at all.
 //
 // The package is a leaf: it imports no other repository package, so the
 // contract root and every service can build their git calls here.
@@ -155,12 +156,26 @@ var ListFilters = []string{"config", "-z", "--name-only", "--get-regexp", `^filt
 // FilterOptions turns a [ListFilters] listing into the global options that
 // switch every listed driver off for one call: an empty clean, smudge, and
 // process command is no filter, and required=false lets a file whose driver
-// is off pass through as its blob bytes. A call that writes a working tree
-// from reviewed content passes them, so a checkout runs no filter program —
-// git-lfs included — that the content's attributes select. A driver is only
+// is off pass through as its blob bytes (or, cleaned, as its working-tree
+// bytes). A call that writes a working tree from reviewed content, or cleans
+// a checkout into blobs, passes them, so it runs no filter program — git-lfs
+// included — that the content's attributes select. A driver is only
 // ever named by configuration, which the reviewed tree cannot write, so the
 // listing names every driver an attribute could reach.
 func FilterOptions(listing string) []string {
+	var opts []string
+	for _, d := range FilterDrivers(listing) {
+		key := "filter." + d + "."
+		opts = append(opts,
+			optConfig, key+"clean"+setTo, optConfig, key+"smudge"+setTo, optConfig, key+"process"+setTo,
+			optConfig, key+"required"+setTo+"false")
+	}
+	return opts
+}
+
+// FilterDrivers names the drivers a [ListFilters] listing configures, in
+// listing order.
+func FilterDrivers(listing string) []string {
 	var drivers []string
 	for key := range strings.SplitSeq(listing, "\x00") {
 		rest, ok := strings.CutPrefix(strings.TrimSpace(key), "filter.")
@@ -170,14 +185,7 @@ func FilterOptions(listing string) []string {
 		}
 		drivers = append(drivers, rest[:dot])
 	}
-	var opts []string
-	for _, d := range drivers {
-		key := "filter." + d + "."
-		opts = append(opts,
-			optConfig, key+"clean"+setTo, optConfig, key+"smudge"+setTo, optConfig, key+"process"+setTo,
-			optConfig, key+"required"+setTo+"false")
-	}
-	return opts
+	return drivers
 }
 
 // Split undoes [Argv]: it returns the root and the caller's own args, without

@@ -162,21 +162,20 @@ func TestSnapshotCopiesTheContent(t *testing.T) {
 	requireNoTrace(t, root)
 }
 
-// TestSnapshotIsByteExactAndRunsNoRepoCode pins the two properties a content
-// receipt rests on, on a checkout set up to defeat both: autocrlf and
-// `* text=auto` would rewrite line endings, a `filter=mark` attribute names a
+// TestSnapshotCleansLikeGitAddAndRunsNoRepoCode pins the two properties a
+// content receipt rests on, on a checkout set up to defeat both: `* text=auto`
+// cleans line endings, a `filter=mark` attribute names a required
 // clean/smudge driver, and fsmonitor and post-checkout name programs. Every
-// one of those programs writes a marker. Naming and snapshotting must hash
-// and copy the working tree's bytes as they are — CRLF kept, the filtered
-// file's raw bytes — and leave no marker behind.
-func TestSnapshotIsByteExactAndRunsNoRepoCode(t *testing.T) {
+// one of those programs writes a marker. Naming and snapshotting must clean
+// the working tree's bytes as git's built-in conversions do — CRLF to LF —
+// without running the driver, report the path it would have handled, and
+// leave no marker behind.
+func TestSnapshotCleansLikeGitAddAndRunsNoRepoCode(t *testing.T) {
 	root, g := repo(t)
 	markers := t.TempDir()
 	armRepoCode(t, root, markers)
-	raw := map[string]string{"crlf.txt": "one\r\ntwo\r\n", "filtered.txt": "raw $Id$ bytes\r\n"}
-	for rel, body := range raw {
-		write(t, root, rel, body)
-	}
+	write(t, root, "crlf.txt", "one\r\ntwo\r\n")
+	write(t, root, "filtered.txt", "raw $Id$ bytes\r\n")
 	git(t, root, "add", "-N", ".gitattributes", "crlf.txt", "filtered.txt")
 	// The fixture's own git calls ran the hooks; only what follows counts.
 	clearDir(t, markers)
@@ -185,26 +184,34 @@ func TestSnapshotIsByteExactAndRunsNoRepoCode(t *testing.T) {
 	if dest.content.Tree != tree {
 		t.Errorf("snapshot tree = %s, want the named %s", dest.content.Tree, tree)
 	}
-	for rel, body := range raw {
+	cleaned := map[string]string{"crlf.txt": "one\ntwo\n", "filtered.txt": "raw $Id$ bytes\n"}
+	for rel, body := range cleaned {
 		requireBytes(t, filepath.Join(dest.dir, rel), body)
 		if blob := gitRaw(t, root, "cat-file", "blob", tree+":"+rel); blob != body {
-			t.Errorf("named blob %s = %q, want the working tree's %q", rel, blob, body)
+			t.Errorf("named blob %s = %q, want the cleaned %q", rel, blob, body)
 		}
+	}
+	want := []contenttree.Filtered{{Driver: "mark", Paths: []string{"filtered.txt"}}}
+	if !slices.EqualFunc(dest.content.Filtered, want, equalFiltered) {
+		t.Errorf("Filtered = %+v, want %+v", dest.content.Filtered, want)
 	}
 	if left, err := os.ReadDir(markers); err != nil || len(left) != 0 {
 		t.Errorf("repository-controlled code ran: markers %v (%v)", left, err)
 	}
 }
 
+func equalFiltered(a, b contenttree.Filtered) bool {
+	return a.Driver == b.Driver && slices.Equal(a.Paths, b.Paths)
+}
+
 // armRepoCode sets up every program the checkout could make git run while
-// naming or snapshotting it, each writing a marker into markers: autocrlf
-// and `* text=auto`, a required clean/smudge filter, an fsmonitor, and
-// post-checkout and post-index-change hooks.
+// naming or snapshotting it, each writing a marker into markers: a required
+// clean/smudge filter, an fsmonitor, and post-checkout and post-index-change
+// hooks, beside `* text=auto`.
 func armRepoCode(t *testing.T, root, markers string) {
 	t.Helper()
 	marker := func(name string) string { return filepath.ToSlash(filepath.Join(markers, name)) }
 	write(t, root, ".gitattributes", "* text=auto\nfiltered.txt filter=mark\n")
-	git(t, root, "config", "core.autocrlf", "true")
 	git(t, root, "config", "filter.mark.clean", "sh -c 'touch "+marker("clean")+"; cat'")
 	git(t, root, "config", "filter.mark.smudge", "sh -c 'touch "+marker("smudge")+"; cat'")
 	git(t, root, "config", "filter.mark.required", "true")
