@@ -225,7 +225,7 @@ spend-capped	try: re-run with --consent-over-budget once the spend is approved, 
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
 test-conflict	try: resolve the named target or symlink by hand, then re-run fix --test
-threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+threads-failed	try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
 trigger-failed	try: re-fetch the bundle so its base-snapshot policy is complete, then re-run
 uninstall-foreign	try: address the cause above, then re-run the same command

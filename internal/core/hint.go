@@ -44,12 +44,13 @@ var hintRules = []HintRule{
 		"then re-run"},
 	{codes: []string{"spec-too-large"}, hint: "try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch"},
 	{
-		codes: []string{"fetch-failed", "threads-failed"},
+		codes: []string{"fetch-failed"},
 		hint:  "try: run 'gh auth status', confirm the repo/PR spelling, then re-run",
 	},
 	{
-		// pr-read-failed also comes from the GitLab wait and ready reads.
-		codes: []string{"pr-read-failed"},
+		// pr-read-failed and threads-failed also come from GitLab reads
+		// (the wait, ready's discussions, threads --resolve).
+		codes: []string{"pr-read-failed", "threads-failed"},
 		hint:  "try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run",
 	},
 	{codes: []string{"drafts-invalid"}, hint: "try: fix the named site in drain.replies.json, then re-run drain --agent"},
