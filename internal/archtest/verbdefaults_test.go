@@ -3,7 +3,6 @@ package archtest
 import (
 	"flag"
 	"fmt"
-	"github.com/stainless-code/verdict/internal/loop"
 	"os"
 	"path/filepath"
 	"sort"
@@ -15,6 +14,7 @@ import (
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/gate"
+	"github.com/stainless-code/verdict/internal/loop"
 	"github.com/stainless-code/verdict/internal/run"
 )
 
