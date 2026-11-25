@@ -138,7 +138,8 @@ evidence does not support is not reported.
 
 ## Self-review loop
 
-A bounded local fetch → agent review and fix → record → gate recipe run before
-opening a PR. Each round retains a receipt; only a passing last gate produces a
-passing summary. See the manual's **Agent self-review loop** for its required
-coverage posture and wall budget.
+`verdict loop`: bounded local rounds of fetch → agent review → record → gate,
+with an agent fix phase between a failed gate and the next round's fresh
+review, run before opening a PR. Each round retains a receipt; only a passing
+last gate produces a passing summary. See the manual's **Agent self-review
+loop** for its stop conditions, coverage posture, and budgets.

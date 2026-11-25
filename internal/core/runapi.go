@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"reflect"
 	"time"
 
@@ -74,6 +75,11 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	AllowShell   bool
 	JSONMode     bool
 	Warnings     []string
+	// Admit, when set, is called before every agent process the launch
+	// spawns — the one-shot and each repair round, attempt counting from 1 —
+	// and a refusal stops the launch before that spawn. The self-review loop
+	// admits each spawn under its spend ceiling and receipts it there.
+	Admit func(ctx context.Context, attempt int) *RefusalError `json:"-"`
 }
 
 // RunResponse carries the run outcome: the envelope data, the warnings, the

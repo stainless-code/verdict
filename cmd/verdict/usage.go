@@ -8,7 +8,7 @@ import (
 
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
+		"fetch-local|run|loop|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
@@ -387,6 +387,25 @@ func usageText() string {
 		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts.\n" +
+		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
+		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
+		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
+		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
+		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
+		"    (every open finding, coverage required, live checks skipped). A failed gate starts the fix\n" +
+		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
+		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
+		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
+		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
+		"    settings.json agent. Stops: pass, max-rounds, wall-budget (--budget bounds every phase and\n" +
+		"    spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
+		"    whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling\n" +
+		"    refusing a spawn — every review attempt and fix leaves a budget.json receipt), no-progress (no\n" +
+		"    finding open after the previous round was resolved), agent-failed, refused. Receipts:\n" +
+		"    round-N.json and summary.json under --output (a new directory; default\n" +
+		"    .verdict/loop/<stamp>). --print renders every planned command and the fix prompt without\n" +
+		"    running anything. Never commits, pushes, or posts. Exits 0 pass or --print, 1 any other stop\n" +
+		"    or refusal, 2 usage, 3 an operator cancel.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
@@ -766,7 +785,7 @@ func usageText() string {
 		"  overview + diagrams + fix prompt) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
+		"fetch-local/run/loop/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
 		"skill/upgrade/uninstall/serve/config/acp/lsp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
@@ -796,7 +815,7 @@ var bareVerbs = map[string]bool{
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
 // argument is one of their own flags, so the split must not read the second
 // token as a PR.
-var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true}
+var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true, cmdLoop: true}
 
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {

@@ -44,6 +44,7 @@ import (
 	"github.com/stainless-code/verdict/internal/ingest"
 	journalverb "github.com/stainless-code/verdict/internal/journal"
 	"github.com/stainless-code/verdict/internal/learn"
+	"github.com/stainless-code/verdict/internal/loop"
 	"github.com/stainless-code/verdict/internal/pack"
 	"github.com/stainless-code/verdict/internal/panel"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -80,7 +81,7 @@ const (
 	verbDashboard = "dashboard"
 )
 
-const verbsHint = "demo|fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
+const verbsHint = "demo|fetch|fetch-local|run|loop|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp"
 
@@ -227,6 +228,8 @@ const cmdDemo = "demo"
 
 const cmdRisk = "risk"
 
+const cmdLoop = "loop"
+
 var readVerbs = map[string]readHandler{
 	"config":     configcmd.Run,
 	"panel":      panel.Run,
@@ -367,6 +370,10 @@ func dispatchMutating(
 		// is aliased rather than renaming either one.
 		return runverb.Run(ctx, r, rest, runverb.Request{
 			Env: env, Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot,
+		}), true
+	case cmdLoop:
+		return loop.Run(ctx, r, rest, loop.Request{
+			Env: env, Forces: forces, Repo: repo, Root: root, RepoRoot: repoRoot,
 		}), true
 	case "record":
 		return record.Run(ctx, r, rest, &record.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces}), true
