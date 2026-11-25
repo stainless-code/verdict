@@ -121,7 +121,9 @@ In scope (highest priority first):
 - The verification receipt: `record` and `post` flip a `VERIFIED` claim to
   `addressed` only on the bundle's `verify-receipt.json`, which
   `verdict verify` alone writes. It binds the command, the finding, and the
-  clean checked-out head. A path where a claim flips without a passing receipt
+  clean checked-out head, and verify writes it only through the bundle
+  directory it pinned before the command ran (a symlinked bundle refuses; a
+  bundle moved or replaced mid-run records nothing). A path where a claim flips without a passing receipt
   for its command, finding, and the graded head — a pass read from
   `patch.json`, a `triage[]` rationale, a dirty or moving tree — is a
   vulnerability. The receipt defends against claims nobody observed, not

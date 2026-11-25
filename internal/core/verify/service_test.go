@@ -21,8 +21,11 @@ type scriptCommander struct {
 	// empty answers patchHead. status answers the working-tree status probes
 	// the same way; empty reads clean. Probes never land in got, which keeps
 	// the spawned verify command at got[0].
-	heads    []string
-	status   []string
+	heads  []string
+	status []string
+	// onRun acts for the verify command while it "runs": a swapped bundle, an
+	// edited patch.json.
+	onRun    func()
 	res      core.Result
 	probes   int
 	statuses int
@@ -61,6 +64,9 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		return core.Result{Stdout: scripted(s.status, s.statuses-1, "")}, nil
 	}
 	s.got = append(s.got, cmd)
+	if s.onRun != nil {
+		s.onRun()
+	}
 	if s.err != nil {
 		return core.Result{}, s.err
 	}

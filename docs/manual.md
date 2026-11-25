@@ -315,8 +315,16 @@ Only `verdict verify` writes `verify-receipt.json`, and only it is the tool's
 observation: the command it ran (`command`, the bundle's `patch.json` `verifyCmd`),
 the finding `patch.json` named (`sig`, from `findingSig` or `sig`), the exit,
 whether the watchdog fired, and `head` — the commit checked out at the repo root,
-recorded only when `git status` showed a clean tree (outside verdict's own
-`.verdict/`) and the same commit both before and after the command. `record`/`post`
+recorded only when `git status` showed a clean tree and the same commit both
+before and after the command. The status read skips only verdict's own bundle
+state (`.verdict/state/`) and the generated `.verdict/.gitignore`; everything else
+under `.verdict/` (config, KB, packs, regression tests, `verify-env`) is reviewed
+input and counts. `verify` resolves the bundle like every writing verb (a
+symlinked `.verdict/state/<pr>` refuses), pins the bundle directory before the
+command runs, reads the finding sig then, and deletes the previous receipt then,
+so a failed, aborted, or unrecordable run leaves no receipt at all. Every write
+goes through that pinned directory, and a command that moves or replaces the
+bundle directory makes verify refuse with nothing recorded. `record`/`post`
 read only that file. They flip a `VERIFIED` claim only when it shows exit 0, no
 timeout, the claim's exact `verifyCmd`, the claim's finding when it names one, and a
 `head` equal to the HEAD they grade. Anything else does not flip: no receipt (a pass

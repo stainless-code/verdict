@@ -34,7 +34,7 @@ const (
 		"then land the claim again"
 
 	msgBadTriage = "refusing post: unknown triage status '%s' " +
-		"(want open|addressed|wont-fix|false-positive|deferred)"
+		"(want open|wont-fix|false-positive|deferred)"
 
 	msgRecorded = "recorded: %s/findings.json (%d open) + %s/record.json — " +
 		"report/triage read it; post stays refused (no PR target)\n"
