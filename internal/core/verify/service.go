@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,10 @@ type state struct {
 	req      *Request
 	warnings []string
 	env      []string
+	// share is the base configuration's verify.share list; shared is what
+	// this run resolved and exposed from it.
+	share  []string
+	shared []sharedDir
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -183,9 +188,12 @@ func (st *state) execute(
 		st.releaseSandbox(sb)
 		return nil, st.withWarnings(ref)
 	}
-	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now}
+	receipt := &core.VerifyReceipt{
+		SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now, Shared: sharedRels(st.shared),
+	}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
+	st.reportShares(sb)
 	st.releaseSandbox(sb)
 	st.removeSnapshot(ctx, snap)
 	snap = nil
@@ -250,7 +258,7 @@ func (st *state) sandboxInputs() sandboxInputs {
 	if account == "" {
 		account = sandboxAccountHome()
 	}
-	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account}
+	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account, shared: &st.shared}
 }
 
 // releaseSandbox removes the mechanism's private state as soon as the command
@@ -290,17 +298,20 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 	dir string, env []string, sb *sandbox,
 ) (core.Result, *core.RefusalError) {
 	argv := []string{"bash", "-c", vcmd}
+	var files []*os.File
 	if sb != nil {
 		argv = sb.argv(vcmd)
 		env = sb.childEnv(env)
+		files = sb.files
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
-		Argv:      argv,
-		Env:       env,
-		Dir:       dir,
-		OutputCap: coreexec.VerifyOutputCap,
+		Argv:       argv,
+		Env:        env,
+		Dir:        dir,
+		ExtraFiles: files,
+		OutputCap:  coreexec.VerifyOutputCap,
 	})
 	if err != nil {
 		return core.Result{}, failed(err)
@@ -350,7 +361,7 @@ func (st *state) response(dir, now string, exit int, timedOut bool, tail string,
 	}
 	data := &core.VerifyData{
 		Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir,
-		Sandboxed: sb.full(), SandboxMechanism: sb.name(),
+		Sandboxed: sb.full(), SandboxMechanism: sb.name(), Shared: sharedRels(st.shared),
 	}
 	return &Response{
 		Repo:     st.req.Repo,

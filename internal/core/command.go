@@ -4,19 +4,22 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 	"time"
 )
 
 // Command is one spawned process: the argv to run, the stdin to feed it,
 // the environment it inherits, and the per-stream capture cap. A nil Stdin
 // inherits the caller's stdin (the verify contract); a nil Env inherits the
-// process environment.
+// process environment. ExtraFiles are inherited as descriptors 3, 4, … in
+// order (POSIX only), the way a caller hands a pinned directory to a child.
 type Command struct {
 	Stdin       io.Reader
 	StdoutTap   io.Writer
 	Dir         string
 	Argv        []string
 	Env         []string
+	ExtraFiles  []*os.File
 	OutputCap   int
 	GracePeriod time.Duration
 }

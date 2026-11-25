@@ -3483,7 +3483,12 @@
         "tree": { "type": "string" },
         "receipt": { "type": "string" },
         "sandboxed": { "type": "boolean" },
-        "sandboxMechanism": { "type": "string" }
+        "sandboxMechanism": { "type": "string" },
+        "shared": {
+          "description": "The gitignored directories verify.share exposed from the checkout inside the snapshot, sorted: content outside tree the outcome may depend on. Read-only only when sandboxed is true (bwrap or sandbox-exec); under the network-only unshare-net mechanism, or with no wrapper, a share is a writable link into the checkout. Absent means the snapshot was clean.",
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "required": ["exit", "timedOut", "outputTail", "patch"],
       "additionalProperties": true

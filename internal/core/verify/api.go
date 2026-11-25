@@ -49,6 +49,10 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	// adapter (CLI, MCP, serve, the Go facade) can point it elsewhere, and
 	// only tests pin it through SetAccountHomeForTest.
 	accountHome string
+	// afterShares runs once the shares are checked and held, before the
+	// snapshot is made: the window a swap in the checkout would use. Only
+	// tests set it.
+	afterShares func()
 	// EnvAllowlist explicitly permits additional child environment variable
 	// names (even if secret-named) on top of the default allowlist and any
 	// base-snapshotted .verdict/verify-env entries.
