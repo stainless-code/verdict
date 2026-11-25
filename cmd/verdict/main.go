@@ -446,9 +446,7 @@ func dispatchMutating(
 		// is aliased rather than renaming either one.
 		return runverb.Run(ctx, r, rest, req), true
 	case cmdLoop:
-		return loop.Run(ctx, r, rest, loop.Request{
-			Env: env, Forces: forces, Repo: repo, Root: root, RepoRoot: repoRoot,
-		}), true
+		return loop.Run(ctx, r, rest, req), true
 	case "record":
 		return record.Run(ctx, r, rest, req), true
 	case "post":

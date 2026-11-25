@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	loopcore "github.com/stainless-code/verdict/internal/core/loop"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // newRunner builds the runner one call renders through.
@@ -25,12 +27,12 @@ func newRunner(jsonMode bool) (*cli.Runner, *bytes.Buffer, *bytes.Buffer) {
 
 // request is a loop invocation against a scratch checkout with an empty
 // HOME, so no operator prefs leak in.
-func request(t *testing.T) Request {
+func request(t *testing.T) readcommon.Request {
 	t.Helper()
-	home := t.TempDir()
-	return Request{
-		Env:  map[string]string{"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")},
-		Repo: "acme/app", Root: t.TempDir(), RepoRoot: t.TempDir(),
+	home, root := t.TempDir(), t.TempDir()
+	return readcommon.Request{
+		Runtime: &core.Runtime{Env: map[string]string{"HOME": home, "XDG_CONFIG_HOME": filepath.Join(home, ".config")}},
+		Repo:    "acme/app", Root: &root, RepoRoot: t.TempDir(),
 	}
 }
 
