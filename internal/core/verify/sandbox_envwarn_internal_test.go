@@ -83,3 +83,19 @@ func TestExposedSecretsWarningNames(t *testing.T) {
 		})
 	}
 }
+
+// TestExposedSecretsWarningScrubsANameThatIsAnotherSecret: a variable name can
+// equal another variable's secret value; the warning must not print it.
+func TestExposedSecretsWarningScrubsANameThatIsAnotherSecret(t *testing.T) {
+	environ := []string{
+		"GH_TOKEN=sP8vM2qR7xN4cT9k_TOKEN",
+		"sP8vM2qR7xN4cT9k_TOKEN=another-private-value",
+	}
+	w := exposedSecretsWarning(sandboxMechanismSandboxExec, environ)
+	if strings.Contains(w, "sP8vM2qR7xN4cT9k") {
+		t.Fatalf("warning prints GH_TOKEN's value as a name: %q", w)
+	}
+	if !strings.Contains(w, "GH_TOKEN") {
+		t.Fatalf("warning lost the GH_TOKEN name: %q", w)
+	}
+}

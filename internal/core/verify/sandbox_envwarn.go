@@ -66,7 +66,7 @@ func exposedSecretsWarning(mechanism string, environ []string) string {
 	if mechanism == sandboxMechanismUnshareNet {
 		why = "the network-only sandbox leaves the host /proc readable to the command"
 	}
-	return why + ", and verdict's own environment carries " + describeNames(names, malformed) +
+	return why + ", and verdict's own environment carries " + describeNames(names, malformed, environ) +
 		" — unset them before verifying a hostile PR, or run the bwrap recipe in a Linux VM " +
 		"(docs/manual.md, Hostile-PR sandbox recipe)"
 }
@@ -74,11 +74,13 @@ func exposedSecretsWarning(mechanism string, environ []string) string {
 // describeNames renders at most maxNamedSecrets names, each through the
 // value-shape redactor (a name can itself embed a token, e.g. ghp_…_TOKEN),
 // then counts what it left out.
-func describeNames(names []string, malformed int) string {
+func describeNames(names []string, malformed int, environ []string) string {
 	shown := names[:min(len(names), maxNamedSecrets)]
 	parts := make([]string, 0, len(shown)+2)
 	for _, name := range shown {
-		parts = append(parts, envsecret.ScrubShapes(redactShapes(name)))
+		// A name can equal another variable's secret value, so scrub those
+		// values too, not only the provider token shapes.
+		parts = append(parts, envsecret.ScrubShapes(redactShapes(redactSecrets(name, environ))))
 	}
 	if more := len(names) - len(shown); more > 0 {
 		parts = append(parts, fmt.Sprintf("and %d more", more))
