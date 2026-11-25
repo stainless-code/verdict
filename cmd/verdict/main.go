@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
 	backtestverb "github.com/stainless-code/verdict/internal/backtest"
@@ -440,13 +439,7 @@ func splitPositionals(args []string) (repo, pr string, rest []string) {
 }
 
 func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string) string) *cli.Runner {
-	return &cli.Runner{
-		Cmd: cmd, Repo: repo, Pr: pr,
-		Out: stdout, Diag: stderr, Human: stdout,
-		Now:                time.Now,
-		EnvNoColor:         getenv("NO_COLOR") != "",
-		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
-	}
+	return cli.NewRunner(cmd, repo, pr, stdout, stderr, getenv)
 }
 
 func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error)) (int, bool) {

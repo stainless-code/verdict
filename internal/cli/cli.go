@@ -12,11 +12,11 @@ import (
 	"io"
 	"maps"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Exit codes for the machine contract.
@@ -85,25 +85,30 @@ func (r *Runner) Warn(msg string) {
 	r.markWarningWritten(msg)
 }
 
-// inert folds every control and line-separator rune to a space, except the
-// newline and tab a message lays itself out with: an ESC, BEL, CR, or C1
-// byte a stranger put in a path cannot start a terminal sequence on stderr.
-func inert(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '\n' || r == '\t' || !core.IsLineBreak(r) {
-			return r
-		}
-		return ' '
-	}, s)
+// NewRunner builds one invocation's runner over the process streams. The
+// diagnostic stream is wrapped in an untrusted.InertWriter, so every write to
+// it — a warning, a refusal, a gate check line quoting a spec item, a split
+// candidate naming a diff path, any line a future caller adds — has its
+// control characters folded before it reaches a terminal. Under --json,
+// RouteHuman points Human at the same wrapped stream.
+func NewRunner(cmd, repo, pr string, out, diag io.Writer, getenv func(string) string) *Runner {
+	return &Runner{
+		Cmd: cmd, Repo: repo, Pr: pr,
+		Out: out, Diag: untrusted.NewInertWriter(diag), Human: out,
+		Now:                time.Now,
+		EnvNoColor:         getenv("NO_COLOR") != "",
+		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
+	}
 }
 
 // writeWarning writes one frozen `warn:` line to the diagnostic stream. A
 // warning often quotes a path or a host message a stranger chose, so its
 // controls are folded first: stderr is a terminal more often than not.
 func (r *Runner) writeWarning(msg string) {
-	msg = inert(msg)
+	msg = untrusted.Inert(msg)
 	if r.Effective.Color == colorAlways {
-		fmt.Fprintf(r.Diag, "\033[33mwarn: %s\033[0m\n", msg)
+		// The color codes are verdict's own, so they bypass the fold.
+		fmt.Fprintf(untrusted.Raw(r.Diag), "\033[33mwarn: %s\033[0m\n", msg)
 	} else {
 		fmt.Fprintf(r.Diag, "warn: %s\n", msg)
 	}
@@ -188,9 +193,9 @@ func (r *Runner) WriteRentry() {
 // writeErrorLine writes the `error:` line, its controls folded like a
 // warning's; the line breaks the message means to carry survive.
 func (r *Runner) writeErrorLine(msg string) {
-	msg = inert(msg)
+	msg = untrusted.Inert(msg)
 	if r.Effective.Color == colorAlways {
-		fmt.Fprintf(r.Diag, "\033[31merror: %s\033[0m\n", msg)
+		fmt.Fprintf(untrusted.Raw(r.Diag), "\033[31merror: %s\033[0m\n", msg)
 		return
 	}
 	fmt.Fprintf(r.Diag, "error: %s\n", msg)
@@ -200,8 +205,8 @@ func (r *Runner) writeErrorLine(msg string) {
 // one block per problem in document order, then the truncation note.
 func writeProblems(w io.Writer, ref *RefusalError) {
 	for _, p := range ref.Problems {
-		fmt.Fprintf(w, "%s  %s  %s\n", inert(p.Path), p.Code, inert(p.Message))
-		fmt.Fprintf(w, "  fix: %s\n", inert(p.Fix))
+		fmt.Fprintf(w, "%s  %s  %s\n", untrusted.Inert(p.Path), p.Code, untrusted.Inert(p.Message))
+		fmt.Fprintf(w, "  fix: %s\n", untrusted.Inert(p.Fix))
 		if p.Example != nil {
 			if example, err := json.Marshal(p.Example); err == nil {
 				fmt.Fprintf(w, "  example: %s\n", example)

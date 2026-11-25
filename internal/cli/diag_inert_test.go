@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -27,5 +28,32 @@ func TestDiagnosticsAreInert(t *testing.T) {
 		"error: cannot read /work/evil ]52;c;cGF5bG9hZA== dir 2J x\tok\nsecond line\n"
 	if !strings.HasPrefix(got, want) {
 		t.Fatalf("stderr = %q, want it to start %q", got, want)
+	}
+}
+
+// TestNewRunnerDiagStreamIsInert proves the production runner's diagnostic
+// stream folds controls for every writer, not only Warn and Refuse: a gate
+// check line or split candidate printed straight to r.Diag, and r.Human once
+// --json routes it to stderr, come out inert. verdict's own color codes on a
+// warning still reach the terminal.
+func TestNewRunnerDiagStreamIsInert(t *testing.T) {
+	t.Parallel()
+	const hostile = "violated spec check: evil\x1b]52;c;cGF5bG9hZA==\x07\u009b2J\tend"
+	const want = "violated spec check: evil ]52;c;cGF5bG9hZA==  2J\tend\n"
+	var out, diag bytes.Buffer
+	r := NewRunner("report", "acme/app", "7", &out, &diag, func(string) string { return "" })
+	r.Effective = Defaults()
+	fmt.Fprintln(r.Diag, hostile)
+	r.JSONMode = true
+	r.RouteHuman()
+	fmt.Fprintln(r.Human, hostile)
+	if got := diag.String(); got != want+want {
+		t.Fatalf("stderr = %q, want both lines folded: %q", got, want+want)
+	}
+	diag.Reset()
+	r.Effective.Color = "always"
+	r.Warn("x\x1b[2Jy")
+	if got := diag.String(); got != "\x1b[33mwarn: x [2Jy\x1b[0m\n" {
+		t.Fatalf("colored warning = %q, want verdict's SGR kept and the message folded", got)
 	}
 }
