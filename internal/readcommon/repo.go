@@ -3,6 +3,7 @@ package readcommon
 import (
 	urlpkg "net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -31,6 +32,9 @@ func BundleProject(dir string) string {
 	if len(parts) < 2 {
 		return ""
 	}
+	if project, ok := azureProject(parts); ok {
+		return project
+	}
 	if end := projectPathEnd(parts); end > 0 {
 		return path.Join(parts[:end]...)
 	}
@@ -50,6 +54,17 @@ func BundleHost(dir string) string {
 		return ""
 	}
 	return strings.ToLower(parsed.Hostname())
+}
+
+// azureProject reads Azure DevOps' <project>/<repo> out of
+// .../<project>/_git/<repo>/pullrequest/<n>: the organization sits above the
+// project there, so the first-two-segments fallback would name the wrong pair.
+func azureProject(parts []string) (string, bool) {
+	at := slices.Index(parts, "_git")
+	if at < 1 || at+1 >= len(parts) {
+		return "", false
+	}
+	return parts[at-1] + slashSep + parts[at+1], true
 }
 
 // projectPathEnd finds the segment that ends the project path: GitLab's /-/

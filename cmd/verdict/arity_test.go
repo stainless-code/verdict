@@ -205,6 +205,10 @@ func hermeticEnv(t *testing.T) {
 // still fails typed bad-settings.
 func TestUsageWinsOverCorruptSettings(t *testing.T) {
 	hermeticEnv(t)
+	// Outside a checkout target inference has nothing to read, so a missing
+	// positional is still the usage error; inside one it is a typed refusal
+	// (TestMissingTargetInCheckoutRefuses).
+	t.Chdir(t.TempDir())
 	writeCorruptSettings(t)
 	code, out, derr := runCapture(t, []string{"report"})
 	if code != cli.ExitUsage {
@@ -250,6 +254,7 @@ func TestServeDispatchShape(t *testing.T) {
 // TestNextCoverageMissingPositionals pins the leading missing-argument error.
 func TestNextCoverageMissingPositionals(t *testing.T) {
 	hermeticEnv(t)
+	t.Chdir(t.TempDir())
 	code, out, derr := runCapture(t, []string{"next", "--coverage"})
 	if code != 2 || out != "" || !strings.HasPrefix(derr, "error: next requires <owner/repo> and <pr|local-name>\n") {
 		t.Fatalf("next missing positionals: exit %d stdout %q stderr %q", code, out, derr)

@@ -432,6 +432,12 @@ Cause: `adopt --from` points at a PR bundle instead of a local one.
 
 Fix: point `--from` at a `.verdict/state/local-*` directory.
 
+## `bad-target-url`
+
+Cause: the pull or merge request URL could not become a target: it carries credentials, whitespace, a dot-relative or encoded path segment, a route other than the host's pull request route, a non-numeric number, a host verdict does not know (a self-hosted GitLab or Forgejo needs `GITLAB_HOST` / `FORGEJO_HOST`), or a provider that conflicts with an explicit `--provider`.
+
+Fix: paste the plain URL (`https://github.com/<owner>/<repo>/pull/<number>`, `https://gitlab.com/<group>/<project>/-/merge_requests/<number>`), or pass `<owner/repo> <pr> --provider <name>`. See `docs/manual.md` § Targets.
+
 ## `bad-timeout`
 
 Cause: `--timeout` is not a positive number of seconds.
@@ -1477,6 +1483,12 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 Cause: another write held the store's lock — `.verdict/incidents.jsonl.lock` for `--incident`, `.verdict/kb.jsonl.lock` for `--rule`, `--pack`, `--retire`, and `--restore`, the same `kb.jsonl.lock` for the credit rewrite a `record` or `triage` flip performs, and `.verdict/reverts.jsonl.lock` for `backtest reverts` — for the whole five-second wait, so this write did nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
 
 Fix: re-run the write once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next write creates it again.
+
+## `target-unresolved`
+
+Cause: the verb was given no `<owner/repo> <pr>` and verdict could not infer one offline: `origin` names a host or path verdict cannot map, HEAD is detached, no bundle under `.verdict/state` records the current branch as a pull request head, or more than one does.
+
+Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL. See `docs/manual.md` § Targets.
 
 ## `test-conflict`
 

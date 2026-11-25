@@ -21,6 +21,8 @@ func usageText() string {
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"    <owner/repo> <pr> may be one pull/merge request URL (it implies --provider), or omitted: the pair is then read\n" +
+		"    offline from the origin remote and the bundle recorded for the current branch (docs/manual.md § Targets).\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -744,6 +746,11 @@ func usageText() string {
 		"    publish a review bundle's findings as LSP 3.17 diagnostics over stdio (Content-Length\n" +
 		"    framed JSON-RPC 2.0). Diagnostics move on didOpen, didSave, a bundle watch change, and\n" +
 		"    the verdict.refresh command, never on didChange. No model calls, no writes.\n" +
+		"  Targets: every verb that takes <owner/repo> <pr> also takes one pull/merge request URL in their place\n" +
+		"  (github, gitlab, forgejo, bitbucket, azure; a self-hosted host only when GITLAB_HOST or FORGEJO_HOST maps it),\n" +
+		"  and with no positionals infers the pair from the origin remote and the recorded bundle whose head ref is the\n" +
+		"  current branch. A derived target is echoed on stderr; an ambiguous one refuses with the args to pass.\n" +
+		"  fetch-local keeps <owner/repo> <name>.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
