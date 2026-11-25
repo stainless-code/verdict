@@ -216,11 +216,21 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 		st.releaseSandbox(sb)
 		return nil, ref
 	}
+	st.warnSandboxLimits(sb)
+	return sb, nil
+}
+
+// warnSandboxLimits surfaces what the wrapper leaves exposed: the
+// network-only mode's missing isolation, and verdict's own secrets wherever
+// the command can read other processes' environments.
+func (st *state) warnSandboxLimits(sb *sandbox) {
 	if sb.networkOnly {
 		st.human("» sandbox: network-only (unshare --net) — no mount, filesystem, or PID isolation")
 		st.warn(msgSandboxNetworkOnly)
 	}
-	return sb, nil
+	if w := exposedSecretsWarning(sb.name(), st.req.Environ); w != "" {
+		st.warn(w)
+	}
 }
 
 // sandboxInputs is what the credential table resolves against: the child
@@ -489,13 +499,22 @@ func redactSecrets(tail string, environ []string) string {
 func secretValues(environ []string) []string {
 	var values []string
 	for _, kv := range environ {
-		name, value, ok := strings.Cut(kv, "=")
-		if !ok || len(value) < secretMinLen || !envsecret.IsSecret(name) {
-			continue
+		if _, value, ok := secretEntry(kv); ok {
+			values = withStripped(values, value)
 		}
-		values = withStripped(values, value)
 	}
 	return values
+}
+
+// secretEntry splits one NAME=value entry and reports whether the redactor
+// treats it as a secret: a secret-shaped name with a credential-length value.
+// The sandbox warning shares this rule, so it names exactly what gets redacted.
+func secretEntry(kv string) (name, value string, ok bool) {
+	name, value, found := strings.Cut(kv, "=")
+	if !found || len(value) < secretMinLen || !envsecret.IsSecret(name) {
+		return "", "", false
+	}
+	return name, value, true
 }
 
 // withStripped appends value and, when stripping control characters changes
