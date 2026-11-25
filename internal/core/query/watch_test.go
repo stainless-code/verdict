@@ -253,19 +253,7 @@ func TestChangesBaselineHonorsCancellation(t *testing.T) {
 // TestChangesBaselineStopsBeforeTheOverridesWalk: a root with no bundles still
 // stops at cancellation instead of walking .verdict/overrides.
 func TestChangesBaselineStopsBeforeTheOverridesWalk(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(readcommon.StateDir(root), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	ovr := filepath.Join(root, filepath.FromSlash(overrides.Dir))
-	if err := os.MkdirAll(ovr, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"a.json", "b.json", "c.json"} {
-		if err := os.WriteFile(filepath.Join(ovr, name), []byte("{}"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
+	root := rootWithOverridesOnly(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var armed atomic.Bool
@@ -284,4 +272,23 @@ func TestChangesBaselineStopsBeforeTheOverridesWalk(t *testing.T) {
 	if n := calls.Load(); n > 1 {
 		t.Fatalf("the baseline walk made %d stat calls after cancellation, want only the state directory's", n)
 	}
+}
+
+// rootWithOverridesOnly is a repo root with an empty state directory and three
+// override files, so the overrides walk is the baseline's only real work.
+func rootWithOverridesOnly(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	ovr := filepath.Join(root, filepath.FromSlash(overrides.Dir))
+	for _, dir := range []string{readcommon.StateDir(root), ovr} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{"a.json", "b.json", "c.json"} {
+		if err := os.WriteFile(filepath.Join(ovr, name), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
 }
