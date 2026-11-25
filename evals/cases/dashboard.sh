@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# `verdict dashboard`'s headless contract: --once draws one plain-text
-# Overview frame from a real bundle (exit 0, 80x24 off a terminal, no escape
-# byte), the live view refuses without a terminal (dashboard-no-tty, as an
-# envelope under --json), --once has no --json form, and no store moves.
+# `verdict dashboard`'s headless contract: --once draws one plain-text frame
+# from a real bundle (the Overview by default, any tab with --tab; exit 0,
+# 80x24 off a terminal, no escape byte), [repo] narrows the portfolio, the
+# live view refuses without a terminal (dashboard-no-tty, as an envelope
+# under --json), --once has no --json form, and no store moves.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -31,13 +32,30 @@ if LC_ALL=C grep -q "$(printf '\033')" "$EVAL_OUT"; then
 else
   good "--once frame carries no escape byte"
 fi
-assert_eq "tab bar" " [1 Overview]  2 Queue" "$(sed -n 2p "$EVAL_OUT")"
+assert_eq "tab bar" " [1 Overview]  2 Queue   3 Detail   4 Diff   5 Compare   6 Cost   7 Precision" "$(sed -n 2p "$EVAL_OUT")"
 assert_eq "portfolio totals" "   bundles 1   open 1   deferred 0   addressed 1   terminal 0" "$(sed -n 5p "$EVAL_OUT")"
 if sed -n 8p "$EVAL_OUT" | matches -E '^   [0-9a-f]{12}  .* 1$'; then
   good "the served root lists its one bundle"
 else
   bad "roots row is '$(sed -n 8p "$EVAL_OUT")'"
 fi
+
+run_review dashboard --once --tab detail
+assert_exit "--once --tab detail" 0
+assert_eq "detail tab bar" "  1 Overview   2 Queue  [3 Detail]  4 Diff   5 Compare   6 Cost   7 Precision" "$(sed -n 2p "$EVAL_OUT")"
+assert_eq "detail verdict counts" "   open 1   deferred 0   addressed 1   terminal 0" "$(sed -n 5p "$EVAL_OUT")"
+if matches -E '^   !!! open +[^ ]+ +notes.txt:1 ' <"$EVAL_OUT"; then
+  good "detail lists the open critical finding"
+else
+  bad "detail rows: $(sed -n 8,9p "$EVAL_OUT")"
+fi
+
+run_review dashboard acme/elsewhere --once
+assert_exit "[repo] filter" 0
+assert_eq "a repo with no bundles totals zero" "   bundles 0   open 0   deferred 0   addressed 0   terminal 0" "$(sed -n 5p "$EVAL_OUT")"
+
+run_review dashboard --once --tab inbox
+assert_exit "unknown --tab" 2
 
 run_review dashboard
 assert_exit "live view without a terminal" 1
