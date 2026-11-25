@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
+
+	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // The git index format (Documentation/gitformat-index.txt), read only as far
@@ -31,8 +34,14 @@ const (
 	gitIndexVarintMask = 0x7f
 	gitIndexVarintMore = 0x80
 	gitIndexVarintBits = 7
-	gitIndexSHA1Len    = 20
-	gitIndexSHA256Len  = 32
+	// gitIndexVarintMax bounds a strip count's encoding: five bytes reach
+	// far past any path length, so a longer run is malformed.
+	gitIndexVarintMax = 5
+	// gitIndexMaxMiB caps the index read; a larger one refuses.
+	gitIndexMaxMiB    = 64
+	gitIndexMaxBytes  = gitIndexMaxMiB << 20
+	gitIndexSHA1Len   = 20
+	gitIndexSHA256Len = 32
 )
 
 var (
@@ -54,13 +63,22 @@ var (
 // `link` extension keeps entries in a shared file), is refused rather than
 // half-read.
 func sandboxGitlinks(indexPath string) (links []string, present bool, reason string) {
-	data, err := os.ReadFile(filepath.Clean(indexPath))
-	if errors.Is(err, fs.ErrNotExist) {
+	data, err := readcommon.ReadRegularCapped(filepath.Clean(indexPath), gitIndexMaxBytes)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, false, ""
-	}
-	if err != nil {
+	case errors.Is(err, jq.ErrTooLarge):
+		return nil, true, fmt.Sprintf("larger than %d MiB", gitIndexMaxMiB)
+	case err != nil:
 		return nil, true, err.Error()
 	}
+	links, reason = gitlinksFromIndex(data)
+	return links, true, reason
+}
+
+// gitlinksFromIndex parses index bytes under both hash layouts and returns
+// the gitlinks, or why they cannot be trusted.
+func gitlinksFromIndex(data []byte) (links []string, reason string) {
 	var found [][]string
 	for _, hashLen := range []int{gitIndexSHA1Len, gitIndexSHA256Len} {
 		if parsed, ok := parseGitIndex(data, hashLen); ok {
@@ -69,11 +87,11 @@ func sandboxGitlinks(indexPath string) (links []string, present bool, reason str
 	}
 	switch {
 	case len(found) == 0:
-		return nil, true, "not an index this reader understands (a split index, or an unknown version)"
+		return nil, "not an index this reader understands (a split index, or an unknown version)"
 	case len(found) > 1 && !slices.Equal(found[0], found[1]):
-		return nil, true, "its object format is ambiguous"
+		return nil, "its object format is ambiguous"
 	}
-	return found[0], true, ""
+	return found[0], ""
 }
 
 // gitIndexReader walks one index body with a fixed hash length.
@@ -127,12 +145,14 @@ func (r *gitIndexReader) entry() (string, uint32, bool) {
 	flags := binary.BigEndian.Uint16(r.data[r.pos+fixed-gitIndexFlagsLen : r.pos+fixed])
 	r.pos += fixed
 	if r.version >= gitIndexExtVersion && flags&gitIndexExtended != 0 {
-		r.pos += gitIndexFlagsLen
+		if r.pos += gitIndexFlagsLen; r.pos > r.end {
+			return "", 0, false
+		}
 	}
 	path, ok := r.path()
-	// git records min(len, 0xfff) in the flags; a misread entry would not
-	// agree with the name it ends at.
-	if !ok || int(flags&gitIndexNameMask) != min(len(path), gitIndexNameMask) {
+	// git records min(len, 0xfff) in the flags and never an empty name; a
+	// misread entry would not agree with the name it ends at.
+	if !ok || path == "" || int(flags&gitIndexNameMask) != min(len(path), gitIndexNameMask) {
 		return "", 0, false
 	}
 	return path, mode, r.pad(start)
@@ -154,10 +174,10 @@ func (r *gitIndexReader) path() (string, bool) {
 	prefix := ""
 	if r.version == gitIndexMaxVersion {
 		strip, ok := r.varint()
-		if !ok || strip > len(r.prev) {
+		if !ok || strip > uint64(len(r.prev)) {
 			return "", false
 		}
-		prefix = r.prev[:len(r.prev)-strip]
+		prefix = r.prev[:uint64(len(r.prev))-strip]
 	}
 	nul := bytes.IndexByte(r.data[r.pos:r.end], 0)
 	if nul < 0 {
@@ -170,13 +190,14 @@ func (r *gitIndexReader) path() (string, bool) {
 }
 
 // varint decodes git's offset varint (each continuation adds one before
-// shifting, so encodings are unique).
-func (r *gitIndexReader) varint() (int, bool) {
-	val := 0
-	for r.pos < r.end {
+// shifting, so encodings are unique), unsigned and at most
+// gitIndexVarintMax bytes long, so no input can overflow it.
+func (r *gitIndexReader) varint() (uint64, bool) {
+	var val uint64
+	for n := 0; n < gitIndexVarintMax && r.pos < r.end; n++ {
 		b := r.data[r.pos]
 		r.pos++
-		val += int(b & gitIndexVarintMask)
+		val += uint64(b & gitIndexVarintMask)
 		if b&gitIndexVarintMore == 0 {
 			return val, true
 		}

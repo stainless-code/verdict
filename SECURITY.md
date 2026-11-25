@@ -85,7 +85,9 @@ In scope (highest priority first):
   operator keeps in the tree (a `core.hooksPath` directory, a `.git/hooks/`
   symlink into the tree, an `include.path` naming a tree file), and on Linux a new nested `.git`
   in a subdirectory that is no submodule path is a documented residual of
-  `bwrap`, which can only protect paths that already exist.
+  `bwrap`, which can only protect paths that already exist (git honors it
+  only when it runs in that subdirectory, as an editor or repository
+  scanner that discovers nested repositories may).
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

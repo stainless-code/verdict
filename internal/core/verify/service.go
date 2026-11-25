@@ -179,6 +179,13 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 	if !st.req.Sandbox && !st.req.SandboxNetworkOnly {
 		return nil, nil
 	}
+	// The physical root, as group mode already passes: patch mode reaches
+	// here with the literal repo root (often "."), which may be a symlink,
+	// and every mount and rule below is decided against one spelling.
+	root, ref := canonicalRoot(root)
+	if ref != nil {
+		return nil, ref
+	}
 	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
 	if ref != nil {
 		st.releaseSandbox(sb)

@@ -36,17 +36,21 @@ type sandboxNested struct {
 }
 
 // sandboxFindNested walks the root for nested `.git` entries, never
-// descending into a git directory, and reads the gitlinks from the root's
-// index in gitdir. Every refusal fails closed: a symlinked nested `.git`, a
-// directory the walk cannot read, a tree past [sandboxNestedMaxDirs], an
+// descending into a git directory, and, when index is set, reads the
+// gitlinks from it (bwrap needs them; Seatbelt's `.git` component rule
+// already covers a submodule path). Every refusal fails closed: a symlinked
+// nested `.git`, a directory the walk cannot read, a tree past maxDirs, an
 // index it cannot read, and a gitlink path that is missing or a symlink.
-func sandboxFindNested(root sandboxGitRoot, gitdir string, maxDirs int) (sandboxNested, *core.RefusalError) {
+func sandboxFindNested(root sandboxGitRoot, index string, maxDirs int) (sandboxNested, *core.RefusalError) {
 	var nested sandboxNested
 	walk := sandboxNestedWalk{root: root, nested: &nested, maxDirs: maxDirs}
 	if ref := walk.run(); ref != nil {
 		return sandboxNested{}, ref
 	}
-	gitlinks, ref := sandboxUnpopulatedGitlinks(root, gitdir)
+	if index == "" {
+		return nested, nil
+	}
+	gitlinks, ref := sandboxUnpopulatedGitlinks(root, index)
 	nested.gitlinks = gitlinks
 	return nested, ref
 }
@@ -62,7 +66,10 @@ type sandboxNestedWalk struct {
 // run walks the root, never descending into a `.git` directory; the
 // first refusal stops the walk.
 func (w *sandboxNestedWalk) run() *core.RefusalError {
-	err := filepath.WalkDir(w.root.repo, func(path string, d fs.DirEntry, err error) error {
+	// The physical root: WalkDir does not follow a root that is itself a
+	// symlink (a checkout reached through `current -> /checkouts/app`), and
+	// would stop at it having found nothing.
+	err := filepath.WalkDir(w.root.real, func(path string, d fs.DirEntry, err error) error {
 		if ref := w.visit(path, d, err); ref != nil {
 			return ref
 		}
@@ -73,7 +80,7 @@ func (w *sandboxNestedWalk) run() *core.RefusalError {
 	})
 	var ref *core.RefusalError
 	if err != nil && !errors.As(err, &ref) {
-		ref = sandboxGitInspectRefusal(w.root.repo, err)
+		ref = sandboxGitInspectRefusal(w.root.real, err)
 	}
 	return ref
 }
@@ -92,7 +99,7 @@ func (w *sandboxNestedWalk) visit(path string, d fs.DirEntry, err error) *core.R
 				"VM or container", w.root.repo, w.maxDirs))
 		}
 	}
-	if d.Name() != sandboxGitName || path == filepath.Join(w.root.repo, sandboxGitName) {
+	if d.Name() != sandboxGitName || path == filepath.Join(w.root.real, sandboxGitName) {
 		return nil
 	}
 	if d.Type()&fs.ModeSymlink != 0 {
@@ -106,8 +113,7 @@ func (w *sandboxNestedWalk) visit(path string, d fs.DirEntry, err error) *core.R
 // `.git` yet, refusing one whose directory is missing or is a symlink:
 // neither can be held read-only, and either could become a populated
 // submodule.
-func sandboxUnpopulatedGitlinks(root sandboxGitRoot, gitdir string) ([]string, *core.RefusalError) {
-	index := filepath.Join(gitdir, "index")
+func sandboxUnpopulatedGitlinks(root sandboxGitRoot, index string) ([]string, *core.RefusalError) {
 	links, present, reason := sandboxGitlinks(index)
 	switch {
 	case !present:
@@ -118,7 +124,7 @@ func sandboxUnpopulatedGitlinks(root sandboxGitRoot, gitdir string) ([]string, *
 	}
 	var unpopulated []string
 	for _, link := range links {
-		dir := filepath.Join(root.repo, filepath.FromSlash(link))
+		dir := filepath.Join(root.real, filepath.FromSlash(link))
 		if _, err := os.Lstat(filepath.Join(dir, sandboxGitName)); err == nil {
 			continue // populated: the walk found its .git
 		}
@@ -139,18 +145,24 @@ func sandboxUnpopulatedGitlinks(root sandboxGitRoot, gitdir string) ([]string, *
 // or removed (EBUSY), so the command can neither swap the read-only path
 // out nor move an ancestor aside and recreate the path beneath a new
 // directory. A path under a top-level entry that is already pinned
-// read-only needs nothing more.
+// read-only, in either spelling of the root, needs nothing more. Anchors
+// are spelled under whichever spelling the path itself uses; the kernel
+// resolves both to the same directories.
 func sandboxNestedPins(path string, root sandboxGitRoot, pinned map[string]bool) (anchors []string, ok bool) {
-	rel, inside := sandboxRelInside(root.repo, path)
+	base := root.real
+	rel, inside := sandboxRelInside(base, path)
 	if !inside {
-		return nil, false
+		base = root.repo
+		if rel, inside = sandboxRelInside(base, path); !inside {
+			return nil, false
+		}
 	}
 	parts := strings.Split(rel, string(filepath.Separator))
-	if pinned[filepath.Join(root.repo, parts[0])] {
+	if pinned[filepath.Join(root.repo, parts[0])] || pinned[filepath.Join(root.real, parts[0])] {
 		return nil, false
 	}
 	for i := 1; i < len(parts); i++ {
-		anchors = append(anchors, filepath.Join(append([]string{root.repo}, parts[:i]...)...))
+		anchors = append(anchors, filepath.Join(append([]string{base}, parts[:i]...)...))
 	}
 	return anchors, true
 }

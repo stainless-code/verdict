@@ -597,7 +597,7 @@ func sandboxGitBindTargets(repo string) (sandboxGitBinds, *core.RefusalError) {
 	if ref != nil {
 		return sandboxGitBinds{}, ref
 	}
-	nested, ref := sandboxFindNested(root, gitdir, sandboxNestedMaxDirs)
+	nested, ref := sandboxFindNested(root, filepath.Join(gitdir, "index"), sandboxNestedMaxDirs)
 	if ref != nil {
 		return sandboxGitBinds{}, ref
 	}
@@ -1026,25 +1026,19 @@ func sandboxRelInside(base, path string) (string, bool) {
 // Paths outside the root are left out: every write there is denied already,
 // and a subpath rule on an ancestor of the root would deny the root itself.
 func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
-	dotgit := filepath.Join(repo, sandboxGitName)
-	info, err := os.Lstat(dotgit)
-	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return nil, nil
-	case err != nil:
-		return nil, sandboxGitInspectRefusal(dotgit, err)
-	case info.Mode()&os.ModeSymlink != 0:
-		return nil, sandboxGitSymlinkedDotRefusal(dotgit)
-	}
 	root, ref := newSandboxGitRoot(repo)
 	if ref != nil {
 		return nil, ref
 	}
-	dirs, gitdir, ref := sandboxGitDirsAt(dotgit, repo, info, root)
+	dirs, ref := sandboxRootGitDirs(root)
 	if ref != nil {
 		return nil, ref
 	}
-	nested, ref := sandboxFindNested(root, gitdir, sandboxNestedMaxDirs)
+	// The nested scan runs whether or not the root has a `.git`: a nested
+	// `gitdir:` file can name an ordinary in-root directory either way. No
+	// index is read — the `.git` component rule already denies creating a
+	// `.git` at any submodule path, so its refusals would protect nothing.
+	nested, ref := sandboxFindNested(root, "", sandboxNestedMaxDirs)
 	if ref != nil {
 		return nil, ref
 	}
@@ -1055,7 +1049,26 @@ func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
 		}
 		dirs = append(dirs, more...)
 	}
+	if len(dirs) == 0 {
+		return nil, nil
+	}
 	return sandboxCleanUnique(dirs), nil
+}
+
+// sandboxRootGitDirs lists the in-root paths the root's own `.git` walks
+// visit, or none when the root has no `.git`.
+func sandboxRootGitDirs(root sandboxGitRoot) ([]string, *core.RefusalError) {
+	dotgit := filepath.Join(root.repo, sandboxGitName)
+	info, err := os.Lstat(dotgit)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, nil
+	case err != nil:
+		return nil, sandboxGitInspectRefusal(dotgit, err)
+	case info.Mode()&os.ModeSymlink != 0:
+		return nil, sandboxGitSymlinkedDotRefusal(dotgit)
+	}
+	return sandboxGitDirsAt(dotgit, root.repo, info, root)
 }
 
 // sandboxNestedGitDirs runs one nested `.git` through the same walks and
@@ -1067,19 +1080,18 @@ func sandboxNestedGitDirs(dotgit string, root sandboxGitRoot) ([]string, *core.R
 	if err != nil {
 		return nil, sandboxGitInspectRefusal(dotgit, err)
 	}
-	dirs, _, ref := sandboxGitDirsAt(dotgit, filepath.Dir(dotgit), info, root)
-	return dirs, ref
+	return sandboxGitDirsAt(dotgit, filepath.Dir(dotgit), info, root)
 }
 
 // sandboxGitDirsAt lists the in-root paths one `.git` (resolving a relative
-// `gitdir:` from base) and its commondir walk visit, and returns its git
-// directory, after the location scans.
-func sandboxGitDirsAt(dotgit, base string, info os.FileInfo, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
+// `gitdir:` from base) and its commondir walk visit, after the location
+// scans.
+func sandboxGitDirsAt(dotgit, base string, info os.FileInfo, root sandboxGitRoot) ([]string, *core.RefusalError) {
 	dirs, gitdir := []string{dotgit}, dotgit
 	if info.Mode().IsRegular() {
 		walked, final, ref := sandboxGitdirDirs(dotgit, base, root)
 		if ref != nil {
-			return nil, "", ref
+			return nil, ref
 		}
 		dirs, gitdir = append(dirs, walked...), final
 	}
@@ -1087,7 +1099,7 @@ func sandboxGitDirsAt(dotgit, base string, info os.FileInfo, root sandboxGitRoot
 	if ref == nil {
 		ref = sandboxGitLocationsRefusal(root, dotgit, gitdir, commonDir)
 	}
-	return append(dirs, common...), gitdir, ref
+	return append(dirs, common...), ref
 }
 
 // sandboxGitdirDirs lists the in-root paths of the `gitdir:` walk a `.git`
@@ -1186,7 +1198,8 @@ func sandboxGitLocationsRefusal(root sandboxGitRoot, locations ...string) *core.
 // `modules/`. WalkDir visits in depth-first pre-order, so a git directory
 // is pushed before its contents and popped once the walk leaves it; each
 // entry costs amortized constant work however many submodules there are.
-// checks counts the ancestry comparisons, for the scaling test.
+// checks, pushes, and depth (the deepest the stack got) are for the
+// scaling test.
 type sandboxGitScanner struct {
 	info      func(fs.DirEntry) (fs.FileInfo, error)
 	root      sandboxGitRoot
@@ -1194,6 +1207,8 @@ type sandboxGitScanner struct {
 	protected []os.FileInfo
 	gitdirs   []string
 	checks    int
+	pushes    int
+	depth     int
 }
 
 // run walks the location; the first refusal stops the walk and is
@@ -1247,6 +1262,8 @@ func (s *sandboxGitScanner) noteSubmoduleGitdir(path string) {
 	}
 	if _, err := os.Lstat(filepath.Join(path, "HEAD")); err == nil {
 		s.gitdirs = append(s.gitdirs, path)
+		s.pushes++
+		s.depth = max(s.depth, len(s.gitdirs))
 	}
 }
 
