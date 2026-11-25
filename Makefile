@@ -172,8 +172,8 @@ formula-audit:
 # checks per package, and the contract tests (shim resolution included). No
 # tag, no cosign, no attestation, no registry, no tap push. Needs `bun
 # install` (the client build) and node for the npm scripts. It also extracts
-# the release notes GoReleaser will publish, so an unreadable CHANGELOG fails
-# here rather than mid-release.
+# the release notes GoReleaser will publish, so an unreadable CHANGELOG, or a
+# section over GitHub's release-body limit, fails here rather than mid-release.
 .PHONY: release-dry-run
 release-dry-run:
 	@[ -x node_modules/.bin/tsc ] || { echo "release-dry-run: node_modules/.bin/tsc missing: run bun install first" >&2; exit 1; }

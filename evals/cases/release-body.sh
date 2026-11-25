@@ -223,4 +223,53 @@ run_body
 assert_exit "a present asset in a list over 64 KiB is found" 0
 assert_eq "the large-list run repairs the body exactly once" "$((before + 1))" "$(edits)"
 
+# Leg 8 — a changelog section over GitHub's 125,000-character body limit must
+# stop the tag stage before any git call: the tag is pushed before the release
+# is created, so a body GitHub refuses would strand a tag with no release. The
+# copy root holds only what the stage reads; the changeset and git stubs log
+# every call, so a stage that tags first is caught by the log, not by a crash.
+BIG="$EVAL_SANDBOX/oversized-release"
+mkdir -p "$BIG/scripts" "$BIG/release" "$BIG/bin" "$BIG/node_modules/.bin"
+cp "$EVAL_ROOT/scripts/release.sh" "$EVAL_ROOT/scripts/release-notes.mjs" "$BIG/scripts/"
+cp "$EVAL_ROOT/release/contract.json" "$BIG/release/"
+printf '{"version": "9.9.9"}\n' > "$BIG/package.json"
+line="$(printf '%0100d' 0)"
+{
+  printf '# changelog\n\n## 9.9.9\n\n'
+  i=0
+  while [ "$i" -lt 1300 ]; do
+    printf -- '- %s\n' "$line"
+    i=$((i + 1))
+  done
+  printf '\n## 9.9.8\n\n- older\n'
+} > "$BIG/CHANGELOG.md"
+cat > "$BIG/bin/git" <<EOF
+#!/usr/bin/env bash
+echo "git \$*" >> "$BIG/git.log"
+exit 1
+EOF
+cat > "$BIG/node_modules/.bin/changeset" <<EOF
+#!/usr/bin/env bash
+echo "changeset \$*" >> "$BIG/git.log"
+EOF
+chmod +x "$BIG/bin/git" "$BIG/node_modules/.bin/changeset"
+# A seeded log lets the absence check below prove the omission: a log that was
+# never written cannot pass as "no call".
+printf 'call log\n' > "$BIG/git.log"
+set +e
+PATH="$BIG/bin:$EVAL_STUBBIN:$PATH" bash "$BIG/scripts/release.sh" tag >"$EVAL_OUT" 2>"$EVAL_ERR"
+EVAL_STATUS=$?
+set -e
+if [ "$EVAL_STATUS" -ne 0 ]; then
+  good "an oversized release body fails the tag stage (exit $EVAL_STATUS)"
+else
+  bad "an oversized release body passed the tag stage"
+fi
+if matches -F "GitHub refuses a release body over 125000" "$EVAL_ERR"; then
+  good "the failure names the body limit"
+else
+  bad "the failure does not name the body limit: $(cat "$EVAL_ERR")"
+fi
+assert_file_nogrep "the tag stage made no changeset or git call" "$BIG/git.log" '^(git|changeset) ' -E
+
 eval_end

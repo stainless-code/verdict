@@ -45,6 +45,10 @@ build_client() {
 }
 
 stage_tag() {
+  # The tag is the point of no return: render the release body first, so a
+  # CHANGELOG section GitHub would refuse (scripts/release-notes.mjs checks the
+  # size limit) stops the run before a tag exists that no release can follow.
+  prepare_notes
   [ -x node_modules/.bin/changeset ] ||
     die "node_modules/.bin/changeset missing: run bun install (the release tags through changesets)"
   node_modules/.bin/changeset git-tag

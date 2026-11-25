@@ -2,10 +2,4 @@
 "@stainless-code/verdict": minor
 ---
 
-`run --agent` now defaults to two isolated whole-diff finders followed by opposite-finder cross-checks. Global `defaults.finders` accepts 1 or 2; personal `review.finders` supplies a fallback, and `run --finders` overrides the captured value. Scoped finder counts are refused.
-
-Use `--finders 1` for the existing single-finder procedure, repair loop, and artifact contract. `--print` and `--stage` require one finder and name that remedy when they refuse. Drain remains single-agent, and backtest replay explicitly retains one finder. MCP and SDK surfaces consume the resulting evidence without gaining a launch method.
-
-`config.schema.json` adds the global finder count. Configuration evidence and generated goldens now include its resolved value and origin. Two-finder execution receipts record the selected count and source before the first launch.
-
-Reruns preserve previous automatic execution artifacts under `x-superseded/<id>`. Retirement publishes before a replacement launch; a failure refuses the launch. Captured execution identity stays active until retirement completes, so an interrupted move cannot admit stale confirmations. A single-finder replacement ignores retired cross standing while retaining finding history.
+**Breaking:** `run --agent` now defaults to two isolated whole-diff finders, each followed by a cross-check from the other. This roughly doubles agent spend per run. Use `--finders 1`, or set the global `defaults.finders: 1` (personal fallback `review.finders`), to keep the single-finder procedure; scoped finder counts are refused. `--print` and `--stage` require one finder and say so when they refuse. `drain` stays single-agent and `backtest` replays use one finder. A re-run moves the previous execution's artifacts to `x-superseded/<id>` before the new launch.

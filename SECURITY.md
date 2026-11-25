@@ -137,7 +137,13 @@ In scope (highest priority first):
   pass read from `patch.json`, a `triage[]` rationale, content that changed
   after verify, content outside the reviewed bundle (an untracked file), or a
   command that reaches the user's checkout from the snapshot and changes what
-  the receipt names — is a vulnerability. So is any code the checkout controls
+  the receipt names — is a vulnerability. The one deliberate exception is
+  `verify.share`: ignored directories the operator lists in the bundle's base
+  config (the PR base commit, or `HEAD` for a local bundle) join the snapshot
+  and can influence a passing receipt. The receipt records them in `shared`,
+  `verify` and `gate` show them, and under `--sandbox` they are read-only; a
+  shared path that is tracked, not ignored, or not listed in that config, or
+  one writable under `--sandbox`, is a vulnerability. So is any code the checkout controls
   running while `verify` makes the snapshot, before the sandbox exists: a git
   hook (including through a `core.hooksPath` that names tree content), a clean
   or smudge filter (git-lfs included), or an fsmonitor program; and so is a
@@ -151,6 +157,13 @@ In scope (highest priority first):
   against a process with the operator's own file access: such a process
   can rewrite the receipt or `findings.json` directly, so forging the
   receipt that way is out of scope.
+- The write posture of `mcp`, `serve`, and `lsp` (`docs/manual.md` § Write
+  posture). Each of these is a vulnerability: any write through a `serve`
+  bound to a non-loopback `--host`, or under `--read-only` on any surface; a
+  `serve` write that passes without the session token, the CSRF token, or the
+  Host and Origin checks; and a host post from `serve` without `--allow-post`
+  plus a confirmed preview, its single-use nonce, and a matching payload
+  digest.
 
 Out of scope: a `verifyCmd` spelling the string gate does not know (the
 documented tripwire ceiling above — send it, it gets armed and added to
@@ -186,7 +199,9 @@ Do not "fix" the inherited side: it is the documented local posture.
   target names a host (a URL or `origin` target, `demo <url>`, and every
   `post`, which pins to its bundle's host), every `gh` and `glab` argv names it
   explicitly (`core.PinHostArgv`), so `GH_HOST` or `GITLAB_HOST` cannot redirect
-  a call to another host's pull request. A typed `<owner/repo> <pr>` read names
+  a call to another host's pull request; the one exception, a GitLab host on a
+  non-default port that glab cannot pin, runs unpinned only when the
+  environment provably names that exact host and port. A typed `<owner/repo> <pr>` read names
   no host and follows the CLI's default (`docs/manual.md` § Targets). A `git`
   call inherits the environment minus git's location variables,
   `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with hooks and fsmonitor off

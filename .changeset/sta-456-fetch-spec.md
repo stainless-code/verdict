@@ -2,14 +2,4 @@
 "@stainless-code/verdict": minor
 ---
 
-`fetch` and `fetch-local` now accept a repeatable `--spec <file>` flag to hand
-specification documents into the bundle separately from plain `--context`
-reference material.
-
-- Validation matches `--context` (size, type, symlink, and depth caps).
-- Spec sources are stored in the same `context/` directory and fenced
-  `context.txt`, while `context.json` records `"role": "spec"` or
-  `"role": "context"` per entry in place and `toc.txt`'s `## context` section
-  marks spec rows with `[spec]`.
-- Combined spec sources are capped at 150 enumerated checklist items; exceeding
-  the cap refuses `spec-too-large` with no bundle files written.
+`fetch` and `fetch-local` accept a repeatable `--spec <file>` to hand specification documents into the bundle, separate from `--context` reference material. Validation matches `--context`. Spec sources share the `context/` directory and `context.txt`, `context.json` marks each entry `"role": "spec"` or `"role": "context"`, and `toc.txt` marks spec rows `[spec]`. Combined spec sources are capped at 150 checklist items; more refuses `spec-too-large` before any bundle file is written.
