@@ -46,15 +46,33 @@ func (e *waitIncompleteError) Unwrap() error { return e.refusal }
 
 func incompleteRead() *waitIncompleteError { return &waitIncompleteError{refusal: waitReadFailed()} }
 
-// Read reads a complete GitHub observation without writing local files.
-// Other providers refuse explicitly, before executing any host command.
+// waitHosts is the implementation side of the pr-wait host table; a test pins
+// its keys to core.PRWaitProviders so the two cannot drift.
+var waitHosts = map[string]func(*WaitProbe, context.Context, *core.ReadRequest, string) (*WaitSnapshot, error){
+	providerGitHub: (*WaitProbe).github,
+	providerGitLab: (*WaitProbe).gitlab,
+}
+
+// waitUnsupported refuses a host with no live reads, naming the ones that have
+// them, before any host command runs.
+func waitUnsupported(provider string) *core.RefusalError {
+	return &core.RefusalError{Code: "provider-unimplemented", Message: "pr-wait has no live reads for " + provider +
+		" — supported hosts: " + strings.Join(core.PRWaitProviders(), ", ")}
+}
+
+// Read reads a complete observation without writing local files. Hosts the
+// table does not carry refuse explicitly, before executing any host command.
 // A [*waitIncompleteError] comes back for a state a retry can complete;
 // everything else is a hard refusal.
 func (p *WaitProbe) Read(ctx context.Context, req *core.ReadRequest, provider, until string) (*WaitSnapshot, error) {
-	if provider != providerGitHub {
-		return nil, &core.RefusalError{Code: "provider-unimplemented", Message: "pr-wait on " + provider + " is unsupported; " +
-			"supported hosts: github"}
+	read, ok := waitHosts[provider]
+	if !ok {
+		return nil, waitUnsupported(provider)
 	}
+	return read(p, ctx, req, until)
+}
+
+func (p *WaitProbe) github(ctx context.Context, req *core.ReadRequest, until string) (*WaitSnapshot, error) {
 	live, ref := p.pull(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -166,12 +184,18 @@ func waitReadFailed() *core.RefusalError {
 }
 
 func waitChecks(checks []map[string]any) (bool, bool, bool) {
+	return tallyChecks(checks, waitCheck)
+}
+
+// tallyChecks folds one host's check classifier over its rollup: every check
+// must be readable, an empty rollup stays pending, and done/green need all.
+func tallyChecks(checks []map[string]any, classify func(map[string]any) (bool, bool, bool)) (bool, bool, bool) {
 	if len(checks) == 0 {
 		return false, false, false
 	}
 	done, green := true, true
 	for _, check := range checks {
-		terminal, passed, known := waitCheck(check)
+		terminal, passed, known := classify(check)
 		if !known {
 			return false, false, false
 		}
