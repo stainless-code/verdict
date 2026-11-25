@@ -52,16 +52,25 @@ hits() {
   wc -l < "$HITS" | tr -d ' '
 }
 
+# out is the last run's recorded output tail. verify runs the command in a
+# throwaway snapshot of the content, gone once the run ends, so a leg
+# reports what it saw on stdout; a sentinel the command would write lives at
+# a host path that reaches it through the environment.
+out() {
+  jq -r '.data.outputTail // empty' <"$EVAL_OUT"
+}
+export VERDICT_NETONLY_SENTINEL="$HOSTTMPDIR/netonly-sentinel.txt"
+
 unshare_works() {
   unshare --user --map-root-user --net -- true >/dev/null 2>&1
 }
 
 # The combined flags refuse before any mechanism is chosen or any command
 # runs: the caller must state one boundary.
-mkpatch 'printf created > netonly-sentinel.txt'
-rm -f "$EVAL_SANDBOX/netonly-sentinel.txt" "$DIR/.verify.out"
+mkpatch 'printf created > "$VERDICT_NETONLY_SENTINEL"'
+rm -f "$VERDICT_NETONLY_SENTINEL" "$DIR/.verify.out"
 before="$(patch_hash)"
-run_review verify acme/app 5201 --sandbox --sandbox-network-only --json --timeout 10
+run_review verify acme/app 5201 --sandbox --sandbox-network-only --env-allowlist VERDICT_NETONLY_SENTINEL --json --timeout 10
 assert_exit "combined sandbox flags" 1
 assert_refusal "combined sandbox flags" bad-flags
 if jq -r '.error.message // empty' <"$EVAL_OUT" | matches -- "--sandbox" \
@@ -71,7 +80,7 @@ if jq -r '.error.message // empty' <"$EVAL_OUT" | matches -- "--sandbox" \
 else
   bad "the bad-flags refusal does not name both flags: $(head -c 200 "$EVAL_OUT")"
 fi
-if [ "$(patch_hash)" = "$before" ] && [ ! -e "$DIR/.verify.out" ] && [ ! -e "$EVAL_SANDBOX/netonly-sentinel.txt" ]; then
+if [ "$(patch_hash)" = "$before" ] && [ ! -e "$DIR/.verify.out" ] && [ ! -e "$VERDICT_NETONLY_SENTINEL" ]; then
   good "the combined-flag refusal leaves the store untouched and executes nothing"
 else
   bad "the combined-flag refusal mutated the store or executed the command"
@@ -83,10 +92,10 @@ if ! unshare_works; then
   fi
   # No unprivileged user+net namespace here: the flag must refuse, never fall
   # back to an unwrapped run.
-  mkpatch 'printf created > netonly-sentinel.txt'
-  rm -f "$EVAL_SANDBOX/netonly-sentinel.txt" "$DIR/.verify.out"
+  mkpatch 'printf created > "$VERDICT_NETONLY_SENTINEL"'
+  rm -f "$VERDICT_NETONLY_SENTINEL" "$DIR/.verify.out"
   before="$(patch_hash)"
-  run_review verify acme/app 5201 --sandbox-network-only --json --timeout 10
+  run_review verify acme/app 5201 --sandbox-network-only --env-allowlist VERDICT_NETONLY_SENTINEL --json --timeout 10
   assert_exit "network-only refusal" 1
   assert_refusal "network-only refusal" sandbox-unavailable
   if jq -r '.error.message // empty' <"$EVAL_OUT" | matches "Linux" \
@@ -95,7 +104,7 @@ if ! unshare_works; then
   else
     bad "the refusal does not name the Linux unshare opt-in: $(head -c 200 "$EVAL_OUT")"
   fi
-  if [ "$(patch_hash)" = "$before" ] && [ ! -e "$DIR/.verify.out" ] && [ ! -e "$EVAL_SANDBOX/netonly-sentinel.txt" ]; then
+  if [ "$(patch_hash)" = "$before" ] && [ ! -e "$DIR/.verify.out" ] && [ ! -e "$VERDICT_NETONLY_SENTINEL" ]; then
     good "the network-only refusal leaves the store untouched and executes nothing"
   else
     bad "the network-only refusal mutated the store or executed the command"
@@ -153,19 +162,17 @@ fi
 PORT="$(cat "$READY")"
 export PORT
 
-mkpatch 'curl -s http://127.0.0.1:$PORT/hit >/dev/null && printf reached > netonly-net.txt'
-rm -f "$EVAL_SANDBOX/netonly-net.txt"
+mkpatch 'curl -s http://127.0.0.1:$PORT/hit >/dev/null && printf reached'
 : > "$HITS"
 run_review verify acme/app 5201 --env-allowlist PORT --json --timeout 10
 assert_exit "unsandboxed control" 0
 assert_eq "unsandboxed control reaches the listener" 1 "$(hits)"
-if [ -f "$EVAL_SANDBOX/netonly-net.txt" ]; then
+if [ "$(out)" = "reached" ]; then
   good "unsandboxed control exits clean"
 else
   bad "unsandboxed control did not run"
 fi
 
-rm -f "$EVAL_SANDBOX/netonly-net.txt"
 : > "$HITS"
 run_review verify acme/app 5201 --sandbox-network-only --env-allowlist PORT --json --timeout 10
 assert_exit "network-only listener run" 0
@@ -175,7 +182,7 @@ else
   bad "network-only run reached the listener or broke: $(head -c 300 "$EVAL_OUT")"
 fi
 assert_eq "network-only run leaves the listener untouched" 0 "$(hits)"
-if [ ! -e "$EVAL_SANDBOX/netonly-net.txt" ]; then
+if [ "$(out)" != "reached" ]; then
   good "network-only run writes no marker"
 else
   bad "network-only run wrote the marker"
@@ -187,15 +194,14 @@ fi
 # credential-read arm stays out of the way: this leg grades the mechanism.
 OLD_HOME="$HOME"
 HOME="$FAKEHOME"
-mkpatch 'h=$(printenv HOME); d=.ssh; if [ -s "$h/$d/id_rsa" ]; then printf visible > netonly-cred.txt; else printf hidden > netonly-cred.txt; fi'
-rm -f "$EVAL_SANDBOX/netonly-cred.txt"
+mkpatch 'h=$(printenv HOME); d=.ssh; if [ -s "$h/$d/id_rsa" ]; then printf visible; else printf hidden; fi'
 run_review verify acme/app 5201 --sandbox-network-only --json --timeout 10
 HOME="$OLD_HOME"
 assert_exit "network-only credential leg" 0
-if [ -f "$EVAL_SANDBOX/netonly-cred.txt" ] && [ "$(cat "$EVAL_SANDBOX/netonly-cred.txt")" = "visible" ]; then
+if [ "$(out)" = "visible" ]; then
   good "network-only leaves credential paths visible, as documented"
 else
-  bad "network-only unexpectedly hid the credential path ($(cat "$EVAL_SANDBOX/netonly-cred.txt" 2>/dev/null || echo missing))"
+  bad "network-only unexpectedly hid the credential path ($(out))"
 fi
 
 rm -f "$HOSTTMP"

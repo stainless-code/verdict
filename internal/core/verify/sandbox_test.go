@@ -111,8 +111,10 @@ func requireSandboxHost(t *testing.T) {
 	}
 }
 
-// wantProbeArgv is the exact Linux bwrap probe; Darwin builds its profile from
-// the host paths and is checked structurally instead.
+// wantProbeArgv is the exact Linux bwrap probe on a snapshot root; Darwin
+// builds its profile from the host paths and is checked structurally instead.
+// The test seam's snapshot (fakeCheckout) is a `.git` file naming an in-root
+// `.gitadmin` git directory, so both are pinned read-only over the root bind.
 func wantProbeArgv(root, home string) []string {
 	argv := []string{
 		"bwrap",
@@ -127,6 +129,7 @@ func wantProbeArgv(root, home string) []string {
 	return append(argv,
 		"--bind", root, root,
 		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
+		"--ro-bind", filepath.Join(root, ".gitadmin"), filepath.Join(root, ".gitadmin"),
 		"--tmpfs", filepath.Join(home, ".aws"),
 		"--tmpfs", filepath.Join(home, ".ssh"),
 		"--tmpfs", filepath.Join(home, ".config", "gh"),
