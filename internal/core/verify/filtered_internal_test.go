@@ -17,11 +17,12 @@ func TestFilteredContentNamesGitLFS(t *testing.T) {
 	st.warnLeftOut(&contenttree.Content{Filtered: []contenttree.Filtered{lfs, {Driver: "mark", Paths: []string{"x.txt"}}}})
 	want := []string{
 		"2 path(s) use the `lfs` filter, which verify never runs (assets/logo.png, data.bin): the snapshot holds " +
-			"their working-tree content, not the Git LFS pointers a commit stores, so its tree matches only a commit that " +
+			"their working-tree content, which may differ from what the configured filter would produce (Git LFS commits a " +
+			"pointer), so its tree matches only a commit that " +
 			"stores those same bytes — a PR's VERIFIED claim binds to this run only if the PR's head stores those " +
 			"bytes; a fetch-local bundle of this checkout still binds",
 		"1 path(s) use the `mark` filter, which verify never runs (x.txt): the snapshot holds their working-tree " +
-			"content, not the `mark` filter driver's output a commit stores, so its tree matches only a commit that " +
+			"content, which may differ from what the configured filter would produce, so its tree matches only a commit that " +
 			"stores those same bytes — a PR's VERIFIED claim binds to this run only if the PR's head stores those " +
 			"bytes; a fetch-local bundle of this checkout still binds",
 	}
@@ -36,8 +37,9 @@ func TestFilteredContentNamesGitLFS(t *testing.T) {
 	run := &validationRun{root: "/repo", reviewedHead: "1234567890abcdef1234567890abcdef12345678"}
 	ref := otherContent(run, []contenttree.Filtered{lfs})
 	wantRef := "the content at /repo is not the reviewed commit 1234567's: 2 path(s) use the `lfs` filter, which " +
-		"verify never runs (assets/logo.png, data.bin): the snapshot holds their working-tree content, not the " +
-		"Git LFS pointers a commit stores, so its tree matches only a commit that stores those same bytes — validation certifies the " +
+		"verify never runs (assets/logo.png, data.bin): the snapshot holds their working-tree content, which may " +
+		"differ from what the configured filter would produce (Git LFS commits a pointer), so its tree matches only " +
+		"a commit that stores those same bytes — validation certifies the " +
 		"reviewed content only"
 	if ref.Code != codeHeadMismatch || ref.Message != wantRef {
 		t.Errorf("refusal = %s %q\nwant %s %q", ref.Code, ref.Message, codeHeadMismatch, wantRef)

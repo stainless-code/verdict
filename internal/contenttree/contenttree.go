@@ -86,9 +86,10 @@ type Content struct {
 	Gitlinks []string
 	// Filtered are the paths whose attributes select a configured filter
 	// driver and whose cleaned blob is neither the index's nor HEAD's, by
-	// driver: verdict ran none, so the tree holds their working-tree bytes
-	// and matches only a commit that stores those same bytes — never one
-	// that stores what the driver makes (a git-lfs pointer).
+	// driver: verdict ran none, so the tree holds their working-tree bytes,
+	// which may differ from what the configured filter would produce (a
+	// git-lfs pointer), and matches only a commit that stores those same
+	// bytes.
 	Filtered []Filtered
 }
 

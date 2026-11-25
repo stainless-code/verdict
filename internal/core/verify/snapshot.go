@@ -219,14 +219,13 @@ const lfsDriver = "lfs"
 // snapshot, naming git-lfs for its driver: a commit stores what the driver
 // would have made, which only running it could re-derive.
 func filteredNote(f contenttree.Filtered) string {
-	stored := "the `" + f.Driver + "` filter driver's output"
+	produce := "what the configured filter would produce"
 	if f.Driver == lfsDriver {
-		stored = "the Git LFS pointers"
+		produce += " (Git LFS commits a pointer)"
 	}
 	return fmt.Sprintf("%d path(s) use the `%s` filter, which verify never runs (%s): the snapshot holds their "+
-		"working-tree content, not %s a commit stores, so its tree matches only a commit that stores those same bytes",
-		len(f.Paths), f.Driver,
-		shownList(f.Paths), stored)
+		"working-tree content, which may differ from %s, so its tree matches only a commit that stores those "+
+		"same bytes", len(f.Paths), f.Driver, shownList(f.Paths), produce)
 }
 
 func shownList(items []string) string {

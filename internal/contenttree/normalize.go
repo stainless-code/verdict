@@ -16,10 +16,10 @@ import (
 
 // Filtered is one filter driver the content's attributes select and the
 // paths they select it for. verdict never runs a filter program, so these
-// paths are named by their working-tree bytes (line endings cleaned), not by
-// what the driver would commit — for git-lfs, the real file, never its
-// pointer — and a tree holding one matches only a commit that stores those
-// same bytes.
+// paths are named by their working-tree bytes (line endings cleaned), which
+// may differ from what the configured filter would produce — for git-lfs,
+// the real file where a commit holds its pointer — and a tree holding one
+// matches only a commit that stores those same bytes.
 type Filtered struct {
 	Driver string
 	Paths  []string
