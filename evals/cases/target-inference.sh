@@ -101,6 +101,24 @@ for url in "https://github.com/acme/../x/pull/1" "https://ghe.corp.example/acme/
 done
 assert_eq "T5 hostile URLs made no host call" "$calls_before" "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
+# T7 the threads resolve subverb takes a URL too, and its subverb survives.
+run_review threads resolve "https://github.com/acme/app/pull/4701" --dry-run --json
+# The bundle has no findings.json, so the verb itself refuses missing-findings:
+# that code proves the pair reached threads resolve in its own shifted shape.
+assert_exit "T7 threads resolve takes the URL's pair to the verb" 1
+assert_json_field "T7 the verb, not the target gate, refused" missing-findings '.error.code'
+assert_json_field "T7 envelope repo comes from the URL" acme/app '.repo'
+assert_json_field "T7 envelope pr comes from the URL" 4701 '.pr'
+git -C "$EVAL_SANDBOX" checkout -q harden-retry
+run_review threads resolve --dry-run --json
+assert_exit "T7 threads resolve with no positionals reaches the verb" 1
+assert_json_field "T7 inferred repo" acme/app '.repo'
+assert_json_field "T7 inferred pr" 4701 '.pr'
+
+# T8 a flag before the repo is not the repo: trend reads origin.
+run_review trend --json
+assert_json_field "T8 trend with a leading flag takes the origin repo" acme/app '.repo'
+
 # T6 fetch-local keeps its own syntax: a bare invocation is still usage.
 run_review fetch-local
 assert_exit "T6 fetch-local with no name stays a usage error" 2

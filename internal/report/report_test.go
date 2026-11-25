@@ -406,3 +406,33 @@ func TestReportCompareNeedsAValue(t *testing.T) {
 		t.Errorf("usage error missing the operand name: %q", diag)
 	}
 }
+
+// TestCheckLinesReachStderrInert runs `report --check` over a bundle whose
+// record carries a violated spec item spelled with an OSC 52 clipboard write,
+// a C1 CSI, and a BEL. The gate prints that item on stderr through the
+// production runner, which must deliver it as plain text.
+func TestCheckLinesReachStderrInert(t *testing.T) {
+	setupRiskCLIBundle(t, "")
+	item := `evil\u001b]52;c;cGF5bG9hZA==\u0007item\u009b2J`
+	record := `{"schema_version":"1","status":"local","head":"` + testRiskHeadSHA + `",` +
+		`"evidence":{"head":"` + testRiskHeadSHA + `","diff_sha256":"` + strings.Repeat("0", 64) + `",` +
+		`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
+		`"spec":{"total":1,"covered":1,"min":80,"met":true},"insufficient":false},` +
+		`"spec_checks":[{"item":"` + item + `","status":"violated",` +
+		`"evidence":{"path":"notes.txt","quote":"the quoted line","line":2}}]}`
+	if err := os.WriteFile(".verdict/state/local-risk-cli/record.json", []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	r := cli.NewRunner("report", "acme/app", "local-risk-cli", &out, &diag, func(string) string { return "" })
+	r.Effective = cli.Defaults()
+	r.RouteHuman()
+	code := Run(context.Background(), r, []string{"--check", "critical"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
+	got := diag.String()
+	if code != cli.ExitRefused || !strings.Contains(got, "evil ]52;c;cGF5bG9hZA== item 2J") {
+		t.Fatalf("exit %d, stderr %q; want the gate to fail on the folded spec item", code, got)
+	}
+	if strings.ContainsAny(got, "\x1b\x07\u009b") {
+		t.Fatalf("stderr carries a control byte: %q", got)
+	}
+}

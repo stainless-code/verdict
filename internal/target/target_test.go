@@ -98,7 +98,7 @@ func TestResolveURL(t *testing.T) {
 		{
 			name: "matching explicit provider stays", repo: "acme/app", pr: "12",
 			q:    Request{Verb: "threads", Repo: "https://github.com/acme/app/pull/12", Rest: []string{"--provider=github"}},
-			rest: []string{"--provider=github"},
+			rest: []string{"--provider", "github"},
 		},
 		{
 			name: "gitlab nested for pr-wait", repo: "a/b/c", pr: "7",

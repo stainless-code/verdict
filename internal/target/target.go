@@ -108,29 +108,55 @@ func fromURL(q *Request, out *Resolved) {
 	}
 }
 
-// withProvider hands a URL's provider to the verb as --provider, refusing a
-// flag the operator typed that names a different one.
+// withProvider hands a URL's provider to the verb as --provider, refusing any
+// --provider the operator typed that names a different one. Every occurrence
+// before the sentinel is checked, and the "--provider=x" spelling (which most
+// verbs' flag parsers reject) is rewritten to the spaced form they all take.
 func withProvider(rest []string, provider string) ([]string, *core.RefusalError) {
-	for i := 0; i < len(rest) && rest[i] != sentinel; i++ {
-		got, ok := providerOperand(rest, i)
+	head, tail := rest, []string(nil)
+	if at := slices.Index(rest, sentinel); at >= 0 {
+		head, tail = rest[:at], rest[at:]
+	}
+	out, seen, ref := normalizeProvider(head, provider)
+	if ref != nil {
+		return rest, ref
+	}
+	if !seen {
+		out = slices.Concat([]string{flagProvider, provider}, out)
+	}
+	return slices.Concat(out, tail), nil
+}
+
+// normalizeProvider rewrites each --provider in args to the spaced form and
+// reports whether any was present; one that names another provider refuses.
+func normalizeProvider(args []string, provider string) (out []string, seen bool, ref *core.RefusalError) {
+	for i := 0; i < len(args); i++ {
+		got, spaced, ok := providerOperand(args, i)
 		if !ok {
+			out = append(out, args[i])
 			continue
 		}
 		if got != provider {
-			return rest, &core.RefusalError{Code: core.CodeBadTargetURL, Message: fmt.Sprintf(
+			return nil, false, &core.RefusalError{Code: core.CodeBadTargetURL, Message: fmt.Sprintf(
 				"the URL is a %s pull request but --provider says %s; drop --provider, or pass the URL's own host", provider, got)}
 		}
-		return rest, nil
+		seen = true
+		out = append(out, flagProvider, got)
+		if spaced {
+			i++
+		}
 	}
-	return slices.Concat([]string{flagProvider, provider}, rest), nil
+	return out, seen, nil
 }
 
-// providerOperand reads the --provider operand at rest[i], in either spelling.
-func providerOperand(rest []string, i int) (string, bool) {
+// providerOperand reads the --provider operand at rest[i], in either
+// spelling; spaced reports that it consumed the next token too.
+func providerOperand(rest []string, i int) (value string, spaced, ok bool) {
 	if rest[i] == flagProvider && i+1 < len(rest) {
-		return rest[i+1], true
+		return rest[i+1], true, true
 	}
-	return strings.CutPrefix(rest[i], flagProvider+"=")
+	value, ok = strings.CutPrefix(rest[i], flagProvider+"=")
+	return value, false, ok
 }
 
 func describe(repo, pr, provider, how string) string {
@@ -146,7 +172,7 @@ func describe(repo, pr, provider, how string) string {
 
 // found is the repository an inference step settled, with the provider when
 // it came from the origin remote.
-type found struct{ repo, provider string }
+type found struct{ repo, provider, host string }
 
 // fromOrigin fills the repository from origin; a non-empty pr completes the
 // target (the `verdict report 12` spelling), otherwise the verb is repo-only.
@@ -176,7 +202,7 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 		out.Refusal = core.TargetUnresolved("HEAD is detached, so no branch names a pull request; pass the target: %s", hint)
 		return
 	}
-	hits, more := branchBundles(ctx, d, f.repo, branch)
+	hits, more := branchBundles(ctx, d, f, branch)
 	labels := make([]string, len(hits))
 	for i, h := range hits {
 		labels[i] = h.label
@@ -207,7 +233,7 @@ type branchHit struct {
 // whose recorded repository, when it names one, is repo, in PR order. A hit's
 // label reads "<pr> (<state>)"; more reports a directory too large to prove
 // the match unique.
-func branchBundles(ctx context.Context, d Deps, repo, branch string) (hits []branchHit, more bool) {
+func branchBundles(ctx context.Context, d Deps, f *found, branch string) (hits []branchHit, more bool) {
 	root, err := d.RepoRoot(ctx)
 	if err != nil {
 		return nil, false
@@ -218,7 +244,7 @@ func branchBundles(ctx context.Context, d Deps, repo, branch string) (hits []bra
 		return nil, false
 	}
 	for _, e := range entries {
-		if hit, ok := entryHit(state, e, repo, branch); ok {
+		if hit, ok := entryHit(state, e, f, branch); ok {
 			hits = append(hits, hit)
 		}
 	}
@@ -230,20 +256,25 @@ func branchBundles(ctx context.Context, d Deps, repo, branch string) (hits []bra
 
 // entryHit matches one state-directory entry: only a directory named by a pull
 // request number can be a PR bundle.
-func entryHit(state string, e os.DirEntry, repo, branch string) (branchHit, bool) {
+func entryHit(state string, e os.DirEntry, f *found, branch string) (branchHit, bool) {
 	if !e.IsDir() || !core.ValidPrNumber(e.Name()) {
 		return branchHit{}, false
 	}
-	return bundleHit(state+"/"+e.Name(), e.Name(), repo, branch)
+	return bundleHit(state+"/"+e.Name(), e.Name(), f, branch)
 }
 
-// bundleHit reports whether one bundle records branch as its head ref for repo.
-func bundleHit(dir, num, repo, branch string) (branchHit, bool) {
+// bundleHit reports whether one bundle records branch as its head ref for f.
+func bundleHit(dir, num string, f *found, branch string) (branchHit, bool) {
 	b := readcommon.OpenBundle(dir)
 	if cmp.Or(b.StrField("headRefName"), b.StrField("head_ref")) != branch {
 		return branchHit{}, false
 	}
-	if proj := readcommon.BundleProject(dir); proj != "" && !strings.EqualFold(proj, repo) {
+	if proj := readcommon.BundleProject(dir); proj != "" && !strings.EqualFold(proj, f.repo) {
+		return branchHit{}, false
+	}
+	// Two hosts can carry the same owner/repo; the bundle's recorded host must
+	// be the origin's when both are known (an explicit repo knows no host).
+	if host := readcommon.BundleHost(dir); host != "" && f.host != "" && host != f.host {
 		return branchHit{}, false
 	}
 	label := num
@@ -268,7 +299,7 @@ func originRepo(ctx context.Context, d Deps, q *Request, out *Resolved) (f *foun
 			"%s; or pass the target: verdict %s <owner/repo> <pr> [--provider <name>]", rerr.Message, q.Verb)
 		return nil, false
 	}
-	return &found{repo: repo, provider: provider}, true
+	return &found{repo: repo, provider: provider, host: core.RemoteHost(raw)}, true
 }
 
 // currentBranch is the checked-out branch name; empty for a detached HEAD. ok

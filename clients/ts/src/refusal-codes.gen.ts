@@ -105,6 +105,8 @@ export type RefusalCode =
   | "cost-unreadable"
   | "coverage-incomplete"
   | "coverage-stale"
+  | "dashboard-no-tty"
+  | "dashboard-no-vt"
   | "diff-failed"
   | "diff-too-large"
   | "download-failed"

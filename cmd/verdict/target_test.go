@@ -136,3 +136,90 @@ func TestFetchLocalKeepsItsOwnSyntax(t *testing.T) {
 		t.Fatalf("bare fetch-local: exit %d stderr %q", code, derr)
 	}
 }
+
+// TestRepoOnlyVerbsStopAtAFlag pins that a flag before the repo means the repo
+// is absent for trend and risk, so the flag survives and origin fills the repo.
+func TestRepoOnlyVerbsStopAtAFlag(t *testing.T) {
+	t.Parallel()
+	for _, verb := range []string{"trend", "risk"} {
+		_, repo, pr, rest := splitCommand([]string{verb, "--overlap", "--json"})
+		if repo != "" || pr != "" || !slices.Equal(rest, []string{"--overlap", "--json"}) {
+			t.Errorf("%s flag-first split = %q %q %q; want no repo and both flags kept", verb, repo, pr, rest)
+		}
+		_, repo, _, rest = splitCommand([]string{verb, "acme/app", "--json"})
+		if repo != "acme/app" || !slices.Equal(rest, []string{"--json"}) {
+			t.Errorf("%s repo-first split = %q %q", verb, repo, rest)
+		}
+	}
+}
+
+// TestRepoOnlyVerbFlagFirstInfersOrigin runs the verbs through the front door
+// in a checkout: the flag is kept and the echo names the origin's repository.
+func TestRepoOnlyVerbFlagFirstInfersOrigin(t *testing.T) {
+	targetCheckout(t, false)
+	_, env := runEnvelope(t, "trend", "--json")
+	if env.Repo != "acme/app" {
+		t.Fatalf("trend envelope repo = %q, want acme/app (origin)", env.Repo)
+	}
+	code, _, derr := runCapture(t, []string{"risk", "--status", "open"})
+	if strings.Contains(derr, usageText()) || !strings.Contains(derr, "target: acme/app (github, repository from the origin remote)") {
+		t.Fatalf("risk --status open: exit %d\nstderr: %s", code, derr)
+	}
+}
+
+// TestThreadsResolveKeepsItsSubverb pins that the subverb sitting where the
+// repo would is put back after the pair behind it is resolved.
+func TestThreadsResolveKeepsItsSubverb(t *testing.T) {
+	targetCheckout(t, true)
+	for _, tc := range []struct {
+		name string
+		pr   string
+		rest []string
+		want []string
+	}{
+		{"URL form", "https://github.com/acme/app/pull/12", []string{"--dry-run"}, []string{"12", "--dry-run"}},
+		{"inferred form", "", []string{"--dry-run"}, []string{"12", "--dry-run"}},
+		{"explicit form", "acme/app", []string{"7", "--thread", "x"}, []string{"7", "--thread", "x"}},
+	} {
+		got := resolveTarget("threads", "resolve", tc.pr, tc.rest, nil, os.Getenv)
+		wantPr := "acme/app"
+		if got.Refusal != nil || got.Repo != "resolve" || got.Pr != wantPr || !slices.Equal(got.Rest, tc.want) {
+			t.Errorf("%s: %+v", tc.name, got)
+		}
+	}
+	got := resolveTarget("threads", "resolve", "https://github.com/acme/app/pull/12", nil, nil, os.Getenv)
+	if slices.Contains(got.Rest, "--provider") {
+		t.Fatalf("threads resolve takes no --provider flag: %+v", got)
+	}
+}
+
+func TestThreadsResolveOutsideACheckoutIsUsage(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	got := resolveTarget("threads", "resolve", "", nil, nil, os.Getenv)
+	if got.Refusal != nil || got.Repo != "resolve" || got.Pr != "" {
+		t.Fatalf("nothing to read must leave the verb's own usage error: %+v", got)
+	}
+}
+
+// TestNoJSONShapesTheTargetRefusal pins that --no-json (a global force) is
+// applied before the target refusal renders, so a JSON default in the
+// environment does not turn it into an envelope.
+func TestNoJSONShapesTheTargetRefusal(t *testing.T) {
+	targetCheckout(t, false)
+	t.Setenv("REVIEW_OUTPUT_FORMAT", "json")
+	code, out, derr := runCapture(t, []string{"report", "--no-json"})
+	if code != cli.ExitRefused || out != "" || !strings.Contains(derr, "error: ") {
+		t.Fatalf("exit %d\nstdout: %q\nstderr: %s", code, out, derr)
+	}
+}
+
+// TestNoJSONKeepsTheTargetEcho pins the echo under the same override.
+func TestNoJSONKeepsTheTargetEcho(t *testing.T) {
+	targetCheckout(t, true)
+	t.Setenv("REVIEW_OUTPUT_FORMAT", "json")
+	_, _, derr := runCapture(t, []string{"report", "--no-json"})
+	if !strings.Contains(derr, "target: acme/app#12") {
+		t.Fatalf("the echo was suppressed by the env's JSON default:\n%s", derr)
+	}
+}

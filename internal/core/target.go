@@ -363,3 +363,14 @@ func azureRemoteRepo(segs []string) (string, bool) {
 	}
 	return "", false
 }
+
+// RemoteHost is the lowercase hostname of an origin remote, the web host a
+// bundle's review URL names: Azure's ssh host folds into dev.azure.com. It is
+// "" for a remote verdict cannot read.
+func RemoteHost(raw string) string {
+	host := remoteHost(raw)
+	if host == "ssh.dev.azure.com" {
+		return "dev.azure.com"
+	}
+	return host
+}

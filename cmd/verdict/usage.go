@@ -9,7 +9,7 @@ import (
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp|lsp [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
@@ -716,6 +716,13 @@ func usageText() string {
 		"    Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
+		"  dashboard [--root <dir>] [--once] [--width <cols>] [--height <rows>]\n" +
+		"    read-only terminal view over the query layer serve renders: Overview (portfolio\n" +
+		"    totals, roots, refused bundles) and Queue (one row per bundle). Needs a terminal on\n" +
+		"    stdin and stdout, else refuses dashboard-no-tty; --once prints one plain-text\n" +
+		"    Overview frame to stdout (80x24 off a terminal) and exits 0. Keys: 1 Overview,\n" +
+		"    2 Queue, q or Esc quits; Ctrl-C exits 3. --root reads every repository below <dir>\n" +
+		"    through serve's discovery and its 24-hour registry cache.\n" +
 		"  mcp [--read-only | --operator] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
@@ -771,18 +778,19 @@ func usageText() string {
 var optionals = map[string]bool{cmdDemo: true}
 
 var bareVerbs = map[string]bool{
-	"check-tree": true,
-	verbDoctor:   true,
-	"learn":      true,
-	"init":       true,
-	verbSkill:    true,
-	"upgrade":    true,
-	"uninstall":  true,
-	"index":      true,
-	"pack":       true,
-	"serve":      true,
-	verbACP:      true,
-	verbLSP:      true,
+	"check-tree":  true,
+	verbDoctor:    true,
+	"learn":       true,
+	"init":        true,
+	verbSkill:     true,
+	"upgrade":     true,
+	"uninstall":   true,
+	"index":       true,
+	"pack":        true,
+	"serve":       true,
+	verbDashboard: true,
+	verbACP:       true,
+	verbLSP:       true,
 }
 
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other

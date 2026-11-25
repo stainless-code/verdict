@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 type upgradeFlags struct {
@@ -81,10 +82,12 @@ func finishUpgrade(ctx context.Context, r *cli.Runner, env map[string]string, f 
 		Executable: "",
 		PinVersion: f.version,
 		DryRun:     f.dryRun,
-		Stdout:     r.Diag,
-		Stderr:     r.Diag,
-		EnvSlice:   os.Environ(),
-		LookPath:   exec.LookPath,
+		// The operator's own package manager streams here; its colors and
+		// progress redraws are trusted output, so they skip the fold.
+		Stdout:   untrusted.Raw(r.Diag),
+		Stderr:   untrusted.Raw(r.Diag),
+		EnvSlice: os.Environ(),
+		LookPath: exec.LookPath,
 	}
 	resp, ref := upgrade.Run(ctx, &req)
 	if ref != nil {

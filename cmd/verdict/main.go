@@ -1,8 +1,13 @@
 // Command verdict is the only front door: it owns every verb, every usage
-// error, and the arity matrix. A missing verb or
-// positional fails with the full usage block on stderr and exit 2 before
-// any settings, store, or network read. main is thin: it parses, builds
-// the runner, delegates to run(), and exits once — only main calls [os.Exit].
+// error, and the arity matrix. A missing verb fails with the full usage block
+// on stderr and exit 2 before any settings, store, or network read. A missing
+// repo/pr pair first goes through target resolution (internal/target), which
+// reads only local git state and the recorded bundles: a pasted URL or an
+// inferable branch fills it in, a checkout that cannot name one refuses
+// target-unresolved, and only an invocation with nothing to read (no checkout,
+// no origin) prints the usage block, still before any settings read. main is
+// thin: it parses, builds the runner, delegates to run(), and exits once —
+// only main calls [os.Exit].
 package main
 
 import (
@@ -16,7 +21,6 @@ import (
 	"slices"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
 	backtestverb "github.com/stainless-code/verdict/internal/backtest"
@@ -28,6 +32,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
+	"github.com/stainless-code/verdict/internal/dashboard"
 	demo "github.com/stainless-code/verdict/internal/demo"
 	"github.com/stainless-code/verdict/internal/doctor"
 	drainverb "github.com/stainless-code/verdict/internal/drain"
@@ -71,11 +76,13 @@ const (
 	verbDoctor = "doctor"
 	verbACP    = "acp"
 	verbLSP    = "lsp"
+	// verbDashboard is the terminal dashboard transport.
+	verbDashboard = "dashboard"
 )
 
 const verbsHint = "demo|fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
-	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp|lsp"
+	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -116,22 +123,19 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if code, done := gateInvocation(r, cmd, &tgt, env, readFile, stderr); done {
+	if code, done := gateInvocation(r, cmd, &tgt, forces, env, readFile, stderr); done {
 		return code
-	}
-	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
-		r.RouteHuman()
-		return r.Refuse(err)
 	}
 	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
 }
 
 // gateInvocation runs the checks that stop an invocation before its verb: the
 // arity gate (skipped when target resolution already refused with a typed
-// reason), the preference read, that refusal, and the echo of a derived
-// target. done reports that code is the exit status.
+// reason), the preference read, the global forces (so --no-json and --color
+// shape every message below), that refusal, and the echo of a derived target.
+// done reports that code is the exit status.
 func gateInvocation(
-	r *cli.Runner, cmd string, tgt *target.Resolved, env map[string]string,
+	r *cli.Runner, cmd string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
 	readFile func(string) ([]byte, error), stderr *os.File,
 ) (code int, done bool) {
 	if tgt.Refusal == nil && invocationArityUsage(cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
@@ -140,6 +144,10 @@ func gateInvocation(
 	}
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code, true
+	}
+	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
+		r.RouteHuman()
+		return r.Refuse(err), true
 	}
 	if tgt.Refusal != nil {
 		r.RouteHuman()
@@ -205,6 +213,11 @@ const cmdTrend = "trend"
 
 const cmdFetchLocal = "fetch-local"
 
+const (
+	cmdThreads     = "threads"
+	subverbResolve = "resolve"
+)
+
 // flagPrefix starts every flag token; a positional never does.
 const flagPrefix = "-"
 
@@ -269,6 +282,10 @@ func dispatch(
 		return runUninstall(ctx, r, rest, env)
 	case "serve":
 		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile), Env: env, InstallRoot: root})
+	case verbDashboard:
+		return dashboard.Run(ctx, r, rest, dashboard.Request{
+			In: os.Stdin, Term: os.Getenv("TERM"), Version: cliVersion(root, readFile),
+		})
 	case verbACP:
 		return runACP(ctx, r, rest, cliVersion(root, readFile))
 	case verbLSP:
@@ -433,10 +450,11 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		return cmd, "", "", args
 	}
 	if repoOnlyVerbs[cmd] {
-		if len(args) > 0 {
-			repo, rest = args[0], args[1:]
+		// A flag first means the repo is absent, exactly as for the pair verbs.
+		if len(args) > 0 && !strings.HasPrefix(args[0], flagPrefix) {
+			repo, args = args[0], args[1:]
 		}
-		return cmd, repo, "", rest
+		return cmd, repo, "", args
 	}
 	repo, pr, rest = splitPositionals(args)
 	return cmd, repo, pr, rest
@@ -470,13 +488,7 @@ func splitPositionals(args []string) (repo, pr string, rest []string) {
 }
 
 func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string) string) *cli.Runner {
-	return &cli.Runner{
-		Cmd: cmd, Repo: repo, Pr: pr,
-		Out: stdout, Diag: stderr, Human: stdout,
-		Now:                time.Now,
-		EnvNoColor:         getenv("NO_COLOR") != "",
-		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
-	}
+	return cli.NewRunner(cmd, repo, pr, stdout, stderr, getenv)
 }
 
 func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error)) (int, bool) {
@@ -620,12 +632,38 @@ func invocationArityUsage(cmd, repo, pr string, args []string) bool {
 // bundle. It runs only for the verbs that take a repo/pr pair and never for
 // fetch-local, whose second positional is a bundle name.
 func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
-	same := target.Resolved{Repo: repo, Pr: pr, Rest: rest}
 	if !takesTarget(cmd, rest) {
-		return same
+		return target.Resolved{Repo: repo, Pr: pr, Rest: rest}
 	}
-	// GITLAB_HOST is read here, not through envMap: it only maps a
-	// self-hosted URL or remote to GitLab.
+	if cmd == cmdThreads && repo == subverbResolve {
+		return resolveSubverb(pr, rest, env, getenv)
+	}
+	return runResolver(cmd, repo, pr, rest, env, getenv)
+}
+
+// resolveSubverb resolves `threads resolve <owner/repo> <pr>`: the subverb sits
+// where the repo would, so the pair behind it is resolved and the subverb is
+// put back in the shifted shape the verb reads (subverb, repo, then the pr
+// first in rest). Threads resolve takes no --provider, so the verb name carries
+// the subverb to keep the flag from being injected.
+func resolveSubverb(first string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
+	same := target.Resolved{Repo: subverbResolve, Pr: first, Rest: rest}
+	repo, pr, tail := splitPositionals(append(nonEmpty(first), rest...))
+	got := runResolver(cmdThreads+" "+subverbResolve, repo, pr, tail, env, getenv)
+	switch {
+	case got.Refusal != nil:
+		return got
+	case got.Repo == "":
+		return same // nothing to infer from: the verb's own usage error stands
+	}
+	got.Repo, got.Pr, got.Rest = subverbResolve, got.Repo, append([]string{got.Pr}, got.Rest...)
+	return got
+}
+
+// runResolver reads GITLAB_HOST beside the environment map (envMap does not
+// carry it; it only maps a self-hosted URL or remote to GitLab) and runs the
+// shared resolver.
+func runResolver(verb, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
 	targetEnv := maps.Clone(env)
 	if h := getenv("GITLAB_HOST"); h != "" {
 		targetEnv["GITLAB_HOST"] = h
@@ -633,8 +671,15 @@ func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, g
 	ctx, stop := shutdownSignalContext()
 	defer stop()
 	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
-		Verb: cmd, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[cmd], Env: targetEnv,
+		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
 	})
+}
+
+func nonEmpty(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
 }
 
 // takesTarget reports the known verbs whose positionals are `<owner/repo> <pr>`
