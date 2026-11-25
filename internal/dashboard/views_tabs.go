@@ -141,10 +141,15 @@ func drawTabHeader(g *grid, st *frameState, b box, cs charset) (int, bool) {
 }
 
 // pending draws the placeholder for a tab whose view has not arrived.
+// A --once frame has no keys, so it never tells its reader to press one.
 func pending(g *grid, b box, st *frameState, cs charset) (int, bool) {
 	text := "composing…"
-	if st.target.bundle == "" && st.tab != tabCost && st.tab != tabPrecision {
+	switch {
+	case st.target.bundle != "" || st.tab == tabCost || st.tab == tabPrecision:
+	case st.live:
 		text = "no bundle selected: pick one on the Queue (2) and press Enter"
+	default:
+		text = "no readable bundle to show"
 	}
 	g.text(margin, b.top, g.w, text, roleMuted, cs)
 	return 0, false
@@ -526,7 +531,11 @@ func drawCompareHeader(g *grid, st *frameState, b box, cs charset) (int, bool) {
 		if st.target.bundle == "" {
 			return pending(g, b, st, cs)
 		}
-		g.text(margin, b.top, g.w, "compare "+st.target.bundle+" against a baseline: press b to pick one", roleMuted, cs)
+		hint := "compare " + st.target.bundle + " against a baseline: press b to pick one"
+		if !st.live {
+			hint = "compare " + st.target.bundle + " needs a baseline, which only the live view picks"
+		}
+		g.text(margin, b.top, g.w, hint, roleMuted, cs)
 		return 0, false
 	}
 	d := st.cmp
@@ -626,7 +635,7 @@ var helpLines = []string{
 	"  Enter open: Queue to Detail, Detail to Diff   Esc back, or clear the search",
 	"  / search this list   Tab next file (Diff) or grouping (Cost, Precision)",
 	"  u split/unified diff (100+ columns)   b pick the Compare baseline",
-	"  y copy the finding's fix prompt (OSC 52)   r refresh   ? help   q quit",
+	"  y copy the fix prompt or triage command (OSC 52)  r refresh  ? help  q quit",
 	"Severity  !!! critical  !! important  ! informational  - untagged",
 	"Rigor     said < pointed < walked < ran < reproduced, then the quote check:",
 	"          verified, ? unverified, blank when unchecked",

@@ -1,7 +1,7 @@
  verdict dashboard · /work/acme/api                                  read-only
   1 Overview   2 Queue   3 Detail   4 Diff  [5 Compare]  6 Cost   7 Precision
 ────────────────────────────────────────────────────────────────────────────────
- compare 4232 against a baseline: press b to pick one
+ compare 4232 needs a baseline, which only the live view picks
 
 
 

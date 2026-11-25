@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
+	"strconv"
 	"sync"
 
 	"github.com/stainless-code/verdict/internal/core/query"
@@ -16,6 +17,10 @@ import (
 const (
 	escClipboard = "\x1b]52;c;"
 	escBell      = "\x07"
+	// maxClipboard bounds one copy. Terminals cap OSC 52 (often near 100 KB)
+	// and drop a longer one without a word, so a larger text is refused here
+	// with a note instead of a "copied" that never happened.
+	maxClipboard = 100 << 10
 )
 
 // result is one compose job's outcome, handed from its goroutine to the loop.
@@ -31,8 +36,9 @@ type result struct {
 // live runs one interactive session. The loop goroutine owns every piece of
 // UI state: it paints, polls one key tick, and drains the change stream and
 // finished jobs without ever waiting on either. Composition runs in job
-// goroutines, one at a time; a job's panic is handed back and re-raised here,
-// so the deferred restore runs whichever goroutine failed.
+// goroutines, one at a time; a job's panic is handed back and re-raised on
+// this goroutine, after the terminal is restored, whether it arrives while
+// the loop runs or in the tick the user quits.
 func live(ctx context.Context, t tty, out io.Writer, lk look, opts *options, src source) (err error) {
 	s := &session{term: t, out: out}
 	jobCtx, stopJobs := context.WithCancel(ctx)
@@ -42,15 +48,14 @@ func live(ctx context.Context, t tty, out io.Writer, lk look, opts *options, src
 		p:       &painter{out: out, pal: lk.pal},
 		keys:    make([]byte, keyBuf),
 		results: make(chan result, 1),
-		done:    make(chan struct{}),
 	}
-	defer v.jobs.Wait()
 	defer func() {
-		close(v.done)
 		stopJobs()
 		if rerr := s.restore(); err == nil {
 			err = rerr
 		}
+		v.jobs.Wait()
+		v.raiseLatePanic()
 	}()
 	if err := s.enter(); err != nil {
 		return err
@@ -75,8 +80,9 @@ type liveView struct { //nolint:govet // grouped by role: terminal, data, jobs
 	p       *painter
 	s       *session
 	changes <-chan query.Change
+	// results holds at most one value: one job runs at a time, and the loop
+	// takes its result before launching the next, so a send never blocks.
 	results chan result
-	done    chan struct{}
 	keys    []byte
 	lk      look
 	dec     decoder
@@ -224,26 +230,30 @@ func (v *liveView) launch(ctx context.Context) {
 	})
 }
 
-// recoverJob hands a job's panic to the loop, which re-raises it so the
-// session restores the terminal first. If the loop has already left, the
-// terminal is restored and the panic is re-raised here.
+// recoverJob hands a job's panic to the loop with its stack. The loop
+// re-raises it on its next tick, or, if the user quit first, live re-raises
+// it after restoring the terminal: a compose panic is never lost.
 func (v *liveView) recoverJob(gen uint64) {
 	p := recover()
 	if p == nil {
 		return
 	}
-	trace := fmt.Sprintf("dashboard compose: %v\n%s", p, debug.Stack())
-	select {
-	case v.results <- result{panic: trace, gen: gen}:
-	case <-v.done:
-		panic(trace)
-	}
+	v.results <- result{panic: fmt.Sprintf("dashboard compose: %v\n%s", p, debug.Stack()), gen: gen}
 }
 
 func (v *liveView) deliver(r *result) {
+	v.results <- *r
+}
+
+// raiseLatePanic re-raises a job panic the loop left undrained because the
+// session ended in the same tick; any other late result is dropped.
+func (v *liveView) raiseLatePanic() {
 	select {
-	case v.results <- *r:
-	case <-v.done:
+	case r := <-v.results:
+		if r.panic != nil {
+			panic(r.panic)
+		}
+	default:
 	}
 }
 
@@ -260,12 +270,18 @@ func (v *liveView) copySelected(ctx context.Context) {
 		v.st.note = "copy: " + err.Error()
 		return
 	}
-	payload := base64.StdEncoding.EncodeToString([]byte(copyText(view)))
+	text, what := copyText(view)
+	if len(text) > maxClipboard {
+		v.st.note = "the " + what + " for " + shortHead(r.sig) + " is too large to copy (" +
+			strconv.Itoa(len(text)) + " bytes; the terminal clipboard takes " + strconv.Itoa(maxClipboard) + ")"
+		return
+	}
+	payload := base64.StdEncoding.EncodeToString([]byte(text))
 	if _, err := io.WriteString(v.out, escClipboard+payload+escBell); err != nil {
 		v.st.note = "copy: " + err.Error()
 		return
 	}
-	v.st.note = "copied the fix prompt for " + shortHead(r.sig) + " (OSC 52)"
+	v.st.note = "copied the " + what + " for " + shortHead(r.sig) + " (OSC 52)"
 }
 
 // suspendIfAsked honors Ctrl-Z: the shell gets its screen and cooked mode

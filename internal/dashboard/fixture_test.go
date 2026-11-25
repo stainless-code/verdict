@@ -19,6 +19,7 @@ type fixtureSource struct {
 	changes        chan query.Change
 	onBundles      func(ctx context.Context)
 	onDetail       func()
+	prompt         string // the fix prompt Copy assembles; empty falls back to triage
 }
 
 // callLog counts layer reads by method; the loop goroutine and one job
@@ -83,7 +84,7 @@ func (f fixtureSource) Compare(_ context.Context, _, _, baseline string) (*query
 
 func (f fixtureSource) Copy(_ context.Context, _, bundle, sig string) (*query.View, error) {
 	f.calls.add("Copy")
-	return &query.View{Data: jq.NewObj("sig", sig, "prompt", "",
+	return &query.View{Data: jq.NewObj("sig", sig, "prompt", f.prompt,
 		"triage", "verdict triage acme/api "+bundle+" --sig "+sig+" --status addressed")}, nil
 }
 

@@ -240,13 +240,13 @@ func number(v any) string {
 	}
 }
 
-// copyText is what `y` puts on the clipboard: the fix prompt when the layer
-// assembled one, else the triage command.
-func copyText(v *query.View) string {
+// copyText is what `y` puts on the clipboard and what to call it: the fix
+// prompt when the layer assembled one, else the triage command.
+func copyText(v *query.View) (text, what string) {
 	if prompt := strField(v.Data, "prompt"); prompt != "" {
-		return prompt
+		return prompt, "fix prompt"
 	}
-	return strField(v.Data, "triage")
+	return strField(v.Data, "triage"), "triage command"
 }
 
 // filterRepo narrows a snapshot to one `owner/repo`. The totals are summed

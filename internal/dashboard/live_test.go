@@ -407,7 +407,7 @@ func TestLiveClampsFlagsToTheTerminal(t *testing.T) {
 func TestLiveCopyWritesOSC52(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		src := newSource()
-		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "j", "y", "", "q"}}
+		term := &fakeTTY{cols: wideCols, rows: minRows, chunks: []string{"", "", "j", "y", "", "q"}}
 		out, err := runLiveFixture(t.Context(), term, &options{tab: tabDetail}, src)
 		if err != nil {
 			t.Fatal(err)
@@ -419,7 +419,41 @@ func TestLiveCopyWritesOSC52(t *testing.T) {
 		if src.calls.count("Copy") != 1 {
 			t.Fatalf("Copy read %d times, want 1", src.calls.count("Copy"))
 		}
+		checkStatus(t, out.Bytes(), "copied the triage command for c14232 (OSC 52)")
 	})
+}
+
+// TestLiveCopyRefusesAnOversizedPrompt makes the fix prompt larger than a
+// terminal's OSC 52 limit: nothing is written, and the status says why
+// instead of claiming a copy the terminal would drop.
+func TestLiveCopyRefusesAnOversizedPrompt(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		src.prompt = strings.Repeat("x", maxClipboard+1)
+		term := &fakeTTY{cols: wideCols, rows: minRows, chunks: []string{"", "", "y", "", "q"}}
+		out, err := runLiveFixture(t.Context(), term, &options{tab: tabDetail}, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), escClipboard) {
+			t.Fatal("an oversized prompt was written to the clipboard")
+		}
+		checkStatus(t, out.Bytes(), "the fix prompt for c04232a1 is too large to copy (102401 bytes")
+	})
+}
+
+// wideCols is a terminal wide enough that the status row never truncates.
+const wideCols = 200
+
+// checkStatus fails unless the status row of the last frame drawn on a
+// wideCols terminal holds want.
+func checkStatus(t *testing.T, out []byte, want string) {
+	t.Helper()
+	scr := newScreen(wideCols, minRows)
+	scr.replay(t, out)
+	if row := string(scr.runes[minRows-2]); !strings.Contains(row, want) {
+		t.Fatalf("status row = %q, want it to hold %q", strings.TrimSpace(row), want)
+	}
 }
 
 // TestKeepSize pins the size fallback for a terminal that reports nothing.
@@ -497,5 +531,35 @@ func TestStaleResultIsDropped(t *testing.T) {
 	if st.detail != nil || st.snap != nil || !v.stale || v.running {
 		t.Fatalf("detail %v snap %v stale %v running %v; want the old result dropped and a recompose pending",
 			st.detail, st.snap != nil, v.stale, v.running)
+	}
+}
+
+// TestLiveJobPanicDuringQuitSurfaces panics a compose while the read that
+// returns q is in flight: the loop quits before it drains the result, yet
+// the panic still leaves live (after the terminal is restored), never lost.
+func TestLiveJobPanicDuringQuitSurfaces(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		release := make(chan struct{})
+		src.onDetail = func() {
+			<-release
+			panic("boom while quitting")
+		}
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "q"}}
+		term.onRead = closeAt(2, release)
+		got := runRecovering(t, term, &options{tab: tabDetail}, src)
+		if msg := fmt.Sprint(got); !strings.Contains(msg, "dashboard compose: boom while quitting") {
+			t.Fatalf("recovered %q, want the compose panic re-raised after the quit", msg)
+		}
+		checkRestored(t, term)
+	})
+}
+
+// closeAt closes ch on read n, releasing whatever waits on it.
+func closeAt(n int, ch chan struct{}) func(int) {
+	return func(read int) {
+		if read == n {
+			close(ch)
+		}
 	}
 }

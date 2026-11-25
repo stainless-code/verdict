@@ -3466,7 +3466,10 @@ characters follow the Unicode 17.0 East Asian Width table.
 runs a model or any command a bundle names. `y` writes the prompt to the
 terminal as an OSC 52 clipboard sequence (base64, so the text cannot inject
 a sequence of its own) and never starts a subprocess such as `pbcopy`; a
-terminal with OSC 52 disabled simply copies nothing. Its one write is
+terminal with OSC 52 disabled simply copies nothing. Text over 100 KiB is not
+sent at all: terminals cap OSC 52 and drop a longer one silently, so the
+status row says it is too large instead of claiming a copy. The status row
+names what was copied: the fix prompt, or the triage command. Its one write is
 `--root`'s discovery registry cache (`projects.json` beside the settings
 file), the same cache `serve --root` keeps. It writes no journal line.
 

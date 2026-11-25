@@ -6,7 +6,7 @@
    Enter open: Queue to Detail, Detail to Diff   Esc back, or clear the search
    / search this list   Tab next file (Diff) or grouping (Cost, Precision)
    u split/unified diff (100+ columns)   b pick the Compare baseline
-   y copy the finding's fix prompt (OSC 52)   r refresh   ? help   q quit
+   y copy the fix prompt or triage command (OSC 52)  r refresh  ? help  q quit
  Severity  !!! critical  !! important  ! informational  - untagged
  Rigor     said < pointed < walked < ran < reproduced, then the quote check:
            verified, ? unverified, blank when unchecked

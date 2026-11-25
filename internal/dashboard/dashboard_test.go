@@ -234,9 +234,9 @@ func TestPreflightRefusesJSONWithATerminal(t *testing.T) {
 // cancelingSource cancels the request inside Bundles, the way Ctrl-C lands
 // mid-compose, and counts what is read after it.
 type cancelingSource struct {
-	fixtureSource
 	cancel context.CancelFunc
-	roots  int
+	fixtureSource
+	roots int
 }
 
 func (c *cancelingSource) Bundles(ctx context.Context, p string) (*query.View, error) {

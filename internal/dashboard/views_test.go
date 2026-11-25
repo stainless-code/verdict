@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -29,14 +30,72 @@ func TestViewGoldens(t *testing.T) {
 // forged clear-screen and the OSC 52 clipboard write are both inert.
 func TestFrameCarriesNoStrangerEscape(t *testing.T) {
 	t.Parallel()
-	for _, tb := range []tab{tabOverview, tabQueue} {
-		got := frame(partialFixture(), tb, 120, 30, charsetUnicode)
-		if strings.ContainsAny(got, "\x1b\x07") {
-			t.Fatalf("tab %d frame carries a control byte:\n%q", tb, got)
-		}
+	for tb := range tabCount {
+		st := tabState(t, tb, hostileState)
+		poison(st)
+		checkFrameInert(t, tb, compose(st, 120, 30, look{pal: &paletteMono, cs: charsetUnicode}).lines())
 	}
 	if got := frame(partialFixture(), tabQueue, 120, 30, charsetUnicode); !strings.Contains(got, "acme/api [2Jforged") {
 		t.Fatalf("queue frame lost the flattened repo text:\n%s", got)
+	}
+}
+
+// hostile is what a stranger can put in any field: an OSC 52 clipboard
+// write, a C1 CSI, a clear screen, a carriage return, a tab, and a line
+// separator.
+const hostile = "\x1b]52;c;eA==\x07\u009b2J\x1b[2J\r\t\u2028end"
+
+// hostileState points every bundle tab at one bundle and gives Compare a
+// baseline, so each tab has a decoded view for poison to write into.
+func hostileState(st *frameState) {
+	st.target, st.baseline = target{root: "a1b2c3d4e5f6", bundle: "4232"}, "4301"
+}
+
+// poison writes the hostile string into every decoded field the active tab
+// draws. It dereferences that tab's view unconditionally, so a tab whose view
+// failed to load fails the test instead of passing with nothing poisoned.
+func poison(st *frameState) {
+	st.snap.roots[0].path += hostile
+	for i := range st.snap.rows {
+		st.snap.rows[i].bundle += hostile
+		st.snap.rows[i].model += hostile
+	}
+	switch st.tab {
+	case tabDetail:
+		st.detail.repo, st.detail.head = hostile, hostile
+		st.detail.items[0].body += hostile
+		st.detail.items[0].locator += hostile
+	case tabDiff:
+		st.diff.lanes[0].lane += hostile
+		st.diff.files[0].path += hostile
+		st.diff.files[0].hunks[0].header += hostile
+		st.diff.files[0].hunks[0].lines[0].text += hostile
+	case tabCompare:
+		st.cmp.baseline += hostile
+		st.cmp.buckets[0][0].claim += hostile
+		st.cmp.buckets[0][0].path += hostile
+	case tabCost:
+		poisonTable(st.cost)
+	case tabPrecision:
+		poisonTable(st.prec)
+	default:
+	}
+}
+
+func poisonTable(tbl *tableData) {
+	tbl.by, tbl.note = hostile, hostile
+	tbl.rows[0][0] += hostile
+}
+
+// checkFrameInert fails unless a frame holds no control or separator rune
+// but the newline that ends each row: the rule a stranger's text must not
+// break on any tab.
+func checkFrameInert(t *testing.T, tb tab, frame string) {
+	t.Helper()
+	for _, r := range frame {
+		if r != '\n' && core.IsLineBreak(r) {
+			t.Fatalf("tab %d frame carries control %U:\n%q", tb, r, frame)
+		}
 	}
 }
 
@@ -224,8 +283,34 @@ func checkDecodeAny(t *testing.T, raw []byte) {
 	}
 	for tb := range tabCount {
 		st.tab = tb
-		if got := compose(st, minCols, minRows, look{pal: &paletteMono, cs: charsetUnicode}).lines(); strings.ContainsAny(got, "\x1b\x07") {
-			t.Fatalf("tab %d frame carries a control byte", tb)
+		checkFrameInert(t, tb, compose(st, minCols, minRows, look{pal: &paletteMono, cs: charsetUnicode}).lines())
+	}
+}
+
+// TestOnceFramesNameNoKeys proves a --once frame never tells its reader to
+// press a key it cannot press, while the live frame keeps the hint.
+func TestOnceFramesNameNoKeys(t *testing.T) {
+	t.Parallel()
+	for _, live := range []bool{false, true} {
+		frames := hintFrames(t, live)
+		for _, hint := range []string{"press b", "press Enter"} {
+			if strings.Contains(frames, hint) != live {
+				t.Fatalf("live=%v: %q present=%v, want %v:\n%s", live, hint, !live, live, frames)
+			}
 		}
 	}
+	if frames := hintFrames(t, false); !strings.Contains(frames, "no readable bundle to show") {
+		t.Fatalf("--once Detail with no bundle lacks its plain message:\n%s", frames)
+	}
+}
+
+// hintFrames composes the two frames that carry a key hint in the live
+// view: Compare with no baseline, and Detail with no readable bundle.
+func hintFrames(t *testing.T, live bool) string {
+	t.Helper()
+	cmp := tabState(t, tabCompare, nil)
+	cmp.live = live
+	empty := &frameState{tab: tabDetail, live: live, snap: &snapshot{}}
+	lk := look{pal: &paletteMono, cs: charsetUnicode}
+	return compose(cmp, minCols, minRows, lk).lines() + compose(empty, minCols, minRows, lk).lines()
 }
