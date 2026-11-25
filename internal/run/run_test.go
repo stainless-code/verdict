@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 func readFile(t *testing.T, path string) []byte {
@@ -495,5 +496,22 @@ func TestResumeFlagAndReentry(t *testing.T) {
 	}
 	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &plain, false); got != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("re-entry = %s", got)
+	}
+}
+
+// TestRefuseExitsWithTheAgentStatusOnlyForAgentFailed pins the exit table: a
+// response may carry an agent's status for any refusal (a sibling phase's), but
+// only agent-failed passes it through as the process exit.
+func TestRefuseExitsWithTheAgentStatusOnlyForAgentFailed(t *testing.T) {
+	for code, want := range map[string]int{
+		"agent-failed":        7,
+		"review-insufficient": cli.ExitRefused,
+		"no-review-artifact":  cli.ExitRefused,
+	} {
+		r, _, _ := testRunner()
+		got := refuse(r, &core.RunResponse{Exit: 7}, &core.RefusalError{Code: code, Message: "m"})
+		if got != want {
+			t.Errorf("refuse(%s) exit = %d, want %d", code, got, want)
+		}
 	}
 }
