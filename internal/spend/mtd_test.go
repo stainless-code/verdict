@@ -496,8 +496,8 @@ func TestSpawnReceiptedBundleIsCountedFromItsReceipts(t *testing.T) {
 }
 
 // TestSettledInvocationsOfOneExecutionEachCount proves a resumed execution's
-// settled receipts are each counted — every invocation spent — while
-// unsettled authorizations of one execution still count once.
+// receipts are each counted, settled or not: every invocation authorized and
+// spent on its own, so collapsing them under the execution would drop one.
 func TestSettledInvocationsOfOneExecutionEachCount(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
@@ -506,8 +506,30 @@ func TestSettledInvocationsOfOneExecutionEachCount(t *testing.T) {
 		`{"at":"2026-05-15T11:00:00Z","execution_id":"e","invocation_id":"e@2","projected_usd":0.2,"priced_by":"measured"},`+
 		`{"at":"2026-05-15T11:30:00Z","execution_id":"f","invocation_id":"f@1","projected_usd":1},`+
 		`{"at":"2026-05-15T11:40:00Z","execution_id":"f","invocation_id":"f@2","projected_usd":1}]`)
-	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "1.5" {
-		t.Fatalf("AggregateMTD = %+v, want both settled invocations (0.5) and one authorization (1)", got)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "2.5" {
+		t.Fatalf("AggregateMTD = %+v, want both settled invocations (0.5) and both authorizations (2)", got)
+	}
+}
+
+// TestMeasuredInvocationOutranksTheSelfReport proves a two-finder receipt
+// settled from the agents' own output is never displaced by a later
+// self-report, while a self-report owned by a newer, unsettled invocation
+// still replaces that invocation's projection.
+func TestMeasuredInvocationOutranksTheSelfReport(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 13, 0, 0, 0, time.UTC)
+	writeLedger(t, root, "42", `[{"at":"2026-05-15T12:00:00Z","execution_id":"e","scope":"invocation",`+
+		`"invocation_id":"e@1","projected_usd":2,"priced_by":"measured"}]`)
+	writeCost(t, root, "42", `{"at":"2026-05-15T12:00:05Z","est_usd":0.05}`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "2" {
+		t.Fatalf("AggregateMTD = %+v, want the measured 2, never the self-reported 0.05", got)
+	}
+	writeLedger(t, root, "42", `[`+
+		`{"at":"2026-05-15T10:00:00Z","execution_id":"e","scope":"invocation","invocation_id":"e@1","projected_usd":0.3,"priced_by":"tokens"},`+
+		`{"at":"2026-05-15T11:00:00Z","execution_id":"e","scope":"invocation","invocation_id":"e@2","projected_usd":1}]`)
+	writeCost(t, root, "42", `{"at":"2026-05-15T11:30:00Z","est_usd":0.8}`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "1.1" {
+		t.Fatalf("AggregateMTD = %+v, want the measured 0.3 plus the newer invocation's 0.8 self-report", got)
 	}
 }
 

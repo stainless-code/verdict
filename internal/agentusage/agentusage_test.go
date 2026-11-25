@@ -169,7 +169,12 @@ func TestCodexModelFollowsTheLaunchAndConfig(t *testing.T) {
 		{name: "default profile", args: []string{"exec"}, model: "gpt-6-luna", ok: true},
 		{name: "named profile", args: []string{"exec", "-p", "local"}},
 		{name: "explicit model", args: []string{"exec", "--model=gpt-5"}, model: "gpt-5", ok: true},
-		{name: "config override", args: []string{"exec", "-c", `model="gpt-5-mini"`}, model: "gpt-5-mini", ok: true},
+		{name: "override against the profile", args: []string{"exec", "-c", `model="gpt-5-mini"`}},
+		{name: "override without a profile", args: []string{"exec", "-p", "bare", "-c", "model=gpt-5-mini"}, model: "gpt-5-mini", ok: true},
+		{name: "flag beats a later override", args: []string{"exec", "-m", "gpt-6.2-astra", "-c", "model=gpt-6-luna"}, model: "gpt-6.2-astra", ok: true},
+		{name: "profile override", args: []string{"exec", "-c", "profile=local"}},
+		{name: "flag and override disagree on the profile", args: []string{"exec", "-p", "fast", "-c", "profile=local"}},
+		{name: "dotted model override", args: []string{"exec", "-c", "profiles.fast.model=gpt-6.2-astra"}},
 		{name: "open-source run", args: []string{"exec", "--oss"}},
 	}
 	for _, tc := range cases {
@@ -179,5 +184,53 @@ func TestCodexModelFollowsTheLaunchAndConfig(t *testing.T) {
 	}
 	if model, ok := CodexModel(t.TempDir(), []string{"exec"}); model != "" || ok {
 		t.Errorf("no config = %q %v, want nothing", model, ok)
+	}
+}
+
+// TestCodexConfigCommentsAndProfileFiles proves the config reader: trailing
+// comments are stripped, a profile kept in its own <name>.config.toml is
+// read, and a model, provider, or profile key it cannot read is no price.
+func TestCodexConfigCommentsAndProfileFiles(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, config, profileFile, model string
+		args                             []string
+		ok                               bool
+	}{
+		{
+			name:   "commented profile and header",
+			config: "model = \"gpt-6.2-sol\"\nprofile = \"fast\" # default\n[profiles.fast] # cheap\nmodel = \"gpt-6-luna\" # small\n",
+			model:  "gpt-6-luna", ok: true,
+		},
+		{name: "commented local provider", config: "model = \"gpt-6.2-sol\"\nmodel_provider = \"ollama\" # local\n"},
+		{name: "hash inside the value", config: "model = \"gpt-6.2-sol#x\"\n", model: "gpt-6.2-sol#x", ok: true},
+		{
+			name: "profile file", config: "model = \"gpt-6.2-sol\"\n", profileFile: "model = \"gpt-6-luna\"\n",
+			args: []string{"-p", "fast"}, model: "gpt-6-luna", ok: true,
+		},
+		{
+			name: "profile file names another provider", config: "model = \"gpt-6.2-sol\"\n",
+			profileFile: "model_provider = \"ollama\"\n", args: []string{"-p", "fast"},
+		},
+		{name: "unreadable model", config: "model = 5\n"},
+		{name: "dotted profile model", config: "model = \"gpt-6.2-sol\"\nprofiles.fast.model = \"gpt-6-luna\"\n"},
+		{name: "inline profile", config: "model = \"gpt-6.2-sol\"\n[profiles]\nfast = { model = \"gpt-6-luna\" }\n"},
+	}
+	for _, tc := range cases {
+		home := t.TempDir()
+		writeConfig(t, home, "config.toml", tc.config)
+		if tc.profileFile != "" {
+			writeConfig(t, home, "fast.config.toml", tc.profileFile)
+		}
+		if model, ok := CodexModel(home, append([]string{"exec"}, tc.args...)); model != tc.model || ok != tc.ok {
+			t.Errorf("%s: CodexModel = %q %v, want %q %v", tc.name, model, ok, tc.model, tc.ok)
+		}
+	}
+}
+
+func writeConfig(t *testing.T, home, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(home, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

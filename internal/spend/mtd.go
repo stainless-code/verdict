@@ -134,29 +134,69 @@ func aggregateBundle(bundleDir, month string, sum *big.Rat, known, unknown *int)
 	// A bundle whose spawns are receipted one by one (the self-review loop's)
 	// is counted from those receipts alone: each carries its own source, and
 	// the agent's bundle-level cost record would count the same spend again.
-	meta := &recordedMeta{maxAt: map[string]time.Time{}}
-	if !receiptedPerSpawn(bundleDir) {
-		meta = aggregateRecorded(bundleDir, month, sum, known, unknown)
+	owners, perSpawn := readLedgerOwners(bundleDir)
+	meta := &recordedMeta{maxAt: map[string]time.Time{}, owners: owners}
+	if !perSpawn {
+		aggregateRecorded(bundleDir, month, sum, known, unknown, meta)
 	}
 	aggregateLedger(bundleDir, month, sum, known, unknown, meta)
 }
 
-// receiptedPerSpawn reports whether the bundle's ledger holds any spawn row.
-func receiptedPerSpawn(bundleDir string) bool {
+// ledgerOwner is one ledger row as a recorded cost file is matched to it:
+// its execution, its time, and whether the agent CLI's own output priced it.
+type ledgerOwner struct {
+	at       time.Time
+	exec     string
+	measured bool
+}
+
+// readLedgerOwners reads the bundle's ledger rows that can own a recorded
+// cost file, and whether any row receipts a single spawn.
+func readLedgerOwners(bundleDir string) ([]ledgerOwner, bool) {
+	var owners []ledgerOwner
+	perSpawn := false
+	for _, row := range readLedger(bundleDir) {
+		obj, ok := row.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		perSpawn = perSpawn || stringFieldOf(obj, "scope") == ScopeSpawn
+		if owner, ok := ledgerOwnerOf(obj); ok {
+			owners = append(owners, owner)
+		}
+	}
+	return owners, perSpawn
+}
+
+// readLedger is the bundle's budget.json rows; nil when it is absent or
+// unreadable.
+func readLedger(bundleDir string) []any {
 	raw := openBundleFile(bundleDir, "budget.json")
 	if raw == nil {
-		return false
+		return nil
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return false
+		return nil
 	}
-	for _, row := range sliceDoc(doc) {
-		if obj, ok := row.(*jq.Obj); ok && stringFieldOf(obj, "scope") == ScopeSpawn {
-			return true
-		}
-	}
-	return false
+	return sliceDoc(doc)
+}
+
+// ledgerOwnerOf is one row as an owner; false when its time is unreadable.
+func ledgerOwnerOf(obj *jq.Obj) (ledgerOwner, bool) {
+	at, _ := obj.Get("at")
+	when, ok := atTimeOf(at)
+	return ledgerOwner{at: when, exec: stringFieldOf(obj, fieldExecutionID), measured: settledMeasured(obj)}, ok
+}
+
+// fieldExecutionID is the ledger and cost-record field naming an execution.
+const fieldExecutionID = "execution_id"
+
+// settledMeasured reports a ledger row the agent CLI's own output priced:
+// measured spend that no self-report outranks or suppresses.
+func settledMeasured(obj *jq.Obj) bool {
+	by := stringFieldOf(obj, "priced_by")
+	return by == PricedMeasured || by == PricedTokens
 }
 
 // unidentifiedExecID is the execution identity of a receipt that named no
@@ -173,7 +213,27 @@ const unidentifiedExecID = ""
 // the ledger. Records from other months are excluded from meta, so they
 // cannot suppress the requested month's ledger.
 type recordedMeta struct {
-	maxAt map[string]time.Time
+	maxAt  map[string]time.Time
+	owners []ledgerOwner
+}
+
+// measuredOwner reports a recorded receipt whose spend a measured ledger row
+// already counts: the latest row at or before it, of its execution (any
+// execution when it names none), was priced from the agent's own output.
+func (m *recordedMeta) measuredOwner(exec string, at time.Time) bool {
+	var owner *ledgerOwner
+	for i := range m.owners {
+		if row := &m.owners[i]; row.owns(exec, at) && (owner == nil || row.at.After(owner.at)) {
+			owner = row
+		}
+	}
+	return owner != nil && owner.measured
+}
+
+// owns reports a row a receipt of exec could belong to: the receipt's
+// execution (any, when it names none), written at or before the receipt.
+func (r *ledgerOwner) owns(exec string, at time.Time) bool {
+	return (exec == unidentifiedExecID || r.exec == exec) && !r.at.After(at)
 }
 
 // note records one in-month receipt's identity and timestamp, keeping the
@@ -192,12 +252,10 @@ func (m *recordedMeta) note(exec string, at time.Time) {
 // timestamp falls in month and returns the meta describing those in-month
 // recorded receipts; records outside month, and records without a parseable
 // timestamp, name no month's spend and never suppress the ledger.
-func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int) *recordedMeta {
-	meta := &recordedMeta{maxAt: map[string]time.Time{}}
+func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
 	for _, name := range recordedCostNames(bundleDir) {
 		countRecordedFile(bundleDir, name, month, sum, known, unknown, meta)
 	}
-	return meta
 }
 
 func recordedCostNames(bundleDir string) []string {
@@ -329,7 +387,11 @@ func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int,
 		return
 	}
 	atTime, _ := atTimeOf(at)
-	meta.note(stringFieldOf(obj, "execution_id"), atTime)
+	exec := stringFieldOf(obj, fieldExecutionID)
+	if meta.measuredOwner(exec, atTime) {
+		return
+	}
+	meta.note(exec, atTime)
 	est, _ := obj.Get("est_usd")
 	if rat, ok := ratOfJSONNumber(est); ok {
 		sum.Add(sum, rat)
@@ -340,22 +402,14 @@ func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int,
 }
 
 // aggregateLedger counts a bundle's budget.json receipt ledger for month.
-// Repeated authorizations of one run (a --print plus a real launch, a
-// re-run) share an execution_id — or a projection_sha256 when no
-// execution_id was recorded — and count once, so the ledger cannot
-// double-count a retried authorization. Rows already represented by
-// in-month recorded cost are suppressed via meta.
+// Each invocation's receipt counts once; rows without an invocation_id that
+// share an execution_id — or a projection_sha256 when no execution_id was
+// recorded — count once, so the ledger cannot double-count a retried
+// authorization. Rows already represented by in-month recorded cost are
+// suppressed via meta.
 func aggregateLedger(bundleDir, month string, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
-	raw := openBundleFile(bundleDir, "budget.json")
-	if raw == nil {
-		return
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		return
-	}
 	seen := map[string]bool{}
-	for _, receipt := range sliceDoc(doc) {
+	for _, receipt := range readLedger(bundleDir) {
 		countLedgerReceipt(receipt, month, seen, sum, known, unknown, meta)
 	}
 }
@@ -400,13 +454,18 @@ func isDuplicate(obj *jq.Obj, seen map[string]bool) bool {
 // Unidentified recorded cost covers any row, whichever identity the row
 // carries, because legacy cost.json omits the id its budget.json row holds.
 // A ledger timestamp that cannot be ordered against the recorded cost is
-// suppressed: never double-count what cannot be compared.
+// suppressed: never double-count what cannot be compared. A row priced from
+// the agent CLI's own output is never suppressed: no self-report outranks
+// measured spend.
 func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
 	ledgerAt, ok := atTimeOf(at)
 	if !ok {
 		return true
 	}
-	if recMaxAt, ok := meta.maxAt[stringFieldOf(obj, "execution_id")]; ok {
+	if settledMeasured(obj) {
+		return false
+	}
+	if recMaxAt, ok := meta.maxAt[stringFieldOf(obj, fieldExecutionID)]; ok {
 		if !ledgerAt.After(recMaxAt) {
 			return true
 		}
@@ -464,16 +523,17 @@ func knownSubtotalOf(obj *jq.Obj) (*big.Rat, bool) {
 }
 
 // budgetDedupeKey is the authorization identity one ledger row carries:
-// its execution_id, falling back to its projection_sha256 when the row
-// recorded no execution. Rows with neither have no identity and every
-// one of them counts.
+// its invocation_id, else its execution_id, falling back to its
+// projection_sha256 when the row recorded neither. Rows with none of them
+// have no identity and every one of them counts.
 func budgetDedupeKey(obj *jq.Obj) string {
-	// A settled receipt is one invocation's measured spend: a resumed
-	// execution's invocations each spent, so each settled row counts.
-	if inv := stringFieldOf(obj, "invocation_id"); inv != "" && stringFieldOf(obj, "priced_by") != "" {
+	// Each invocation of an execution authorized, and spent, on its own: a
+	// resumed execution's receipts each count, settled or not. One
+	// invocation's receipt is one row, settled in place.
+	if inv := stringFieldOf(obj, "invocation_id"); inv != "" {
 		return "invocation:" + inv
 	}
-	if exec := stringFieldOf(obj, "execution_id"); exec != "" {
+	if exec := stringFieldOf(obj, fieldExecutionID); exec != "" {
 		return exec
 	}
 	return stringFieldOf(obj, "projection_sha256")

@@ -159,6 +159,11 @@ func (st *state) spawnTapped(ctx context.Context, args *launchArgs, prompt strin
 	if res != nil && tap != nil && !res.StdoutTapped {
 		tap = untapped(tap, res)
 	}
+	if err != nil {
+		// The verdict reads a failed spawn by its error alone; its capture
+		// served the measurement above.
+		res = nil
+	}
 	return spawned{res: res, tap: tap}, err
 }
 

@@ -271,3 +271,30 @@ func TestTruncatedCaptureIsNeverMeasured(t *testing.T) {
 		t.Errorf("spend = %q, want nothing measured from a truncated capture", got.rows)
 	}
 }
+
+// TestPostStartErrorStillMeasuresItsStdout proves a spawn that started and
+// then failed is priced from the complete stdout a non-tapping commander
+// handed back with the error, never dropped to a lower projection; a cut
+// capture stays unpriced.
+func TestPostStartErrorStillMeasuresItsStdout(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		usd, by   string
+		truncated bool
+	}{
+		{name: "complete", usd: "0.3", by: spend.PricedMeasured},
+		{name: "truncated", truncated: true},
+	} {
+		res := core.Result{Stdout: claudeResult(t, "done", "0.3"), StdoutTruncated: tc.truncated, ExitCode: -1}
+		req := request(t.TempDir(), &scripted{res: res, err: errors.New("wait: process group lost")})
+		req.MeasureSpend = true
+		out, ref := Dispatch(t.Context(), req, nil, "fix")
+		if ref == nil || !out.Ran {
+			t.Errorf("%s: dispatch = %+v refused=%v, want a refused spawn that ran", tc.name, out, ref)
+		}
+		if out.USD != tc.usd || out.PricedBy != tc.by {
+			t.Errorf("%s: priced %q %q, want %q %q", tc.name, out.USD, out.PricedBy, tc.usd, tc.by)
+		}
+	}
+}

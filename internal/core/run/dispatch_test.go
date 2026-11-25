@@ -258,3 +258,25 @@ func admitAll(t *testing.T, req *core.RunRequest, dir, model string, ids ...stri
 		}
 	}
 }
+
+// TestReceiptIDsStayDistinctUnderOneClock proves two invocations of one
+// execution that read the same clock still write distinct receipts, so a
+// resumed execution's settlement and dedupe never merge them.
+func TestReceiptIDsStayDistinctUnderOneClock(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := spawnBundle(t, root)
+	ids := map[string]bool{}
+	for range 2 {
+		req := request(root, &scripted{})
+		req.Now = mayNow
+		st := &state{req: req}
+		if ref := st.spendReceipt(t.Context(), dir, "exec-1", 1, nil, spend.Projection{}, spend.Policy{}); ref != nil {
+			t.Fatal(ref)
+		}
+		ids[st.receiptID] = true
+	}
+	if len(ids) != 2 {
+		t.Fatalf("receipt ids = %v, want two distinct invocations", ids)
+	}
+}

@@ -4402,13 +4402,19 @@ stops asking for it rather than failing.
 | `codex`    | `--json`               | the last `turn.completed` event's `usage` (a running total for the thread), priced from the catalog's dated table for the model the launch runs | `tokens`    |
 | `opencode` | `--format json`        | the sum of every `step_finish` event's `part.cost`                                                                                              | `measured`  |
 
-Codex's stream names no model, so verdict resolves the model the launch runs:
-`-m`/`--model` or a `-c model=…` override, else the selected profile's `model`
-(`-p`/`--profile`, else `profile` in `config.toml`), else `config.toml`'s
-top-level `model`, read from `$CODEX_HOME` (default `~/.codex`). A Codex spawn
-is token-priced only for a model the table carries; an open-source or local run
-(`--oss`, `--local-provider`) or a `model_provider` other than `openai` is never
-priced from it, and neither is usage with prompt-cache writes (priced per
+Codex's stream names no model, so verdict resolves the model the launch runs
+with Codex's own precedence: `-m`/`--model` first; otherwise a `-c model=…`
+override or the selected profile's `model` — which must agree when both are set
+— else `config.toml`'s top-level `model`, read from `$CODEX_HOME` (default
+`~/.codex`). The profile is `-p`/`--profile`, a `-c profile=…` override, or
+`profile` in `config.toml`, and its keys are read from both a
+`[profiles.<name>]` table and a `<name>.config.toml` file. Trailing `#`
+comments are ignored; a model, provider, or profile key verdict cannot read (a
+non-string value, a dotted path, an inline table), or two sources that
+disagree, leave the spawn unpriced rather than priced as the cheaper guess. A
+Codex spawn is token-priced only for a model the table carries; an open-source
+or local run (`--oss`, `--local-provider`) or a `model_provider` other than
+`openai` in any layer is never priced from it, and neither is usage with prompt-cache writes (priced per
 retention tier) or an all-zero usage report. The same resolved model is recorded
 on the spawn's receipt and keys its projection. The table is standard-tier, short-context API pricing
 read 2026-11-25 from OpenAI's pricing and model pages; the catalog cites each
@@ -4427,9 +4433,11 @@ from those receipts alone: the agent's bundle-level `cost.json` beside them is
 never counted a second time, so a measured spawn outranks the self-report
 outright. A two-finder execution's spend receipt is settled to the measured
 total once every one of its spawns was measured (to zero when none of them
-started); otherwise it keeps its projection. Settled receipts count per
-invocation, so a resumed execution's spend is counted for every invocation that
-spent.
+started); otherwise it keeps its projection. A settled `measured` or `tokens`
+receipt is never displaced by a self-report: a `cost.json` written after it,
+with no newer invocation of that execution in between, is not counted. Receipts
+count per invocation, settled or not, so a resumed execution's spend is counted
+for every invocation that spent.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 

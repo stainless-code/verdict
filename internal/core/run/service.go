@@ -6,6 +6,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -848,10 +849,12 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *age
 		cmd.StdoutTap = tap
 	}
 	res, err := commander.Run(tctx, cmd)
-	if err != nil {
+	// A process that never existed has no result; one that started and then
+	// failed keeps its capture, which its spend is still measured from.
+	if _, never := errors.AsType[*core.StartError](err); never {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
-	return &res, nil
+	return &res, err //nolint:wrapcheck // as above
 }
 
 // agentGracePeriod is how long an agent's process group gets to finish after
