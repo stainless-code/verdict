@@ -133,6 +133,19 @@ func TestUnknownCmdMessage(t *testing.T) {
 	}
 }
 
+// TestUnknownCmdListsVerbsInTableOrder pins the user-visible hint to a literal:
+// it names every verb once, in the order of verbTable, so a reordered or
+// dropped row moves the text a person reads.
+func TestUnknownCmdListsVerbsInTableOrder(t *testing.T) {
+	t.Parallel()
+	want := "unknown cmd 'bogus' (want demo|fetch|fetch-local|run|loop|panel|record|adopt|ingest|fix|post|triage|" +
+		"report|next|show|check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|" +
+		"journal|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp)"
+	if got := unknownCmdMessage("bogus"); got != want {
+		t.Fatalf("unknownCmdMessage = %q, want %q", got, want)
+	}
+}
+
 // TestVerbsHintMatchesUsage keeps the unknown-cmd hint and the usage
 // synopsis naming the same verbs, so a new verb cannot reach one and not the
 // other.
