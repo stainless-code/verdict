@@ -418,43 +418,36 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	}
 }
 
-// TestNonLoopbackWarningNamesInteractive pins the interactive exposure
-// warning: it names the write posture, never the read-only surface.
-func TestNonLoopbackWarningNamesInteractive(t *testing.T) {
+// TestNonLoopbackWarningNamesReadOnlyReason pins the two start warnings a bind
+// beyond loopback earns: the plain-HTTP exposure of the read-only surface it
+// serves, and why its writes are off (unless --read-only already said so).
+func TestNonLoopbackWarningNamesReadOnlyReason(t *testing.T) {
 	t.Parallel()
-	out := &syncBuffer{}
-	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
-	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) surface " +
-		"beyond loopback over plain HTTP; the token and session cookie are not encrypted"
-	if !slices.Contains(runner.Warnings, want) {
-		t.Errorf("warnings = %v, want %q", runner.Warnings, want)
-	}
-	for _, warning := range runner.Warnings {
-		if strings.Contains(warning, "read-only surface") {
-			t.Errorf("interactive warnings name the read-only surface: %v", runner.Warnings)
+	const exposure = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
+		"over plain HTTP; the token and session cookie are not encrypted"
+	const reason = "serve: 0.0.0.0 is not loopback, so this server runs read-only: " +
+		"writes would cross plain HTTP, where the token and CSRF token can be sniffed; " +
+		"bind 127.0.0.1 for local triage"
+	for _, tc := range []struct {
+		name string
+		opts serveOptions
+		want []string
+	}{
+		{"default", serveOptions{host: "0.0.0.0"}, []string{exposure, reason}},
+		{"explicit read-only", serveOptions{host: "0.0.0.0", readOnly: true}, []string{exposure}},
+	} {
+		out := &syncBuffer{}
+		runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+		warnExposure(runner, &tc.opts)
+		if !slices.Equal(runner.Warnings, tc.want) {
+			t.Errorf("%s warnings = %q, want %q", tc.name, runner.Warnings, tc.want)
 		}
 	}
-}
-
-// TestNonLoopbackWarningNamesHostPosting pins the allow-post exposure
-// warning: a bind that can write to a code host says so, instead of reading as
-// a local triage surface.
-func TestNonLoopbackWarningNamesHostPosting(t *testing.T) {
-	t.Parallel()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0", allowPost: true})
-	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) and " +
-		"host posting (--allow-post) surface beyond loopback over plain HTTP; " +
-		"the token and session cookie are not encrypted"
-	if !slices.Contains(runner.Warnings, want) {
-		t.Errorf("warnings = %v, want %q", runner.Warnings, want)
-	}
-	for _, warning := range runner.Warnings {
-		if strings.Contains(warning, "read-only surface") || !strings.Contains(warning, "host posting") {
-			t.Errorf("allow-post warnings = %v, want the host posting surface named", runner.Warnings)
-		}
+	warnExposure(runner, &serveOptions{host: "127.0.0.1"})
+	if len(runner.Warnings) != 0 {
+		t.Errorf("loopback warnings = %q, want none", runner.Warnings)
 	}
 }
 

@@ -74,14 +74,16 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errAllowPostReadOnly error = startError("serve: --allow-post and --read-only are mutually exclusive")
-	errNoRoot            error = startError("serve: no root to serve")
-	errNoListener        error = startError("serve: listener is not bound")
-	errRange             error = startError("value out of range")
-	errWatchInterval     error = startError("serve: --interval must be at least 100ms")
-	errWatchSweep        error = startError("serve: --sweep must be at least 100ms")
-	errWatchOrder        error = startError("serve: --sweep must be at least --interval")
-	errNoChanges         error = startError("serve: layer has no change stream; disable watch to serve it")
+	errAllowPostReadOnly    error = startError("serve: --allow-post and --read-only are mutually exclusive")
+	errAllowPostNonLoopback error = startError("serve: --allow-post needs a loopback --host: a bind beyond loopback " +
+		"serves read-only, because the token and CSRF token cross plain HTTP")
+	errNoRoot        error = startError("serve: no root to serve")
+	errNoListener    error = startError("serve: listener is not bound")
+	errRange         error = startError("value out of range")
+	errWatchInterval error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
+	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -242,16 +244,26 @@ func New(cfg *Config) (*Server, error) {
 	return server, nil
 }
 
+// loopbackBind reports whether the config binds only the local machine; an
+// empty host is the loopback default.
+func (c *Config) loopbackBind() bool { return c.Host == "" || isLoopback(c.Host) }
+
 // rule is the shared write-posture rule this config resolves to: --allow-post
-// is the host-posting opt-in, and --read-only overrides everything.
+// is the host-posting opt-in, and --read-only overrides everything. Writes are
+// a loopback-only default: a bind beyond loopback carries the session token and
+// CSRF token over plain HTTP, where an on-path sniffer could replay them to
+// mutate `.verdict` state or start a verify job, so it serves read-only.
 func (c *Config) rule() posture.Rule {
-	return posture.Rule{ReadOnly: c.ReadOnly, HostPostOptIn: c.AllowPost}
+	return posture.Rule{ReadOnly: c.ReadOnly || !c.loopbackBind(), HostPostOptIn: c.AllowPost}
 }
 
-// validateStartConfig refuses the contradictory pair before any layer exists.
+// validateStartConfig refuses the contradictory pairs before any layer exists.
 func validateStartConfig(cfg *Config) error {
 	if cfg.ReadOnly && cfg.AllowPost {
 		return errAllowPostReadOnly
+	}
+	if cfg.AllowPost && !cfg.loopbackBind() {
+		return errAllowPostNonLoopback
 	}
 	return nil
 }
@@ -373,7 +385,11 @@ func (s *Server) runtime() *core.Runtime {
 // URL is the token-bearing start URL. It is the only place the capability is
 // printed.
 func (s *Server) URL() string {
-	return "http://" + s.Addr() + "/?token=" + url.QueryEscape(s.token)
+	s.mu.RLock()
+	port := s.port
+	s.mu.RUnlock()
+	host := net.JoinHostPort(startHost(s.cfg.Host), strconv.Itoa(port))
+	return "http://" + host + "/?token=" + url.QueryEscape(s.token)
 }
 
 // Close releases the listener; an already-closed listener is not an error.
@@ -583,15 +599,13 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 		r.Warn("serve: --token is visible in your process list and shell history")
 	}
 	if !isLoopback(opts.host) {
-		surface := "read-only"
-		switch {
-		case opts.allowPost && !opts.readOnly:
-			surface = "interactive (local triage & KB writes) and host posting (--allow-post)"
-		case !opts.readOnly:
-			surface = "interactive (local triage & KB writes)"
-		}
-		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
+		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback " +
 			"over plain HTTP; the token and session cookie are not encrypted")
+		if !opts.readOnly {
+			r.Warn("serve: " + opts.host + " is not loopback, so this server runs read-only: " +
+				"writes would cross plain HTTP, where the token and CSRF token can be sniffed; " +
+				"bind 127.0.0.1 for local triage")
+		}
 	}
 }
 
@@ -607,7 +621,7 @@ func start(
 		Env: req.Env, Effective: r.Effective, InstallRoot: req.InstallRoot,
 	})
 	if err != nil {
-		if errors.Is(err, errAllowPostReadOnly) {
+		if errors.Is(err, errAllowPostReadOnly) || errors.Is(err, errAllowPostNonLoopback) {
 			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: err.Error()}), false
 		}
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false

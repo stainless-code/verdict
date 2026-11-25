@@ -110,7 +110,20 @@ func isLoopback(host string) bool {
 // allowlisting it would hand a hostile page a name that passes the Host gate.
 func isWildcard(host string) bool {
 	addr, err := netip.ParseAddr(strings.Trim(host, "[]"))
-	return err == nil && addr.IsUnspecified()
+	return err == nil && addr.Unmap().IsUnspecified()
+}
+
+// startHost is the host a start URL names: the bind address, except that a
+// wildcard bind (which the Host gate refuses as a spelling) names the loopback
+// address of its family instead, so the printed URL opens.
+func startHost(bind string) string {
+	if !isWildcard(bind) {
+		return bind
+	}
+	if addr, err := netip.ParseAddr(strings.Trim(bind, "[]")); err == nil && addr.Unmap().Is6() {
+		return loopbackV6
+	}
+	return loopbackV4
 }
 
 // hostAllowed accepts only Host spellings that name the listen address. A

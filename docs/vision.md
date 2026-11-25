@@ -7,9 +7,10 @@ request; it reads the complete diff, investigates with evidence-graded findings,
 exactly one review — to GitHub, GitLab, or Forgejo — then stops. The agent reviews; the
 host's own CLI (`gh`, `glab`, or `curl`) does host I/O. No remote servers, no external
 services, no daemons, no accounts. A local view is opt-in (`verdict serve`): it binds
-loopback by default, `--host` is the only way it leaves the machine, local triage is on by
-default behind its token, CSRF, Host, and Origin guards (`--read-only` removes every
-write), and posting to a host stays a separate opt-in (`--allow-post`).
+loopback by default and `--host` is the only way it leaves the machine. On loopback, local
+triage is on by default behind its token, CSRF, Host, and Origin guards (`--read-only` removes
+every write) and posting to a host stays a separate opt-in (`--allow-post`); on any other bind
+it serves read-only, because a write would cross plain HTTP.
 
 One sentence: **PR reviews with receipts.**
 

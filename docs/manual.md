@@ -2318,10 +2318,17 @@ rule is shared code (`internal/posture`), and the line it draws is the
   writes (`post`, the `threads` resolve mode) on, because posting is verdict's
   core action and carries its own guards (stale-SHA, duplicate-post, anchor,
   secret, and binding-approval checks). `lsp` has no write path at all.
-- **`serve` (HTTP on loopback) is ambient-reachable, so host posting stays
-  opt-in.** Reads always; local writes on by default behind its token, session
-  cookie, CSRF, Host, and Origin guards; host posting only with `--allow-post`,
-  through the unchanged confirmation-gated preview, nonce, and digest flow.
+- **`serve` (HTTP) is ambient-reachable, so its writes are a loopback-only
+  default and host posting stays opt-in.** Reads always. On a loopback bind
+  (`127.0.0.1`, `localhost`, `::1`), local writes are on by default behind its
+  token, session cookie, CSRF, Host, and Origin guards, and host posting needs
+  `--allow-post`, through the unchanged confirmation-gated preview, nonce, and
+  digest flow. On any other `--host` the server runs read-only — every write
+  route answers `405` and the start warnings say why — because a write there
+  would carry the session token and CSRF token over plain HTTP, where an
+  on-path sniffer could replay them to change `.verdict` state or start a
+  sandboxed verify job; `--allow-post` refuses there, and no flag turns remote
+  writes on.
 - **`--read-only` removes every write, on every surface.** It is the only knob
   for local writes. On `mcp` the write tools leave `tools/list` (only the read
   tools plus `record` with `dry_run` remain); on `serve` every write and job
@@ -2329,11 +2336,11 @@ rule is shared code (`internal/posture`), and the line it draws is the
   flag and behaves the same with or without it. `serve --allow-post` beside
   `--read-only` refuses at startup with `bad-flags`.
 
-| Surface | Transport | Local writes (triage, KB, record, adopt, fix, verify) | Host post                                                                   |
-| ------- | --------- | ----------------------------------------------------- | --------------------------------------------------------------------------- |
-| `mcp`   | stdio     | on; `--read-only` removes the tools                   | `post`, `threads` resolve on; `--read-only` removes them                    |
-| `lsp`   | stdio     | none exist                                            | none exists                                                                 |
-| `serve` | HTTP      | on behind the guards; `--read-only` answers `405`     | `POST /v1/post/submit` only with `--allow-post`; refused with `--read-only` |
+| Surface | Transport | Local writes (triage, KB, record, adopt, fix, verify)                              | Host post                                                                                      |
+| ------- | --------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `mcp`   | stdio     | on; `--read-only` removes the tools                                                | `post`, `threads` resolve on; `--read-only` removes them                                       |
+| `lsp`   | stdio     | none exist                                                                         | none exists                                                                                    |
+| `serve` | HTTP      | loopback bind: on behind the guards; `--read-only` or any other bind answers `405` | `POST /v1/post/submit` only with `--allow-post` on a loopback bind; refused with `--read-only` |
 
 There is no second flag that turns local writes on: `mcp --operator` and
 `serve --interactive` no longer exist, and passing either is an unknown-flag
@@ -3096,19 +3103,21 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 
 ## Serve (local HTTP surface)
 
-`verdict serve` starts one read-only HTTP surface over the current repository's
+`verdict serve` starts one HTTP surface over the current repository's
 bundles. With `--root`, it discovers every repository below that directory.
-Unless `--read-only`, it also serves two local-only write endpoints — `POST
-/v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
-services the CLI calls ([Write posture](#write-posture-mcp-serve-lsp));
+On a loopback bind, and unless `--read-only`, it also serves two local-only
+write endpoints — `POST /v1/triage` and `POST /v1/kb/promote` — through the
+same triage and learn services the CLI calls
+([Write posture](#write-posture-mcp-serve-lsp)); on any other bind it is
+read-only;
 `--allow-post` adds the one host-writing route, `POST /v1/post/submit`, which
 posts a review to the code host (see **Host posting (Tier C)** below). The server binds
 `127.0.0.1` on a kernel-assigned
 port by default. Pass `--port` to pin the port or `--host` to bind another
 interface. The server prints one tokenised start URL and stops on Ctrl-C
 (exit 3). It never fetches or runs a model, and without `--allow-post` it never
-posts to the host; with `--read-only`, it writes no store at all. The
-post preview (any server not `--read-only`) is not network-free: it runs `post`'s dry-run,
+posts to the host; read-only (`--read-only`, or a non-loopback bind), it writes no
+store at all. The post preview (any writable server) is not network-free: it runs `post`'s dry-run,
 which reads live host state through the host CLI (the pull request head, for
 the drift check) before anything is shown. It never posts. A served post does
 not enable `--summary=comment`, so the preview reads no summary comments.
@@ -3148,9 +3157,13 @@ server writes it atomically with mode `0600`, and it expires after 24 hours.
 `--rediscover` forces a walk; `--no-registry` bypasses registry reads and writes. A warm start
 reports `discovery.cached: true` and `scanned_at` in `/v1/health`, `/v1/roots`,
 and the inbox response. The server warns and rebuilds when the registry is
-missing or corrupt. `--host <addr>` (default `127.0.0.1`; any
-other value warns that it exposes the surface beyond the machine over plain
-HTTP, with the token and session cookie unencrypted), `--port <n>` (default
+missing or corrupt. `--host <addr>` (default `127.0.0.1`; loopback is exactly
+`127.0.0.1`, `localhost`, or `::1`. Any other value warns that it exposes the
+surface beyond the machine over plain HTTP, with the token and session cookie
+unencrypted, and serves **read-only**: writes are a loopback-only default, so
+the session token and CSRF token never carry a write over a network, and
+`--allow-post` refuses `bad-flags` there. No flag turns remote writes on),
+`--port <n>` (default
 `0`, the kernel assigns one), `--token <s>` (default: a fresh 128-bit token per
 start; the flag warns it is visible in `ps` and shell history), `--check
 <tier>` (the gate tier the bundle detail composes; default `critical`),
@@ -3237,17 +3250,19 @@ separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
 mismatched, expired, replayed, or bundle-stale preview), `500` (`internal` on an
 unexpected store or read failure), and `503` (`store-busy` when a Tier C submit
 cannot take the bundle lock, and `job-capacity` when the job history is full of
-active jobs). Without
-`--read-only` the write paths accept no method and answer `405` with
-`Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
-by default they accept `POST` only, and every other method —
-including `GET` — answers `405` with `Allow: POST`. Every response carries
+active jobs). On a read-only server
+(`--read-only`, or a non-loopback bind) the write paths accept no method and
+answer `405` with `Allow: GET, HEAD` (and `method-not-allowed` on the write
+paths' own GET); on a writable server they accept `POST` only, and every other
+method — including `GET` — answers `405` with `Allow: POST`. Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
 `nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
 header is ever emitted, and only loopback `Host`/`Origin` spellings are
-accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
-still allowlists only the loopback names, so a LAN client needs a concrete
-interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
+accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0`, `::`, or
+the IPv4-in-IPv6 spelling `::ffff:0.0.0.0`) still allowlists only the loopback
+names, so a LAN client needs a concrete interface address such as
+`--host 192.168.1.10`; its start URL names `127.0.0.1` (or `::1`), not the
+wildcard spelling the gate refuses. `/v1` is the only version: a
 breaking change becomes `/v2`.
 
 **Review diff.** `GET /v1/roots/{root}/bundles/{bundle}/diff` renders the bundle `full.diff` the way a dashboard does: files grouped by change lane in risk order (`schema`, `source`, `config`, `tests`, `docs`, `generated`, `lockfiles`, `renamed`, `whitespace`), each lane reporting file count, `+add / -del`, and finding counts by lens. Files show side-by-side and unified views with a toggle, changed words highlighted from server-computed spans, collapsed `… N unchanged lines` gaps between hunks, and findings anchored on their exact `path` + `line` + `side`. The diff is parsed from the confined bundle only; the view carries `data.sources[]` (`full.diff` plus blob/head SHAs from `PR.json`/`source.json`/index lines), while files carry anchored findings (`path` + `line` + `side`) and each lane carries lane-level `by_lens` counts. File-scoped (line-less) findings are excluded from both lane counts and row anchors: only line-bound findings increment lane counts, and inline rows anchor them. The line engine is a pure-Go histogram diff with Myers fallback and an indent heuristic; the word pass pairs adjacent lines and marks changed tokens without JavaScript diff math. Both are pinned by literal fixtures and mutation proofs (dropping the indent slide or the word pass fails a test). The static `report --html` export snapshots the diff route as `data.json` alongside the detail routes.
@@ -3326,8 +3341,9 @@ duplicate-post, anchor-validation, own-PR, and binding-approval guard the
 CLI `verdict post` inherits applies unchanged and the `post.json` and
 `findings.json` receipts are byte-identical. It is the only host write in
 serve, and it is doubly gated: without `--allow-post` posting is never enabled,
-and `--allow-post` beside `--read-only` refuses at startup with `bad-flags`
-(`--allow-post and --read-only are mutually exclusive`). Without `--allow-post`,
+and `--allow-post` beside `--read-only`, or on a non-loopback `--host`, refuses
+at startup with `bad-flags` (`--allow-post and --read-only are mutually
+exclusive`; `--allow-post needs a loopback --host`). Without `--allow-post`,
 `POST /v1/post/submit` answers `403 post-disabled` before any host client
 is touched; under `--read-only` the server answers the `405` placeholder.
 With `--allow-post`, `GET /v1/health` advertises

@@ -733,7 +733,8 @@ func usageText() string {
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
 		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
-		"    local writes unless --read-only (the one write-posture flag, shared with mcp and lsp):\n" +
+		"    local writes on a loopback bind unless --read-only (the one write-posture flag, shared with\n" +
+		"    mcp and lsp; any other --host serves read-only and refuses --allow-post):\n" +
 		"    POST /v1/triage and POST /v1/kb/promote (local triage and KB promotion through the\n" +
 		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
 		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
