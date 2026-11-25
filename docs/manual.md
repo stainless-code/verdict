@@ -328,11 +328,11 @@ runs, `verify` copies those bytes into a snapshot — a private directory under 
 host temp root, outside your checkout, that git sees as a detached linked worktree —
 names exactly what it copied as a git tree, re-reads the snapshot to prove it still
 holds that tree, and runs the command there, never in your checkout; it removes the
-snapshot afterwards, and a later run sweeps any a killed run stranded. So nothing done
-to your checkout while the command runs (an edit, a checkout and restore) changes
-what it tested — as long as the command stays in its directory: without `--sandbox`
-it can still reach your checkout by absolute path, and only `--sandbox` confines it to
-the snapshot.
+snapshot afterwards, and a later run sweeps any a killed run stranded. The command's
+relative reads see the snapshot, so an edit or a checkout and restore in your checkout
+while it runs does not change them. A command that reads your checkout by absolute
+path still sees it, changes included: `--sandbox` makes the checkout read-only, not
+inaccessible.
 
 The snapshot is a clean checkout of that content, like CI: ignored files — installed
 dependencies (`node_modules/`), build output, local config such as `.env.local` — are
@@ -1462,8 +1462,9 @@ code, timeout and sandbox flags and mechanism, `status` (`passed`, `failed`, `ti
 receipt claiming a pass while recording a nonzero exit, a timeout, no tree, or
 another status is contradictory evidence: it never approves, and `ready` and
 `report` show it as `deep validation contradictory`. The command runs in a
-snapshot, so moving your checkout's head while it runs changes nothing it tested; a
-capture re-fetched or edited mid-command records `unavailable`.
+snapshot, so moving your checkout's head while it runs changes nothing its relative
+reads see (an absolute path into the checkout still reads it); a capture re-fetched
+or edited mid-command records `unavailable`.
 
 `post` reads the receipts at approval time. A binding approval
 (`--approve=true --bind`) refuses `requirement-unmet` until every deep group
