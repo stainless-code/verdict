@@ -1,5 +1,6 @@
-// Package serve is the `serve` verb's transport adapter: one read-only,
-// loopback HTTP surface over the query layer the CLI verbs share.
+// Package serve is the `serve` verb's transport adapter: one loopback HTTP
+// surface over the query layer the CLI verbs share. It serves local writes
+// unless --read-only, the one write-posture knob shared with mcp and lsp.
 package serve
 
 import (
@@ -21,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/posture"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -40,23 +42,23 @@ const (
 	shutdownTimeout  = 5 * time.Second
 	minWatchInterval = 100 * time.Millisecond
 
-	flagRoot        = "--root"
-	flagHost        = "--host"
-	flagPort        = "--port"
-	flagToken       = "--token"
-	flagCheck       = "--check"
-	flagMaxBundles  = "--max-bundles"
-	flagInterval    = "--interval"
-	flagSweep       = "--sweep"
-	flagNoWatch     = "--no-watch"
-	flagJSON        = "--json"
-	flagDepth       = "--depth"
-	flagMaxVisits   = "--max-visits"
-	flagMaxRepos    = "--max-repos"
-	flagRediscover  = "--rediscover"
-	flagNoRegistry  = "--no-registry"
-	flagInteractive = "--interactive"
-	flagAllowPost   = "--allow-post"
+	flagRoot       = "--root"
+	flagHost       = "--host"
+	flagPort       = "--port"
+	flagToken      = "--token"
+	flagCheck      = "--check"
+	flagMaxBundles = "--max-bundles"
+	flagInterval   = "--interval"
+	flagSweep      = "--sweep"
+	flagNoWatch    = "--no-watch"
+	flagJSON       = "--json"
+	flagDepth      = "--depth"
+	flagMaxVisits  = "--max-visits"
+	flagMaxRepos   = "--max-repos"
+	flagRediscover = "--rediscover"
+	flagNoRegistry = "--no-registry"
+	flagAllowPost  = "--allow-post"
+	flagReadOnly   = posture.FlagReadOnly
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -72,14 +74,16 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errAllowPostNeedsInteractive error = startError("serve: --allow-post requires --interactive")
-	errNoRoot                    error = startError("serve: no root to serve")
-	errNoListener                error = startError("serve: listener is not bound")
-	errRange                     error = startError("value out of range")
-	errWatchInterval             error = startError("serve: --interval must be at least 100ms")
-	errWatchSweep                error = startError("serve: --sweep must be at least 100ms")
-	errWatchOrder                error = startError("serve: --sweep must be at least --interval")
-	errNoChanges                 error = startError("serve: layer has no change stream; disable watch to serve it")
+	errAllowPostReadOnly    error = startError("serve: --allow-post and --read-only are mutually exclusive")
+	errAllowPostNonLoopback error = startError("serve: --allow-post needs a loopback --host: a bind beyond loopback " +
+		"serves read-only, because the token and CSRF token cross plain HTTP")
+	errNoRoot        error = startError("serve: no root to serve")
+	errNoListener    error = startError("serve: listener is not bound")
+	errRange         error = startError("value out of range")
+	errWatchInterval error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
+	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -121,20 +125,24 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	// from (the CLI's `package.json` beside the binary), threaded into every
 	// served post exactly as `verdict post` threads it, so the footer and
 	// payload version never come from the process working directory.
-	InstallRoot       string
-	Host              string
-	Port              int
-	Token             string
-	Check             string
-	MaxBundles        int
-	Interval          time.Duration
-	Sweep             time.Duration
-	NoWatch           bool
-	Heartbeat         time.Duration
-	Version           string
-	Now               func() time.Time
-	Layer             Layer
-	Interactive       bool
+	InstallRoot string
+	Host        string
+	Port        int
+	Token       string
+	Check       string
+	MaxBundles  int
+	Interval    time.Duration
+	Sweep       time.Duration
+	NoWatch     bool
+	Heartbeat   time.Duration
+	Version     string
+	Now         func() time.Time
+	Layer       Layer
+	// ReadOnly is --read-only, the shared write-posture flag: no local write
+	// route, no job route, no host post. The default serves local writes.
+	ReadOnly bool
+	// AllowPost is --allow-post, the separate host-posting consent; it never
+	// rides on ReadOnly being false, and it refuses alongside ReadOnly.
 	AllowPost         bool
 	VerifyRunner      VerifyRunner
 	PostPreviewRunner PostPreviewRunner
@@ -177,6 +185,8 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	// on purpose, still ends with the server instead of outliving it.
 	stopping     chan struct{}
 	stoppingOnce sync.Once
+	// rule is the resolved write posture every write route consults.
+	rule posture.Rule
 }
 
 // New builds a server over one root (or the injected layer) and mints its
@@ -194,12 +204,14 @@ func New(cfg *Config) (*Server, error) {
 	if token == "" {
 		token = newToken()
 	}
+	rule := cfg.rule()
 	var csrf string
-	if cfg.Interactive {
+	if rule.LocalWrites() {
 		csrf = newToken()
 	}
 	server := &Server{
 		stopping:          make(chan struct{}),
+		rule:              rule,
 		cfg:               *cfg,
 		token:             token,
 		csrf:              csrf,
@@ -232,10 +244,26 @@ func New(cfg *Config) (*Server, error) {
 	return server, nil
 }
 
-// validateStartConfig checks the opt-in ladder before any layer exists.
+// loopbackBind reports whether the config binds only the local machine; an
+// empty host is the loopback default.
+func (c *Config) loopbackBind() bool { return c.Host == "" || isLoopback(c.Host) }
+
+// rule is the shared write-posture rule this config resolves to: --allow-post
+// is the host-posting opt-in, and --read-only overrides everything. Writes are
+// a loopback-only default: a bind beyond loopback carries the session token and
+// CSRF token over plain HTTP, where an on-path sniffer could replay them to
+// mutate `.verdict` state or start a verify job, so it serves read-only.
+func (c *Config) rule() posture.Rule {
+	return posture.Rule{ReadOnly: c.ReadOnly || !c.loopbackBind(), HostPostOptIn: c.AllowPost}
+}
+
+// validateStartConfig refuses the contradictory pairs before any layer exists.
 func validateStartConfig(cfg *Config) error {
-	if cfg.AllowPost && !cfg.Interactive {
-		return errAllowPostNeedsInteractive
+	if cfg.ReadOnly && cfg.AllowPost {
+		return errAllowPostReadOnly
+	}
+	if cfg.AllowPost && !cfg.loopbackBind() {
+		return errAllowPostNonLoopback
 	}
 	return nil
 }
@@ -357,7 +385,11 @@ func (s *Server) runtime() *core.Runtime {
 // URL is the token-bearing start URL. It is the only place the capability is
 // printed.
 func (s *Server) URL() string {
-	return "http://" + s.Addr() + "/?token=" + url.QueryEscape(s.token)
+	s.mu.RLock()
+	port := s.port
+	s.mu.RUnlock()
+	host := net.JoinHostPort(startHost(s.cfg.Host), strconv.Itoa(port))
+	return "http://" + host + "/?token=" + url.QueryEscape(s.token)
 }
 
 // Close releases the listener; an already-closed listener is not an error.
@@ -480,7 +512,7 @@ type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	maxBundles                 int
 	depth, maxVisits, maxRepos int
 	rediscover, noRegistry     bool
-	interactive                bool
+	readOnly                   bool
 	allowPost                  bool
 	interval                   time.Duration
 	sweep                      time.Duration
@@ -567,15 +599,13 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 		r.Warn("serve: --token is visible in your process list and shell history")
 	}
 	if !isLoopback(opts.host) {
-		surface := "read-only"
-		switch {
-		case opts.allowPost && opts.interactive:
-			surface = "interactive (local triage & KB writes) and host posting (--allow-post)"
-		case opts.interactive:
-			surface = "interactive (local triage & KB writes)"
-		}
-		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
+		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback " +
 			"over plain HTTP; the token and session cookie are not encrypted")
+		if !opts.readOnly {
+			r.Warn("serve: " + opts.host + " is not loopback, so this server runs read-only: " +
+				"writes would cross plain HTTP, where the token and CSRF token can be sniffed; " +
+				"bind 127.0.0.1 for local triage")
+		}
 	}
 }
 
@@ -587,11 +617,11 @@ func start(
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
-		Layer: opts.layer, Interactive: opts.interactive, AllowPost: opts.allowPost,
+		Layer: opts.layer, ReadOnly: opts.readOnly, AllowPost: opts.allowPost,
 		Env: req.Env, Effective: r.Effective, InstallRoot: req.InstallRoot,
 	})
 	if err != nil {
-		if errors.Is(err, errAllowPostNeedsInteractive) {
+		if errors.Is(err, errAllowPostReadOnly) || errors.Is(err, errAllowPostNonLoopback) {
 			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: err.Error()}), false
 		}
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
@@ -609,7 +639,7 @@ func announce(r *cli.Runner, server *Server) {
 		data := jq.NewObj(
 			"url", server.URL(),
 			"listen", server.Addr(),
-			"read_only", !server.cfg.Interactive,
+			"read_only", !server.rule.LocalWrites(),
 			"allow_post", server.cfg.AllowPost,
 			"partial", false,
 			"sources", []any{},
@@ -620,13 +650,13 @@ func announce(r *cli.Runner, server *Server) {
 		return
 	}
 	fmt.Fprintln(r.Human, "serve: "+server.URL())
-	posture := "read-only; Ctrl-C stops"
-	if server.cfg.Interactive && server.cfg.AllowPost {
-		posture = "interactive with host posting enabled; Ctrl-C stops"
-	} else if server.cfg.Interactive {
-		posture = "interactive (local triage & KB writes enabled); Ctrl-C stops"
+	mode := "read-only; Ctrl-C stops"
+	if server.rule.HostPost() {
+		mode = "interactive with host posting enabled; Ctrl-C stops"
+	} else if server.rule.LocalWrites() {
+		mode = "interactive (local triage & KB writes enabled); Ctrl-C stops"
 	}
-	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+posture+")")
+	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+mode+")")
 }
 
 // resolveRoot resolves the served root: --root first (clean, absolute,
@@ -705,8 +735,8 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	case flagNoRegistry:
 		opts.noRegistry = true
 		return i, 0, false
-	case flagInteractive:
-		opts.interactive = true
+	case flagReadOnly:
+		opts.readOnly = true
 		return i, 0, false
 	case flagAllowPost:
 		opts.allowPost = true
@@ -723,7 +753,7 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
 				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
-				"--interval, --sweep, --no-watch, --interactive, --allow-post, --json)", name)}), true
+				"--interval, --sweep, --no-watch, --read-only, --allow-post, --json)", name)}), true
 	}
 }
 

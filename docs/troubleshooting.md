@@ -1269,7 +1269,7 @@ Fix: add `--rationale` with 30+ chars, or `--force`.
 
 Cause: an MCP call names a tool hidden by `--read-only` because it writes local state.
 
-Fix: restart the server without `--read-only`; operator-only tools also require `--operator`.
+Fix: restart the server without `--read-only`.
 
 ## `record-failed`
 

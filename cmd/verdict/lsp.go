@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/lsp"
+	"github.com/stainless-code/verdict/internal/posture"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -36,7 +37,7 @@ const (
 // flags, and the LSP surface an editor counts on.
 func lspUsageText() string {
 	return "usage: verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>]\n" +
-		"                   [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]\n" +
+		"                   [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--json]\n" +
 		"  Serve a review bundle's findings as LSP 3.17 diagnostics over stdio\n" +
 		"  (JSON-RPC 2.0, Content-Length framed). stdout is the protocol channel;\n" +
 		"  warnings go to stderr. Experimental until 1.0.\n" +
@@ -60,6 +61,8 @@ func lspUsageText() string {
 		"  --sweep <duration>  watch content sweep (default 30s, at least --interval)\n" +
 		"  --no-watch  publish on open, save, and verdict.refresh only; a bundle recorded\n" +
 		"              after start is then picked up by verdict.refresh\n" +
+		"  --read-only  accepted for write-posture parity with mcp and serve (see the manual's\n" +
+		"               write posture rule); lsp has no write path, so it is always read-only\n" +
 		"  --json  accepted for CLI-convention parity; stdio is LSP either way\n" +
 		"  Exit 0 after shutdown+exit or on stdin EOF, 1 on exit without shutdown or a start\n" +
 		"  refusal, 2 on argv shape, 3 on a signal that interrupted a running session (a signal\n" +
@@ -160,7 +163,7 @@ func parseLSPFlag(r *cli.Runner, opts *lspOptions, args []string, i int) (int, i
 	case flagShortHelp, flagHelp:
 		fmt.Fprint(r.Out, lspUsageText())
 		return i, cli.ExitOK, true
-	case flagLSPJSON:
+	case flagLSPJSON, posture.FlagReadOnly:
 		return i, 0, false
 	case flagLSPNoWatch:
 		opts.noWatch = true
@@ -174,7 +177,7 @@ func parseLSPFlag(r *cli.Runner, opts *lspOptions, args []string, i int) (int, i
 		return next, code, done
 	default:
 		return i, lspUsage(r, fmt.Sprintf("unknown flag '%s' for lsp (want --root, --bundle, --check, "+
-			"--max-bundles, --max-roots, --interval, --sweep, --no-watch, --json)", name)), true
+			"--max-bundles, --max-roots, --interval, --sweep, --no-watch, --read-only, --json)", name)), true
 	}
 }
 

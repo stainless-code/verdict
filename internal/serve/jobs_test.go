@@ -31,7 +31,7 @@ func interactiveJobServer(
 ) (*httptest.Server, *Server) {
 	t.Helper()
 	server, err := New(&Config{
-		Port: testPort, Token: testToken, Now: fixedNow, Layer: layer, Interactive: true,
+		Port: testPort, Token: testToken, Now: fixedNow, Layer: layer,
 		VerifyRunner: verify, PostPreviewRunner: postPreview,
 	})
 	if err != nil {

@@ -675,68 +675,44 @@ func TestTOMLMultiLineStringAfterTheTable(t *testing.T) {
 	}
 }
 
-// TestFlagSnippets proves each posture combination lands in the JSON snippet.
+// TestFlagSnippets proves --read-only lands in the JSON snippet and nothing
+// else does: the retired --operator is never written.
+//
+//nolint:revive // the posture matrix reads as one assertion block
 func TestFlagSnippets(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name     string
-		readOnly bool
-		operator bool
-	}{
-		{"plain", false, false},
-		{"read-only", true, false},
-		{"operator", false, true},
-	} {
-		checkFlagSnippet(t, tc.name, tc.readOnly, tc.operator)
+	for _, readOnly := range []bool{false, true} {
+		req := testRequest(t, AgentClaude, false)
+		req.ReadOnly = readOnly
+		res, ref := Run(req)
+		if ref != nil {
+			t.Fatalf("readOnly=%v: %v", readOnly, ref)
+		}
+		if !strings.Contains(res.Snippet, `"mcp"`) {
+			t.Errorf("readOnly=%v snippet misses \"mcp\":\n%s", readOnly, res.Snippet)
+		}
+		if got := strings.Contains(res.Snippet, `"--read-only"`); got != readOnly {
+			t.Errorf("readOnly=%v snippet carries --read-only = %v:\n%s", readOnly, got, res.Snippet)
+		}
+		if strings.Contains(res.Snippet, "--operator") {
+			t.Errorf("readOnly=%v snippet carries the retired --operator:\n%s", readOnly, res.Snippet)
+		}
 	}
 }
 
-//nolint:revive // the presence/absence checks read as one assertion block
-func checkFlagSnippet(t *testing.T, name string, readOnly, operator bool) {
-	t.Helper()
-	req := testRequest(t, AgentClaude, false)
-	req.ReadOnly = readOnly
-	req.Operator = operator
-	res, ref := Run(req)
-	if ref != nil {
-		t.Fatalf("%s: %v", name, ref)
-	}
-	mcp := strings.Index(res.Snippet, `"mcp"`)
-	ro := strings.Index(res.Snippet, `"--read-only"`)
-	op := strings.Index(res.Snippet, `"--operator"`)
-	if mcp < 0 {
-		t.Errorf("%s snippet misses \"mcp\":\n%s", name, res.Snippet)
-	}
-	if readOnly && ro < 0 {
-		t.Errorf("%s snippet misses --read-only:\n%s", name, res.Snippet)
-	}
-	if operator && op < 0 {
-		t.Errorf("%s snippet misses --operator:\n%s", name, res.Snippet)
-	}
-	if !readOnly && ro >= 0 {
-		t.Errorf("%s snippet carries --read-only:\n%s", name, res.Snippet)
-	}
-	if !operator && op >= 0 {
-		t.Errorf("%s snippet carries --operator:\n%s", name, res.Snippet)
-	}
-}
-
-// TestFlagSnippetsTOML proves each posture combination lands in the TOML table.
+// TestFlagSnippetsTOML proves each posture lands in the TOML table.
 func TestFlagSnippetsTOML(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		want     string
 		readOnly bool
-		operator bool
 	}{
-		{"plain", `args = ["mcp"]`, false, false},
-		{"read-only", `args = ["mcp", "--read-only"]`, true, false},
-		{"operator", `args = ["mcp", "--operator"]`, false, true},
+		{"plain", `args = ["mcp"]`, false},
+		{"read-only", `args = ["mcp", "--read-only"]`, true},
 	} {
 		req := testRequest(t, AgentCodex, false)
 		req.ReadOnly = tc.readOnly
-		req.Operator = tc.operator
 		res, ref := Run(req)
 		if ref != nil {
 			t.Fatalf("%s: %v", tc.name, ref)
@@ -982,64 +958,37 @@ func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
 	}
 }
 
-// TestRunRefusesPosturePair proves the exported API refuses the pair before
-// writing argv that `verdict mcp` itself rejects.
-func TestRunRefusesPosturePair(t *testing.T) {
-	t.Parallel()
-	req := testRequest(t, AgentClaude, true)
-	path := filepath.Join(req.Cwd, ".mcp.json")
-	seed := `{"mcpServers":{}}` + "\n"
-	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	req.ReadOnly = true
-	req.Operator = true
-	res, ref := Run(req)
-	if ref == nil || ref.Code != "bad-flags" {
-		t.Fatalf("refusal = %v, want bad-flags", ref)
-	}
-	if res != (Result{}) {
-		t.Fatalf("refusal returned result %+v", res)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil || string(raw) != seed {
-		t.Fatalf("refusal wrote %q, %v", raw, err)
-	}
-}
-
-// TestLegacyPairArgsStayOwned proves an on-disk argv carrying both posture
-// flags is still verdict's own entry and is updated, not refused as foreign.
+// TestRetiredOperatorArgvIsForeign proves an on-disk argv carrying the retired
+// --operator flag is no longer verdict's own shape: --write refuses it as
+// foreign and leaves the file byte-identical, instead of rewriting it.
 //
 //nolint:revive // the two-format subtests read as one block
-func TestLegacyPairArgsStayOwned(t *testing.T) {
+func TestRetiredOperatorArgvIsForeign(t *testing.T) {
 	t.Parallel()
 	t.Run("json", func(t *testing.T) {
 		t.Parallel()
 		req := testRequest(t, AgentClaude, true)
 		path := filepath.Join(req.Cwd, ".mcp.json")
-		seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only","--operator"]}}}` + "\n"
+		seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--operator"]}}}` + "\n"
 		if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		res, ref := Run(req)
-		if ref != nil || res.Status != StatusUpdate {
-			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		if _, ref := Run(req); ref == nil || ref.Code != CodeForeign {
+			t.Fatalf("retired argv = %v, want %s", ref, CodeForeign)
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil || strings.Contains(string(raw), "--read-only") {
-			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != seed {
+			t.Fatalf("refusal changed the file: %q, %v", raw, err)
 		}
 	})
 	t.Run("toml", func(t *testing.T) {
 		t.Parallel()
-		req, path := seedCodex(t, "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\", \"--read-only\"]\n")
-		res, ref := Run(req)
-		if ref != nil || res.Status != StatusUpdate {
-			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		seed := "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\"]\n"
+		req, path := seedCodex(t, seed)
+		if _, ref := Run(req); ref == nil || ref.Code != CodeForeign {
+			t.Fatalf("retired argv = %v, want %s", ref, CodeForeign)
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil || strings.Contains(string(raw), "--operator") {
-			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != seed {
+			t.Fatalf("refusal changed the file: %q, %v", raw, err)
 		}
 	})
 }

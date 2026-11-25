@@ -726,18 +726,20 @@ func usageText() string {
 		"    an absent journal on an existing bundle exits 0 with zero steps.\n" +
 		"  serve [--root <dir>] [--depth <n>] [--max-visits <n>] [--max-repos <n>]\n" +
 		"      [--rediscover | --no-registry] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
-		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--interactive] [--allow-post] [--json]\n" +
-		"    read-only loopback HTTP surface over the current repository, or every repository below --root.\n" +
+		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--allow-post] [--json]\n" +
+		"    loopback HTTP surface over the current repository, or every repository below --root.\n" +
 		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
 		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
-		"    no writes unless --interactive adds POST /v1/triage and POST /v1/kb/promote (local\n" +
-		"    triage and KB promotion through the same services the CLI calls, gated by the\n" +
-		"    per-session X-Verdict-CSRF token /v1/health publishes, a present allowlisted Origin,\n" +
-		"    and strict application/json bodies); --allow-post (requiring --interactive) adds\n" +
-		"    POST /v1/post/submit, the confirmation-gated host posting route through core/post;\n" +
+		"    local writes on a loopback bind unless --read-only (the one write-posture flag, shared with\n" +
+		"    mcp and lsp; any other --host serves read-only and refuses --allow-post):\n" +
+		"    POST /v1/triage and POST /v1/kb/promote (local triage and KB promotion through the\n" +
+		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
+		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
+		"    bodies); --allow-post (refused with --read-only) adds POST /v1/post/submit, the\n" +
+		"    confirmation-gated host posting route through core/post;\n" +
 		"    Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
@@ -750,11 +752,11 @@ func usageText() string {
 		"    Ctrl-C exits 3. <owner/repo> narrows the portfolio to one repository; --root reads every\n" +
 		"    repository below <dir> through serve's discovery and its 24-hour registry cache.\n" +
 		"    Watch defaults: --interval 2s, --sweep 60s; y copies through OSC 52, never a subprocess.\n" +
-		"  mcp [--read-only | --operator] (experimental)\n" +
+		"  mcp [--read-only] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
-		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
+		"       [--write] [--dry-run] [--json] [--read-only] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
 		"  acp [--root <dir>] [--check <tier>] [--max-bundles <n>] [--json]\n" +
 		"    serve read-only queries as ACP v1 over stdio (JSON-RPC 2.0, one frame per line).\n" +
@@ -763,7 +765,7 @@ func usageText() string {
 		"    verdict/findings/get, verdict/findings/copy, $/cancel_request.\n" +
 		"    No daemon, no HTTP, no model calls, no writes; exits when stdin closes.\n" +
 		"  lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>] [--max-roots <n>]\n" +
-		"      [--interval <duration>] [--sweep <duration>] [--no-watch] [--json] (experimental)\n" +
+		"      [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--json] (experimental)\n" +
 		"    publish a review bundle's findings as LSP 3.17 diagnostics over stdio (Content-Length\n" +
 		"    framed JSON-RPC 2.0). Diagnostics move on didOpen, didSave, a bundle watch change, and\n" +
 		"    the verdict.refresh command, never on didChange. No model calls, no writes.\n" +
