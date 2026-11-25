@@ -46,12 +46,15 @@ func Block(source, body string) string {
 // rune becomes a plain space, so a U+2028 or an ESC cannot repaint the line
 // that carries the closer. A newline stays a newline.
 func neutralize(body string) string {
-	return breakComments(fence.BreakRuns(fence.Safe(flattenControls(body)), '`'))
+	return breakComments(fence.BreakRuns(fence.Safe(Flatten(body)), '`'))
 }
 
-// flattenControls maps every control and line-separator rune to a space, so the
-// quoted body is one plain text block whose only line breaks are newlines.
-func flattenControls(body string) string {
+// Flatten maps every control and line-separator rune to a space, so the body
+// is one plain text block whose only line breaks are newlines: an ESC cannot
+// start a terminal escape, and a U+2028 cannot repaint a line. It is the one
+// sanitizer for stranger-written text on every surface that renders it,
+// markdown fences and the terminal dashboard alike.
+func Flatten(body string) string {
 	var sb strings.Builder
 	sb.Grow(len(body))
 	for _, r := range body {

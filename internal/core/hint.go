@@ -132,6 +132,14 @@ var hintRules = []HintRule{
 		hint:  "try: send one of the commands initialize advertised in executeCommandProvider.commands (this build: verdict.refresh)",
 	},
 	{
+		codes: []string{"dashboard-no-tty"},
+		hint:  "try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame",
+	},
+	{
+		codes: []string{"dashboard-no-vt"},
+		hint:  "try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame",
+	},
+	{
 		codes: []string{"bad-root"},
 		hint:  "try: pass --root <existing-directory>, or run serve inside a checkout",
 	},

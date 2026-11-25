@@ -2959,7 +2959,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `dashboard`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 
@@ -3344,6 +3344,69 @@ refusal shows. Content hashing shares a 16 MiB budget across the bundle,
 its `chunks` directory, and override fragments — the same byte budget as the
 inventory. If another input exceeds the remaining budget, hashing stops and
 the request bypasses the cache. Refusals are never cached.
+
+## Dashboard (terminal)
+
+`verdict dashboard` draws the review portfolio in a terminal, from the same
+query layer `serve` renders as HTTP: the same rows, the same counts, the same
+refusals. It is one binary with no dependencies and no browser.
+
+```text
+verdict dashboard [--root <dir>] [--once] [--width <cols>] [--height <rows>]
+```
+
+- Without `--root`, it reads the current repository (the same probe every verb
+  uses; outside a checkout it refuses `not-a-repo`). With `--root`, it reads
+  every repository discovery finds below that directory, with `serve`'s
+  defaults (depth 6, 20000 directory visits, 500 repositories) and its 24-hour
+  registry cache.
+- **Overview** (`1`): the portfolio totals (bundles, open, deferred, addressed,
+  terminal), the served roots with their bundle counts, and every bundle the
+  layer refused, with its code. When any bundle refused or a listing was cut,
+  the layer withholds the totals and each shows `—`, never a smaller number.
+- **Queue** (`2`): one row per bundle — bundle, repo, the four counts, model,
+  and the head SHA's first 8 characters. A refused bundle keeps its row,
+  marked `!`, with every count `—`. Rows that do not fit end in `… N more`.
+- The header names the root (or how many roots) and says `read-only`; the
+  status row says `complete` or `partial: totals withheld`, how many bundles
+  refused, how many warnings the layer raised, and the compose time.
+
+**The live view.** It needs a terminal on both stdin and stdout. It switches to
+the alternate screen, puts the terminal in raw mode, draws a `composing…`
+frame, composes once, and then redraws only the cells that change (an idle
+frame writes nothing). Keys: `1` Overview, `2` Queue, `q` or `Esc` quits with
+exit 0; Ctrl-C cancels with exit 3. Every exit — `q`, Ctrl-C, SIGTERM, a
+terminal error, a crash — restores the screen and the terminal mode. A
+terminal smaller than 80×24 shows one resize notice instead of a squeezed
+frame. The view composes once per session: re-run it to read reviews recorded
+since. `--width` and `--height` (80–1000 columns, 24–500 rows) pin the frame
+size instead of following the terminal.
+
+Without a terminal it refuses `dashboard-no-tty` (exit 1; an envelope under
+`--json`) rather than waiting for keys that never come. A Windows console that
+refuses virtual-terminal sequences refuses `dashboard-no-vt`.
+
+**`--once`.** One plain-text Overview frame to stdout, then exit 0 — even when
+bundles refused or totals were withheld, because those are rows and markers in
+the frame, not failures. The frame is the terminal's size when stdout is a
+terminal, and 80×24 otherwise; `--width`/`--height` override both. It never
+carries an escape sequence, color or otherwise, and the layer's warnings go to
+stderr as `warn:` lines. `--once` has no `--json` form (usage error, exit 2):
+read the same views as JSON through `verdict serve` or the MCP query tools.
+
+**Look.** Color uses the 16 ANSI colors only, so the terminal's own theme
+decides how they read. `NO_COLOR` or `--color never` keeps attributes (bold,
+dim, reverse) and drops color; `TERM=dumb` also switches the box and ellipsis
+glyphs to ASCII. Every state has a text shape as well — the active tab is
+bracketed, a refused row is `!`, an unknown count is `—` — so nothing depends
+on color. Text a stranger wrote (a repository name, a refusal message) has
+every control character folded to a space before it reaches the screen, so it
+cannot move the cursor, clear the screen, or write the clipboard.
+
+**Read-only.** The dashboard never writes a review store, posts, fetches, or
+runs a model or any command a bundle names. Its one write is `--root`'s
+discovery registry cache (`projects.json` beside the settings file), the same
+cache `serve --root` keeps. It writes no journal line.
 
 ## Your agent, launched (`run --agent`)
 
