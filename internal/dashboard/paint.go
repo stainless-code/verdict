@@ -60,7 +60,8 @@ func (p *painter) emitRow(back *grid, y, first, last int, cur role) role {
 			p.buf.WriteString(p.pal[c.role])
 			cur = c.role
 		}
-		p.buf.WriteRune(c.r)
+		var tmp [cellBytes]byte
+		p.buf.Write(c.appendTo(tmp[:0]))
 	}
 	return cur
 }

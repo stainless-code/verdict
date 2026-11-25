@@ -2,7 +2,9 @@ package dashboard
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
 func runner(jsonMode bool) (r *cli.Runner, out, diag *bytes.Buffer) {
@@ -139,7 +142,7 @@ func TestRunFlagRefusals(t *testing.T) {
 		},
 		{
 			name: "once with json", args: []string{"--once", "--json"}, code: cli.ExitUsage, json: true,
-			stderr: "dashboard: --once draws a text frame and has no --json form; " +
+			stderr: "dashboard: draws a terminal frame and has no --json form; " +
 				"read the same views as JSON through `verdict serve` or the MCP query tools\n",
 		},
 		{
@@ -187,5 +190,52 @@ func checkLines(t *testing.T, frame string, want map[int]string) {
 		if lines[i] != line {
 			t.Errorf("line %d = %q, want %q", i, lines[i], line)
 		}
+	}
+}
+
+// TestPreflightRefusesJSONWithATerminal proves --json never reaches the live
+// view: with a terminal on both sides there is no refusal to shape, and the
+// live frame has no JSON form, so it is a usage error before anything draws.
+func TestPreflightRefusesJSONWithATerminal(t *testing.T) {
+	t.Parallel()
+	r, out, diag := runner(true)
+	code, refused := preflight(r, &options{}, true, true)
+	want := "dashboard: draws a terminal frame and has no --json form; " +
+		"read the same views as JSON through `verdict serve` or the MCP query tools\n"
+	if !refused || code != cli.ExitUsage || diag.String() != want || out.Len() != 0 {
+		t.Fatalf("preflight = %d %v, stderr %q, stdout %q; want usage %q", code, refused, diag.String(), out.String(), want)
+	}
+	if code, refused := preflight(r, &options{}, false, true); !refused || code != cli.ExitRefused {
+		t.Fatalf("no terminal under --json = %d %v, want the dashboard-no-tty refusal", code, refused)
+	}
+}
+
+// cancelingSource cancels the request inside Bundles, the way Ctrl-C lands
+// mid-compose, and counts what is read after it.
+type cancelingSource struct {
+	fixtureSource
+	cancel context.CancelFunc
+	roots  int
+}
+
+func (c *cancelingSource) Bundles(ctx context.Context, p string) (*query.View, error) {
+	c.cancel()
+	return c.fixtureSource.Bundles(ctx, p)
+}
+
+func (c *cancelingSource) Roots(ctx context.Context) *query.View {
+	c.roots++
+	return c.fixtureSource.Roots(ctx)
+}
+
+// TestLoadStopsAfterACancel proves a cancel during the Bundles compose ends
+// the load with ctx.Err() and reads nothing more.
+func TestLoadStopsAfterACancel(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	src := &cancelingSource{fixtureSource: partialFixture(), cancel: cancel}
+	snap, err := load(ctx, src)
+	if !errors.Is(err, context.Canceled) || snap != nil || src.roots != 0 {
+		t.Fatalf("load = %v, %v with %d Roots read; want context.Canceled, nil, 0", snap, err, src.roots)
 	}
 }

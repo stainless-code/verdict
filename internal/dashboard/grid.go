@@ -2,15 +2,37 @@ package dashboard
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
-// cell is one terminal cell: the rune it shows and the role it is painted
-// with. A wide rune owns the cell after it, which holds rune 0.
+// maxMarks is how many zero-width runes (combining marks, a variation
+// selector, a joiner) one cell carries after its base rune; more are dropped.
+const maxMarks = 2
+
+// cell is one terminal cell: the rune it shows, the zero-width runes that
+// combine with it ("e" + U+0301 is "é"), and the role it is painted with. A
+// wide rune owns the cell after it, which holds rune 0. The struct stays
+// comparable, so the painter's diff is still `==`.
 type cell struct {
-	r    rune
-	role role
+	marks [maxMarks]rune
+	r     rune
+	role  role
+}
+
+// cellBytes fits a base rune and its marks, UTF-8 encoded.
+const cellBytes = utf8.UTFMax * (1 + maxMarks)
+
+// appendTo appends the cell's base rune and its marks, UTF-8 encoded.
+func (c *cell) appendTo(b []byte) []byte {
+	b = utf8.AppendRune(b, c.r)
+	for _, m := range c.marks {
+		if m != 0 {
+			b = utf8.AppendRune(b, m)
+		}
+	}
+	return b
 }
 
 // blank is an empty plain cell.
@@ -51,12 +73,14 @@ func (g *grid) text(x, y, limit int, s string, rl role, cs charset) int {
 // place writes already-fitted text from x and returns the column after it.
 // Zero-width runes have no cell of their own and are dropped.
 func place(row []cell, x int, s string, rl role) int {
-	col := x
+	col, base := x, -1
 	for _, r := range s {
 		w := runeWidth(r)
 		if w == 0 {
+			attachMark(row, base, r)
 			continue
 		}
+		base = col
 		row[col] = cell{r: r, role: rl}
 		if w == 2 {
 			row[col+1] = cell{role: rl}
@@ -64,6 +88,21 @@ func place(row []cell, x int, s string, rl role) int {
 		col += w
 	}
 	return col
+}
+
+// attachMark adds a zero-width rune to the cell at base, the last base rune
+// this write placed. A mark with no base in the write has nothing to combine
+// with and is dropped.
+func attachMark(row []cell, base int, r rune) {
+	if base < 0 {
+		return
+	}
+	for i, m := range row[base].marks {
+		if m == 0 {
+			row[base].marks[i] = r
+			return
+		}
+	}
 }
 
 // mendWide blanks the half of a wide rune a write over [x, end) left behind,
@@ -101,8 +140,9 @@ func (g *grid) lines() string {
 	for y := range g.h {
 		var line strings.Builder
 		for x := range g.w {
-			if r := g.at(x, y).r; r != 0 {
-				line.WriteRune(r)
+			if c := g.at(x, y); c.r != 0 {
+				var tmp [cellBytes]byte
+				line.Write(c.appendTo(tmp[:0]))
 			}
 		}
 		sb.WriteString(strings.TrimRight(line.String(), " "))

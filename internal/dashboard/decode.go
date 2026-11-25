@@ -43,8 +43,10 @@ type bundleRow struct {
 	refused                             bool
 }
 
+// refusedRow is one tolerated failure. An empty bundle is a store-level
+// failure (a corrupt or unreadable root), not a refused bundle.
 type refusedRow struct {
-	bundle, code, message string
+	root, bundle, code, message string
 }
 
 // load composes the two views the snapshot needs. Bundles composes every
@@ -53,6 +55,9 @@ func load(ctx context.Context, src source) (*snapshot, error) {
 	bundles, err := src.Bundles(ctx, "")
 	if err != nil {
 		return nil, err //nolint:wrapcheck // Run renders the layer's typed refusal as is
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return decode(src.Roots(ctx), bundles), nil
 }
@@ -73,7 +78,8 @@ func decode(roots, bundles *query.View) *snapshot {
 	for _, v := range jq.Elements(field(data, "errors")) {
 		o := asObj(v)
 		s.refused = append(s.refused, refusedRow{
-			bundle: strField(o, "bundle"), code: strField(o, "code"), message: strField(o, "message"),
+			root: strField(o, "root"), bundle: strField(o, "bundle"),
+			code: strField(o, "code"), message: strField(o, "message"),
 		})
 	}
 	for _, v := range jq.Elements(field(roots.Data, "roots")) {

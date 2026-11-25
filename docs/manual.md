@@ -3361,8 +3361,10 @@ refusals. It is one binary with no dependencies and no browser.
 verdict dashboard [--root <dir>] [--once] [--width <cols>] [--height <rows>]
 ```
 
-- Without `--root`, it reads the current repository (the same probe every verb
-  uses; outside a checkout it refuses `not-a-repo`). With `--root`, it reads
+- Without `--root`, it reads the current repository, found by the same probe
+  every verb uses: a directory that looks like a checkout git cannot read
+  refuses `not-a-repo`, and a directory with no checkout at all is read as is
+  (an empty portfolio, as `serve` shows). With `--root`, it reads
   every repository discovery finds below that directory, with `serve`'s
   defaults (depth 6, 20000 directory visits, 500 repositories) and its 24-hour
   registry cache.
@@ -3370,27 +3372,39 @@ verdict dashboard [--root <dir>] [--once] [--width <cols>] [--height <rows>]
   terminal), the served roots with their bundle counts, and every bundle the
   layer refused, with its code. When any bundle refused or a listing was cut,
   the layer withholds the totals and each shows `—`, never a smaller number.
+  A failure with no bundle — a root whose store could not be listed — is
+  named `store <root id>` and counted as a store error, not a refused bundle.
 - **Queue** (`2`): one row per bundle — bundle, repo, the four counts, model,
   and the head SHA's first 8 characters. A refused bundle keeps its row,
   marked `!`, with every count `—`. Rows that do not fit end in `… N more`.
 - The header names the root (or how many roots) and says `read-only`; the
   status row says `complete` or `partial: totals withheld`, how many bundles
-  refused, how many warnings the layer raised, and the compose time.
+  refused, how many store errors and warnings the layer raised, and the
+  compose time.
 
 **The live view.** It needs a terminal on both stdin and stdout. It switches to
 the alternate screen, puts the terminal in raw mode, draws a `composing…`
 frame, composes once, and then redraws only the cells that change (an idle
-frame writes nothing). Keys: `1` Overview, `2` Queue, `q` or `Esc` quits with
-exit 0; Ctrl-C cancels with exit 3. Every exit — `q`, Ctrl-C, SIGTERM, a
-terminal error, a crash — restores the screen and the terminal mode. A
-terminal smaller than 80×24 shows one resize notice instead of a squeezed
-frame. The view composes once per session: re-run it to read reviews recorded
-since. `--width` and `--height` (80–1000 columns, 24–500 rows) pin the frame
-size instead of following the terminal.
+frame writes nothing). Keys: `1` Overview, `2` Queue, `q` quits with exit 0,
+and so does `Esc` one read tick (0.1 s) later, so an arrow key a terminal
+splits after its ESC never quits; Ctrl-C cancels with exit 3. On macOS and
+Linux, Ctrl-Z suspends as usual: the shell gets its screen and cooked mode
+back while the job is stopped, and `fg` redraws the frame. Every handled exit
+— `q`, Ctrl-C, SIGTERM, a terminal error, a crash — restores the screen and
+the terminal mode. A SIGKILL (or a power cut) runs no cleanup at all; if a
+killed dashboard leaves the terminal blank or not echoing, run `reset` (or
+`stty sane`). A terminal smaller than 80×24 shows one resize notice instead
+of a squeezed frame; one that reports no size at all is drawn at 80×24 until
+it reports one. The view composes once per session: re-run it to read reviews
+recorded since. `--width` and `--height` (80–1000 columns, 24–500 rows) can
+only narrow the live frame: a frame larger than the terminal would wrap.
 
 Without a terminal it refuses `dashboard-no-tty` (exit 1; an envelope under
-`--json`) rather than waiting for keys that never come. A Windows console that
-refuses virtual-terminal sequences refuses `dashboard-no-vt`.
+`--json`) rather than waiting for keys that never come; in a terminal, `--json`
+is a usage error (exit 2), since the live view has no JSON form. A Windows
+console that refuses virtual-terminal sequences refuses `dashboard-no-vt`; a
+console mode that cannot be put back on exit is reported as an error naming
+`reset`.
 
 **`--once`.** One plain-text Overview frame to stdout, then exit 0 — even when
 bundles refused or totals were withheld, because those are rows and markers in
@@ -3407,7 +3421,10 @@ glyphs to ASCII. Every state has a text shape as well — the active tab is
 bracketed, a refused row is `!`, an unknown count is `—` — so nothing depends
 on color. Text a stranger wrote (a repository name, a refusal message) has
 every control character folded to a space before it reaches the screen, so it
-cannot move the cursor, clear the screen, or write the clipboard.
+cannot move the cursor, clear the screen, or write the clipboard. The same
+holds for every verb's `warn:` and `error:` lines on stderr. Combining marks
+stay on their letter (`e` + U+0301 is `é`), and wide characters follow the
+Unicode 17.0 East Asian Width table.
 
 **Read-only.** The dashboard never writes a review store, posts, fetches, or
 runs a model or any command a bundle names. Its one write is `--root`'s

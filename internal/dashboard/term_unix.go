@@ -3,6 +3,7 @@
 package dashboard
 
 import (
+	"context"
 	"errors"
 	"os"
 	"os/signal"
@@ -20,40 +21,74 @@ type winsize struct {
 // VTIME=1). ISIG stays on, so Ctrl-C is still the SIGINT every verb cancels
 // on, and OPOST stays on, so the output side is untouched.
 type unixTTY struct {
-	winch   chan os.Signal
-	orig    syscall.Termios
-	in, out uintptr
+	winch, tstp, cont chan os.Signal
+	orig, raw         syscall.Termios
+	in, out           uintptr
+	cols, rows        int
 }
 
-// openTTY puts in into raw mode. Either side not being a terminal is
-// errNoTTY: a pipe has no termios and no window size.
+// openTTY puts in into raw mode. An input with no termios (a pipe) is
+// errNoTTY. A window that reports no size is drawn at 80×24 until the first
+// SIGWINCH says otherwise.
 func openTTY(in, out *os.File) (tty, error) {
-	t := &unixTTY{in: in.Fd(), out: out.Fd()}
+	t := &unixTTY{in: in.Fd(), out: out.Fd(), cols: minCols, rows: minRows}
 	if err := ioctl(t.in, ioctlGetTermios, unsafe.Pointer(&t.orig)); err != nil {
 		return nil, errNoTTY
 	}
-	if _, _, ok := winsizeOf(t.out); !ok {
-		return nil, errNoTTY
-	}
-	raw := t.orig
-	raw.Iflag &^= syscall.ICRNL | syscall.IXON
-	raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN
-	raw.Cc[syscall.VMIN] = 0
-	raw.Cc[syscall.VTIME] = readTickDeciseconds
-	if err := ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&raw)); err != nil {
+	t.raw = t.orig
+	t.raw.Iflag &^= syscall.ICRNL | syscall.IXON
+	t.raw.Lflag &^= syscall.ECHO | syscall.ICANON | syscall.IEXTEN
+	t.raw.Cc[syscall.VMIN] = 0
+	t.raw.Cc[syscall.VTIME] = readTickDeciseconds
+	if err := ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&t.raw)); err != nil {
 		return nil, errNoTTY
 	}
 	t.winch = make(chan os.Signal, 1)
+	t.tstp = make(chan os.Signal, 1)
+	t.cont = make(chan os.Signal, 1)
 	signal.Notify(t.winch, syscall.SIGWINCH)
+	signal.Notify(t.tstp, syscall.SIGTSTP)
 	return t, nil
 }
 
 func (t *unixTTY) size() (cols, rows int, err error) {
-	cols, rows, ok := winsizeOf(t.out)
-	if !ok {
-		return 0, 0, errNoTTY
+	c, r, ok := winsizeOf(t.out)
+	t.cols, t.rows = keepSize(t.cols, t.rows, c, r, ok)
+	return t.cols, t.rows, nil
+}
+
+func (t *unixTTY) stopRequested() bool {
+	select {
+	case <-t.tstp:
+		return true
+	default:
+		return false
 	}
-	return cols, rows, nil
+}
+
+// suspend does what the default Ctrl-Z action would, with the terminal put
+// back first: cooked mode, then a real SIGTSTP with the default action, so
+// the shell sees an ordinary stopped job. It waits for SIGCONT before raw
+// mode returns, so a stop delivered to another thread cannot race it.
+func (t *unixTTY) suspend(ctx context.Context) error {
+	if err := ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&t.orig)); err != nil {
+		return errRestore
+	}
+	signal.Notify(t.cont, syscall.SIGCONT)
+	defer signal.Stop(t.cont)
+	signal.Reset(syscall.SIGTSTP)
+	err := syscall.Kill(syscall.Getpid(), syscall.SIGTSTP)
+	if err == nil {
+		select {
+		case <-t.cont:
+		case <-ctx.Done():
+		}
+	}
+	signal.Notify(t.tstp, syscall.SIGTSTP)
+	if rerr := ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&t.raw)); rerr != nil {
+		return errNoTTY
+	}
+	return err //nolint:wrapcheck // a failed self-signal is reported as is
 }
 
 func (t *unixTTY) read(p []byte) (int, error) {
@@ -80,7 +115,11 @@ func (t *unixTTY) resized() bool {
 
 func (t *unixTTY) restore() error {
 	signal.Stop(t.winch)
-	return ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&t.orig))
+	signal.Stop(t.tstp)
+	if err := ioctl(t.in, ioctlSetTermios, unsafe.Pointer(&t.orig)); err != nil {
+		return errRestore
+	}
+	return nil
 }
 
 // termSize reports f's window size when f is a terminal.

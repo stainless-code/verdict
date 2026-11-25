@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func frame(src source, tb tab, w, h int, cs charset) string {
@@ -82,5 +83,47 @@ func TestTextOverAWideRuneMendsBothHalves(t *testing.T) {
 	g.text(0, 1, 10, "abc", rolePlain, charsetUnicode) // over 日 and 本's first half
 	if got, want := g.lines(), " x本語\nabc 語\n"; got != want {
 		t.Fatalf("lines = %q, want %q", got, want)
+	}
+}
+
+// TestTextKeepsCombiningMarks proves a decomposed accent survives the cell
+// grid: "cafe" + U+0301 reads "café" in the plain frame and on the replayed
+// screen, while a mark with no base in its write is dropped.
+func TestTextKeepsCombiningMarks(t *testing.T) {
+	t.Parallel()
+	g := newGrid(minCols, minRows)
+	g.text(2, 1, 20, "cafe\u0301 ok", rolePlain, charsetUnicode)
+	g.text(2, 2, 20, "\u0301orphan", rolePlain, charsetUnicode)
+	if got := strings.Split(g.lines(), "\n")[1:3]; got[0] != "  cafe\u0301 ok" || got[1] != "  orphan" {
+		t.Fatalf("rows = %q, want the accent kept on e and the orphan mark dropped", got)
+	}
+	var out strings.Builder
+	p := &painter{out: &out, pal: &paletteMono}
+	if err := p.paint(g); err != nil {
+		t.Fatal(err)
+	}
+	scr := newScreen(minCols, minRows)
+	scr.replay(t, []byte(out.String()))
+	scr.matches(t, g, &paletteMono)
+}
+
+// TestOverviewLabelsStoreErrors proves a store-level failure (no bundle: the
+// root's store could not be listed) is named by its root and counted apart
+// from refused bundles.
+func TestOverviewLabelsStoreErrors(t *testing.T) {
+	t.Parallel()
+	src := partialFixture()
+	errs, _ := src.bundles.Data.Get("errors")
+	list, ok := errs.([]any)
+	if !ok {
+		t.Fatalf("fixture errors = %T, want []any", errs)
+	}
+	src.bundles.Data.Set("errors", append(list, jq.NewObj(
+		"root", "a1b2c3d4e5f6", "bundle", "", "code", "corrupt-store", "message", "state is not a directory")))
+	got := frame(src, tabOverview, 100, minRows, charsetUnicode)
+	for _, want := range []string{"   ! store a1b2c3d4e5f6  corrupt-store  state is not a directory", "1 refused bundle  1 store error"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("frame lacks %q:\n%s", want, got)
+		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 type screen struct {
 	cur          string
 	runes        [][]rune
+	marks        [][][maxMarks]rune
 	sgr          [][]string
 	w, h, cx, cy int
 	cups         int
@@ -28,9 +29,11 @@ func newScreen(w, h int) *screen {
 
 func (s *screen) clear() {
 	s.runes = make([][]rune, s.h)
+	s.marks = make([][][maxMarks]rune, s.h)
 	s.sgr = make([][]string, s.h)
 	for y := range s.h {
 		s.runes[y] = []rune(strings.Repeat(" ", s.w))
+		s.marks[y] = make([][maxMarks]rune, s.w)
 		s.sgr[y] = make([]string, s.w)
 	}
 }
@@ -49,17 +52,41 @@ func (s *screen) replay(t *testing.T, b []byte) {
 	}
 }
 
-// put draws one printable rune at the cursor and advances it.
+// put draws one printable rune at the cursor and advances it; a zero-width
+// rune combines with the cell before the cursor, as a terminal does.
 func (s *screen) put(t *testing.T, r rune) {
 	t.Helper()
+	if runeWidth(r) == 0 && r >= ' ' {
+		s.combine(t, r)
+		return
+	}
 	if r < ' ' || s.cx >= s.w || s.cy >= s.h {
 		t.Fatalf("rune %q at %d,%d: a raw control byte or a write outside the %dx%d screen", r, s.cx, s.cy, s.w, s.h)
 	}
-	s.runes[s.cy][s.cx], s.sgr[s.cy][s.cx] = r, s.cur
+	s.runes[s.cy][s.cx], s.sgr[s.cy][s.cx], s.marks[s.cy][s.cx] = r, s.cur, [maxMarks]rune{}
 	if runeWidth(r) == 2 {
 		s.runes[s.cy][s.cx+1], s.sgr[s.cy][s.cx+1] = 0, s.cur
 	}
 	s.cx += runeWidth(r)
+}
+
+func (s *screen) combine(t *testing.T, r rune) {
+	t.Helper()
+	x := s.cx - 1
+	if x > 0 && s.runes[s.cy][x] == 0 {
+		x-- // the second half of a wide rune: combine with its leader
+	}
+	if x < 0 {
+		t.Fatalf("zero-width rune %U written with nothing to combine with", r)
+	}
+	m := &s.marks[s.cy][x]
+	for i := range m {
+		if m[i] == 0 {
+			m[i] = r
+			return
+		}
+	}
+	t.Fatalf("more than %d marks on cell %d,%d", maxMarks, x, s.cy)
 }
 
 // escape applies the one CSI sequence at the head of b and returns its length.
@@ -119,8 +146,8 @@ func (s *screen) matches(t *testing.T, g *grid, pal *palette) {
 	for i, c := range g.cells {
 		x, y := i%g.w, i/g.w
 		want := strings.TrimPrefix(pal[c.role], sgrReset)
-		if s.runes[y][x] != c.r || (c.r != 0 && s.sgr[y][x] != want) {
-			t.Fatalf("cell %d,%d = %q %q, want %q %q", x, y, s.runes[y][x], s.sgr[y][x], c.r, want)
+		if s.runes[y][x] != c.r || s.marks[y][x] != c.marks || (c.r != 0 && s.sgr[y][x] != want) {
+			t.Fatalf("cell %d,%d = %q%q %q, want %q%q %q", x, y, s.runes[y][x], s.marks[y][x], s.sgr[y][x], c.r, c.marks, want)
 		}
 	}
 }

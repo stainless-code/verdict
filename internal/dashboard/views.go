@@ -154,8 +154,12 @@ func drawStatus(g *grid, s *snapshot, y int, cs charset) {
 	default:
 		put("complete", roleOK)
 	}
-	if len(s.refused) > 0 {
-		put(plural(len(s.refused), "refused bundle"), roleBad)
+	bundles, stores := s.failureCounts()
+	if bundles > 0 {
+		put(plural(bundles, "refused bundle"), roleBad)
+	}
+	if stores > 0 {
+		put(plural(stores, "store error"), roleBad)
 	}
 	if len(s.warnings) > 0 {
 		put(plural(len(s.warnings), "warning"), roleWarn)
@@ -189,7 +193,7 @@ func drawOverview(g *grid, s *snapshot, b box, cs charset) {
 	list(g, len(s.refused), y, end, cs, func(i, row int) {
 		ref := s.refused[i]
 		x := indent + g.text(indent, row, g.w, "! ", roleBad, cs)
-		x += g.text(x, row, g.w/refusedShare, ref.bundle, rolePlain, cs) + 2
+		x += g.text(x, row, g.w/refusedShare, ref.label(), rolePlain, cs) + 2
 		x += g.text(x, row, g.w/refusedShare, ref.code, roleBad, cs) + 2
 		g.text(x, row, g.w-x-margin, ref.message, roleMuted, cs)
 	})
@@ -354,4 +358,25 @@ func plural(n int, noun string) string {
 		return "1 " + noun
 	}
 	return strconv.Itoa(n) + space + noun + "s"
+}
+
+// failureCounts splits the tolerated failures into refused bundles and
+// store-level errors (a root whose store could not be listed at all).
+func (s *snapshot) failureCounts() (bundles, stores int) {
+	for _, f := range s.refused {
+		if f.bundle == "" {
+			stores++
+		} else {
+			bundles++
+		}
+	}
+	return bundles, stores
+}
+
+// label names what failed: the bundle, or the root for a store-level error.
+func (f *refusedRow) label() string {
+	if f.bundle == "" {
+		return "store " + f.root
+	}
+	return f.bundle
 }

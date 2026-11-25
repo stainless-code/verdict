@@ -3,6 +3,7 @@
 package dashboard
 
 import (
+	"context"
 	"os"
 	"syscall"
 	"unsafe"
@@ -18,6 +19,8 @@ const (
 	enableVirtualTerminalInput      = 0x0200
 	readTickMillis                  = readTickDeciseconds * 100
 	waitTimeout                     = 0x00000102
+	// peekRecords bounds one look at the pending input records.
+	peekRecords = 64
 )
 
 // stdlib syscall exports GetConsoleMode but neither SetConsoleMode nor
@@ -27,7 +30,23 @@ var (
 	kernel32                       = syscall.NewLazyDLL("kernel32.dll")
 	procSetConsoleMode             = kernel32.NewProc("SetConsoleMode")
 	procGetConsoleScreenBufferInfo = kernel32.NewProc("GetConsoleScreenBufferInfo")
+	procPeekConsoleInputW          = kernel32.NewProc("PeekConsoleInputW")
+	procReadConsoleInputW          = kernel32.NewProc("ReadConsoleInputW")
 )
+
+// inputRecord is INPUT_RECORD with its union read as KEY_EVENT_RECORD: 20
+// bytes, the event type padded to 4, then the key fields. Only a key event's
+// fields are meaningful; the other kinds are discarded unread.
+type inputRecord struct {
+	EventType       uint16
+	_               uint16
+	KeyDown         int32
+	RepeatCount     uint16
+	VirtualKeyCode  uint16
+	VirtualScanCode uint16
+	Char            uint16
+	ControlKeyState uint32
+}
 
 type coord struct{ X, Y int16 }
 
@@ -85,12 +104,49 @@ func (t *winTTY) read(p []byte) (int, error) {
 	if event == waitTimeout {
 		return 0, nil
 	}
+	pending, err := t.keyPending()
+	if err != nil || !pending {
+		return 0, err
+	}
 	var n uint32
 	if err := syscall.ReadFile(t.in, p, &n, nil); err != nil {
 		return 0, err //nolint:wrapcheck // the loop reports the console read as is
 	}
 	return int(n), nil
 }
+
+// keyPending reports whether the signaled input holds a character a read
+// returns. Focus, mouse, and key-up records also signal the handle but give
+// ReadFile nothing, so it would block the loop until the next key; those
+// records are consumed here and the tick ends idle instead.
+func (t *winTTY) keyPending() (bool, error) {
+	var recs [peekRecords]inputRecord
+	var n uint32
+	r, _, err := procPeekConsoleInputW.Call(
+		uintptr(t.in), uintptr(unsafe.Pointer(&recs[0])), uintptr(len(recs)), uintptr(unsafe.Pointer(&n)))
+	if r == 0 {
+		return false, err //nolint:wrapcheck // the loop reports the console error as is
+	}
+	events := make([]consoleEvent, n)
+	for i, rec := range recs[:n] {
+		events[i] = consoleEvent{kind: rec.EventType, char: rec.Char, keyDown: rec.KeyDown != 0}
+	}
+	if keyInput(events) {
+		return true, nil
+	}
+	r, _, err = procReadConsoleInputW.Call(
+		uintptr(t.in), uintptr(unsafe.Pointer(&recs[0])), uintptr(n), uintptr(unsafe.Pointer(&n)))
+	if r == 0 {
+		return false, err //nolint:wrapcheck // the loop reports the console error as is
+	}
+	return false, nil
+}
+
+// stopRequested is always false: a Windows console has no job control.
+func (t *winTTY) stopRequested() bool { return false }
+
+// suspend has nothing to do without job control.
+func (t *winTTY) suspend(context.Context) error { return nil }
 
 func (t *winTTY) resized() bool {
 	cols, rows, ok := consoleSize(t.out)
@@ -104,7 +160,7 @@ func (t *winTTY) resized() bool {
 func (t *winTTY) restore() error {
 	inOK := setConsoleMode(t.in, t.inMode)
 	if !setConsoleMode(t.out, t.outMode) || !inOK {
-		return errNoVT
+		return errRestore
 	}
 	return nil
 }

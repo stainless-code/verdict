@@ -65,7 +65,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	out := fileOf(r.Out)
-	if code, refused := preflight(r, &opts, req.In, out); refused {
+	if code, refused := preflight(r, &opts, isTerminal(req.In), isTerminal(out)); refused {
 		return code
 	}
 	src, ref := openLayer(ctx, r, &opts, req)
@@ -78,15 +78,17 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return runLive(ctx, r, src, &opts, req, out)
 }
 
-// preflight refuses the two invocations that cannot work before any store is
-// read: a --once frame asked for as JSON, and a live view with no terminal.
-func preflight(r *cli.Runner, opts *options, in, out *os.File) (int, bool) {
-	if opts.once && r.JSONMode {
-		return usage(r, "dashboard: --once draws a text frame and has no --json form; "+
-			"read the same views as JSON through `verdict serve` or the MCP query tools"), true
-	}
-	if !opts.once && (!isTerminal(in) || !isTerminal(out)) {
+// preflight refuses what cannot work before any store is read. Without a
+// terminal the live view refuses dashboard-no-tty (an envelope under --json,
+// the one thing --json shapes); with one, --json is a usage error, since
+// neither the live view nor --once has a JSON form.
+func preflight(r *cli.Runner, opts *options, inTTY, outTTY bool) (int, bool) {
+	if !opts.once && (!inTTY || !outTTY) {
 		return r.Refuse(&cli.RefusalError{Code: codeNoTTY, Message: errNoTTY.Error()}), true
+	}
+	if r.JSONMode {
+		return usage(r, "dashboard: draws a terminal frame and has no --json form; "+
+			"read the same views as JSON through `verdict serve` or the MCP query tools"), true
 	}
 	return 0, false
 }
@@ -175,7 +177,7 @@ func live(
 		}
 	}()
 	v := &liveView{
-		term: t, opts: opts, lk: lk, st: &frameState{live: true},
+		term: t, opts: opts, lk: lk, st: &frameState{live: true}, s: s,
 		p: &painter{out: out, pal: lk.pal}, keys: make([]byte, keyBuf),
 	}
 	if err := v.start(ctx, s, loadSnap); err != nil {
@@ -195,8 +197,10 @@ type liveView struct {
 	opts *options
 	st   *frameState
 	p    *painter
+	s    *session
 	keys []byte
 	lk   look
+	kb   keyState
 }
 
 // start enters the alternate screen, paints the composing frame, and runs
@@ -234,38 +238,71 @@ func (v *liveView) tick(ctx context.Context) (done bool, err error) {
 	if err != nil {
 		return true, err
 	}
-	if handleKeys(v.st, v.keys[:n]) {
+	if v.kb.handle(v.st, v.keys[:n]) {
 		return true, nil
 	}
 	if v.term.resized() {
 		v.p.invalidate()
 	}
+	return v.suspendIfAsked(ctx)
+}
+
+// suspendIfAsked honors Ctrl-Z: the shell gets its screen and cooked mode
+// back while the job is stopped, and the frame repaints in full on return.
+func (v *liveView) suspendIfAsked(ctx context.Context) (done bool, err error) {
+	if !v.term.stopRequested() {
+		return false, nil
+	}
+	if err := v.s.suspend(ctx); err != nil {
+		return true, err
+	}
+	v.p.invalidate()
 	return false, nil
 }
 
-// frameSize is the fixed --width/--height frame when given, else the
-// terminal's current size.
+// frameSize is the terminal's current size, narrowed by --width/--height
+// when given: a frame wider or taller than the terminal would wrap and
+// scroll, so the flags can only shrink the live frame.
 func frameSize(t tty, opts *options) (cols, rows int, err error) {
 	cols, rows, err = t.size()
 	if err != nil {
 		return 0, 0, err
 	}
 	if opts.width > 0 {
-		cols = opts.width
+		cols = min(cols, opts.width)
 	}
 	if opts.height > 0 {
-		rows = opts.height
+		rows = min(rows, opts.height)
 	}
 	return cols, rows, nil
 }
 
-// handleKeys applies one read's bytes: a digit picks a tab, q or a lone Esc
-// quits. An escape sequence (an arrow, a function key) is skipped whole, so
-// its bytes never read as a digit.
-func handleKeys(st *frameState, keys []byte) (quit bool) {
-	if len(keys) == 1 && keys[0] == keyEsc {
-		return true
+// keyState carries a lone Esc across one read tick: a terminal can split an
+// arrow key's ESC from its `[A`, so Esc quits only when the next tick brings
+// nothing (or something that does not continue a sequence).
+type keyState struct {
+	escPending bool
+}
+
+// handle applies one read's bytes: a digit picks a tab, q quits, and a lone
+// Esc quits one tick later. An escape sequence (an arrow, a function key) is
+// skipped whole, so its bytes never read as a digit.
+func (k *keyState) handle(st *frameState, keys []byte) (quit bool) {
+	if k.escPending {
+		k.escPending = false
+		if len(keys) == 0 || (keys[0] != '[' && keys[0] != 'O') {
+			return true
+		}
+		return false // the rest of a split sequence
 	}
+	if len(keys) == 1 && keys[0] == keyEsc {
+		k.escPending = true
+		return false
+	}
+	return applyKeys(st, keys)
+}
+
+func applyKeys(st *frameState, keys []byte) (quit bool) {
 	for _, b := range keys {
 		switch b {
 		case keyEsc:

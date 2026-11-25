@@ -16,12 +16,15 @@ type fakeTTY struct {
 	resizes   map[int]bool // read index -> report a resize after it
 	onRead    func(n int)
 	readError error
+	stops     map[int]bool // read index -> report Ctrl-Z after it
+	onSuspend func()
 	chunks    []string
 	sampled   []int
 	cols      int
 	rows      int
 	reads     int
 	restores  int
+	suspends  int
 }
 
 func (f *fakeTTY) size() (cols, rows int, err error) { return f.cols, f.rows, nil }
@@ -45,6 +48,16 @@ func (f *fakeTTY) read(p []byte) (int, error) {
 }
 
 func (f *fakeTTY) resized() bool { return f.resizes[f.reads] }
+
+func (f *fakeTTY) stopRequested() bool { return f.stops[f.reads] }
+
+func (f *fakeTTY) suspend(context.Context) error {
+	f.suspends++
+	if f.onSuspend != nil {
+		f.onSuspend()
+	}
+	return nil
+}
 
 func (f *fakeTTY) restore() error {
 	f.restores++
@@ -173,26 +186,126 @@ func TestLiveSmallTerminalShowsResizePanel(t *testing.T) {
 	}
 }
 
-func TestHandleKeys(t *testing.T) {
+// TestKeyState drives whole read sequences through the key handler. A lone
+// Esc quits one tick later, unless the next read continues a sequence a
+// terminal split across two reads (an arrow's `[A`).
+func TestKeyState(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
-		keys    string
+		name    string
+		reads   []string
 		start   tab
 		wantTab tab
-		quit    bool
+		quitAt  int // index of the read that quits, -1 for none
 	}{
-		{"2", tabOverview, tabQueue, false},
-		{"1", tabQueue, tabOverview, false},
-		{"q", tabOverview, tabOverview, true},
-		{"\x1b", tabQueue, tabQueue, true},
-		{"\x1b[1~", tabQueue, tabQueue, false}, // Home: its '1' is not the Overview key
-		{"\x1b[A", tabQueue, tabQueue, false},  // an arrow is not Esc
-		{"x", tabQueue, tabQueue, false},
+		{"digit 2", []string{"2"}, tabOverview, tabQueue, -1},
+		{"digit 1", []string{"1"}, tabQueue, tabOverview, -1},
+		{"q", []string{"q"}, tabOverview, tabOverview, 0},
+		{"lone Esc then idle", []string{"\x1b", ""}, tabQueue, tabQueue, 1},
+		{"lone Esc then a key", []string{"\x1b", "x"}, tabQueue, tabQueue, 1},
+		{"arrow split after ESC", []string{"\x1b", "[A", ""}, tabQueue, tabQueue, -1},
+		{"SS3 split after ESC", []string{"\x1b", "OP", ""}, tabQueue, tabQueue, -1},
+		{"Home's 1 is not a key", []string{"\x1b[1~"}, tabQueue, tabQueue, -1},
+		{"whole arrow", []string{"\x1b[A"}, tabQueue, tabQueue, -1},
+		{"other key", []string{"x"}, tabQueue, tabQueue, -1},
 	}
 	for _, c := range cases {
 		st := &frameState{tab: c.start}
-		if quit := handleKeys(st, []byte(c.keys)); quit != c.quit || st.tab != c.wantTab {
-			t.Errorf("keys %q: quit=%v tab=%d, want quit=%v tab=%d", c.keys, quit, st.tab, c.quit, c.wantTab)
+		if quitAt := quitRead(st, c.reads); quitAt != c.quitAt || st.tab != c.wantTab {
+			t.Errorf("%s: quit at read %d, tab %d; want read %d, tab %d", c.name, quitAt, st.tab, c.quitAt, c.wantTab)
+		}
+	}
+}
+
+// quitRead feeds reads to one key handler and returns the index of the read
+// that quit, or -1.
+func quitRead(st *frameState, reads []string) int {
+	kb := &keyState{}
+	for i, read := range reads {
+		if kb.handle(st, []byte(read)) {
+			return i
+		}
+	}
+	return -1
+}
+
+// TestLiveSuspendHandsTheScreenBack proves Ctrl-Z leaves the alternate screen
+// before the process stops and repaints the whole frame when it continues.
+func TestLiveSuspendHandsTheScreenBack(t *testing.T) {
+	t.Parallel()
+	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "q"}, stops: map[int]bool{1: true}}
+	var atStop string
+	term.onSuspend = func() { atStop = term.out.String() }
+	out, err := runLiveFixture(t.Context(), term, &options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if term.suspends != 1 || term.restores != 1 {
+		t.Fatalf("suspends=%d restores=%d, want 1 and 1", term.suspends, term.restores)
+	}
+	if !strings.HasSuffix(atStop, escShowCursor+escSyncEnd+escLeaveAlt) {
+		t.Fatalf("output at the stop ends %q, want the screen handed back", atStop[max(len(atStop)-24, 0):])
+	}
+	after := out.String()[len(atStop):]
+	if !strings.HasPrefix(after, escEnterAlt+escHideCursor+escSyncBegin+sgrReset+escClear) {
+		t.Fatalf("output after the stop starts %q, want the alternate screen and a full repaint", after[:min(len(after), 32)])
+	}
+}
+
+// TestLiveClampsFlagsToTheTerminal proves --width/--height can only shrink
+// the live frame: a 120×40 request on an 80×24 terminal draws 80×24, so no
+// row wraps and the screen never scrolls.
+func TestLiveClampsFlagsToTheTerminal(t *testing.T) {
+	t.Parallel()
+	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"q"}}
+	out, err := runLiveFixture(t.Context(), term, &options{width: 120, height: 40})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newScreen(minCols, minRows).replay(t, out.Bytes()) // fails on any write past column 80 or row 24
+}
+
+func TestKeepSize(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		lastCols, lastRows, cols, rows int
+		ok                             bool
+		wantCols, wantRows             int
+	}{
+		{80, 24, 0, 0, false, 80, 24},
+		{80, 24, 0, 0, true, 80, 24}, // a terminal mid-resize reports 0x0
+		{100, 30, 120, 40, true, 120, 40},
+		{100, 30, 120, 0, true, 100, 30},
+	}
+	for _, c := range cases {
+		cols, rows := keepSize(c.lastCols, c.lastRows, c.cols, c.rows, c.ok)
+		if cols != c.wantCols || rows != c.wantRows {
+			t.Errorf("keepSize(%v) = %dx%d, want %dx%d", c, cols, rows, c.wantCols, c.wantRows)
+		}
+	}
+}
+
+// TestKeyInput pins which Windows console records end the read tick with a
+// read: only a key press that yields a character. Anything else would leave
+// ReadFile blocked until the next key, freezing resize and cancel.
+func TestKeyInput(t *testing.T) {
+	t.Parallel()
+	const focus, mouse = 0x0010, 0x0002
+	cases := []struct {
+		name   string
+		events []consoleEvent
+		want   bool
+	}{
+		{"nothing", nil, false},
+		{"focus only", []consoleEvent{{kind: focus}}, false},
+		{"mouse only", []consoleEvent{{kind: mouse}}, false},
+		{"key release", []consoleEvent{{kind: consoleKeyEvent, char: 'a'}}, false},
+		{"bare shift", []consoleEvent{{kind: consoleKeyEvent, keyDown: true}}, false},
+		{"focus then a", []consoleEvent{{kind: focus}, {kind: consoleKeyEvent, char: 'a', keyDown: true}}, true},
+	}
+	for _, c := range cases {
+		if got := keyInput(c.events); got != c.want {
+			t.Errorf("%s: keyInput = %v, want %v", c.name, got, c.want)
 		}
 	}
 }

@@ -29,6 +29,15 @@ func TestRuneWidth(t *testing.T) {
 		{0x85, 0},
 		{0x303F, 1},
 		{0xFF61, 1},
+		// Unicode 17.0 EastAsianWidth: U+1F7F0 is W; the thermometer, hot
+		// pepper, rounded triangle, and desktop computer sit in emoji blocks but are N.
+		{0x1F7F0, 2},
+		{0x1F94C, 2},
+		{0x16FE0, 2},
+		{0x1F321, 1},
+		{0x1F336, 1},
+		{0x1F6C6, 1},
+		{0x1F5A5, 1}, // desktop computer: N, inside the old broad emoji interval
 	}
 	for _, c := range cases {
 		if got := runeWidth(c.r); got != c.want {
