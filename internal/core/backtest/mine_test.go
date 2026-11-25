@@ -47,6 +47,7 @@ func equalPR(a, b *int) bool {
 // TestMineMergedFix is the canonical end-to-end fixture: a merged PR, a later
 // fix, one anchored bug, and a byte-identical rerun.
 func TestMineMergedFix(t *testing.T) {
+	t.Parallel()
 	b, fix := newMergedFixRepo(t)
 	data := runMine(t, b.r, b.base)
 	if data.Run != "29320a6-84b3173" {
@@ -93,6 +94,7 @@ func readMine(t *testing.T, r *repo, run string) []byte {
 
 // TestMineRevert proves a revert commit seeds the same merged PR.
 func TestMineRevert(t *testing.T) {
+	t.Parallel()
 	b, _ := newRevertRepo(t)
 	data := runMine(t, b.r, b.base)
 	if len(data.Mine.Candidates) != 1 {
@@ -114,6 +116,7 @@ func TestMineRevert(t *testing.T) {
 
 // TestMineSquash proves a squash commit is its own PR head.
 func TestMineSquash(t *testing.T) {
+	t.Parallel()
 	r, base, _, _ := newSquashRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
@@ -135,6 +138,7 @@ func TestMineSquash(t *testing.T) {
 
 // TestMineDirectPush proves a commit with no containing merge is no-pr.
 func TestMineDirectPush(t *testing.T) {
+	t.Parallel()
 	r, base, _, fix := newDirectRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 0 {
@@ -149,6 +153,7 @@ func TestMineDirectPush(t *testing.T) {
 // TestMineUnaligned proves duplicate line text is skipped, not guessed, and
 // that each duplicated deleted line keeps its own row.
 func TestMineUnaligned(t *testing.T) {
+	t.Parallel()
 	r, base, feature, fix := newUnalignedRepo(t)
 	data := runMine(t, r, base)
 	want := []Skipped{

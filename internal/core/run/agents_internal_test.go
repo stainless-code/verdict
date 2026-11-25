@@ -324,6 +324,7 @@ func builtinRows() []builtinRow {
 // flag immediately before the directive; the others keep the positional shape.
 // The name set is literal, so a new row cannot join the table unnoticed.
 func TestBuiltinAgentRows(t *testing.T) {
+	t.Parallel()
 	tests := builtinRows()
 	wantNames := make([]string, 0, len(tests))
 	for _, tc := range tests {
@@ -388,6 +389,7 @@ func assertRowArgv(t *testing.T, tc *builtinRow, def *agentcatalog.Launch) {
 // spawned. The pass-through model replaces a stage hint on a launch, so no
 // second --model comes from the definition.
 func TestBuiltinAgentPrint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range builtinRows() {
 		t.Run(tc.name, func(t *testing.T) { assertPrintedRow(t, &tc) })
 	}
@@ -425,6 +427,7 @@ func assertPrintedRow(t *testing.T, tc *builtinRow) {
 // directive, after every operator argument, so a pass-through flag cannot be
 // swallowed as its value. Rows without PromptFlag keep the positional shape.
 func TestArgvForPromptPlacement(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		def  agentcatalog.Launch
@@ -466,6 +469,7 @@ func TestArgvForPromptPlacement(t *testing.T) {
 // TestArgvForOmitsEmptyFields pins the no-model, no-passthrough shape: no
 // empty argument is ever handed to a binary, with or without PromptFlag.
 func TestArgvForOmitsEmptyFields(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		def  agentcatalog.Launch
 		want []string

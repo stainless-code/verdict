@@ -37,6 +37,7 @@ func bloblessClone(t *testing.T, src, remote string) string {
 // that is one network round-trip per blamed line, so the run never finishes.
 // A promisor remote demoted to false is a whole clone and mines.
 func TestMineRefusesBloblessClone(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		remote   string

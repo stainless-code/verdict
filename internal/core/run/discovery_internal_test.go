@@ -46,6 +46,7 @@ const discoveryFlag = "--disallowedTools=Bash,PowerShell"
 // read-only flags, ahead of the directive and ahead of the operator's own
 // pass-through arguments.
 func TestDiscoveryLaunchesCarryTheRowRestriction(t *testing.T) {
+	t.Parallel()
 	argvs := spawnedArgvs(t, "", false)
 	if len(argvs) != 4 {
 		t.Fatalf("spawned %d processes, want the two finders and two crosses", len(argvs))
@@ -92,6 +93,7 @@ func spawnedArgvs(t *testing.T, passthrough string, allowShell bool) [][]string 
 // tool set: no launch carries the flag, and the argv is the one the launcher
 // composed before the restriction existed.
 func TestAllowShellOmitsTheRestriction(t *testing.T) {
+	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "", true) {
 		if want := []string{"claude", "-p"}; !slices.Equal(argv[:2], want) {
 			t.Errorf("argv = %q, want the prefix %q", argv, want)
@@ -106,6 +108,7 @@ func TestAllowShellOmitsTheRestriction(t *testing.T) {
 // tool selection wins without duplication: one argv never carries both the
 // row's restriction and the flag the operator spelled after `--`.
 func TestPassThroughToolFlagSuppressesTheRestriction(t *testing.T) {
+	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "Read,Write", false) {
 		if slices.Contains(argv, discoveryFlag) {
 			t.Errorf("pass-through tool flag still produced %q: %q", discoveryFlag, argv)
@@ -131,6 +134,7 @@ func countArg(argv []string, want string) int {
 // flags by default, nothing for a row that declares none, and nothing after
 // --allow-shell.
 func TestDiscoveryRestrictionResolution(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		row  string
@@ -154,6 +158,7 @@ func TestDiscoveryRestrictionResolution(t *testing.T) {
 // row's restriction instead of duplicating it, in the inline `=` form and the
 // short alias alike.
 func TestDiscoveryPassThroughSuppressesTheRestriction(t *testing.T) {
+	t.Parallel()
 	claude, pi, bob := launchRow(t, "claude"), launchRow(t, "pi"), launchRow(t, "bob")
 	kept := []string{"--disallowedTools=Bash,PowerShell"}
 	t.Run("operator deny list", func(t *testing.T) {
@@ -222,6 +227,7 @@ func TestDrainLaunchCarriesTheRestriction(t *testing.T) {
 // pass-through numbering counts the discovery restriction: the redacted
 // operands stay where the child saw them, and the restriction stays visible.
 func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
+	t.Parallel()
 	req, phases := coordinatorFixture(t)
 	req.FindersRaw = "2"
 	req.PassThrough = []string{"--model", "opus", "--api-key", "sk-ant-0123456789abcdef"}

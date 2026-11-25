@@ -64,6 +64,7 @@ func readRevertFile(t *testing.T, r *repo, rel string) string {
 // TestRevertsRecordsTheRevertAndItsNote is the canonical end-to-end case: one
 // revert commit becomes one ledger row and one fenced note section.
 func TestRevertsRecordsTheRevertAndItsNote(t *testing.T) {
+	t.Parallel()
 	r, base, revert := revertsRepo(t)
 	if revert != "ae2b454103bc34718b047676c3edfceda04fdfc4" {
 		t.Fatalf("fixture revert = %q; the literals below assume the pinned fixture", revert)
@@ -148,6 +149,7 @@ func assertRevertRow(t *testing.T, got, want *RevertRow) {
 // narrower scan records nothing and keeps every stored byte, and a rerun of
 // the wide window is byte-identical.
 func TestRevertsKeepsOlderRowsUpsertsTheWindow(t *testing.T) {
+	t.Parallel()
 	r, base, revert := revertsRepo(t)
 	runReverts(t, r, base)
 	first := readRevertFile(t, r, ".verdict/reverts.jsonl")
@@ -171,6 +173,7 @@ func TestRevertsKeepsOlderRowsUpsertsTheWindow(t *testing.T) {
 // TestRevertsRecordsTheReversedCommit proves a revert's body names the commit
 // it undoes.
 func TestRevertsRecordsTheReversedCommit(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("main.go", "package main\n")
 	base := r.commit("feat: base")
@@ -189,6 +192,7 @@ func TestRevertsRecordsTheReversedCommit(t *testing.T) {
 // TestRevertsCountsAMergeRevert proves a revert of a merge is counted, never
 // refused: its diff is a union of two parents, not one change to undo.
 func TestRevertsCountsAMergeRevert(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("main.go", "package main\n")
 	base := r.commit("feat: base")
@@ -211,6 +215,7 @@ func TestRevertsCountsAMergeRevert(t *testing.T) {
 // TestRevertsCountsAWideRevert proves a revert past the file cap is counted
 // with its measurement, never recorded.
 func TestRevertsCountsAWideRevert(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("main.go", "package main\n")
 	base := r.commit("feat: base")
@@ -232,6 +237,7 @@ func TestRevertsCountsAWideRevert(t *testing.T) {
 // TestRevertsCountsABinaryRevert proves a revert touching a binary file is
 // counted, never recorded.
 func TestRevertsCountsABinaryRevert(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("main.go", "package main\n")
 	base := r.commit("feat: base")
@@ -263,6 +269,7 @@ func (f failingNumstat) Run(ctx context.Context, cmd *core.Command) (core.Result
 // TestRevertsCountsAnUnreadableRevert proves a commit git cannot read is one
 // counted skip, not the scan's refusal.
 func TestRevertsCountsAnUnreadableRevert(t *testing.T) {
+	t.Parallel()
 	r, base, revert := revertsRepo(t)
 	data := runRevertsWith(t, r, base, failingNumstat{sha: revert, delegate: coreexec.Runner{MissingTool: true}})
 	if data.Reverts.Window != 0 {
@@ -277,6 +284,7 @@ func TestRevertsCountsAnUnreadableRevert(t *testing.T) {
 // TestRevertsRefusesOutsideARepository proves the scan names the checkout it
 // cannot read instead of scanning the working directory.
 func TestRevertsRefusesOutsideARepository(t *testing.T) {
+	t.Parallel()
 	_, ref := RunReverts(t.Context(), &Request{
 		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
 		RepoRoot: t.TempDir(), Mode: modeReverts, Since: "12mo", Until: "HEAD",
@@ -289,6 +297,7 @@ func TestRevertsRefusesOutsideARepository(t *testing.T) {
 // TestRevertsRefusesAnUnresolvableUntil proves the window resolver's own
 // refusal carries into the scan unchanged.
 func TestRevertsRefusesAnUnresolvableUntil(t *testing.T) {
+	t.Parallel()
 	r, base, _ := revertsRepo(t)
 	_, ref := RunReverts(t.Context(), &Request{
 		Runtime:  &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)},
@@ -388,6 +397,7 @@ func corruptRows(t *testing.T) []corruptRow {
 // TestRevertsRefusesACorruptLedger proves a stored row this build cannot read
 // refuses the scan instead of being silently rewritten.
 func TestRevertsRefusesACorruptLedger(t *testing.T) {
+	t.Parallel()
 	r, base, _ := revertsRepo(t)
 	dir := filepath.Join(r.dir, ".verdict")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -432,6 +442,7 @@ func assertCorruptRowRefused(t *testing.T, r *repo, base string, tc corruptRow) 
 // a revert subject, and only the validated short sha and date may stand outside
 // the fence.
 func TestRevertsFencesEveryStoredField(t *testing.T) {
+	t.Parallel()
 	r, base, revert := revertsRepo(t)
 	runReverts(t, r, base)
 	stored := hostileStoredRow(t)
@@ -554,6 +565,7 @@ func unfencedNote(t *testing.T, note string) string {
 
 // TestRevertExclusion pins the whole-revert rules and their order.
 func TestRevertExclusion(t *testing.T) {
+	t.Parallel()
 	wideFiles := make([]fileStat, revertMaxFiles+1)
 	for i := range wideFiles {
 		wideFiles[i] = fileStat{Path: fmt.Sprintf("f%03d.go", i), Added: 1}
@@ -582,6 +594,7 @@ func TestRevertExclusion(t *testing.T) {
 // TestRevertSubjectIsTheMinersPredicate proves this scan reuses the miner's
 // definition instead of growing a second one.
 func TestRevertSubjectIsTheMinersPredicate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		subject string
 		want    bool
@@ -624,6 +637,7 @@ func twoRevertRepo(t *testing.T) (r *repo, base, first, second string) {
 // collect only sometimes flips the order, and a file contract cannot be
 // sometimes.
 func TestRevertsOrdersTheLedgerBySHA(t *testing.T) {
+	t.Parallel()
 	r, base, first, second := twoRevertRepo(t)
 	if first != "da4ee5a81a8a4ce21d1b2b8fdf4ea8b429125722" ||
 		second != "7aff5060095a6ba81a1dcad4c6857783c1063251" {
@@ -651,6 +665,7 @@ func TestRevertsOrdersTheLedgerBySHA(t *testing.T) {
 // reason order, whatever order the scan met them in and however the count map
 // iterates: a reader diffing two runs must see one line.
 func TestRevertSkipsLineOrdersTheReasons(t *testing.T) {
+	t.Parallel()
 	skipped := []RevertSkipped{
 		{Reason: "wide-revert", SHA: "aa"},
 		{Reason: "unreadable", SHA: "bb"},
@@ -671,6 +686,7 @@ func TestRevertSkipsLineOrdersTheReasons(t *testing.T) {
 // evidence from an older scan, and a rerun over its window replaces it with
 // what this scan read, so a stale subject or date cannot outlive its scan.
 func TestRevertsRefreshesARescan(t *testing.T) {
+	t.Parallel()
 	r, base, revert := revertsRepo(t)
 	if revert != "ae2b454103bc34718b047676c3edfceda04fdfc4" {
 		t.Fatalf("fixture revert = %q; the literals below assume the pinned fixture", revert)
@@ -700,6 +716,7 @@ func TestRevertsRefreshesARescan(t *testing.T) {
 // writer's: a scan whose lock another writer holds past the wait refuses
 // `store-busy` and touches neither artifact, and the retry lands the rows.
 func TestRevertsRefusesAStoreBusy(t *testing.T) {
+	t.Parallel()
 	r, base, _ := revertsRepo(t)
 	dir := filepath.Join(r.dir, ".verdict")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -737,6 +754,7 @@ func assertNoArtifacts(t *testing.T, dir string) {
 // worktree dirt: with the ledger, its note and the ignore contract tracked, a
 // rerun over the same window leaves `.verdict` byte-identical and clean.
 func TestRevertsLeavesNoWorktreeDirt(t *testing.T) {
+	t.Parallel()
 	r, base, _ := revertsRepo(t)
 	runReverts(t, r, base)
 	r.git("add", "--", filepath.Join(".verdict", ".gitignore"),
@@ -758,6 +776,7 @@ func TestRevertsLeavesNoWorktreeDirt(t *testing.T) {
 // scan: the lock file is ignored, so it is never worktree dirt beside the
 // tracked ledger it guards.
 func TestRevertsTracksItsLockFile(t *testing.T) {
+	t.Parallel()
 	r, base, _ := revertsRepo(t)
 	runReverts(t, r, base)
 	if ignore := readRevertFile(t, r, ".verdict/.gitignore"); !strings.Contains(ignore, "reverts.jsonl.lock\n") {
@@ -777,6 +796,7 @@ func TestRevertsTracksItsLockFile(t *testing.T) {
 // own ledger as `corrupt-store` on the next scan, and a byte cut would store
 // half a rune.
 func TestRevertsCapsTheStoredSubject(t *testing.T) {
+	t.Parallel()
 	r, base, full, want := hugeSubjectRepo(t)
 	data := runReverts(t, r, base)
 	if len(data.Reverts.Rows) != 1 {

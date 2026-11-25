@@ -50,6 +50,7 @@ var trustReadArgvs = [][]string{
 // safe.directory reads run first, with the user's config scopes still live.
 // A dropped pin fails here even where an explicit flag would mask its effect.
 func TestMinePinsEveryGitCall(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	home := t.TempDir()
 	global := writeGitConfig(t, "")

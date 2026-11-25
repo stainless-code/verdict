@@ -131,6 +131,7 @@ func TestLastFindingsBlockRestartsAfterUnclosedDraft(t *testing.T) {
 // TestRunSalvagesStdoutFindings proves the whole path: no artifact, a fenced
 // document on stdout, a fresh review.json, a recorded flag, and a warning.
 func TestRunSalvagesStdoutFindings(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{res: core.Result{ExitCode: 0, Stdout: fenced(salvagedFinding)}}
@@ -152,6 +153,7 @@ func TestRunSalvagesStdoutFindings(t *testing.T) {
 // validation agree: the block is written, but the shared checker's problem
 // reaches the refusal instead of a bare no-review-artifact.
 func TestRunSalvagesThenRefusesMissingConfidence(t *testing.T) {
+	t.Parallel()
 	dir, _, ref := runWithArtifact(t, "", fenced(missingConfidence))
 	if ref == nil || ref.Code != recordcore.CodeBadReviewInput {
 		t.Fatalf("refusal = %+v, want %s", ref, recordcore.CodeBadReviewInput)
@@ -165,6 +167,7 @@ func TestRunSalvagesThenRefusesMissingConfidence(t *testing.T) {
 // TestRunRefusesUnknownReviewField pins the other half of F2: an extra root
 // key is salvaged but never accepted, because record would refuse it too.
 func TestRunRefusesUnknownReviewField(t *testing.T) {
+	t.Parallel()
 	_, ref := runWithStdout(t, fenced(extraRootKey))
 	if ref == nil || ref.Code != recordcore.CodeBadReviewInput {
 		t.Fatalf("refusal = %+v, want %s", ref, recordcore.CodeBadReviewInput)
@@ -177,6 +180,7 @@ func TestRunRefusesUnknownReviewField(t *testing.T) {
 // TestRunValidatesAgentWrittenReview proves validation is not a salvage-only
 // branch: a direct write with the same extra key refuses identically.
 func TestRunValidatesAgentWrittenReview(t *testing.T) {
+	t.Parallel()
 	_, _, ref := runWithArtifact(t, extraRootKey, "")
 	if ref == nil || ref.Code != recordcore.CodeBadReviewInput {
 		t.Fatalf("refusal = %+v, want %s", ref, recordcore.CodeBadReviewInput)
@@ -209,6 +213,7 @@ func assertNoArtifactRefusal(t *testing.T, stdout string) {
 // TestRunKeepsNoReviewArtifactForBadStdout proves neither a missing nor a
 // malformed block becomes an artifact or a salvage claim.
 func TestRunKeepsNoReviewArtifactForBadStdout(t *testing.T) {
+	t.Parallel()
 	assertNoArtifactRefusal(t, "I finished the review in my head.\n")
 	assertNoArtifactRefusal(t, "```json\n{not json}\n```\n")
 	assertNoArtifactRefusal(t, "```json\n"+`{"approved":true}`+"\n```\n")
@@ -218,6 +223,7 @@ func TestRunKeepsNoReviewArtifactForBadStdout(t *testing.T) {
 // TestFailedAgentNeverSalvages pins F1 in the one-shot path: a non-zero exit
 // refuses on its own and leaves stdout's findings unrecorded.
 func TestFailedAgentNeverSalvages(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{res: core.Result{ExitCode: 1, Stdout: fenced(salvagedFinding)}}
@@ -235,6 +241,7 @@ func TestFailedAgentNeverSalvages(t *testing.T) {
 
 // TestTimedOutAgentNeverSalvages pins F1's watchdog branch.
 func TestTimedOutAgentNeverSalvages(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{res: core.Result{TimedOut: true, Stdout: fenced(salvagedFinding)}}
@@ -250,6 +257,7 @@ func TestTimedOutAgentNeverSalvages(t *testing.T) {
 // TestPlaceholderWithoutFindingsIsRefused proves the first-write document is
 // not a finished clean review: the shared checker names $.summary.
 func TestPlaceholderWithoutFindingsIsRefused(t *testing.T) {
+	t.Parallel()
 	dir, _, ref := runWithArtifact(t, placeholderReview, "")
 	if ref == nil || ref.Code != recordcore.CodeBadReviewInput {
 		t.Fatalf("refusal = %+v, want %s", ref, recordcore.CodeBadReviewInput)
@@ -264,6 +272,7 @@ func TestPlaceholderWithoutFindingsIsRefused(t *testing.T) {
 // TestPlaceholderYieldsToPrintedFindings proves the one document salvage may
 // replace: the exact placeholder, when stdout carries a findings object.
 func TestPlaceholderYieldsToPrintedFindings(t *testing.T) {
+	t.Parallel()
 	dir, resp, ref := runWithArtifact(t, placeholderReview, fenced(salvagedFinding))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
@@ -278,6 +287,7 @@ func TestPlaceholderYieldsToPrintedFindings(t *testing.T) {
 // TestCleanReviewWithSummaryIsNeverReplaced keeps a finished clean review:
 // adding a summary takes the file out of the placeholder exception.
 func TestCleanReviewWithSummaryIsNeverReplaced(t *testing.T) {
+	t.Parallel()
 	dir, resp, ref := runWithArtifact(t, cleanReview, fenced(salvagedFinding))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
@@ -292,6 +302,7 @@ func TestCleanReviewWithSummaryIsNeverReplaced(t *testing.T) {
 // TestStaleArtifactIsNotSalvaged keeps the artifact the agent left alone:
 // salvage only fills an absent file or the exact placeholder.
 func TestStaleArtifactIsNotSalvaged(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	stale := filepath.Join(dir, reviewFile)
@@ -310,6 +321,7 @@ func TestStaleArtifactIsNotSalvaged(t *testing.T) {
 // TestDrainNeverSalvagesAReview keeps the drain contract separate: a findings
 // block on a drain agent's stdout is not a replies artifact.
 func TestDrainNeverSalvagesAReview(t *testing.T) {
+	t.Parallel()
 	root, dir := drainBundle(t)
 	cmdr := &scripted{res: core.Result{ExitCode: 0, Stdout: fenced(salvagedFinding)}}
 	_, ref := Drain(t.Context(), drainRequest(root, cmdr), "digest")
