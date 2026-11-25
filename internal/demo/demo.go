@@ -51,13 +51,6 @@ const (
 	urlShape = "https://github.com/<owner>/<repo>/pull/<n>"
 )
 
-// Request carries the resolved demo invocation: the adapter-injected
-// environment and the checkout the CLI resolved for the binary.
-type Request struct {
-	Env  map[string]string
-	Root string
-}
-
 // flags is demo's parsed surface: the optional URL, the agent override, and
 // whether the disposable directory is kept.
 type flags struct {
@@ -69,7 +62,7 @@ type flags struct {
 
 // Run executes `demo [<public-github-pr-url>] [--agent <name>] [--keep]
 // [--timeout <secs>] [--json]`, returning the process exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	// The review body owns stdout; every composed verb's progress moves to the
 	// diagnostic stream so the render is the only thing a pipe reads.
 	r.Human = r.Diag
@@ -81,7 +74,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, verb); done {
 		return code
 	}
-	resp, ref := democore.Run(ctx, demoRequest(ctx, r, req, f))
+	resp, ref := democore.Run(ctx, demoRequest(ctx, r, &req, f))
 	if ref != nil {
 		return refuse(r, ref)
 	}
@@ -182,7 +175,7 @@ func finishFlags(r *cli.Runner, f *flags, positionals []string) (flags, int, boo
 
 // demoRequest injects the runtime, the streams, the checkout, and both
 // commanders into the typed service request.
-func demoRequest(ctx context.Context, r *cli.Runner, req Request, f flags) *democore.Request {
+func demoRequest(ctx context.Context, r *cli.Runner, req *readcommon.Request, f flags) *democore.Request {
 	// The caller's top level is probed for both forms: a local review reads it,
 	// and a URL review still must never write its bundle inside it. Outside a
 	// repository the probe answers "" and the run continues.
@@ -212,10 +205,7 @@ func demoRequest(ctx context.Context, r *cli.Runner, req Request, f flags) *demo
 		SettingsPath:   cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
 		Effective:      r.Effective,
 	}
-	out.ReadRequest = r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{Env: req.Env},
-		Root:    &req.Root,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+	out.ReadRequest = r.Read(*req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return out
 }
 

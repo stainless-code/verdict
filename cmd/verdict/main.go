@@ -494,7 +494,7 @@ func dispatchLocal(
 	case cmdDemo:
 		// demo owns its own positionals (an optional public PR URL), so it
 		// reads neither the repo nor the pr split above.
-		return demo.Run(ctx, r, rest, demo.Request{Env: env, Root: root}), true
+		return demo.Run(ctx, r, rest, req), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
 	default:
