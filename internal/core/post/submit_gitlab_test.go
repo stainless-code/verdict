@@ -352,7 +352,7 @@ func TestGitLabPostWarnings(t *testing.T) {
 func gitlabBareBundle(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := writeTestFile(dir+"/PR.json", `{"provider":"gitlab","state":"open"}`); err != nil {
+	if err := writeTestFile(dir+"/PR.json", `{"provider":"gitlab","state":"open","url":"https://gitlab.com/acme/app/-/merge_requests/7"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeTestFile(dir+"/full.diff", gitlabTestDiff); err != nil {
@@ -485,7 +485,7 @@ func writeGitLabBundle(t *testing.T, provider, review string) {
 	t.Helper()
 	dir := ".verdict/state/7"
 	pr := `{"provider":"` + provider + `","number":7,"state":"open","author":"alice",` +
-		`"head_sha":"` + gitlabHead + `","base_sha":"` + gitlabBase + `"}`
+		`"head_sha":"` + gitlabHead + `","base_sha":"` + gitlabBase + `","url":"https://gitlab.com/acme/app/-/merge_requests/7"}`
 	if err := writeTestFile(dir+"/PR.json", pr); err != nil {
 		t.Fatal(err)
 	}

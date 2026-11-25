@@ -18,9 +18,12 @@ const (
 )
 
 // Target is one review target: the host verdict talks to, the repository
-// path that host names it by, and the pull or merge request number.
+// path that host names it by, and the pull or merge request number. Host is
+// the URL's authority ([URLAuthority]), the host every call for the target is
+// pinned to.
 type Target struct {
 	Provider string
+	Host     string
 	Repo     string
 	Pr       string
 }
@@ -78,7 +81,7 @@ func ParseTargetURL(raw string, env map[string]string) (Target, *RefusalError) {
 	if ref != nil {
 		return Target{}, ref
 	}
-	return Target{Provider: provider, Repo: repo, Pr: pr}, nil
+	return Target{Provider: provider, Host: URLAuthority(u), Repo: repo, Pr: pr}, nil
 }
 
 // TargetUnresolved is the refusal for an omitted target verdict could not
@@ -364,13 +367,19 @@ func azureRemoteRepo(segs []string) (string, bool) {
 	return "", false
 }
 
-// RemoteHost is the lowercase hostname of an origin remote, the web host a
-// bundle's review URL names: Azure's ssh host folds into dev.azure.com. It is
-// "" for a remote verdict cannot read.
+// RemoteHost is the web host of an origin remote, the authority a bundle's
+// review URL names and every host call for the target is pinned to. An http
+// or https remote keeps a non-default port ([URLAuthority]); an ssh remote's
+// port is the ssh daemon's, not the web host's, so it reads as the bare
+// hostname, and Azure's ssh host folds into dev.azure.com. It is "" for a
+// remote verdict cannot read.
 func RemoteHost(raw string) string {
 	host := remoteHost(raw)
 	if host == "ssh.dev.azure.com" {
 		return "dev.azure.com"
+	}
+	if u, err := url.Parse(raw); host != "" && err == nil && (u.Scheme == schemeHTTPS || u.Scheme == schemeHTTP) {
+		return URLAuthority(u)
 	}
 	return host
 }

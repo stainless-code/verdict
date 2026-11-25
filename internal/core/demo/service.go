@@ -178,6 +178,11 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
+	if target != nil {
+		// A demo target is always on github.com (ParseTarget refuses any other
+		// host), so every gh call names it and GH_HOST cannot redirect one.
+		ctx = core.WithHost(ctx, ghHostname)
+	}
 	dir, ref := tempRoot(req)
 	if ref != nil {
 		return nil, ref

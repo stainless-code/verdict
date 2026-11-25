@@ -182,12 +182,17 @@ Do not "fix" the inherited side: it is the documented local posture.
   operator: the calls must use the operator's existing `gh` auth and git
   configuration, and shadowing either would break the command rather than
   harden it. A `gh` spawn passes no environment, so the child inherits the
-  parent's (`internal/core/exec`). A `git` call inherits it minus git's
-  location variables, `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with
-  hooks and fsmonitor off (`internal/gitcmd`). A syntactic guard in
-  `internal/archtest` fails on a `git` argv spelled outside it — a `"git"`
-  literal, a constant concatenation, a `sh`/`bash` script naming git — but
-  not on a name computed at run time.
+  parent's (`internal/core/exec`). The host choice is not inherited: when the
+  target names a host (a URL or `origin` target, `demo <url>`, and every
+  `post`, which pins to its bundle's host), every `gh` and `glab` argv names it
+  explicitly (`core.PinHostArgv`), so `GH_HOST` or `GITLAB_HOST` cannot redirect
+  a call to another host's pull request. A typed `<owner/repo> <pr>` read names
+  no host and follows the CLI's default (`docs/manual.md` § Targets). A `git`
+  call inherits the environment minus git's location variables,
+  `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with hooks and fsmonitor off
+  (`internal/gitcmd`). A syntactic guard in `internal/archtest` fails on a
+  `git` argv spelled outside it — a `"git"` literal, a constant concatenation,
+  a `sh`/`bash` script naming git — but not on a name computed at run time.
 - **Default-deny allowlist: the agent-written `bash -c` verify command.**
   `verify` runs the agent's claimed proof (or deep-group `--command`) with a
   default-deny filtered slice of the caller's environment

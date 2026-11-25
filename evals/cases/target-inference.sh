@@ -50,14 +50,17 @@ case "$*" in
     cat "$EVAL_SANDBOX/lookup-out.json"; exit "$(cat "$EVAL_SANDBOX/lookup-exit")" ;;
   "pr view 4701 "*) cat "$EVAL_SANDBOX/canned-PR.json" ;;
   "pr diff 4701 "*) cat "$EVAL_SANDBOX/canned.diff" ;;
-  "api graphql"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
-  "api "*) echo "[]" ;;
+  "api --hostname github.com graphql"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
+  "api --hostname github.com "*) echo "[]" ;;
   *) echo "canned-gh: unhandled call ($*)" >&2; exit 1 ;;
 esac
 STUB
 chmod +x "$EVAL_SANDBOX/fakebin/gh"
 export EVAL_STUBBIN="$EVAL_SANDBOX/fakebin:$EVAL_STUBBIN"
 : >"$EVAL_STUBLOG"
+# The machine's default gh host is another host: every call must still name
+# the target's own github.com (the stub answers only the pinned argv).
+export GH_HOST=ghe.corp.example
 
 # T1 a pasted URL (with a view tail and a fragment) is the whole target.
 run_review fetch "https://github.com/acme/app/pull/4701/files#discussion_r9" --json
@@ -184,6 +187,10 @@ assert_json_field "T7 inferred pr" 4701 '.pr'
 # T8 a flag before the repo is not the repo: trend reads origin.
 run_review trend --json
 assert_json_field "T8 trend with a leading flag takes the origin repo" acme/app '.repo'
+
+# T9 every gh call above named the target's host, whatever GH_HOST says.
+assert_stream_nogrep "T9 no gh call fell back to GH_HOST" "$EVAL_STUBLOG" \
+  '^stub-gh (pr [a-z]+ [0-9]+ --repo acme/|api (graphql|repos/))' "-E"
 
 # T6 fetch-local keeps its own syntax: a bare invocation is still usage.
 run_review fetch-local

@@ -338,7 +338,7 @@ func postCoverageBundle(t *testing.T, review string) {
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/7"
 	testkit.WriteFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
-		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
+		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"},"url":"https://github.com/acme/app/pull/7"}`)
 	testkit.WriteFile(t, dir+"/full.diff", coverageDiff)
 	testkit.WriteFile(t, dir+"/review.json", review)
 	seedControls(t, dir)

@@ -51,7 +51,8 @@ func runPostDryRun(t *testing.T) *postcore.Response {
 	t.Chdir(dir)
 	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
-			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"},`+
+			`"url":"https://github.com/acme/app/pull/5101"}`)
 	writeFixture(t, ".verdict/state/5101/full.diff", fixtureDiff())
 	writeFixture(t, ".verdict/state/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
@@ -88,7 +89,8 @@ func runPostSubmit(t *testing.T) *postcore.Response {
 	t.Chdir(dir)
 	writeFixture(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
-			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
+			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"},`+
+			`"url":"https://github.com/acme/app/pull/5101"}`)
 	writeFixture(t, ".verdict/state/5101/full.diff", fixtureDiff())
 	writeFixture(t, ".verdict/state/5101/review.json",
 		`{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,"comments":[]}`)
