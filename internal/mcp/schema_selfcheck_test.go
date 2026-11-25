@@ -16,7 +16,7 @@ import (
 //nolint:revive // the schema audit reads as one assertion block
 func TestSchemaSelfCheck(t *testing.T) {
 	t.Parallel()
-	tools := allTools(false, true)
+	tools := allTools(Posture(false))
 	allFields := map[string]bool{}
 	topFields := map[string]map[string]bool{}
 	for _, tool := range tools {
@@ -146,7 +146,7 @@ func collectFieldNames(typ reflect.Type, into map[string]bool, visited map[refle
 //nolint:revive // the coverage matrix reads as one assertion block
 func TestDecodeCoversSchema(t *testing.T) {
 	t.Parallel()
-	for _, tool := range allTools(false, true) {
+	for _, tool := range allTools(Posture(false)) {
 		t.Run(tool.name, func(t *testing.T) {
 			t.Parallel()
 			if tool.decode == nil {

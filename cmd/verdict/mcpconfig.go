@@ -17,7 +17,6 @@ type mcpConfigFlags struct {
 	dry      bool
 	json     bool
 	readOnly bool
-	operator bool
 }
 
 func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) string) int {
@@ -37,7 +36,7 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 	res, ref := mcpconfig.Run(&mcpconfig.Request{
 		Agent: flags.agent, Write: flags.write, DryRun: flags.dry,
 		Cwd: cwd, Env: envMap(getenv),
-		ReadOnly: flags.readOnly, Operator: flags.operator,
+		ReadOnly: flags.readOnly,
 	})
 	if ref != nil {
 		return r.Refuse(ref)
@@ -76,8 +75,6 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 			f.write = true
 		case arg == "--read-only":
 			f.readOnly = true
-		case arg == "--operator":
-			f.operator = true
 		case arg == flagDryRun:
 			f.dry = true
 		case arg == flagJSON:
@@ -86,16 +83,12 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 			fmt.Fprint(stdout, mcpConfigUsageText())
 			return f, cli.ExitOK, true
 		default:
-			fmt.Fprintf(stderr, "unknown flag '%s' for mcp config (want --agent, --write, --dry-run, --json, --read-only, --operator)\n", arg)
+			fmt.Fprintf(stderr, "unknown flag '%s' for mcp config (want --agent, --write, --dry-run, --json, --read-only)\n", arg)
 			return f, cli.ExitUsage, true
 		}
 	}
 	if f.agent == "" {
 		fmt.Fprintln(stderr, "mcp config needs --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>")
-		return f, cli.ExitUsage, true
-	}
-	if f.readOnly && f.operator {
-		fmt.Fprintln(stderr, mcpPostureConflict)
 		return f, cli.ExitUsage, true
 	}
 	return f, 0, false
@@ -122,10 +115,9 @@ func writeMCPConfigEnvelope(r *cli.Runner, res *mcpconfig.Result, f mcpConfigFla
 
 func mcpConfigUsageText() string {
 	return "usage: verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
-		"  [--write] [--dry-run] [--json] [--read-only | --operator]\n" +
+		"  [--write] [--dry-run] [--json] [--read-only]\n" +
 		"  Print the exact MCP server entry for the host (the default; --dry-run too).\n" +
-		"  --read-only or --operator puts the matching argv after mcp in the snippet;\n" +
-		"  the pair is mutually exclusive, like verdict mcp. --write merges it idempotently into the host's config,\n" +
+		"  --read-only puts it after mcp in the snippet. --write merges it idempotently into the host's config,\n" +
 		"  updating a verdict-owned entry in place and backing the old file up\n" +
 		"  first; an unparseable or foreign entry refuses typed instead of rewriting it.\n" +
 		"  Paths: claude .mcp.json, cursor .cursor/mcp.json, codex\n" +
