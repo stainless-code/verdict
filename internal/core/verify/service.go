@@ -167,7 +167,7 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, At: now}
 	before := probeTree(ctx, commander, root)
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, root, st.childEnv(), sb)
+	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(root, sb), st.childEnv(), sb)
 	st.releaseSandbox(sb)
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
@@ -197,6 +197,19 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 	}
 	if !st.req.Sandbox && !st.req.SandboxNetworkOnly {
 		return nil, nil
+	}
+	// The physical root, as group mode already passes: patch mode reaches
+	// here with the literal repo root (often "."), which may be a symlink,
+	// and every mount and rule below is decided against one spelling.
+	literal := root
+	root, ref := canonicalRoot(root)
+	if ref != nil {
+		return nil, ref
+	}
+	if workDir == literal {
+		// The command runs at the root; give it the same physical spelling
+		// the mounts and rules use.
+		workDir = root
 	}
 	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
 	if ref != nil {
@@ -240,6 +253,18 @@ func sandboxFlagsRefusal(req *Request) *core.RefusalError {
 	}
 	return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are mutually exclusive: " +
 		"--sandbox enforces the full bwrap/sandbox-exec shape, --sandbox-network-only accepts network isolation alone; pass one"}
+}
+
+// commandDir is where the verify command runs: the repo root, spelled
+// physically for a wrapped run so it matches the mounts and the probe.
+func commandDir(root string, sb *sandbox) string {
+	if sb == nil {
+		return root
+	}
+	if physical, ref := canonicalRoot(root); ref == nil {
+		return physical
+	}
+	return root
 }
 
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
