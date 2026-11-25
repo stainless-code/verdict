@@ -34,7 +34,7 @@ hoststub_route glab "api projects/4242/merge_requests/$PR/notes?per_page=100&pag
 hoststub_route glab "api projects/4242/merge_requests/$PR/discussions?per_page=100&page=1" "$FIX/discussions.json"
 
 # --- read side, mismatching: the environment does not make glab's default the target.
-assert_refused() { # <label> <env assignment...>: fetch refuses host-mismatch with no glab call
+expect_read_refused() { # <label> <env assignment...>: fetch refuses host-mismatch with no glab call
   local label="$1"
   shift
   : >"$HOSTSTUB_LOG"
@@ -59,9 +59,9 @@ run_review_env() { # run_review with extra environment assignments before `--`
   EVAL_STATUS=$?
   set -e
 }
-assert_refused "GITLAB_API_HOST on another port" GITLAB_HOST=https://gitlab.example:8443 GITLAB_API_HOST=gitlab.example:9443
-assert_refused "GITLAB_API_HOST as a URL" GITLAB_HOST=https://gitlab.example:8443 GITLAB_API_HOST=https://gitlab.example:8443
-assert_refused "GITLAB_REPO set" GITLAB_HOST=https://gitlab.example:8443 GITLAB_REPO=acme/app
+expect_read_refused "GITLAB_API_HOST on another port" GITLAB_HOST=https://gitlab.example:8443 GITLAB_API_HOST=gitlab.example:9443
+expect_read_refused "GITLAB_API_HOST as a URL" GITLAB_HOST=https://gitlab.example:8443 GITLAB_API_HOST=https://gitlab.example:8443
+expect_read_refused "GITLAB_REPO set" GITLAB_HOST=https://gitlab.example:8443 GITLAB_REPO=acme/app
 
 # --- read side, matching.
 export GITLAB_HOST="https://gitlab.example:8443"
@@ -128,3 +128,4 @@ hoststub_argv_log glab "$EVAL_SANDBOX/glab-post.txt"
 assert_file_grep "post wrote a discussion" "$EVAL_SANDBOX/glab-post.txt" 'merge_requests/7/discussions --method POST'
 assert_file_nogrep "no post call names a host" "$EVAL_SANDBOX/glab-post.txt" '[-][-]hostname'
 hoststub_assert_all_routed
+eval_end
