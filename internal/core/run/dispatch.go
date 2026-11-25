@@ -2,10 +2,13 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
@@ -69,36 +72,98 @@ func (st *state) dispatchSpawn(ctx context.Context, args *launchArgs) *core.Refu
 	return st.verdict(ctx, args, res, err, artifactState{exists: true, regular: true, fresh: true})
 }
 
-// MonthlyCeiling refuses a launch the repository's monthly spend ceiling
-// already forbids. Run authorizes a priced S5 execution itself; a launch it
-// does not price — the self-review loop's review and fix spawns — calls this
-// before spawning, so the ceiling binds every spend the loop starts. The
-// pending launch is unpriced, so month-to-date known spend is enforced alone,
-// and require_known_estimate refuses it exactly as it refuses an unpriced run.
+// AuthorizeSpawn admits one launch run does not price — the self-review
+// loop's review and fix spawns — and writes its receipt. Run authorizes a
+// priced S5 execution itself; these launches carry no projection, so the
+// repository's monthly ceiling is enforced against month-to-date known spend
+// alone, and require_known_estimate refuses them exactly as it refuses an
+// unpriced run.
+//
+// Admission appends one budget.json row for the launch (execution_id is
+// launchID, projected_usd null) under the same monthly lock and ledger writer
+// run's own spend receipt uses, so the month-to-date scan counts the spawn —
+// as unknown spend until [PriceSpawn] records a reported amount. The row is
+// dated after every recorded cost receipt already in the bundle, so the
+// review's own cost.json can never read as covering a later spawn.
 //
 // dir is the fetched bundle: its run.json carries the effective ceiling after
 // repository and personal precedence. A bundle without one falls back to the
 // operator's personal policy. The returned warnings are the ones the check
 // raised (an unreadable month-to-date scan, unknown-cost receipts).
-func MonthlyCeiling(ctx context.Context, req *core.RunRequest, dir string) ([]string, *core.RefusalError) {
+func AuthorizeSpawn(ctx context.Context, req *core.RunRequest, dir, launchID string) ([]string, *core.RefusalError) {
 	st := &state{req: req}
-	captured, _, err := config.ReadRunState(dir)
-	if err != nil {
-		return nil, st.refuse(codeRecordFailed, err.Error())
+	policy, ref := st.spawnPolicy(dir)
+	if ref != nil {
+		return nil, ref
 	}
-	policy := spend.Policy{}
-	switch {
-	case captured != nil && captured.Resolved != nil:
-		policy = st.spendPolicy(captured)
-	case req.SpendPolicy != nil:
-		policy = *req.SpendPolicy
+	if !spend.ValidLimit(policy.MonthlyCap) {
+		return nil, st.refuse(codeBadFlags, "monthly spend ceiling must be a finite nonnegative USD amount")
 	}
-	unlock, ref := st.holdMonthlyLock(ctx, policy)
+	// The lock spans the scan and the append, as it does for run: two loops
+	// must not both admit against the same month-to-date.
+	unlock, ref := st.acquireMonthlyLock(ctx)
 	if ref != nil {
 		return st.warnings, ref
 	}
 	defer unlock()
-	return st.warnings, st.authorizeMonthlyCap(spend.Projection{}, policy)
+	if ref := st.authorizeMonthlyCap(spend.Projection{}, policy); ref != nil {
+		return st.warnings, ref
+	}
+	// Receipts carry whole seconds, so the comparison does too: a row a
+	// fraction past the recorded second would print as that second.
+	at := st.now().UTC().Truncate(time.Second)
+	if through, ok := spend.RecordedThrough(dir); ok && !at.After(through) {
+		at = through.Add(time.Second)
+	}
+	record := jq.NewObj("at", core.NowUTC(at), "execution_id", launchID, "scope", "spawn",
+		"projected_usd", nil, "budget_usd", budgetNumber(policy.Budget),
+		"personal_limit_usd", budgetNumber(policy.Personal), "require_known_estimate", policy.RequireKnown,
+		"budget_src", st.budgetSource())
+	return st.warnings, st.updateLedger(ctx, dir, func(ledger []any) []any { return append(ledger, record) })
+}
+
+// PriceSpawn records the agent-reported spend of one admitted spawn on the
+// ledger row [AuthorizeSpawn] wrote for it, so the month-to-date scan counts
+// the amount instead of an unknown. A row that is missing is left alone: the
+// spawn stays unknown, never free.
+func PriceSpawn(ctx context.Context, req *core.RunRequest, dir, launchID, usd string) *core.RefusalError {
+	st := &state{req: req}
+	if !spend.ValidLimit(usd) || usd == "" {
+		return st.refuse(codeBadFlags, "reported spend must be a finite nonnegative USD amount")
+	}
+	return st.updateLedger(ctx, dir, func(ledger []any) []any {
+		for _, row := range ledger {
+			priceRow(row, launchID, usd)
+		}
+		return ledger
+	})
+}
+
+// priceRow sets the reported amount on the ledger row the launch owns.
+func priceRow(row any, launchID, usd string) {
+	obj, ok := row.(*jq.Obj)
+	if !ok {
+		return
+	}
+	if id, _ := obj.Get("execution_id"); id == launchID {
+		obj.Set("projected_usd", json.Number(usd))
+		obj.Set("reported", "agent")
+	}
+}
+
+// spawnPolicy is the policy one unpriced spawn is admitted under.
+func (st *state) spawnPolicy(dir string) (spend.Policy, *core.RefusalError) {
+	captured, _, err := config.ReadRunState(dir)
+	if err != nil {
+		return spend.Policy{}, st.refuse(codeRecordFailed, err.Error())
+	}
+	switch {
+	case captured != nil && captured.Resolved != nil:
+		return st.spendPolicy(captured), nil
+	case st.req.SpendPolicy != nil:
+		return *st.req.SpendPolicy, nil
+	}
+	return spend.Policy{}, nil
 }
 
 // personalFloatBits renders a personal spend amount without inventing digits.

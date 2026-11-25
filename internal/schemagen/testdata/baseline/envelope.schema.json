@@ -1230,7 +1230,7 @@
       "properties": {
         "passed": { "type": "boolean" },
         "stop": {
-          "description": "Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, or the monthly spend ceiling refusing a spawn), no-progress (a round left at least as many open findings as the one before), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print).",
+          "description": "Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print).",
           "enum": [
             "pass",
             "max-rounds",
@@ -1247,7 +1247,7 @@
         "budget_s": { "type": "integer", "minimum": 1 },
         "max_cost_usd": { "type": ["number", "null"], "minimum": 0 },
         "cost_usd": {
-          "description": "The summed known round costs; null when no round's receipts priced it. Unpriced rounds leave --max-cost-usd enforced against known spend only.",
+          "description": "The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown).",
           "type": ["number", "null"],
           "minimum": 0
         },

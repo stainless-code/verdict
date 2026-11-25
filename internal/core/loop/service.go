@@ -43,12 +43,18 @@ const (
 	codeBadFlags = "bad-flags"
 	// codeCanceled is the shared cancel code.
 	codeCanceled = "canceled"
+	msgCanceled  = "canceled before loop completed"
 	// codeAgentFailed and codeAgentTimeout are run's own codes: the first is
 	// the agent-failed stop, the second is the wall budget (every spawn's
 	// watchdog is the budget that remains).
 	codeAgentFailed  = "agent-failed"
 	codeAgentTimeout = "agent-timeout"
 
+	// codeBudgetUnknown is run's own code for spend it cannot measure.
+	codeBudgetUnknown = "budget-unknown"
+	// reviewAttempts is the review's launch-to-check rounds: run's default,
+	// passed explicitly so the per-attempt watchdog can split the budget.
+	reviewAttempts = 2
 	// findersOne is the review topology: one finder per round, the same fast
 	// pass demo launches.
 	findersOne = "1"
@@ -71,6 +77,7 @@ const (
 	stampLayout = "20060102T150405Z"
 	// patchFile is the verify input the fix agent declares a command in.
 	patchFile    = "patch.json"
+	fixCostFile  = "fix-cost.json"
 	findingsFile = "findings.json"
 	summaryFile  = "summary.json"
 	// dirMode and fileMode are the receipt permissions: the operator's own
@@ -88,9 +95,11 @@ const (
 const defaultFixPrompt = "Self-review loop — fix phase. A review of this working tree is " +
 	"recorded in the findings file named below: fix every finding whose status is \"open\". " +
 	"Edit the working tree only — do not commit, stage, push, or open a pull request, and " +
-	"change nothing under .verdict/ except the patch.json named below. " +
+	"change nothing under .verdict/ except the patch.json and fix-cost.json named below. " +
 	"To prove a fix, write that patch.json as {\"verifyCmd\": \"<one command that exercises " +
 	"the fix>\"}: the loop runs `verdict verify` on it after you exit and keeps the receipt. " +
+	"Before you exit, report your own spend for this fix as {\"est_usd\": <dollars>} in the " +
+	"fix-cost.json named below; without it the loop counts this spend as unknown. " +
 	"The next round fetches the working tree again and reviews your fixes from scratch."
 
 // Request is one loop invocation, resolved by the adapter.
@@ -118,6 +127,12 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	FixPrompt string
 	// Print renders the plan and spawns nothing.
 	Print bool
+	// VerifySandbox and VerifySandboxNetworkOnly pass `verify --sandbox` and
+	// `verify --sandbox-network-only` to the fix phase's verify step: the
+	// command is the agent's own proposal from patch.json. Both off matches
+	// `verdict verify`; they are mutually exclusive.
+	VerifySandbox            bool
+	VerifySandboxNetworkOnly bool
 }
 
 // Response carries the loop outcome for the adapter.
@@ -138,6 +153,7 @@ type loop struct { //nolint:govet // request first: the service reads one invoca
 	output   string
 	spent    *big.Rat
 	known    bool
+	unknown  bool
 	data     *Data
 	warnings []string
 }
@@ -190,6 +206,9 @@ func validate(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeBadFlags, Message: "--max-rounds must be a positive whole number"}
 	case req.Budget <= 0:
 		return &core.RefusalError{Code: codeBadFlags, Message: "--budget must be a positive duration"}
+	case req.VerifySandbox && req.VerifySandboxNetworkOnly:
+		return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are " +
+			"mutually exclusive (pick one sandbox for the verify step)"}
 	case req.MaxCostUSD != "" && !positiveDecimal(req.MaxCostUSD):
 		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
 			"--max-cost-usd must be a positive dollar amount, got '%s'", req.MaxCostUSD)}
@@ -270,8 +289,8 @@ func (lp *loop) createOutput() *core.RefusalError {
 // rounds runs the loop until a stop condition holds.
 func (lp *loop) rounds(ctx context.Context) {
 	for n := 1; ; n++ {
-		if stop := lp.budgetStop(); stop != "" {
-			lp.stop(stop, nil)
+		if stop, ref := lp.budgetStop(ctx); stop != "" {
+			lp.stop(stop, ref)
 			return
 		}
 		rd := &Round{
@@ -292,15 +311,20 @@ func (lp *loop) rounds(ctx context.Context) {
 	}
 }
 
-// budgetStop reports the budget that forbids starting another round or phase.
-func (lp *loop) budgetStop() string {
-	if !lp.now().Before(lp.deadline) {
-		return StopWallBudget
+// budgetStop reports what forbids starting another round: a cancel, the wall
+// budget, or the cost budget — reached, or unmeasurable.
+func (lp *loop) budgetStop(ctx context.Context) (string, *Refusal) {
+	switch {
+	case ctx.Err() != nil:
+		return StopRefused, canceledRefusal()
+	case !lp.now().Before(lp.deadline):
+		return StopWallBudget, nil
+	case lp.overCost():
+		return StopCostBudget, nil
+	case lp.req.MaxCostUSD != "" && lp.unknown:
+		return StopCostBudget, lp.unmeasured(len(lp.data.Rounds))
 	}
-	if lp.overCost() {
-		return StopCostBudget
-	}
-	return ""
+	return "", nil
 }
 
 func (lp *loop) stop(reason string, ref *Refusal) {
@@ -310,130 +334,202 @@ func (lp *loop) stop(reason string, ref *Refusal) {
 }
 
 // round runs one round's phases and reports the stop reason ("" continues).
+// Every phase runs under the wall deadline, so a fetch, record, or gate that
+// hangs stops the loop on the budget like a spawn does.
 func (lp *loop) round(ctx context.Context, rd *Round) (string, *Refusal) {
+	dctx, cancel := context.WithTimeout(ctx, lp.deadline.Sub(lp.now()))
+	defer cancel()
 	b := lp.bundle(rd.Round)
-	warnings, ref := lp.ph.fetch(ctx, lp.name(rd.Round))
+	warnings, ref := lp.ph.fetch(dctx, lp.name(rd.Round))
 	lp.warnAll(warnings)
 	if ref != nil {
-		return refusalStop(ref), asRefusal(ref)
+		return lp.refused(ctx, ref)
 	}
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), rd.Bundle)
-	if stop, ref := lp.review(ctx, b, dir); stop != "" {
+	if stop, ref := lp.review(ctx, dctx, rd.Round, b, dir); stop != "" {
 		return stop, ref
 	}
-	recorded, warnings, ref := lp.ph.record(ctx, b)
+	recorded, warnings, ref := lp.ph.record(dctx, b)
 	lp.warnAll(warnings)
 	if ref != nil {
-		return refusalStop(ref), asRefusal(ref)
+		return lp.refused(ctx, ref)
 	}
 	lp.observe(rd, recorded)
-	passed, warnings, ref := lp.ph.gate(ctx, b)
+	passed, warnings, ref := lp.ph.gate(dctx, b)
 	lp.warnAll(warnings)
 	if ref != nil {
-		return refusalStop(ref), asRefusal(ref)
+		return lp.refused(ctx, ref)
 	}
 	rd.Gate = &passed
 	if passed {
 		return StopPass, nil
 	}
-	if stop := lp.afterFailedGate(rd, dir); stop != "" {
-		return stop, nil
+	if stop, ref := lp.afterFailedGate(rd, dir); stop != "" {
+		return stop, ref
 	}
-	return lp.fix(ctx, rd, b, dir)
+	return lp.fix(ctx, dctx, rd, b, dir)
+}
+
+// refused maps a composed verb's refusal onto the loop's stop. A cancel is
+// the operator's ^C when the loop's own context is done, and the wall budget
+// when only the round's deadline ran out.
+func (lp *loop) refused(ctx context.Context, ref *core.RefusalError) (string, *Refusal) {
+	switch {
+	case ctx.Err() != nil && ref.Code == codeCanceled:
+		return StopRefused, asRefusal(ref)
+	case ctx.Err() != nil:
+		return StopRefused, canceledRefusal()
+	case ref.Code == codeCanceled:
+		return StopWallBudget, asRefusal(ref)
+	}
+	return refusalStop(ref), asRefusal(ref)
 }
 
 // afterFailedGate checks the stops that forbid a fix phase: no progress since
 // the previous round, the last round (nothing would review the fix), and the
-// budgets.
-func (lp *loop) afterFailedGate(rd *Round, dir string) string {
+// budgets — including spend the round could not measure while a cost ceiling
+// is set, which stops the loop rather than spending blind.
+func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 	if lp.noProgress(rd) {
-		return StopNoProgress
+		return StopNoProgress, nil
 	}
 	if rd.Round >= lp.req.MaxRounds {
-		return StopMaxRounds
+		return StopMaxRounds, nil
 	}
 	if !lp.now().Before(lp.deadline) {
-		return StopWallBudget
-	}
-	if lp.overCostWith(lp.ph.cost(dir, lp.now())) {
-		return StopCostBudget
-	}
-	return ""
-}
-
-// noProgress reports a plateau: the round left at least as many open findings
-// as the round before it.
-func (lp *loop) noProgress(rd *Round) bool {
-	if len(lp.data.Rounds) == 0 || rd.Open == nil {
-		return false
-	}
-	prev := lp.data.Rounds[len(lp.data.Rounds)-1].Open
-	return prev != nil && *rd.Open >= *prev
-}
-
-// review launches the review-only agent run against the round's bundle, after
-// the monthly ceiling allows a spawn.
-func (lp *loop) review(ctx context.Context, b *reviewflow.Bundle, dir string) (string, *Refusal) {
-	timeout, ok := lp.remaining(0)
-	if !ok {
 		return StopWallBudget, nil
 	}
-	launch := reviewflow.Launch{Agent: lp.req.Agent, FindersRaw: findersOne, TimeoutRaw: timeout}
-	if stop, ref := lp.ceiling(ctx, b, launch, dir); stop != "" {
-		return stop, ref
+	pending := lp.ph.cost(dir, lp.now())
+	if lp.overCostWith(pending) {
+		return StopCostBudget, nil
 	}
-	warnings, ref := lp.ph.review(ctx, b, launch)
-	lp.warnAll(warnings)
-	if ref != nil {
-		return refusalStop(ref), asRefusal(ref)
+	if lp.req.MaxCostUSD != "" && pending.UnknownCount > 0 {
+		return StopCostBudget, lp.unmeasured(rd.Round)
 	}
 	return "", nil
 }
 
-// ceiling applies the monthly spend ceiling before a spawn: a launch the
-// ceiling forbids is the cost budget, whoever set it.
-func (lp *loop) ceiling(
-	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir string,
+// unmeasured is the refusal a cost-ceilinged loop stops with when a round's
+// spend has no known amount.
+func (lp *loop) unmeasured(n int) *Refusal {
+	return &Refusal{Code: codeBudgetUnknown, Message: fmt.Sprintf("round %d's spend could not be measured "+
+		"(an agent spawn reported no cost) — --max-cost-usd %s cannot be enforced, so the loop stopped "+
+		"before spending more", n, lp.req.MaxCostUSD)}
+}
+
+// noProgress reports a plateau: no finding open after the previous round was
+// resolved by this one — the previous open sigs are all still open.
+func (lp *loop) noProgress(rd *Round) bool {
+	if len(lp.data.Rounds) == 0 || rd.Open == nil {
+		return false
+	}
+	prev := lp.data.Rounds[len(lp.data.Rounds)-1]
+	if prev.Open == nil {
+		return false
+	}
+	for _, sig := range prev.OpenSigs {
+		if !slices.Contains(rd.OpenSigs, sig) {
+			return false
+		}
+	}
+	return true
+}
+
+// review launches the review-only agent run against the round's bundle, after
+// the spawn is admitted. Run's repair loop makes up to reviewAttempts launches,
+// so each one's watchdog gets that share of the remaining budget, and the
+// round's deadline bounds the whole review either way.
+func (lp *loop) review(
+	ctx, dctx context.Context, n int, b *reviewflow.Bundle, dir string,
 ) (string, *Refusal) {
-	warnings, ref := lp.ph.ceiling(ctx, b, launch, dir)
+	left, ok := lp.secondsLeft()
+	if !ok {
+		return StopWallBudget, nil
+	}
+	launch := reviewflow.Launch{
+		Agent: lp.req.Agent, FindersRaw: findersOne,
+		TimeoutRaw: strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
+		RoundsRaw:  strconv.Itoa(reviewAttempts),
+	}
+	if stop, ref := lp.admit(ctx, dctx, b, launch, dir, lp.name(n)+"-review"); stop != "" {
+		return stop, ref
+	}
+	warnings, ref := lp.ph.review(dctx, b, launch)
+	lp.warnAll(warnings)
+	if ref != nil {
+		return lp.refused(ctx, ref)
+	}
+	return "", nil
+}
+
+// admit applies the monthly spend ceiling and writes the spawn's ledger
+// receipt: a launch the ceiling forbids is the cost budget, whoever set it.
+func (lp *loop) admit(
+	ctx, dctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string,
+) (string, *Refusal) {
+	warnings, ref := lp.ph.authorize(dctx, b, launch, dir, launchID)
 	lp.warnAll(warnings)
 	if ref == nil {
 		return "", nil
 	}
 	if ref.Code == codeCanceled {
-		return StopRefused, asRefusal(ref)
+		return lp.refused(ctx, ref)
 	}
 	return StopCostBudget, asRefusal(ref)
 }
 
 // fix runs the fix phase: one agent spawn with the fix directive, then verify
 // on the command the agent declared, if any. The verify outcome is recorded,
-// never a stop: the next round's review grades the fix.
-func (lp *loop) fix(ctx context.Context, rd *Round, b *reviewflow.Bundle, dir string) (string, *Refusal) {
+// never a stop — the next round's review grades the fix — except a cancel,
+// which stops the loop at the round where it landed.
+func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, dir string) (string, *Refusal) {
 	timeout, ok := lp.remaining(0)
 	if !ok {
 		return StopWallBudget, nil
 	}
 	launch := reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: timeout}
-	if stop, ref := lp.ceiling(ctx, b, launch, dir); stop != "" {
+	launchID := lp.name(rd.Round) + "-fix"
+	if stop, ref := lp.admit(ctx, dctx, b, launch, dir, launchID); stop != "" {
 		return stop, ref
 	}
 	rd.Fix = &Fix{}
-	if ref := lp.ph.fix(ctx, b, launch, lp.fixDirective(rd.Round, dir)); ref != nil {
-		return refusalStop(ref), asRefusal(ref)
+	if ref := lp.ph.fix(dctx, b, launch, lp.fixDirective(rd.Round, dir), dir, launchID); ref != nil {
+		return lp.refused(ctx, ref)
 	}
 	if !lp.ph.declared(dir) {
 		return "", nil
 	}
-	timeout, ok = lp.remaining(verifyCapS)
+	return lp.verifyFix(ctx, dctx, rd, b)
+}
+
+// verifyFix runs verify on the command the fix declared and keeps its
+// receipt. A cancel that lands in verify is the round's stop.
+func (lp *loop) verifyFix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle) (string, *Refusal) {
+	timeout, ok := lp.remaining(verifyCapS)
 	if !ok {
 		rd.Fix.Verify = &Verify{Refusal: &Refusal{Code: codeAgentTimeout, Message: "no wall budget left to run verify"}}
 		return "", nil
 	}
-	verify, warnings := lp.ph.verify(ctx, b, timeout)
+	verify, warnings := lp.ph.verify(dctx, b, timeout)
 	lp.warnAll(warnings)
 	rd.Fix.Verify = verify
+	if (verify.Refusal != nil && verify.Refusal.Code == codeCanceled) || dctx.Err() != nil {
+		return lp.refused(ctx, &core.RefusalError{Code: codeCanceled, Message: verifyCanceled(verify)})
+	}
 	return "", nil
+}
+
+// verifyCanceled is the cancel message verify raised, or the shared one.
+func verifyCanceled(v *Verify) string {
+	if v.Refusal != nil && v.Refusal.Message != "" {
+		return v.Refusal.Message
+	}
+	return msgCanceled
+}
+
+// canceledRefusal is the shared cancel the loop stops with.
+func canceledRefusal() *Refusal {
+	return &Refusal{Code: codeCanceled, Message: msgCanceled}
 }
 
 // fixDirective is the fix agent's prompt: the instructions (the operator's
@@ -444,22 +540,29 @@ func (lp *loop) fixDirective(n int, dir string) string {
 		instructions = defaultFixPrompt
 	}
 	return instructions + "\n\n" + fmt.Sprintf("Round %d of at most %d.\nFindings file: %s\nBundle: %s\n"+
-		"patch.json: %s", n, lp.req.MaxRounds, filepath.Join(dir, findingsFile), dir, filepath.Join(dir, patchFile))
+		"fix-cost.json: %s\npatch.json: %s", n, lp.req.MaxRounds, filepath.Join(dir, findingsFile), dir,
+		filepath.Join(dir, fixCostFile), filepath.Join(dir, patchFile))
 }
 
 // remaining is the watchdog budget for the next spawn: the whole seconds the
 // wall budget has left, capped at limit when one is set. ok is false once the
 // budget is spent.
 func (lp *loop) remaining(limit int) (string, bool) {
-	left := lp.deadline.Sub(lp.now())
-	if left <= 0 {
+	left, ok := lp.secondsLeft()
+	if !ok {
 		return "", false
 	}
-	secs := int(math.Ceil(left.Seconds()))
+	secs := int(math.Ceil(left))
 	if limit > 0 && secs > limit {
 		secs = limit
 	}
 	return strconv.Itoa(secs), true
+}
+
+// secondsLeft is the wall budget that remains, false once it is spent.
+func (lp *loop) secondsLeft() (float64, bool) {
+	left := lp.deadline.Sub(lp.now())
+	return left.Seconds(), left > 0
 }
 
 // observe copies the record's open findings into the round receipt.
@@ -482,9 +585,13 @@ func (lp *loop) observe(rd *Round, data *core.RecordData) {
 func (lp *loop) roundCost(rd *Round) *float64 {
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), rd.Bundle)
 	mtd := lp.ph.cost(dir, lp.now())
-	if mtd.UnknownCount > 0 && lp.req.MaxCostUSD != "" {
-		lp.warn(fmt.Sprintf("round %d's cost is not fully known — --max-cost-usd is enforced "+
-			"against known spend only", rd.Round))
+	if mtd.UnknownCount > 0 {
+		lp.unknown = true
+		// With a cost ceiling the next round's start stops on this instead.
+		if lp.req.MaxCostUSD == "" {
+			lp.warn(fmt.Sprintf("round %d's spend could not be fully measured (an agent spawn reported "+
+				"no cost) — it counts as unknown toward the monthly spend ceiling", rd.Round))
+		}
 	}
 	if mtd.KnownUSD == "" {
 		return nil

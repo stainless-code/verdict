@@ -70,6 +70,8 @@ type Launch struct {
 	Agent      string
 	FindersRaw string
 	TimeoutRaw string
+	// RoundsRaw is run's --rounds; empty keeps run's default.
+	RoundsRaw string
 }
 
 // RecordOptions selects the record posture.
@@ -151,6 +153,7 @@ func (f *Flow) RunRequest(b *Bundle, l Launch, warnings []string) *core.RunReque
 		Agent:       l.Agent,
 		FindersRaw:  l.FindersRaw,
 		TimeoutRaw:  l.TimeoutRaw,
+		RoundsRaw:   l.RoundsRaw,
 		Checkout:    b.Checkout,
 		LookPath:    f.LookPath,
 		Environ:     f.Environ,

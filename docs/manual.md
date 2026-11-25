@@ -7080,10 +7080,16 @@ informational --coverage require --live skip`. A passing gate ends the loop.
 A failed gate starts the fix phase: the agent is spawned again with the fix
 directive — the built-in instructions, or the text of `--fix-prompt <file>`
 followed by the round's context (the findings file, the bundle, and its
-`patch.json` path) — and fixes the open findings in the working tree. When the
-fix declares a command in the bundle's `patch.json` (`{"verifyCmd": "..."}`),
-the loop runs `verdict verify` on it, so the fix carries the tool's receipt
-rather than the agent's word; the receipt is recorded, never a stop. The next
+`fix-cost.json` and `patch.json` paths) — and fixes the open findings in the
+working tree. When the fix declares a command in the bundle's `patch.json`
+(`{"verifyCmd": "..."}`), the loop runs `verdict verify` on it, so the fix
+carries the tool's receipt rather than the agent's word; the receipt is
+recorded, never a stop, except a cancel, which stops the loop in that round.
+The command is the agent's own proposal: `--sandbox` or
+`--sandbox-network-only` runs that verify step under `verify`'s enforced
+sandbox (off by default, as for `verify` itself; the two are mutually
+exclusive). Every phase runs under the wall deadline, and the review's two
+launch-to-check attempts each get half the budget that remains. The next
 round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
 phase: nothing would review it. The loop never commits, stages, pushes, posts,
@@ -7091,25 +7097,35 @@ or opens a PR.
 
 The loop stops on the first of:
 
-| Stop           | When                                                                                                                                                  |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `pass`         | the round's gate passed                                                                                                                               |
-| `max-rounds`   | the last round's gate failed (`--max-rounds`, default 3)                                                                                              |
-| `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed, or a spawn's watchdog fired — each spawn's watchdog is the budget that remains |
-| `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, or the monthly spend ceiling refused a spawn                                                    |
-| `no-progress`  | a round left at least as many open findings as the round before it                                                                                    |
-| `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                   |
-| `refused`      | any other typed refusal (`coverage-stale`, `review-insufficient`, `agent-missing`, …), carried in `refusal`                                           |
+| Stop           | When                                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pass`         | the round's gate passed                                                                                                                                                                    |
+| `max-rounds`   | the last round's gate failed (`--max-rounds`, default 3)                                                                                                                                   |
+| `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed — a phase or a spawn's watchdog ran out of the budget that remained                                                  |
+| `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, a round's spend could not be measured while `--max-cost-usd` is set (`budget-unknown`), or the monthly spend ceiling refused a spawn |
+| `no-progress`  | no finding open after the previous round was resolved — every previous open sig is still open                                                                                              |
+| `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                                                        |
+| `refused`      | any other typed refusal (`coverage-stale`, `review-insufficient`, `agent-missing`, …), carried in `refusal`                                                                                |
 
-A round's `cost_usd` is the round bundle's own cost receipts (`cost.json`, the
-chunk cost files, or the budget ledger), read with the same accounting
-`report --cost` and the monthly ceiling use; `null` when none priced it, and the
-summary sums the known amounts. An unpriced round leaves `--max-cost-usd`
-enforced against known spend only and warns. Before every review and fix spawn
-the loop applies the repository's monthly ceiling (`monthly_budget_usd`, the
-stricter of the repository and personal values) against month-to-date known
-spend, exactly as `run` does for a priced execution; `require_known_estimate`
-refuses an unpriced spawn the same way.
+Every spawn the loop makes — the review and the fix — is admitted first:
+the repository's monthly ceiling (`monthly_budget_usd`, the stricter of the
+repository and personal values) is checked against month-to-date known spend,
+exactly as `run` does for a priced execution (`require_known_estimate` refuses
+an unpriced spawn the same way), and the spawn's receipt is appended to the
+round bundle's `budget.json` through the same ledger writer under the same
+lock (`execution_id` `loop-<id>-<n>-review` or `-fix`, `projected_usd`
+`null`). The month-to-date scan therefore counts every spawn: the review is
+priced by the `cost.json` its prompt asks for, the fix by the
+`{"est_usd": <dollars>}` it reports in `fix-cost.json` (the loop records it on
+the fix's receipt), and a spawn that reports nothing stays unknown spend,
+never free.
+
+A round's `cost_usd` is the round bundle's known spend under that accounting —
+the same one `report --cost` and the monthly ceiling use — `null` when nothing
+priced it; the summary sums the known amounts. With `--max-cost-usd` set, a
+round whose spend could not be measured stops the loop before its next spawn
+(`cost-budget`, refusal `budget-unknown`) rather than spending blind; without
+it, the loop warns and continues.
 
 Receipts go to `--output <dir>`, a new directory (an existing one refuses
 `bad-flags`; default `.verdict/loop/<stamp>` in the checkout): `round-N.json`
@@ -7124,7 +7140,8 @@ passed; 1 any other stop; 2 usage; 3 canceled.
 `--print` renders every command the loop can run, round by round, as its CLI
 equivalent, with the fix phase as the exact agent argv (prompt included), and
 runs nothing — no bundle, no receipts, no spawn. A rendered `--timeout` is the
-whole budget, the most any spawn can get.
+most that spawn can get: the whole budget, split across the review's two
+attempts.
 
 For a before/after benchmark, use two isolated copies of the same benchmark
 input and pinned agent/model: run the baseline coding task in one, then the

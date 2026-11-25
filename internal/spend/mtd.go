@@ -619,3 +619,45 @@ func decimalScale(den *big.Int) (int, bool) {
 	}
 	return fives, true
 }
+
+// RecordedThrough is the latest timestamp any recorded cost receipt in the
+// bundle carries (cost.json and the chunk cost files), whatever its month or
+// execution identity. A caller appending a ledger row for spend that starts
+// after those receipts dates the row past it: an unidentified recorded
+// receipt covers every ledger row at or before its own timestamp, so a row
+// dated inside that window would be read as already counted.
+func RecordedThrough(bundleDir string) (time.Time, bool) {
+	var latest time.Time
+	found := false
+	for _, name := range recordedCostNames(bundleDir) {
+		for _, t := range recordTimes(openBundleFile(bundleDir, name)) {
+			if !found || t.After(latest) {
+				latest, found = t, true
+			}
+		}
+	}
+	return latest, found
+}
+
+// recordTimes lists the parseable timestamps one recorded cost file carries.
+func recordTimes(raw []byte) []time.Time {
+	if raw == nil {
+		return nil
+	}
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return nil
+	}
+	var out []time.Time
+	for _, rec := range sliceDoc(doc) {
+		obj, ok := rec.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		at, _ := obj.Get("at")
+		if t, ok := atTimeOf(at); ok {
+			out = append(out, t)
+		}
+	}
+	return out
+}

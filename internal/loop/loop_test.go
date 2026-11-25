@@ -39,11 +39,11 @@ func TestParseFlagsSurface(t *testing.T) {
 	r, _, _ := newRunner(false)
 	f, code, done := parseFlags(r, []string{
 		"--agent=codex", "--max-rounds", "5", "--max-cost-usd=2.5", "--budget", "15m",
-		"--output", "out", "--fix-prompt=fix.md", "--print",
+		"--output", "out", "--fix-prompt=fix.md", "--print", "--sandbox",
 	})
 	want := flags{
 		agent: "codex", maxRounds: "5", maxCost: "2.5", budget: "15m",
-		output: "out", fixPrompt: "fix.md", print: true,
+		output: "out", fixPrompt: "fix.md", print: true, sandbox: true,
 	}
 	if done || code != 0 || f != want {
 		t.Fatalf("parse = %+v (code %d, done %v), want %+v", f, code, done, want)
@@ -92,6 +92,7 @@ func TestRunRefusesBadLimits(t *testing.T) {
 		"budget":     {"--agent", "claude", "--budget", "soon"},
 		"cost":       {"--agent", "claude", "--max-cost-usd", "-2"},
 		"prompt":     {"--agent", "claude", "--fix-prompt", "/no/such/file.md"},
+		"sandboxes":  {"--agent", "claude", "--sandbox", "--sandbox-network-only"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

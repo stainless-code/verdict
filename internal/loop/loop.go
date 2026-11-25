@@ -44,8 +44,12 @@ const (
 	flagOutput    = "--output"
 	flagFixPrompt = "--fix-prompt"
 	flagPrint     = "--print"
-	flagAssign    = "="
-	codeBadFlags  = "bad-flags"
+	// flagSandbox and flagSandboxNet pass verify's own sandbox flags to the
+	// fix phase's verify step.
+	flagSandbox    = "--sandbox"
+	flagSandboxNet = "--sandbox-network-only"
+	flagAssign     = "="
+	codeBadFlags   = "bad-flags"
 	// floatBits renders a receipt amount without inventing digits.
 	floatBits = 64
 
@@ -53,7 +57,8 @@ const (
 	maxFixPromptBytes = 64 << 10
 
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
-		"--max-cost-usd <usd>, --budget <duration>, --output <dir>, --fix-prompt <file>, --print, --json)"
+		"--max-cost-usd <usd>, --budget <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
+		"--sandbox-network-only, --print, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
@@ -68,18 +73,21 @@ type Request struct {
 
 // flags is the parsed loop surface.
 type flags struct {
-	agent     string
-	maxRounds string
-	maxCost   string
-	budget    string
-	output    string
-	fixPrompt string
-	print     bool
+	agent      string
+	maxRounds  string
+	maxCost    string
+	budget     string
+	output     string
+	fixPrompt  string
+	print      bool
+	sandbox    bool
+	sandboxNet bool
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
 // [--max-cost-usd <usd>] [--budget <duration>] [--output <dir>]
-// [--fix-prompt <file>] [--print] [--json]`.
+// [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
+// [--json]`.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, ""
 	// The summary owns stdout; every composed verb's progress goes to the
@@ -156,6 +164,9 @@ func loopRequest(r *cli.Runner, req Request, f *flags) (*loopcore.Request, *core
 		Output:     output,
 		FixPrompt:  prompt,
 		Print:      f.print,
+
+		VerifySandbox:            f.sandbox,
+		VerifySandboxNetworkOnly: f.sandboxNet,
 	}, nil
 }
 
@@ -271,8 +282,8 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 // last argument it consumed.
 func parseToken(f *flags, args []string, i int) (int, *cli.UsageError) {
 	a := args[i]
-	if a == flagPrint {
-		f.print = true
+	if dst := boolFlag(f, a); dst != nil {
+		*dst = true
 		return i, nil
 	}
 	dst := valueFlag(f, a)
@@ -303,6 +314,19 @@ func flagValue(args []string, i int, name string) (string, int, *cli.UsageError)
 		return inline, i, nil
 	}
 	return cli.FlagValue(args, i, name, operand(name))
+}
+
+// boolFlag returns the field one boolean flag sets, or nil.
+func boolFlag(f *flags, arg string) *bool {
+	switch arg {
+	case flagPrint:
+		return &f.print
+	case flagSandbox:
+		return &f.sandbox
+	case flagSandboxNet:
+		return &f.sandboxNet
+	}
+	return nil
 }
 
 // valueFlag returns the field one value flag fills, in either spelling, or

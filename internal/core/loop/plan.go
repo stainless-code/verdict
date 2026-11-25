@@ -22,12 +22,13 @@ const (
 // plan renders every command the loop can run, round by round, as its CLI
 // equivalent: the composed verbs run in-process with exactly these options,
 // and the fix phase is the agent argv itself, prompt included. A spawn's
-// watchdog is the wall budget that remains when it starts, so the rendered
-// --timeout is the whole budget, the most any spawn can get. The last round
-// has no fix: nothing would review it.
+// watchdog is the wall budget that remains when it starts — split across the
+// review's attempts — so a rendered --timeout is the most a spawn can get.
+// The last round has no fix: nothing would review it.
 func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 	steps := []PlanStep{}
 	budget := strconv.Itoa(lp.data.BudgetS)
+	reviewTimeout := strconv.Itoa(max(1, (lp.data.BudgetS+reviewAttempts-1)/reviewAttempts))
 	for n := 1; n <= lp.req.MaxRounds; n++ {
 		name := lp.name(n)
 		local := localPrefix + name
@@ -35,7 +36,8 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		steps = append(steps,
 			PlanStep{Round: n, Phase: PhaseFetch, When: whenAlways, Argv: []string{verbName, "fetch-local", repo, name}},
 			PlanStep{Round: n, Phase: PhaseReview, When: whenAlways, Argv: []string{
-				verbName, "run", repo, local, "--agent", lp.req.Agent, "--finders", findersOne, "--timeout", budget,
+				verbName, "run", repo, local, "--agent", lp.req.Agent, "--finders", findersOne,
+				"--rounds", strconv.Itoa(reviewAttempts), "--timeout", reviewTimeout,
 			}},
 			PlanStep{Round: n, Phase: PhaseRecord, When: whenAlways, Argv: []string{
 				verbName, "record", repo, local, "--require-coverage",
@@ -54,9 +56,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		}
 		steps = append(steps,
 			PlanStep{Round: n, Phase: PhaseFix, When: whenGateFail, Argv: argv},
-			PlanStep{Round: n, Phase: PhaseVerify, When: whenVerify, Argv: []string{
-				verbName, "verify", repo, local, "--timeout", strconv.Itoa(min(verifyCapS, lp.data.BudgetS)),
-			}},
+			PlanStep{Round: n, Phase: PhaseVerify, When: whenVerify, Argv: lp.verifyArgv(repo, local)},
 		)
 	}
 	return steps, nil
@@ -70,4 +70,17 @@ func (lp *loop) fixArgv(ctx context.Context, n int, budget string) ([]string, *c
 	req.Print = true
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), b.Pr)
 	return runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
+}
+
+// verifyArgv is the verify step's CLI equivalent, with the sandbox the
+// operator passed through.
+func (lp *loop) verifyArgv(repo, local string) []string {
+	argv := []string{verbName, "verify", repo, local, "--timeout", strconv.Itoa(min(verifyCapS, lp.data.BudgetS))}
+	switch {
+	case lp.req.VerifySandbox:
+		argv = append(argv, "--sandbox")
+	case lp.req.VerifySandboxNetworkOnly:
+		argv = append(argv, "--sandbox-network-only")
+	}
+	return argv
 }

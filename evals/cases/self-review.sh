@@ -97,6 +97,16 @@ assert_json_field "cost-budget stop" cost-budget '.stop' "$output/summary.json"
 assert_json_field "round cost from the receipt" 0.6 '.rounds[0].cost_usd' "$output/summary.json"
 assert_eq "no fix past the cost budget" "claude review" "$(paste -sd, "$LOOP_LOG")"
 
+# The stub's review writes no cost.json, so its spawn receipt stays unknown:
+# with a cost ceiling the loop stops instead of spending blind.
+loop_leg unmeasured claude fix --max-cost-usd 5
+assert_exit "unmeasured spend stops" 1
+assert_json_field "unmeasured spend is the cost stop" cost-budget '.stop' "$output/summary.json"
+assert_json_field "unmeasured spend is typed" budget-unknown '.refusal.code' "$output/summary.json"
+assert_eq "no fix past unmeasured spend" "claude review" "$(paste -sd, "$LOOP_LOG")"
+assert_json_field "the review spawn left its receipt" spawn \
+  '.[0].scope' "$(ls "$repo"/.verdict/state/local-loop-*-1/budget.json)"
+
 loop_leg print claude fix --print
 assert_exit "print plans" 0
 assert_json_field "print stop" planned '.data.stop' "$EVAL_OUT"

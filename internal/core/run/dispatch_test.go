@@ -1,6 +1,8 @@
 package run
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 	"time"
@@ -84,27 +86,112 @@ func TestDispatchPrintResolvesAgentsWithoutSpawning(t *testing.T) {
 	}
 }
 
-// TestMonthlyCeilingBindsAnUnpricedLaunch proves the loop's pre-spawn check:
+// TestAuthorizeSpawnBindsTheMonthlyCeiling proves the loop's pre-spawn check:
 // the bundle's captured ceiling refuses once month-to-date known spend is over
 // it, and a bundle without run.json falls back to the personal policy.
-func TestMonthlyCeilingBindsAnUnpricedLaunch(t *testing.T) {
+func TestAuthorizeSpawnBindsTheMonthlyCeiling(t *testing.T) {
 	t.Parallel()
 	root, dir, _ := setupMonthlyBundle(t, "3", `[{"at":"2026-05-01T12:00:00Z","projected_usd":3.5,"execution_id":"mtd-1"}]`)
 	req := request(root, &scripted{})
-	req.Now = func() time.Time { return time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC) }
-	if _, ref := MonthlyCeiling(t.Context(), req, dir); ref == nil || ref.Code != "spend-capped" {
+	req.Now = mayNow
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-a-review"); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("captured ceiling = %v, want spend-capped", ref)
 	}
 
-	fresh := t.TempDir()
+	fresh := spawnBundle(t, root)
 	personal := request(root, &scripted{})
-	personal.Now = req.Now
+	personal.Now = mayNow
 	personal.SpendPolicy = &spend.Policy{MonthlyCap: "3"}
-	if _, ref := MonthlyCeiling(t.Context(), personal, fresh); ref == nil || ref.Code != "spend-capped" {
+	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-review"); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("personal ceiling = %v, want spend-capped", ref)
 	}
 	personal.SpendPolicy = &spend.Policy{MonthlyCap: "10"}
-	if _, ref := MonthlyCeiling(t.Context(), personal, fresh); ref != nil {
+	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-fix"); ref != nil {
 		t.Fatalf("under the ceiling = %v, want nil", ref)
+	}
+}
+
+// mayNow is the fixed clock inside the seeded month.
+func mayNow() time.Time { return time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC) }
+
+// spawnBundle makes a fresh loop bundle under the repository's state
+// directory, where the month-to-date scan reads it.
+func spawnBundle(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, ".verdict", "state", "local-loop-x-1")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestAuthorizeSpawnCountsTheSpawnAsUnknownUntilPriced proves a spawn the
+// loop starts reaches the month-to-date scan: unknown spend at admission, the
+// reported amount once priced, never free.
+func TestAuthorizeSpawnCountsTheSpawnAsUnknownUntilPriced(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := spawnBundle(t, root)
+	req := request(root, &scripted{})
+	req.Now = mayNow
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-fix"); ref != nil {
+		t.Fatalf("admit = %v", ref)
+	}
+	state := filepath.Join(root, ".verdict", "state")
+	if mtd := spend.AggregateMTD(state, mayNow()); mtd.UnknownCount != 1 || mtd.KnownUSD != "" {
+		t.Fatalf("after admission MTD = %+v, want one unknown spawn", mtd)
+	}
+	if ref := PriceSpawn(t.Context(), req, dir, "loop-x-1-fix", "0.4"); ref != nil {
+		t.Fatalf("price = %v", ref)
+	}
+	if mtd := spend.AggregateMTD(state, mayNow()); mtd.UnknownCount != 0 || mtd.KnownUSD != "0.4" {
+		t.Fatalf("after pricing MTD = %+v, want 0.4 known", mtd)
+	}
+}
+
+// TestAuthorizeSpawnDatesPastTheRecordedCost proves a spawn after the review
+// stays visible: the review's unidentified cost.json covers ledger rows at or
+// before its timestamp, so a fix row stamped in the same second would vanish.
+func TestAuthorizeSpawnDatesPastTheRecordedCost(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := spawnBundle(t, root)
+	if err := os.WriteFile(filepath.Join(dir, "cost.json"),
+		[]byte(`{"at":"2026-05-15T12:00:00Z","est_usd":0.5}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	req := request(root, &scripted{})
+	// Half a second past the recorded second: receipts print whole seconds,
+	// so an unbumped row would read as the recorded second itself.
+	req.Now = func() time.Time { return mayNow().Add(500 * time.Millisecond) }
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-fix"); ref != nil {
+		t.Fatalf("admit = %v", ref)
+	}
+	mtd := spend.BundleMTD(dir, mayNow())
+	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 1 {
+		t.Fatalf("BundleMTD = %+v, want the review's 0.5 plus the unknown fix spawn", mtd)
+	}
+}
+
+// TestMonthlyCeilingSeesLoopSpawns proves spawns the loop priced count toward
+// the monthly ceiling: two $0.6 spawns put the month over a $1 cap, so the
+// third is refused before it starts.
+func TestMonthlyCeilingSeesLoopSpawns(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := spawnBundle(t, root)
+	req := request(root, &scripted{})
+	req.Now = mayNow
+	req.SpendPolicy = &spend.Policy{MonthlyCap: "1"}
+	for _, id := range []string{"loop-x-1-review", "loop-x-1-fix"} {
+		if _, ref := AuthorizeSpawn(t.Context(), req, dir, id); ref != nil {
+			t.Fatalf("admit %s = %v", id, ref)
+		}
+		if ref := PriceSpawn(t.Context(), req, dir, id, "0.6"); ref != nil {
+			t.Fatalf("price %s = %v", id, ref)
+		}
+	}
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-2-review"); ref == nil || ref.Code != "spend-capped" {
+		t.Fatalf("third spawn = %v, want spend-capped", ref)
 	}
 }

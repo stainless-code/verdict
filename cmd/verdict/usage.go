@@ -386,20 +386,23 @@ func usageText() string {
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts.\n" +
 		"  loop <owner/repo> --agent <name> [--max-rounds <n, default 3>] [--max-cost-usd <usd>]\n" +
-		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>] [--print] [--json]\n" +
+		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
+		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
 		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
 		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
 		"    (every open finding, coverage required, live checks skipped). A failed gate starts the fix\n" +
 		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
-		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json.\n" +
+		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
+		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
 		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
 		"    settings.json agent. Stops: pass, max-rounds, wall-budget (--budget bounds every phase and\n" +
-		"    spawn), cost-budget (--max-cost-usd over the summed round cost_usd receipts, and the monthly\n" +
-		"    spend ceiling before every spawn), no-progress (open findings did not drop from the previous\n" +
-		"    round), agent-failed, refused. Receipts: round-N.json and summary.json under --output (a new\n" +
-		"    directory; default .verdict/loop/<stamp>). --print renders every planned command and the fix\n" +
-		"    prompt without running anything. Never commits, pushes, or posts. Exits 0 pass, 1 any other\n" +
-		"    stop or refusal, 2 usage, 3 canceled.\n" +
+		"    spawn), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round whose spend\n" +
+		"    could not be measured while --max-cost-usd is set, and the monthly spend ceiling before every\n" +
+		"    spawn, each of which leaves a budget.json receipt), no-progress (no finding open after the\n" +
+		"    previous round was resolved), agent-failed, refused. Receipts: round-N.json and summary.json\n" +
+		"    under --output (a new directory; default .verdict/loop/<stamp>). --print renders every planned\n" +
+		"    command and the fix prompt without running anything. Never commits, pushes, or posts. Exits 0\n" +
+		"    pass, 1 any other stop or refusal, 2 usage, 3 canceled.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
