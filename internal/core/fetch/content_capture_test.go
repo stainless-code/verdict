@@ -104,3 +104,82 @@ func mustRead(t *testing.T, path string) string {
 	}
 	return string(raw)
 }
+
+// commitAfterHeadRead runs git for real and, right after a --base bundle
+// has recorded its head (the `rev-parse HEAD` that follows the merge-base),
+// commits another change — HEAD moving between the record and the reads.
+type commitAfterHeadRead struct {
+	commit    func()
+	sawBase   bool
+	committed bool
+}
+
+func (c *commitAfterHeadRead) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	res, err := coreexec.Runner{}.Run(ctx, cmd)
+	joined := strings.Join(cmd.Argv, " ")
+	switch {
+	case strings.HasPrefix(joined, "git merge-base"):
+		c.sawBase = true
+	case c.sawBase && !c.committed && joined == "git rev-parse HEAD":
+		c.committed = true
+		c.commit()
+	}
+	return res, err
+}
+
+func (c *commitAfterHeadRead) LookPath(tool string) error {
+	_, err := exec.LookPath(tool)
+	return err
+}
+
+// TestRunLocalBranchBundleIsTheRecordedHead pins that a --base bundle's diff
+// and content_tree name the same commit: a commit landing right after the
+// head is recorded never reaches the diff.
+func TestRunLocalBranchBundleIsTheRecordedHead(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.WaitDelay = 10 * time.Second
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "t@example.com")
+	git("config", "user.name", "t")
+	app := filepath.Join(root, "app.txt")
+	mustWrite(t, app, "base\n")
+	git("add", "app.txt")
+	git("commit", "-q", "-m", "base")
+	git("checkout", "-q", "-b", "topic")
+	mustWrite(t, app, "reviewed\n")
+	git("commit", "-q", "-am", "reviewed")
+	reviewed := git("rev-parse", "HEAD")
+	cmdr := &commitAfterHeadRead{commit: func() {
+		mustWrite(t, app, "landed later\n")
+		git("commit", "-q", "-am", "later")
+	}}
+	var human, diag bytes.Buffer
+	var streamed []string
+	req := worktreeReq(nil, &human, &diag, &streamed)
+	req.Commander = cmdr
+	req.Flags = LocalFlags{HeadControls: true, BaseRef: "main"}
+	if _, err := RunLocal(context.Background(), req); err != nil {
+		t.Fatalf("RunLocal: %v\n%s", err, diag.String())
+	}
+	if !cmdr.committed {
+		t.Fatal("HEAD never moved")
+	}
+	bundle := filepath.Join(".verdict", "state", "local-mine")
+	if diff := mustRead(t, filepath.Join(bundle, "full.diff")); !strings.Contains(diff, "+reviewed") ||
+		strings.Contains(diff, "landed later") {
+		t.Fatalf("full.diff is not the recorded head's:\n%s", diff)
+	}
+	if tree := readcommon.JSONStr(filepath.Join(bundle, "source.json"), "content_tree"); tree != git("rev-parse", reviewed+"^{tree}") {
+		t.Errorf("content_tree = %s, want the recorded head %s's tree", tree, reviewed)
+	}
+}

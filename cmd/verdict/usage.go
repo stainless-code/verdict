@@ -216,10 +216,10 @@ func usageText() string {
 		"    --summary comment maintains one separate PR-level summary comment (updated in place).\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
-		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
-		"    verification.json evidence (VERIFIED + resultHead matching HEAD) backed by the\n" +
-		"    tool-only verify-receipt.json (exit 0 for that verifyCmd on the clean graded HEAD);\n" +
-		"    a triage[] claim for addressed is ignored.\n" +
+		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on a\n" +
+		"    verification.json claim {sig, verdict: VERIFIED, verifyCmd} backed by the tool-only\n" +
+		"    verify-receipt.json (exit 0 for that verifyCmd, its tree equal to the graded\n" +
+		"    content's); a triage[] claim for addressed refuses the review.\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +

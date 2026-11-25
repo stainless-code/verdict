@@ -385,3 +385,22 @@ func TestSnapshotIgnoresInheritedConfigParameters(t *testing.T) {
 		t.Errorf("hooks ran through GIT_CONFIG_PARAMETERS: %v (%v)", left, err)
 	}
 }
+
+// TestSnapshotIgnoresAnInheritedIndex pins that a git location variable a
+// parent exported cannot retarget a content read: with GIT_INDEX_FILE naming
+// the source checkout's own index (as inside a git hook), naming and
+// snapshotting leave that index byte for byte as it was — the snapshot's
+// read-tree writes only its own.
+func TestSnapshotIgnoresAnInheritedIndex(t *testing.T) {
+	root, g := repo(t)
+	write(t, root, "new.go", "package app\n")
+	git(t, root, "add", "new.go")
+	before := readIndex(t, root)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(root, ".git", "index"))
+	mustTree(t, g)
+	snap := snapshot(t, g)
+	requireBytes(t, filepath.Join(snap.dir, "new.go"), "package app\n")
+	if !bytes.Equal(before, readIndex(t, root)) {
+		t.Fatal("an inherited GIT_INDEX_FILE let the snapshot rewrite the user's index")
+	}
+}

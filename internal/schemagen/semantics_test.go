@@ -393,7 +393,7 @@ var publishedSemantics = map[string]string{
 	// reportData drops its optional completeness and gate properties and the
 	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
 	// data profile. gateDimension prose no longer names the removed flags.
-	"envelope.schema.json": "4aee949306009d2b19957a8657d4ec85c828b6f9f450ccd9af857c9b0312f504",
+	"envelope.schema.json": "9a0e7c36be23648cc90f17cfa8d5d1b1d27cc79785bd5ff8649104f8e0e94db5",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

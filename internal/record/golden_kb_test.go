@@ -212,9 +212,9 @@ func TestGoldenClaimsSequence(t *testing.T) {
 			},
 		}
 		_ = doc
-		// The bogus triage status refuses the run; drop it for the passing leg.
+		// The bogus triage status and a triage claim for addressed each refuse
+		// the run; drop both for the passing leg.
 		doc["triage"] = []any{
-			map[string]any{"sig": sigs[0], "status": "addressed", "rationale": "agent triage with a long enough rationale here for sure"},
 			map[string]any{"sig": "deadbeef", "status": "open", "rationale": "unknown sig triage with a long enough rationale here ok"},
 			map[string]any{"sig": sigs[0], "status": "open", "rationale": "short"},
 		}

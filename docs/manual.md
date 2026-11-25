@@ -330,7 +330,9 @@ names exactly what it copied as a git tree, re-reads the snapshot to prove it st
 holds that tree, and runs the command there, never in your checkout; it removes the
 snapshot afterwards, and a later run sweeps any a killed run stranded. So nothing done
 to your checkout while the command runs (an edit, a checkout and restore) changes
-what it tested.
+what it tested — as long as the command stays in its directory: without `--sandbox`
+it can still reach your checkout by absolute path, and only `--sandbox` confines it to
+the snapshot.
 
 The snapshot is a clean checkout of that content, like CI: ignored files — installed
 dependencies (`node_modules/`), build output, local config such as `.env.local` — are

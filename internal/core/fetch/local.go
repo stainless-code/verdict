@@ -564,9 +564,9 @@ func (m *localMode) diffArgs() []string {
 	case modeRange:
 		return []string{gitCmdDiff, m.baseSHA, m.headSHA}
 	case modeBranch:
-		// `git diff <base> HEAD` — HEAD resolves at run time; the stored
-		// head SHA equals it, so the bytes match.
-		return []string{gitCmdDiff, m.baseSHA, gitHeadRef}
+		// The stored head SHA, never a HEAD resolved again at read time: the
+		// diff and content_tree name the same commit even if HEAD moves.
+		return []string{gitCmdDiff, m.baseSHA, m.headSHA}
 	case modeStaged:
 		return []string{gitCmdDiff, flagCached}
 	default:
@@ -827,9 +827,9 @@ func statRefs(s *session, mode *localMode) []string {
 		return []string{flagCached}
 	case modeRange:
 		return []string{mode.rangeVal}
-	case modeBranch:
-		return []string{mode.rangeBaseRef() + "...HEAD"}
-	case modeStash:
+	case modeBranch, modeStash:
+		// For a branch, baseSHA is already the merge-base the three-dot
+		// form would resolve, and headSHA the commit content_tree names.
 		return []string{mode.baseSHA, mode.headSHA}
 	}
 	return []string{gitHeadRef}

@@ -104,17 +104,29 @@ func (g Git) command(index string, args ...string) *core.Command {
 	if env == nil {
 		env = os.Environ()
 	}
-	// GIT_CONFIG_PARAMETERS (what `git -c` exports to the hooks it runs)
-	// outranks GIT_CONFIG_COUNT, so an inherited one could turn hooks back
-	// on; it carries nothing a content read needs.
-	env = slices.DeleteFunc(slices.Clone(env), func(e string) bool {
-		return strings.HasPrefix(e, "GIT_CONFIG_PARAMETERS=")
-	})
+	env = slices.DeleteFunc(slices.Clone(env), inherited)
 	env = withConfig(env, safety...)
 	if index != "" {
 		env = append(env, "GIT_INDEX_FILE="+index)
 	}
 	return &core.Command{Argv: append([]string{"git", "-C", g.Root}, args...), Env: env, OutputCap: outputCap}
+}
+
+// inheritedGit are the variables a parent git (a hook, `git -c`, a
+// worktree) exports that would retarget or reconfigure a content read:
+// another repository, work tree, or index — an inherited GIT_INDEX_FILE
+// would let the snapshot's read-tree rewrite the user's own index — and
+// GIT_CONFIG_PARAMETERS, which outranks GIT_CONFIG_COUNT and could turn
+// hooks back on. Every call here names its repository with -C and sets its
+// own index, so none of them is needed.
+var inheritedGit = []string{
+	"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_CONFIG_PARAMETERS",
+}
+
+func inherited(e string) bool {
+	name, _, _ := strings.Cut(e, "=")
+	return slices.Contains(inheritedGit, name)
 }
 
 // withConfig appends key/value pairs as command-line-scope configuration
