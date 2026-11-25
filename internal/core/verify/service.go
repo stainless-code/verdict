@@ -251,7 +251,9 @@ func failed(err error) *core.RefusalError {
 
 func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, sb *sandbox) (*Response, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
-	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
+	// Sanitize the whole capture before cutting: a cut first could leave the
+	// unrecognizable second half of a credential at the tail's left edge.
+	tail := coreexec.TrimTail(lastBytes(sanitizeTail(combined, st.req.Environ), tailCap))
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
 	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
 	if err := writeOutputs(outPath, combined); err != nil {
