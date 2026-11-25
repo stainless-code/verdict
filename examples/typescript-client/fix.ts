@@ -84,7 +84,7 @@ try {
   );
   expect(
     single.next,
-    "patch the anchor file, write verification.json, run record to land it, then re-run fix",
+    "patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix",
     "the envelope names the verify/land/re-run steps",
   );
   expect(
@@ -134,7 +134,7 @@ try {
   expect(row.outcome, "ready", "the row is ready to patch");
   expect(
     batch.next,
-    "patch each anchor, run the verify command yourself, write one verification.json claim per sig, land with record, then re-run fix --all",
+    "patch each anchor, commit the fixes, re-run fetch-local so the bundle head is that commit, run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all",
     "the envelope names the batch steps",
   );
   ok("fix --all hands out one ready pass per open finding");

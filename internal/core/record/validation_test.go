@@ -459,6 +459,7 @@ func verifyClaim(t *testing.T, sig string) {
 	t.Helper()
 	testkit.WriteFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
 		`","verdict":"VERIFIED","resultHead":"`+coverageHead+`","verifyCmd":"go test ./..."}]`)
+	writeVerifyReceipt(t, ".verdict/state/7", coverageHead)
 }
 
 // TestFloorsSkipSameRunAddressedFinding pins the closed-finding rule for the
