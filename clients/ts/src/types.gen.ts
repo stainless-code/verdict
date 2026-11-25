@@ -641,6 +641,78 @@ export interface RiskRung {
   [key: string]: unknown;
 }
 
+/** loop --json data and the body of summary.json: the self-review loop's outcome, the limits it held, the planned commands, and every round's receipt. CLI-only; passed is true only when stop is pass, and a --print render carries stop planned, the plan, and no rounds. */
+export interface LoopData {
+  passed: boolean;
+  /** Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print). */
+  stop:
+    | "pass"
+    | "max-rounds"
+    | "wall-budget"
+    | "cost-budget"
+    | "no-progress"
+    | "agent-failed"
+    | "refused"
+    | "planned";
+  agent: string;
+  max_rounds: number;
+  budget_s: number;
+  max_cost_usd: number | null;
+  /** The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown). */
+  cost_usd: number | null;
+  elapsed_ms: number;
+  output: string | null;
+  refusal: LoopRefusal | null;
+  /** Every command the loop can run, round by round, as its CLI equivalent; the fix step is the agent argv itself, prompt included. */
+  plan: Array<LoopPlanStep>;
+  rounds: Array<LoopRound>;
+  [key: string]: unknown;
+}
+
+/** One round's receipt (round-N.json). A phase that never ran leaves its observation null: open and gate when record or gate did not run, fix on a passing, final, or stopped round. */
+export interface LoopRound {
+  round: number;
+  bundle: string;
+  started_at: string;
+  ended_at: string;
+  open: number | null;
+  open_sigs: Array<string>;
+  gate: boolean | null;
+  /** The round bundle's own known cost receipts (cost.json, chunk costs, or the budget ledger); null when none priced it. */
+  cost_usd: number | null;
+  fix: LoopFix | null;
+  refusal: LoopRefusal | null;
+  [key: string]: unknown;
+}
+
+/** The fix phase ran: the agent was spawned with the fix directive in the working tree. */
+export interface LoopFix {
+  verify: LoopVerify | null;
+  [key: string]: unknown;
+}
+
+/** The verdict verify receipt for the command the fix agent declared in the bundle's patch.json, or the refusal that stopped it. */
+export interface LoopVerify {
+  exit: number | null;
+  timed_out: boolean;
+  refusal: LoopRefusal | null;
+  [key: string]: unknown;
+}
+
+export interface LoopRefusal {
+  code: string;
+  message: string;
+  [key: string]: unknown;
+}
+
+export interface LoopPlanStep {
+  round: number;
+  phase: "fetch" | "review" | "record" | "gate" | "fix" | "verify";
+  when: "always" | "gate-failed" | "verify-cmd-declared";
+  argv: Array<string>;
+  [key: string]: unknown;
+}
+
 /** risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt. */
 export interface RiskData {
   truncated?: boolean;

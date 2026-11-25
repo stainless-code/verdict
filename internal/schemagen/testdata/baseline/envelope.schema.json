@@ -1224,6 +1224,151 @@
       "required": ["measured", "open", "points", "weight"],
       "additionalProperties": true
     },
+    "loopData": {
+      "description": "loop --json data and the body of summary.json: the self-review loop's outcome, the limits it held, the planned commands, and every round's receipt. CLI-only; passed is true only when stop is pass, and a --print render carries stop planned, the plan, and no rounds.",
+      "type": "object",
+      "properties": {
+        "passed": { "type": "boolean" },
+        "stop": {
+          "description": "Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print).",
+          "enum": [
+            "pass",
+            "max-rounds",
+            "wall-budget",
+            "cost-budget",
+            "no-progress",
+            "agent-failed",
+            "refused",
+            "planned"
+          ]
+        },
+        "agent": { "type": "string" },
+        "max_rounds": { "type": "integer", "minimum": 1 },
+        "budget_s": { "type": "integer", "minimum": 1 },
+        "max_cost_usd": { "type": ["number", "null"], "minimum": 0 },
+        "cost_usd": {
+          "description": "The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown).",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "elapsed_ms": { "type": "integer", "minimum": 0 },
+        "output": { "type": ["string", "null"] },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        },
+        "plan": {
+          "description": "Every command the loop can run, round by round, as its CLI equivalent; the fix step is the agent argv itself, prompt included.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/loopPlanStep" }
+        },
+        "rounds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/loopRound" }
+        }
+      },
+      "required": [
+        "passed",
+        "stop",
+        "agent",
+        "max_rounds",
+        "budget_s",
+        "max_cost_usd",
+        "cost_usd",
+        "elapsed_ms",
+        "output",
+        "refusal",
+        "plan",
+        "rounds"
+      ],
+      "additionalProperties": true
+    },
+    "loopRound": {
+      "description": "One round's receipt (round-N.json). A phase that never ran leaves its observation null: open and gate when record or gate did not run, fix on a passing, final, or stopped round.",
+      "type": "object",
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "bundle": { "type": "string" },
+        "started_at": { "type": "string" },
+        "ended_at": { "type": "string" },
+        "open": { "type": ["integer", "null"], "minimum": 0 },
+        "open_sigs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gate": { "type": ["boolean", "null"] },
+        "cost_usd": {
+          "description": "The round bundle's own known cost receipts (cost.json, chunk costs, or the budget ledger); null when none priced it.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "fix": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopFix" }] },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        }
+      },
+      "required": [
+        "round",
+        "bundle",
+        "started_at",
+        "ended_at",
+        "open",
+        "open_sigs",
+        "gate",
+        "cost_usd",
+        "fix",
+        "refusal"
+      ],
+      "additionalProperties": true
+    },
+    "loopFix": {
+      "description": "The fix phase ran: the agent was spawned with the fix directive in the working tree.",
+      "type": "object",
+      "properties": {
+        "verify": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopVerify" }]
+        }
+      },
+      "required": ["verify"],
+      "additionalProperties": true
+    },
+    "loopVerify": {
+      "description": "The verdict verify receipt for the command the fix agent declared in the bundle's patch.json, or the refusal that stopped it.",
+      "type": "object",
+      "properties": {
+        "exit": { "type": ["integer", "null"] },
+        "timed_out": { "type": "boolean" },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        }
+      },
+      "required": ["exit", "timed_out", "refusal"],
+      "additionalProperties": true
+    },
+    "loopRefusal": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": true
+    },
+    "loopPlanStep": {
+      "type": "object",
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "phase": {
+          "enum": ["fetch", "review", "record", "gate", "fix", "verify"]
+        },
+        "when": { "enum": ["always", "gate-failed", "verify-cmd-declared"] },
+        "argv": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["round", "phase", "when", "argv"],
+      "additionalProperties": true
+    },
     "riskData": {
       "description": "risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt.",
       "type": "object",
