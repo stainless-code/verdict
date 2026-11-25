@@ -10,6 +10,8 @@ import (
 
 const auxArtifactMiB = 32
 
+// Not parallel: the allocation count is process-wide, so a parallel sibling's
+// allocations would be charged to the digest.
 func TestSnapshotCheckStreamsPhaseArtifacts(t *testing.T) {
 	dir, phase, big := bigPhaseArtifact(t)
 	snapshot := executionSnapshot{}

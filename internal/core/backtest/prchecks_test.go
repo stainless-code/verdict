@@ -35,6 +35,7 @@ func bigPRRepo(t *testing.T) (r *repo, base, feature, merge, fix string) {
 
 // TestMineLargePRDiff proves a PR over fetch's diff cap is one skipped row.
 func TestMineLargePRDiff(t *testing.T) {
+	t.Parallel()
 	r, base, feature, _, fix := bigPRRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 0 {
@@ -53,6 +54,7 @@ func TestMineLargePRDiff(t *testing.T) {
 // PR diff is read: a PR that both landed at --since and clears the cap reads
 // ancestor-of-since, never large-pr-diff.
 func TestMineSinceAncestorBeforeLargePR(t *testing.T) {
+	t.Parallel()
 	r, _, feature, merge, fix := bigPRRepo(t)
 	data := runMine(t, r, merge)
 	if len(data.Mine.Candidates) != 0 {

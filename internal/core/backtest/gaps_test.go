@@ -8,6 +8,7 @@ import (
 // TestMineMergeSeed proves a merge commit whose subject matches a seed rule is
 // counted as merge-seed, never mined as an ordinary fix.
 func TestMineMergeSeed(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("a.txt", "one\n")
 	base := r.commit("feat: base")
@@ -29,6 +30,7 @@ func TestMineMergeSeed(t *testing.T) {
 // TestMineBlankLine proves a deleted whitespace-only line is its own row: it
 // cannot anchor, so it never reaches blame.
 func TestMineBlankLine(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("a.txt", "one\n")
 	base := r.commit("feat: base")
@@ -52,6 +54,7 @@ func TestMineBlankLine(t *testing.T) {
 // TestMineRevertOfRevertIsNotASeed proves the revert-of-revert exemption: the
 // commit is not a seed, so it contributes neither a candidate nor a skip.
 func TestMineRevertOfRevertIsNotASeed(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("a.txt", "one\n")
 	base := r.commit("feat: base")
@@ -68,6 +71,7 @@ func TestMineRevertOfRevertIsNotASeed(t *testing.T) {
 // accepted the commit: a `Revert "Revert ..."` subject seeds only through its
 // body, so it is a fix, not a revert.
 func TestSeedSignalFollowsTheSeedRule(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ subject, body, signal string }{
 		{`Revert "feat: x"`, "", signalRevert},
 		{`Revert "Revert "feat: x""`, "Fixes #123", signalFix},
@@ -86,6 +90,7 @@ func TestSeedSignalFollowsTheSeedRule(t *testing.T) {
 // TestMineMultiHunkFix proves one fix commit with two hunks anchors both
 // deleted lines at their own old-side positions.
 func TestMineMultiHunkFix(t *testing.T) {
+	t.Parallel()
 	r, base, fix := twoHunkRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
@@ -111,6 +116,7 @@ func TestMineMultiHunkFix(t *testing.T) {
 // a deletion of the old path, whose line anchors at the PR head, not as a
 // rename with no hunks.
 func TestMineRenameOff(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("main.go", "package main\n")
 	base := r.commit("feat: base")
@@ -134,6 +140,7 @@ func TestMineRenameOff(t *testing.T) {
 // TestMineCRLFDeletion proves a CRLF file's deleted line keeps its bytes
 // through the parse and still anchors at the PR head.
 func TestMineCRLFDeletion(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("w.txt", "top\n")
 	base := r.commit("feat: base")
@@ -157,6 +164,7 @@ func TestMineCRLFDeletion(t *testing.T) {
 // TestMineDeletedLinePatternChars proves a deleted line whose text starts with
 // `-` and carries regex characters is searched literally, not as a pattern.
 func TestMineDeletedLinePatternChars(t *testing.T) {
+	t.Parallel()
 	r := newRepo(t)
 	r.write("notes.txt", "alpha\n")
 	base := r.commit("feat: base")

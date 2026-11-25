@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"os/exec"
@@ -21,7 +22,15 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv(fakeAgentEnv); mode != "" {
 		os.Exit(fakeAgentMain(mode))
 	}
-	os.Exit(testenv.Main(m))
+	root, err := os.MkdirTemp("", "verdict-backtest-")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	replayTemplateRoot = root
+	code := testenv.Main(m)
+	_ = os.RemoveAll(root)
+	os.Exit(code)
 }
 
 // repo builds a hermetic git fixture with pinned identity and dates. Each
@@ -35,7 +44,13 @@ type repo struct {
 // newRepo creates an empty repository on main.
 func newRepo(t *testing.T) *repo {
 	t.Helper()
-	r := &repo{t: t, dir: t.TempDir(), day: 1}
+	return newRepoAt(t, t.TempDir())
+}
+
+// newRepoAt creates an empty repository on main in dir.
+func newRepoAt(t *testing.T, dir string) *repo {
+	t.Helper()
+	r := &repo{t: t, dir: dir, day: 1}
 	r.git("init", "-q", "-b", "main")
 	return r
 }

@@ -31,6 +31,7 @@ func (*recorder) Diag(string) {}
 
 // TestMineExclusions proves every whole-fix exclusion is counted, not refused.
 func TestMineExclusions(t *testing.T) {
+	t.Parallel()
 	tests := []struct { //nolint:govet // test table readability
 		name   string
 		want   string
@@ -195,6 +196,7 @@ func binaryFixture(t *testing.T) (*repo, string) {
 //
 //nolint:revive // ordering, human lines, and the rerun read as one leg
 func TestMineTwoCandidates(t *testing.T) {
+	t.Parallel()
 	r, base := twoCandidateRepo(t)
 	rec := &recorder{}
 	resp, ref := Run(t.Context(), &Request{
@@ -240,6 +242,7 @@ func TestMineTwoCandidates(t *testing.T) {
 
 // TestMineDuration resolves a calendar span against --until's commit date.
 func TestMineDuration(t *testing.T) {
+	t.Parallel()
 	r, base := twoCandidateRepo(t)
 	data := runMine(t, r, "90d")
 	if data.Since.Spec != "90d" || data.Since.Cutoff != "2023-10-09T00:00:00Z" {
@@ -261,6 +264,7 @@ func TestMineDuration(t *testing.T) {
 //
 //nolint:revive,cyclop // one artifact contract, asserted inline
 func TestMineArtifacts(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	clock := func() time.Time { return time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC) }
 	resp, ref := Run(t.Context(), &Request{
@@ -307,6 +311,7 @@ func TestMineArtifacts(t *testing.T) {
 // TestMineMergeParent proves a merge introducer expands through its second
 // parent, and that the conflict text then fails the anchor honestly.
 func TestMineMergeParent(t *testing.T) {
+	t.Parallel()
 	r, base, feature, merge, fix := conflictRepo(t)
 	rt := &core.Runtime{Commander: coreexec.Runner{MissingTool: true}}
 	ss := &seedState{
@@ -335,6 +340,7 @@ func TestMineMergeParent(t *testing.T) {
 //
 //nolint:revive // the refusal matrix reads as one block
 func TestMineRefusals(t *testing.T) {
+	t.Parallel()
 	r, _ := twoCandidateRepo(t)
 	outside := t.TempDir()
 	tests := []struct { //nolint:govet // test table readability
@@ -369,6 +375,7 @@ func TestMineRefusals(t *testing.T) {
 // bundle name has room for mines, one byte more refuses before anything is
 // written, and an over-long id derived from --since refuses with the way out.
 func TestMineRunIDCap(t *testing.T) {
+	t.Parallel()
 	r, base := twoCandidateRepo(t)
 	longest := strings.Repeat("a", 42)
 	resp, ref := Run(t.Context(), &Request{
@@ -389,6 +396,7 @@ func TestMineRunIDCap(t *testing.T) {
 // TestMineDerivedRunIDRefuses proves a long --since ref refuses instead of
 // deriving an id replay would reject.
 func TestMineDerivedRunIDRefuses(t *testing.T) {
+	t.Parallel()
 	r, base := twoCandidateRepo(t)
 	branch := "release-branch-maintenance-hotfix-rollforward"
 	r.git("branch", branch, base)
@@ -409,6 +417,7 @@ func TestMineDerivedRunIDRefuses(t *testing.T) {
 
 // TestMineRunMismatch proves an existing run with another resolution refuses.
 func TestMineRunMismatch(t *testing.T) {
+	t.Parallel()
 	r, _ := twoCandidateRepo(t)
 	seed := Request{Runtime: &core.Runtime{Commander: coreexec.Runner{MissingTool: true}, Env: userEnv(t, nil)}, RepoRoot: r.dir, Mode: modeMine, Since: "HEAD~3", Run: "fixed"}
 	if _, ref := Run(t.Context(), &seed); ref != nil {
@@ -423,6 +432,7 @@ func TestMineRunMismatch(t *testing.T) {
 
 // TestMineCorruptRun proves an unreadable run.json is a typed store refusal.
 func TestMineCorruptRun(t *testing.T) {
+	t.Parallel()
 	r, _ := twoCandidateRepo(t)
 	dir := filepath.Join(r.dir, ".verdict", "backtest", "fixed")
 	if err := os.MkdirAll(dir, 0o755); err != nil {

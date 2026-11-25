@@ -633,6 +633,37 @@ git_legs() {
 
 git_legs
 
+# A nested repository's own git directory is as much a git control path as
+# the root's: git runs its hooks and config when it works in that tree, and
+# `git status` in a superproject enters each populated submodule. A write to
+# `nested/.git/hooks` must fail under both mechanisms (Seatbelt's `.git`
+# component rule; bwrap's read-only bind of every nested `.git`). The
+# positive control writes the same file outside the sandbox first, so the
+# denial proves the boundary, not a missing directory.
+nested_git_leg() {
+  local nested="$EVAL_SANDBOX/nested-repo"
+  rm -rf "$nested"
+  git init -q "$nested"
+  mkdir -p "$nested/.git/hooks"
+  if printf x > "$nested/.git/hooks/sandbox-control" 2>/dev/null && [ -f "$nested/.git/hooks/sandbox-control" ]; then
+    rm -f "$nested/.git/hooks/sandbox-control"
+  else
+    bad "the unsandboxed control could not write nested-repo/.git/hooks"
+  fi
+  mkpatch 'printf x > nested-repo/.git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-nested.txt || printf denied > sandbox-nested.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-nested.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed nested git run" 0
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-nested.txt" 2>/dev/null)" = "denied" ] && [ ! -e "$nested/.git/hooks/pre-commit" ]; then
+    good "a write to a nested repository's .git/hooks is denied inside the sandbox"
+  else
+    bad "a hook was planted in a nested repository inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-nested.txt" 2>/dev/null || echo missing))"
+  fi
+  rm -rf "$nested" "$EVAL_SANDBOX/sandbox-nested.txt"
+}
+
+nested_git_leg
+
 if [ "$MECH" = "bwrap" ]; then
   bwrap_legs
 fi

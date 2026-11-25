@@ -16,6 +16,7 @@ import (
 // for a writer. Both swapped leaves carry the bound content, so a reader that
 // follows the link or drains the pipe sees no change at all.
 func TestSnapshotCheckRefusesALeafThatIsNotARegularFile(t *testing.T) {
+	t.Parallel()
 	for name, swap := range map[string]func(t *testing.T, path, target string){
 		"symlink": swapForSymlink,
 		"fifo":    swapForFIFO,
@@ -85,6 +86,7 @@ func boundSnapshot(t *testing.T, dir, leaf string) executionSnapshot {
 // unreadable artifact; the skip keeps history, and a sibling phase a parallel
 // worker is writing, out of the pinned input set entirely.
 func TestSnapshotInventorySkipsOutputNamespaces(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeUnder(t, dir, "full.diff", fixtureDiff)
 	writeUnder(t, filepath.Join(dir, "x-superseded", "legacy"), "review.json", `{"retired":true}`)

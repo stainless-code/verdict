@@ -24,6 +24,7 @@ func (c scriptedGit) Run(context.Context, *core.Command) (core.Result, error) {
 // TestMergeBaseDistinguishesNoAncestorFromFailure proves only exit 1 reads as
 // "no common ancestor"; a git failure refuses backtest-failed with its stderr.
 func TestMergeBaseDistinguishesNoAncestorFromFailure(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name    string
 		want    string
