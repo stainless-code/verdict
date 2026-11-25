@@ -230,6 +230,7 @@
       "type": "object",
       "properties": {
         "share": {
+          "description": "Gitignored dependency directories (repository-relative slash paths) verify exposes from the checkout inside its clean snapshot, read at the PR base. Each must be a real directory git ignores and tracks nothing in, never under .git or .verdict; anything else refuses bad-config with nothing run. Read-only only under the full sandbox (--sandbox). Empty or absent keeps the clean snapshot.",
           "type": "array",
           "items": { "type": "string" }
         }

@@ -38,10 +38,23 @@ func (st *state) takeSnapshot(ctx context.Context, commander core.Commander, roo
 	if ref != nil {
 		return nil, ref
 	}
+	if st.req.afterShares != nil {
+		st.req.afterShares()
+	}
+	snap, ref := st.snapshotWith(ctx, g, timeout, shared)
+	if ref != nil {
+		closeShares(shared)
+		return nil, ref
+	}
+	return snap, nil
+}
+
+// snapshotWith makes the snapshot the resolved shares join.
+func (st *state) snapshotWith(ctx context.Context, g contenttree.Git, timeout int, shared []sharedDir) (*snapshot, *core.RefusalError) {
 	// The temp root is validated before anything under it is swept or made:
 	// one inside the checkout would make checkout content (a committed
 	// directory with a snapshot's name) look like a stranded snapshot.
-	tmp, err := tempRoot(root)
+	tmp, err := tempRoot(g.Root)
 	if err == nil {
 		sweepSnapshots(ctx, g, tmp, time.Now())
 		var snap *snapshot
@@ -55,7 +68,7 @@ func (st *state) takeSnapshot(ctx context.Context, commander core.Commander, roo
 	}
 	return nil, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
 		"verify failed: could not snapshot the content at %s (%v) — verify runs a command only in a "+
-			"snapshot of the content its receipt binds, never in your checkout; nothing ran", root, err)}
+			"snapshot of the content its receipt binds, never in your checkout; nothing ran", g.Root, err)}
 }
 
 // newSharedSnapshot makes the snapshot, then places the shares in it. They
@@ -224,10 +237,12 @@ func resolved(path string) string {
 }
 
 // finishSnapshot is a run's deferred cleanup: it removes the snapshot (a
-// no-op once the run removed it) and re-reads the warnings into a refusal
-// built before the cleanup ran, so a cleanup warning reaches it too.
+// no-op once the run removed it), releases the held shares, and re-reads the
+// warnings into a refusal built before the cleanup ran, so a cleanup warning
+// reaches it too.
 func (st *state) finishSnapshot(ctx context.Context, snap *snapshot, ref *core.RefusalError) {
 	st.removeSnapshot(ctx, snap)
+	closeShares(st.shared)
 	if ref != nil {
 		ref.Warnings = st.warnings
 	}

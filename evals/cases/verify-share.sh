@@ -4,7 +4,8 @@
 # directory, and verify exposes the checkout's copy inside its clean
 # snapshot. Unsandboxed, the command runs the installed node_modules/.bin
 # stub through a link; under --sandbox it runs it too, but a write into the
-# shared directory fails and the checkout's copy stays untouched. Both runs'
+# shared directory fails, the command holds no descriptor into the
+# checkout, and the checkout's copy stays untouched. Both runs'
 # envelope and receipt name the share. A host with no mechanism grades the
 # sandbox-unavailable refusal instead; EVAL_REQUIRE_SANDBOX=1 fails there.
 set -euo pipefail
@@ -65,7 +66,10 @@ sandbox_exec_works() {
     && /usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true >/dev/null 2>&1
 }
 
-mkpatch 'node_modules/.bin/stub && if (printf x > node_modules/planted) 2>/dev/null; then echo WROTE; else echo DENIED; fi'
+# The held directory reaches bwrap as descriptor 3 and must be closed before
+# the command starts: an inherited descriptor would be a writable handle into
+# the checkout. Reading from descriptor 3 succeeds only if it is still open.
+mkpatch 'node_modules/.bin/stub && if (printf x > node_modules/planted) 2>/dev/null; then echo WROTE; else echo DENIED; fi; if { : <&3; } 2>/dev/null; then echo FD-LEAK; fi'
 run_review verify acme/app 5301 --sandbox --json --timeout 30
 if sandbox_works || sandbox_exec_works; then
   assert_exit "sandboxed shared run" 0

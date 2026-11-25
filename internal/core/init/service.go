@@ -27,6 +27,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -330,7 +331,9 @@ func (st *state) unscopedRefusal() *core.RefusalError {
 // writeScaffold previews, confirms, writes the controls and the workflow, then
 // reports the tree check and the next step.
 func (st *state) writeScaffold(ctx context.Context, vals presetVals, workflow []byte) *core.RefusalError {
-	st.share = proposedShares(st.req.RepoRootPath())
+	if st.req.Commander != nil {
+		st.share = proposedShares(ctx, contenttree.Git{Cmdr: st.req.Commander, Root: st.req.RepoRootPath()})
+	}
 	wants := presetFiles(vals, st.share...)
 	wfStatus, statuses, needOverwrite, ref := st.planWrites(wants, workflow)
 	if ref != nil {

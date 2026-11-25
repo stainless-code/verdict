@@ -366,21 +366,28 @@ is written only into the bundle it validated, for the content it reviewed.
 
 **Sharing installed dependencies (`verify.share`).** Installing inside the command
 costs every run, and under `--sandbox` it cannot work at all (no network, no writes
-to HOME). `"verify": {"share": ["node_modules"]}` in `.verdict/config.json`, read at
-the PR base like every control, exposes each listed directory from your checkout in
-the snapshot at the same path. Each entry is a clean repository-relative path to a
-directory git ignores and tracks nothing in, resolving inside the checkout; a tracked,
-unignored, `..`, absolute, or link-escaping entry refuses `bad-config` with nothing
-run, and an absent directory warns and is skipped. Under `--sandbox` it is read-only
-(a bwrap read-only bind; on macOS Seatbelt denies writes to the real path behind a
-link); without it the share is a plain link and writes reach your checkout. The
-trade-off is speed against a guarantee: the clean snapshot proves the command passes
-on the reviewed content alone, while a shared directory is bytes outside the tree, so
-a stub planted there could make it pass. The receipt (and the envelope) lists every
-shared path in `shared`, sorted, so a strict gate can refuse a receipt that depended
-on one; an empty or absent list keeps the clean snapshot. `verdict init` proposes
-`node_modules` when it finds `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`,
-and `.venv` for `uv.lock` or `poetry.lock`.
+to HOME). `"verify": {"share": ["node_modules"]}` in `.verdict/config.json` exposes
+each listed directory from your checkout in the snapshot at the same path. It is read
+from the bundle's controls snapshot: a PR bundle's base commit, so a branch cannot
+add a share, but a local bundle's mode base (`HEAD` for `fetch-local`), so a share
+committed on your branch applies to your local runs. Each entry is a clean
+repository-relative path to a real directory, reached through no symbolic link, that
+git ignores and tracks nothing in (letter case ignored, as `check-ignore` ignores it),
+never under `.git` or `.verdict`; anything else refuses `bad-config` with nothing run,
+and an absent directory warns and is skipped. Only the full `--sandbox` makes a share
+read-only: bwrap binds the directory verify checked, held open from the check
+(`--ro-bind-fd`, so a bubblewrap without it refuses `sandbox-unavailable`), and on
+macOS Seatbelt denies writes to its real path behind a link. Under
+`--sandbox-network-only` or no sandbox the share is a plain link and writes reach your
+checkout. The trade-off is speed against a guarantee: the clean snapshot proves the
+command passes on the reviewed content alone, while a shared directory is bytes
+outside the tree, so a stub planted there could make it pass. The receipt (and the
+envelope) lists every shared path in `shared`, sorted, so a strict gate can refuse a
+receipt that depended on one, and `sandboxed` says whether it was read-only; an empty
+or absent list keeps the clean snapshot. `verdict init` proposes `node_modules` when
+it finds `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`, and `.venv` for
+`uv.lock` or `poetry.lock`, but only when git already ignores the directory and
+tracks nothing in it.
 
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the

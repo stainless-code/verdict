@@ -66,11 +66,16 @@ func sharesOverlap(a, b string) bool {
 
 // checkShareEntry refuses anything but a clean repository-relative slash
 // path: no absolute or drive spelling, no backslash, no empty, `.`, or `..`
-// segment, and no `.git` segment, which is git's own and never a dependency.
+// segment, no `.git` segment, which is git's own, and nothing under
+// `.verdict`, verdict's own state and bundle store. A share is for
+// dependency directories.
 func checkShareEntry(entry, path string) *core.RefusalError {
 	if entry == "" || strings.HasPrefix(entry, shareSep) || strings.HasPrefix(entry, "-") ||
 		strings.ContainsAny(entry, `\:`) || !cleanOrgString(entry) {
 		return refuse(CodeBadConfig, "%s: %q is not a repository-relative slash path", path, entry)
+	}
+	if top, _, _ := strings.Cut(entry, shareSep); strings.EqualFold(top, VerdictDir) {
+		return refuse(CodeBadConfig, "%s: %q is verdict's own state, which verify never shares", path, entry)
 	}
 	for seg := range strings.SplitSeq(entry, shareSep) {
 		switch {

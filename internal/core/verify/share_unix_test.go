@@ -195,9 +195,10 @@ func TestShareRefusesEntriesThatAreNotIgnoredCheckoutDirectories(t *testing.T) {
 		{name: "tracked", entry: "vendor", want: "holds tracked content", plant: plantTrackedVendor},
 		{name: "not ignored", entry: "build", want: "is not gitignored", plant: plantUnignoredBuild},
 		{name: "link outside", entry: "node_modules", want: "resolves outside the checkout", plant: plantLinkOutside},
-		{name: "link onto tracked", entry: "node_modules", want: "holds tracked content", plant: plantLinkOntoTracked},
+		{name: "link onto tracked", entry: "node_modules", want: "passes through a symbolic link", plant: plantLinkOntoTracked},
 		{name: "dotdot", entry: "../outside", want: "verify.share"},
 		{name: "absolute", entry: "/etc", want: "verify.share"},
+		{name: "bundle store", entry: ".verdict/state", want: "verdict's own state"},
 	} {
 		t.Run(tc.name, func(t *testing.T) { checkShareRefusal(t, &tc) })
 	}
@@ -308,25 +309,104 @@ func mustShareFS(t *testing.T, err error) {
 }
 
 // TestBwrapBindsSharesReadOnlyOverTheRoot pins the Linux shape: each share is
-// a read-only bind of the checkout's directory at its place in the reviewed
-// root, after the root's writable bind (a bind before it would be covered)
-// and before the credential masks, which must still win.
+// a read-only bind of the held directory (descriptor 3 onward, in share
+// order) at its place in the reviewed root, after the root's writable bind
+// (a bind before it would be covered) and before the credential masks, which
+// must still win.
 func TestBwrapBindsSharesReadOnlyOverTheRoot(t *testing.T) {
 	root, home, target := gitRoot(t), t.TempDir(), t.TempDir()
 	mustShareFS(t, os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600))
+	held, err := os.Open(target)
+	mustShareFS(t, err)
+	defer func() { _ = held.Close() }()
 	argv, ref := bwrapArgv(root, sandboxInputs{
 		childEnv: []string{"HOME=" + home},
-		shared:   &[]sharedDir{{rel: "web/node_modules", real: target}},
+		shared:   &[]sharedDir{{dir: held, rel: "web/node_modules", real: target}},
 	})
 	if ref != nil {
 		t.Fatalf("bwrapArgv: %v", ref)
 	}
 	joined := strings.Join(argv, "\x00")
 	rootBind := strings.Join([]string{"--bind", root, root}, "\x00")
-	shareBind := strings.Join([]string{"--ro-bind", target, root + "/web/node_modules"}, "\x00")
+	shareBind := strings.Join([]string{"--ro-bind-fd", "3", root + "/web/node_modules"}, "\x00")
 	credMask := strings.Join([]string{"--ro-bind", "/dev/null", filepath.Join(home, ".netrc")}, "\x00")
 	r, s, c := strings.Index(joined, rootBind), strings.Index(joined, shareBind), strings.Index(joined, credMask)
 	if r < 0 || s < 0 || c < 0 || r >= s || s >= c {
 		t.Fatalf("argv = %q, want the root bind, then the share's read-only bind, then the credential mask", argv)
+	}
+}
+
+// TestShareBindHoldsTheCheckedDirectoryAcrossASwap closes the window between
+// the checks and the bind: once a share is checked, something in the
+// checkout renames the directory away and puts a link to a credential
+// directory in its place. bwrap must still bind the directory that was
+// checked, never what the path names now.
+func TestShareBindHoldsTheCheckedDirectoryAcrossASwap(t *testing.T) {
+	root := shareCheckout(t, shareConfig("node_modules"), "true")
+	checked, err := os.Stat(filepath.Join(root, "node_modules"))
+	mustShareFS(t, err)
+	credentials := t.TempDir()
+	req := shareRequest(t, true)
+	req.afterShares = func() {
+		mustShareFS(t, os.Rename(filepath.Join(root, "node_modules"), filepath.Join(root, "moved")))
+		mustShareFS(t, os.Symlink(credentials, filepath.Join(root, "node_modules")))
+	}
+	st := &state{req: req, share: []string{"node_modules"}, env: []string{"HOME=" + t.TempDir()}}
+	snap, ref := st.takeSnapshot(t.Context(), coreexec.Watchdog{}, root, 60)
+	if ref != nil {
+		t.Fatalf("takeSnapshot: %s: %s", ref.Code, ref.Message)
+	}
+	defer st.finishSnapshot(t.Context(), snap, nil)
+	sb, ref := linuxSandboxMechanism(snap.dir, st.sandboxInputs(), false)
+	if ref != nil {
+		t.Fatalf("linuxSandboxMechanism: %s: %s", ref.Code, ref.Message)
+	}
+	if bound := bindSource(t, sb, filepath.Join(snap.dir, "node_modules")); !os.SameFile(bound, checked) {
+		t.Fatalf("bwrap binds %s at the share, not the directory the checks approved", bound.Name())
+	}
+}
+
+// bindSource is the directory the wrapper binds at dest: the inherited
+// descriptor for a descriptor bind, the path for a path bind.
+func bindSource(t *testing.T, sb *sandbox, dest string) os.FileInfo {
+	t.Helper()
+	for i := 0; i+2 < len(sb.prefix); i++ {
+		if sb.prefix[i+2] != dest {
+			continue
+		}
+		var info os.FileInfo
+		var err error
+		switch sb.prefix[i] {
+		case bwrapROBindFD:
+			n, convErr := strconv.Atoi(sb.prefix[i+1])
+			mustShareFS(t, convErr)
+			info, err = sb.files[n-firstExtraFD].Stat()
+		case bwrapROBind:
+			info, err = os.Stat(sb.prefix[i+1])
+		default:
+			continue
+		}
+		mustShareFS(t, err)
+		return info
+	}
+	t.Fatalf("no bind at %s in %q", dest, sb.prefix)
+	return nil
+}
+
+// TestShareRefusesATrackedDirectoryUnderAnotherCase keeps the tracked check
+// as case-blind as check-ignore: on a case-insensitive filesystem VENDOR is
+// the vendor directory git tracks a file in, so sharing it refuses.
+func TestShareRefusesATrackedDirectoryUnderAnotherCase(t *testing.T) {
+	root := shareCheckout(t, shareConfig("VENDOR"), "touch ran")
+	if _, err := os.Stat(filepath.Join(root, "F")); err != nil {
+		t.Skip("the filesystem is case-sensitive, so VENDOR and vendor are two directories")
+	}
+	writeShareFile(t, filepath.Join(root, ".gitignore"), "node_modules\nvendor\n", 0o644)
+	writeShareFile(t, filepath.Join(root, "vendor", "lib.go"), "package lib\n", 0o644)
+	runGit(t, root, "add", "-f", ".gitignore", "vendor/lib.go")
+	runGit(t, root, "commit", "-q", "-m", "vendor")
+	_, ref := Run(t.Context(), shareRequest(t, false))
+	if ref == nil || ref.Code != config.CodeBadConfig || !strings.Contains(ref.Message, "holds tracked content") {
+		t.Fatalf("Run refusal = %v, want bad-config naming the tracked content", ref)
 	}
 }

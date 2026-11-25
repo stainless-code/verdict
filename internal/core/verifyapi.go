@@ -35,8 +35,10 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 	// the full shape. Sandboxed is true only for bwrap and sandbox-exec.
 	SandboxMechanism string `json:"sandbox_mechanism,omitempty"`
 	// Shared lists, sorted, the gitignored directories verify.share exposed
-	// to the command from the checkout (read-only under --sandbox): content
-	// outside Tree the outcome may depend on. Absent means a clean snapshot.
+	// to the command from the checkout: content outside Tree the outcome may
+	// depend on. They were read-only only when the run had the full sandbox
+	// (Sandboxed); otherwise each was a writable link. Absent means a clean
+	// snapshot.
 	Shared []string `json:"shared,omitempty"`
 }
 
@@ -53,8 +55,10 @@ type VerifyReceipt struct {
 	Tree          string `json:"tree,omitempty"`
 	At            string `json:"at"`
 	// Shared lists, sorted, the gitignored directories verify.share exposed
-	// to the command from the checkout (read-only under --sandbox): content
-	// outside Tree the outcome may depend on. Absent means a clean snapshot.
+	// to the command from the checkout: content outside Tree the outcome may
+	// depend on. They were read-only only when the run had the full sandbox
+	// (Sandboxed); otherwise each was a writable link. Absent means a clean
+	// snapshot.
 	Shared   []string `json:"shared,omitempty"`
 	Exit     int      `json:"exit"`
 	TimedOut bool     `json:"timed_out"`
@@ -79,7 +83,8 @@ type VerifyData struct { //nolint:govet // field order is the published property
 	// unshare-net opt-in (Sandboxed absent). Absent means no wrapper ran.
 	SandboxMechanism string `json:"sandboxMechanism,omitempty"`
 	// Shared lists, sorted, the gitignored directories verify.share exposed
-	// to the command from the checkout; absent when the snapshot was clean.
+	// to the command from the checkout, read-only only when Sandboxed; absent
+	// when the snapshot was clean.
 	Shared []string `json:"shared,omitempty"`
 }
 

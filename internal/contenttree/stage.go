@@ -365,10 +365,13 @@ func (g Git) hashLines(ctx context.Context, records *bytes.Buffer, b *hashBatch,
 }
 
 // Tracked reports whether any index path is rel or lies below it: rel holds
-// content the tree names. A listing too long to capture is tracked content
-// all the same.
+// content the tree names. The match ignores letter case, as check-ignore
+// does under core.ignorecase: on a case-insensitive filesystem NODE_MODULES
+// and node_modules are one directory, so a tracked path under either
+// spelling counts. A listing too long to capture is tracked content all the
+// same.
 func (g Git) Tracked(ctx context.Context, rel string) (bool, error) {
-	res, err := g.exec(ctx, cmdLsFiles, flagZ, "--", ":(literal)"+rel)
+	res, err := g.exec(ctx, cmdLsFiles, flagZ, "--", ":(icase,literal)"+rel)
 	switch {
 	case err != nil:
 		return false, err

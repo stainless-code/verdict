@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -296,17 +297,20 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 	dir string, env []string, sb *sandbox,
 ) (core.Result, *core.RefusalError) {
 	argv := []string{"bash", "-c", vcmd}
+	var files []*os.File
 	if sb != nil {
 		argv = sb.argv(vcmd)
 		env = sb.childEnv(env)
+		files = sb.files
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
-		Argv:      argv,
-		Env:       env,
-		Dir:       dir,
-		OutputCap: coreexec.VerifyOutputCap,
+		Argv:       argv,
+		Env:        env,
+		Dir:        dir,
+		ExtraFiles: files,
+		OutputCap:  coreexec.VerifyOutputCap,
 	})
 	if err != nil {
 		return core.Result{}, failed(err)

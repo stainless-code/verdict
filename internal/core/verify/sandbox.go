@@ -390,7 +390,10 @@ func (m sandboxMount) argv() []string {
 // the child-environment overrides the mechanism needs, the stable mechanism
 // name the records carry, and the cleanup its private state requires.
 type sandbox struct {
-	cleanup     func() error
+	cleanup func() error
+	// files are the descriptors the wrapper inherits: the held verify.share
+	// directories bwrap binds by descriptor.
+	files       []*os.File
 	tool        string
 	mechanism   string
 	prefix      []string
@@ -509,7 +512,9 @@ func linuxSandboxMechanism(root string, in sandboxInputs, networkOnly bool) (*sa
 	if ref != nil {
 		return nil, ref
 	}
-	return &sandbox{tool: bwrapTool, mechanism: sandboxMechanismBwrap, prefix: prefix}, nil
+	return &sandbox{
+		tool: bwrapTool, mechanism: sandboxMechanismBwrap, prefix: prefix, files: shareFiles(in.sharedDirs()),
+	}, nil
 }
 
 // unsupportedMechanism names the right missing mechanism for the requested
@@ -1933,7 +1938,7 @@ func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir 
 	pctx, cancel := context.WithTimeout(ctx, sandboxProbeTimeout)
 	defer cancel()
 	res, err := commander.Run(pctx, &core.Command{
-		Argv: sb.probeArgv(), Env: sb.childEnv(env), Dir: workDir, OutputCap: sandboxProbeCap,
+		Argv: sb.probeArgv(), Env: sb.childEnv(env), Dir: workDir, ExtraFiles: sb.files, OutputCap: sandboxProbeCap,
 	})
 	if ctx.Err() != nil {
 		return canceledRefusal()

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -18,9 +19,12 @@ import (
 )
 
 // sharedDir is one verify.share entry resolved against the checkout: the
-// configured slash path, which is where the snapshot exposes it, and the
-// physical directory in the checkout it exposes.
+// configured slash path, which is where the snapshot exposes it, the
+// physical directory in the checkout it exposes, and that directory held
+// open. bwrap binds the held directory, never the path, so nothing done to
+// the checkout after the checks can retarget the bind.
 type sharedDir struct {
+	dir  *os.File
 	rel  string
 	real string
 }
@@ -67,6 +71,7 @@ func (st *state) resolveShares(ctx context.Context, g contenttree.Git) ([]shared
 		dir, skip, ref := resolveShare(ctx, g, rootID, rel)
 		switch {
 		case ref != nil:
+			closeShares(shared)
 			return nil, ref
 		case skip:
 			st.warn(fmt.Sprintf("verify.share: %s is not in the checkout, so the command runs without it "+
@@ -79,76 +84,154 @@ func (st *state) resolveShares(ctx context.Context, g contenttree.Git) ([]shared
 	return shared, nil
 }
 
-// resolveShare resolves one entry: skip is true when it does not exist.
+// resolveShare resolves one entry: skip is true when it does not exist. The
+// directory is held open before git judges its path, and every component
+// on the way must be a real directory, so what the checks approve is what a
+// sandbox later binds.
 func resolveShare(ctx context.Context, g contenttree.Git, rootID os.FileInfo, rel string) (sharedDir, bool, *core.RefusalError) {
-	target, err := filepath.EvalSymlinks(filepath.Join(g.Root, filepath.FromSlash(rel)))
+	literal := filepath.Join(g.Root, filepath.FromSlash(rel))
+	target, err := filepath.EvalSymlinks(literal)
 	if errors.Is(err, fs.ErrNotExist) {
 		return sharedDir{}, true, nil
 	}
 	if err != nil {
 		return sharedDir{}, false, shareRefusal(rel, fmt.Sprintf("cannot be resolved (%v)", err))
 	}
-	inRoot, ref := shareInRoot(g.Root, rootID, rel, target)
-	if ref != nil {
+	if ref := shareInRoot(g.Root, rootID, rel, target); ref != nil {
 		return sharedDir{}, false, ref
 	}
-	for _, path := range uniquePaths(rel, filepath.ToSlash(inRoot)) {
-		if ref := shareOutsideContent(ctx, g, rel, path); ref != nil {
-			return sharedDir{}, false, ref
-		}
+	if target != literal {
+		return sharedDir{}, false, shareRefusal(rel, "passes through a symbolic link (to "+target+
+			") — share the directory itself")
 	}
-	return sharedDir{rel: rel, real: target}, false, nil
+	dir, err := pinShare(g.Root, rootID, rel)
+	if err != nil {
+		return sharedDir{}, false, shareRefusal(rel, fmt.Sprintf("changed while verify checked it (%v)", err))
+	}
+	if ref := shareOutsideContent(ctx, g, rel); ref != nil {
+		_ = dir.Close()
+		return sharedDir{}, false, ref
+	}
+	return sharedDir{dir: dir, rel: rel, real: target}, false, nil
 }
 
 // shareInRoot proves the resolved target is a directory strictly inside the
-// checkout and returns its path there. Identity decides first, as it does
-// for the sandbox: a link anywhere on the way may lead out, and only the
-// directories the kernel would traverse say where it lands.
-func shareInRoot(root string, rootID os.FileInfo, rel, target string) (string, *core.RefusalError) {
+// checkout. Identity decides first, as it does for the sandbox: a link
+// anywhere on the way may lead out, and only the directories the kernel
+// would traverse say where it lands.
+func shareInRoot(root string, rootID os.FileInfo, rel, target string) *core.RefusalError {
 	if !sandboxAncestorIs(filepath.Dir(target), rootID) {
-		return "", shareRefusal(rel, "resolves outside the checkout, to "+target)
+		return shareRefusal(rel, "resolves outside the checkout, to "+target)
 	}
-	inRoot, ok := sandboxRelInside(root, target)
-	if !ok {
-		return "", shareRefusal(rel, "is inside the checkout only under another spelling ("+target+
+	if _, ok := sandboxRelInside(root, target); !ok {
+		return shareRefusal(rel, "is inside the checkout only under another spelling ("+target+
 			"), so no sandbox rule in the checkout's spelling would hold for it")
 	}
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {
-		return "", shareRefusal(rel, "is not a directory")
+		return shareRefusal(rel, "is not a directory")
 	}
-	return inRoot, nil
+	return nil
 }
 
-func uniquePaths(a, b string) []string {
-	if a == b {
-		return []string{a}
+// pinShare opens rel under the checkout one component at a time and holds
+// the last open. Each component must be a real directory (never a link), and
+// the directory opened must be the one its entry named a moment before, so a
+// rename or a link swapped in during the walk refuses instead of being
+// followed.
+func pinShare(root string, rootID os.FileInfo, rel string) (*os.File, error) {
+	cur, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, jq.Sealed("open the checkout", err)
 	}
-	return []string{a, b}
+	defer func() { _ = cur.Close() }()
+	if info, err := cur.Stat("."); err != nil || !os.SameFile(info, rootID) {
+		return nil, jq.NewErr("the checkout moved")
+	}
+	segs := strings.Split(rel, "/")
+	for _, seg := range segs[:len(segs)-1] {
+		next, err := pinStep(cur, seg)
+		if err != nil {
+			return nil, err
+		}
+		_ = cur.Close()
+		cur = next
+	}
+	return pinLast(cur, segs[len(segs)-1])
+}
+
+// pinStep opens one intermediate component as a root of its own.
+func pinStep(parent *os.Root, seg string) (*os.Root, error) {
+	want, err := realDirEntry(parent, seg)
+	if err != nil {
+		return nil, err
+	}
+	next, err := parent.OpenRoot(seg)
+	if err != nil {
+		return nil, jq.Sealed("open "+seg, err)
+	}
+	if got, err := next.Stat("."); err != nil || !os.SameFile(got, want) {
+		_ = next.Close()
+		return nil, jq.NewErrf("%s was replaced while it was opened", seg)
+	}
+	return next, nil
+}
+
+// pinLast opens the share's own directory and holds it.
+func pinLast(parent *os.Root, seg string) (*os.File, error) {
+	want, err := realDirEntry(parent, seg)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := parent.Open(seg)
+	if err != nil {
+		return nil, jq.Sealed("open "+seg, err)
+	}
+	if got, err := dir.Stat(); err != nil || !os.SameFile(got, want) {
+		_ = dir.Close()
+		return nil, jq.NewErrf("%s was replaced while it was opened", seg)
+	}
+	return dir, nil
+}
+
+// realDirEntry is the entry seg names under parent, refused unless it is a
+// directory itself rather than a link to one.
+func realDirEntry(parent *os.Root, seg string) (os.FileInfo, error) {
+	info, err := parent.Lstat(seg)
+	if err != nil {
+		return nil, jq.Sealed("inspect "+seg, err)
+	}
+	if !info.IsDir() {
+		return nil, jq.NewErrf("%s is not a directory", seg)
+	}
+	return info, nil
+}
+
+// closeShares releases every held directory.
+func closeShares(shared []sharedDir) {
+	for _, s := range shared {
+		if s.dir != nil {
+			_ = s.dir.Close()
+		}
+	}
 }
 
 // shareOutsideContent refuses a path git tracks (or holds tracked paths
-// below), or one it does not ignore; path is rel itself or what rel
-// resolves to inside the checkout.
-func shareOutsideContent(ctx context.Context, g contenttree.Git, rel, path string) *core.RefusalError {
-	for seg := range strings.SplitSeq(path, "/") {
-		if strings.EqualFold(seg, ".git") {
-			return shareRefusal(rel, "resolves into git's own directory "+path)
-		}
-	}
-	tracked, err := g.Tracked(ctx, path)
+// below), or one it does not ignore.
+func shareOutsideContent(ctx context.Context, g contenttree.Git, rel string) *core.RefusalError {
+	tracked, err := g.Tracked(ctx, rel)
 	if err != nil {
 		return failed(err)
 	}
 	if tracked {
-		return shareRefusal(rel, "holds tracked content ("+path+") — shared bytes would shadow what the receipt names; "+
+		return shareRefusal(rel, "holds tracked content — shared bytes would shadow what the receipt names; "+
 			"share only gitignored dependency directories")
 	}
-	ignored, err := g.Ignored(ctx, path)
+	ignored, err := g.Ignored(ctx, rel)
 	if err != nil {
 		return failed(err)
 	}
 	if !ignored {
-		return shareRefusal(rel, "is not gitignored ("+path+") — share only directories .gitignore excludes")
+		return shareRefusal(rel, "is not gitignored — share only directories .gitignore excludes")
 	}
 	return nil
 }
@@ -203,13 +286,33 @@ func exposeShare(root *os.Root, s sharedDir, mountPoint bool) error {
 
 // bwrapShareBinds binds each share read-only at its place in the reviewed
 // root, after the root's own writable bind so the mounts land on top of it.
+// The source is the held directory, inherited as descriptor 3+i in
+// [shareFiles] order: bwrap mounts what the descriptor is, whatever the path
+// now names, and closes it before the command starts, so the command never
+// holds a writable handle into the checkout.
 func bwrapShareBinds(repo string, shared []sharedDir) []string {
 	var argv []string
-	for _, s := range shared {
-		argv = append(argv, bwrapROBind, s.real, filepath.Join(repo, filepath.FromSlash(s.rel)))
+	for i, s := range shared {
+		argv = append(argv, bwrapROBindFD, strconv.Itoa(firstExtraFD+i), filepath.Join(repo, filepath.FromSlash(s.rel)))
 	}
 	return argv
 }
+
+// shareFiles lists the held directories in the order [bwrapShareBinds]
+// numbers them.
+func shareFiles(shared []sharedDir) []*os.File {
+	files := make([]*os.File, 0, len(shared))
+	for _, s := range shared {
+		files = append(files, s.dir)
+	}
+	return files
+}
+
+// firstExtraFD is the descriptor a child inherits its first extra file as.
+const firstExtraFD = 3
+
+// bwrapROBindFD is bwrap's read-only bind of an inherited descriptor.
+const bwrapROBindFD = "--ro-bind-fd"
 
 // sharedReals lists the physical directories the shares expose.
 func sharedReals(shared []sharedDir) []string {

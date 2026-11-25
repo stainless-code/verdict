@@ -1792,6 +1792,7 @@ export interface VerifyData {
   receipt?: string;
   sandboxed?: boolean;
   sandboxMechanism?: string;
+  /** The gitignored directories verify.share exposed from the checkout inside the snapshot, sorted: content outside tree the outcome may depend on. Read-only only when sandboxed is true (bwrap or sandbox-exec); under the network-only unshare-net mechanism, or with no wrapper, a share is a writable link into the checkout. Absent means the snapshot was clean. */
   shared?: Array<string>;
   [key: string]: unknown;
 }
