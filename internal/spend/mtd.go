@@ -29,6 +29,9 @@ type MTD struct {
 	UnknownCount int
 }
 
+// allMonths is the month filter that keeps every dated receipt.
+const allMonths = "*"
+
 const (
 	mtdDecimalBase = 10
 	mtdFallbackDP  = 6
@@ -77,17 +80,17 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 	return m
 }
 
-// BundleMTD sums one bundle's cost receipts for the month of now under the
-// same single-source rule [AggregateMTD] applies to every bundle, so a caller
-// that budgets per bundle (the self-review loop's per-round cost) and the
-// monthly aggregate can never disagree about the same receipts.
-func BundleMTD(bundleDir string, now time.Time) MTD {
-	month := MonthFor(now)
-	m := MTD{Month: month}
+// BundleTotal sums every cost receipt one bundle holds, whatever its month,
+// under the same single-source rule [AggregateMTD] applies. The monthly
+// ceiling stays month-scoped; a caller budgeting one bundle — the
+// self-review loop's per-round cost — needs all of it, so a round that
+// crosses a UTC month boundary is not understated. Month is left empty.
+func BundleTotal(bundleDir string) MTD {
+	m := MTD{}
 	sum := new(big.Rat)
 	known := 0
 	unknown := 0
-	aggregateBundle(bundleDir, month, sum, &known, &unknown)
+	aggregateBundle(bundleDir, allMonths, sum, &known, &unknown)
 	m.settle(sum, known, unknown)
 	return m
 }
@@ -298,7 +301,7 @@ func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int,
 	if !ok {
 		return
 	}
-	if recordMonth != month {
+	if month != allMonths && recordMonth != month {
 		return
 	}
 	atTime, _ := atTimeOf(at)
@@ -384,8 +387,26 @@ func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
 			return true
 		}
 	}
+	// A spawn row is the receipt of one launch, not a projection of the
+	// bundle's recorded cost: only a record naming its own launch covers it,
+	// so an unidentified cost.json can never hide a later spawn.
+	if stringFieldOf(obj, "scope") == ScopeSpawn {
+		return false
+	}
 	unidentified, ok := meta.maxAt[unidentifiedExecID]
 	return ok && !ledgerAt.After(unidentified)
+}
+
+// ScopeSpawn marks a ledger row that receipts one agent launch the
+// self-review loop admitted.
+const ScopeSpawn = "spawn"
+
+// ReadBundleFile reads one bundle file the way the cost scan does: a
+// non-blocking open confined to the bundle, a regular file only, bounded by
+// the cost-record cap. Anything else reads nil, so an agent-written path can
+// neither hang the reader nor point it outside the bundle.
+func ReadBundleFile(bundleDir, name string) []byte {
+	return openBundleFile(bundleDir, name)
 }
 
 // countLedgerValue counts one in-month ledger row. A fully priced projection
@@ -526,7 +547,7 @@ func atTimeOf(at any) (time.Time, bool) {
 // sameMonth reports whether the timestamp's UTC calendar month is month.
 func sameMonth(at any, month string) bool {
 	recordMonth, ok := monthOf(at)
-	return ok && month != "" && recordMonth == month
+	return ok && month != "" && (month == allMonths || recordMonth == month)
 }
 
 // ratOfJSONNumber reads an exact nonnegative JSON number. String-encoded
@@ -618,46 +639,4 @@ func decimalScale(den *big.Int) (int, bool) {
 		return twos, true
 	}
 	return fives, true
-}
-
-// RecordedThrough is the latest timestamp any recorded cost receipt in the
-// bundle carries (cost.json and the chunk cost files), whatever its month or
-// execution identity. A caller appending a ledger row for spend that starts
-// after those receipts dates the row past it: an unidentified recorded
-// receipt covers every ledger row at or before its own timestamp, so a row
-// dated inside that window would be read as already counted.
-func RecordedThrough(bundleDir string) (time.Time, bool) {
-	var latest time.Time
-	found := false
-	for _, name := range recordedCostNames(bundleDir) {
-		for _, t := range recordTimes(openBundleFile(bundleDir, name)) {
-			if !found || t.After(latest) {
-				latest, found = t, true
-			}
-		}
-	}
-	return latest, found
-}
-
-// recordTimes lists the parseable timestamps one recorded cost file carries.
-func recordTimes(raw []byte) []time.Time {
-	if raw == nil {
-		return nil
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		return nil
-	}
-	var out []time.Time
-	for _, rec := range sliceDoc(doc) {
-		obj, ok := rec.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		at, _ := obj.Get("at")
-		if t, ok := atTimeOf(at); ok {
-			out = append(out, t)
-		}
-	}
-	return out
 }

@@ -3,10 +3,8 @@ package loopcore
 import (
 	"context"
 	"encoding/json"
-	"io"
-	"os"
 	"path/filepath"
-	"time"
+	"strconv"
 
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
@@ -19,8 +17,16 @@ import (
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
-// maxFixCostBytes bounds the fix agent's spend report: one small object.
-const maxFixCostBytes = 4 << 10
+// Pricing sources a spawn's ledger row names.
+const (
+	pricedByAgent      = "agent"
+	pricedByCostRecord = "cost.json"
+	pricedByNoLaunch   = "not-started"
+	// codeSpawnFailed is run's code for a process that never started.
+	codeSpawnFailed = "agent-spawn-failed"
+	costFile        = "cost.json"
+	zeroUSD         = "0"
+)
 
 // phases is the loop's seam over the composed services. The production
 // implementation calls the shipped services in-process; a test scripts their
@@ -28,13 +34,13 @@ const maxFixCostBytes = 4 << 10
 type phases interface {
 	fetch(ctx context.Context, name string) ([]string, *core.RefusalError)
 	authorize(ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string) ([]string, *core.RefusalError)
-	review(ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch) ([]string, *core.RefusalError)
+	review(ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string) ([]string, *core.RefusalError)
 	record(ctx context.Context, b *reviewflow.Bundle) (*core.RecordData, []string, *core.RefusalError)
 	gate(ctx context.Context, b *reviewflow.Bundle) (bool, []string, *core.RefusalError)
 	fix(ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string) *core.RefusalError
 	declared(dir string) bool
 	verify(ctx context.Context, b *reviewflow.Bundle, timeout string) (*Verify, []string)
-	cost(dir string, now time.Time) spend.MTD
+	cost(dir string) spend.MTD
 }
 
 // flowPhases runs every phase through the shipped services.
@@ -60,15 +66,106 @@ func (p *flowPhases) authorize(
 	return runcore.AuthorizeSpawn(ctx, p.req.Flow.RunRequest(b, launch, nil), dir, launchID)
 }
 
-// review launches the review-only agent run against the round's bundle.
+// review launches the review-only agent run against the round's bundle. Run
+// calls the admission hook before every attempt it spawns — the first launch
+// and each repair round — so every attempt is admitted and receipted as
+// <launchPrefix>-<attempt>. Afterwards the receipts are priced from what the
+// review recorded.
 func (p *flowPhases) review(
-	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch,
+	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string,
 ) ([]string, *core.RefusalError) {
-	ran, ref := p.req.Flow.Run(ctx, b, launch, nil)
-	if ref != nil {
-		return nil, ref
+	req := p.req.Flow.RunRequest(b, launch, nil)
+	var admitted []string
+	var warnings []string
+	req.Admit = func(ctx context.Context, attempt int) *core.RefusalError {
+		id := launchPrefix + "-" + strconv.Itoa(attempt)
+		w, ref := runcore.AuthorizeSpawn(ctx, req, dir, id)
+		warnings = append(warnings, w...)
+		if ref == nil {
+			admitted = append(admitted, id)
+		}
+		return ref
 	}
-	return ran.Warnings, nil
+	ran, ref := runcore.WithAgents(ctx, req, p.req.Flow.Agents)
+	p.priceReview(ctx, req, dir, admitted, ref)
+	if ref != nil {
+		return warnings, ref
+	}
+	return append(warnings, ran.Warnings...), nil
+}
+
+// priceReview prices the review's admitted attempts. An attempt whose
+// process never started is zero. The rest are priced from the review's own
+// cost.json: a dated record is already counted by the month-to-date scan, so
+// the attempts are zero beside it; an undated schema-2 record (the shape the
+// review prompt asks for) is the run's total, so it prices the first attempt
+// and the later ones are zero inside it; without a known amount they stay
+// unknown, never free.
+func (p *flowPhases) priceReview(
+	ctx context.Context, req *core.RunRequest, dir string, admitted []string, ref *core.RefusalError,
+) {
+	if len(admitted) > 0 && ref != nil && ref.Code == codeSpawnFailed {
+		p.price(ctx, req, dir, admitted[len(admitted)-1], zeroUSD, pricedByNoLaunch)
+		admitted = admitted[:len(admitted)-1]
+	}
+	if len(admitted) == 0 {
+		return
+	}
+	dated, total, ok := reviewCost(dir)
+	switch {
+	case dated:
+		total = zeroUSD
+	case !ok:
+		return
+	}
+	p.price(ctx, req, dir, admitted[0], total, pricedByCostRecord)
+	for _, id := range admitted[1:] {
+		p.price(ctx, req, dir, id, zeroUSD, pricedByCostRecord)
+	}
+}
+
+// price records one spawn's amount, warning rather than failing the round
+// when the ledger cannot take it: the spawn then stays unknown.
+func (p *flowPhases) price(ctx context.Context, req *core.RunRequest, dir, id, usd, source string) {
+	if ref := runcore.PriceSpawn(ctx, req, dir, id, usd, source); ref != nil {
+		p.req.Flow.Warn("could not price spawn " + id + ": " + ref.Message)
+	}
+}
+
+// reviewCost reads the review's cost.json: dated reports a record the
+// month-to-date scan already counts; otherwise total is a schema-2 record's
+// root est_usd when it is a known amount.
+func reviewCost(dir string) (dated bool, total string, ok bool) {
+	doc, ok := decodeReport(spend.ReadBundleFile(dir, costFile))
+	if !ok {
+		return false, "", false
+	}
+	for _, rec := range records(doc) {
+		if at, _ := rec.Get("at"); at != nil {
+			return true, "", false
+		}
+	}
+	obj, isObj := doc.(*jq.Obj)
+	if !isObj {
+		return false, "", false
+	}
+	total, ok = knownAmount(obj)
+	return false, total, ok
+}
+
+// records lists a cost document's record objects: one object, or an array.
+func records(doc any) []*jq.Obj {
+	var out []*jq.Obj
+	items, isList := doc.([]any)
+	if !isList {
+		items = []any{doc}
+	}
+	for _, item := range items {
+		if obj, ok := item.(*jq.Obj); ok {
+			out = append(out, obj)
+		}
+	}
+	return out
 }
 
 // record records the round with the coverage attestation required.
@@ -97,40 +194,51 @@ func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []st
 }
 
 // fix spawns the agent with the fix directive in the working tree, then
-// prices the spawn's ledger row from the spend the agent reported in
-// fix-cost.json. An absent or unreadable report leaves the spawn unknown.
+// prices the spawn's ledger row: zero when no process started, the agent's
+// fix-cost.json report whenever one did — a fix that exits non-zero still
+// spent — and unknown without a report.
 func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
 	req := p.req.Flow.RunRequest(b, launch, nil)
-	if _, ref := runcore.Dispatch(ctx, req, p.req.Flow.Agents, directive); ref != nil {
-		return ref
+	_, ran, ref := runcore.Dispatch(ctx, req, p.req.Flow.Agents, directive)
+	switch {
+	case !ran && ref != nil && ref.Code == codeSpawnFailed:
+		p.price(ctx, req, dir, launchID, zeroUSD, pricedByNoLaunch)
+	case ran:
+		if usd, ok := reportedSpend(dir); ok {
+			p.price(ctx, req, dir, launchID, usd, pricedByAgent)
+		}
 	}
-	usd, ok := reportedSpend(dir)
-	if !ok {
-		return nil
-	}
-	if ref := runcore.PriceSpawn(ctx, req, dir, launchID, usd); ref != nil {
-		p.req.Flow.Warn("could not record the fix's reported spend: " + ref.Message)
-	}
-	return nil
+	return ref
 }
 
 // reportedSpend reads the fix agent's {"est_usd": n} report: a finite,
-// nonnegative amount, else nothing.
+// nonnegative amount, else nothing. The read is the cost scan's own:
+// non-blocking, confined to the bundle, a regular file under the cap.
 func reportedSpend(dir string) (string, bool) {
-	raw, ok := readReport(dir)
+	doc, ok := decodeReport(spend.ReadBundleFile(dir, fixCostFile))
 	if !ok {
-		return "", false
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
 		return "", false
 	}
 	obj, ok := doc.(*jq.Obj)
 	if !ok {
 		return "", false
 	}
+	return knownAmount(obj)
+}
+
+// decodeReport decodes one agent-written report, nil reading as absent.
+func decodeReport(raw []byte) (any, bool) {
+	if raw == nil {
+		return nil, false
+	}
+	doc, err := jq.DecodeOrdered(raw)
+	return doc, err == nil
+}
+
+// knownAmount reads a record's root est_usd as a finite nonnegative literal.
+func knownAmount(obj *jq.Obj) (string, bool) {
 	est, _ := obj.Get("est_usd")
 	var lit string
 	switch num := est.(type) {
@@ -175,28 +283,8 @@ func (p *flowPhases) verify(ctx context.Context, b *reviewflow.Bundle, timeout s
 	return &Verify{Exit: &exit, TimedOut: resp.TimedOut}, resp.Warnings
 }
 
-// cost reads one round bundle's own cost receipts.
-func (p *flowPhases) cost(dir string, now time.Time) spend.MTD {
-	return spend.BundleMTD(dir, now)
-}
-
-// readReport reads the agent-written report confined to the bundle: a
-// regular file no larger than the cap, never a path that leaves the bundle.
-func readReport(dir string) ([]byte, bool) {
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return nil, false
-	}
-	defer func() { _ = root.Close() }()
-	f, err := root.Open(fixCostFile)
-	if err != nil {
-		return nil, false
-	}
-	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxFixCostBytes {
-		return nil, false
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, maxFixCostBytes))
-	return raw, err == nil
+// cost reads one round bundle's own receipts, whatever their month: the
+// round's cost is not cut in two by a UTC month boundary.
+func (p *flowPhases) cost(dir string) spend.MTD {
+	return spend.BundleTotal(dir)
 }

@@ -107,8 +107,13 @@ assert_eq "no fix past unmeasured spend" "claude review" "$(paste -sd, "$LOOP_LO
 assert_json_field "the review spawn left its receipt" spawn \
   '.[0].scope' "$(ls "$repo"/.verdict/state/local-loop-*-1/budget.json)"
 
-loop_leg print claude fix --print
+# The spaced --fix-prompt <file> form reaches loop's own parser through the
+# binary's global flag stripping.
+printf 'Only fix the notes line.\n' >"$EVAL_SANDBOX/fix-prompt.md"
+loop_leg print claude fix --fix-prompt "$EVAL_SANDBOX/fix-prompt.md" --print
 assert_exit "print plans" 0
+assert_json_field "the spaced fix prompt reached the plan" true \
+  '[.data.plan[] | select(.phase == "fix") | .argv[-1] | startswith("Only fix the notes line.")] | all' "$EVAL_OUT"
 assert_json_field "print stop" planned '.data.stop' "$EVAL_OUT"
 assert_eq "print spawns nothing" "" "$(cat "$LOOP_LOG")"
 if [ -e "$output" ] || [ -e "$repo/.verdict" ]; then

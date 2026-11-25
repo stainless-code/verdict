@@ -453,20 +453,40 @@ func TestMTDNullProjectionWithoutSubtotalStaysUnknown(t *testing.T) {
 	}
 }
 
-// TestBundleMTDReadsOneBundle proves the per-bundle sum: the bundle's own
-// in-month cost record counts, a neighbor bundle's does not, and an unpriced
-// record stays unknown rather than free.
-func TestBundleMTDReadsOneBundle(t *testing.T) {
+// TestBundleTotalReadsOneBundleAcrossMonths proves the per-bundle sum: the
+// bundle's own records count whatever their month (a round that crosses a
+// UTC month boundary is not cut in two), a neighbor bundle's do not, and an
+// unpriced record stays unknown rather than free.
+func TestBundleTotalReadsOneBundleAcrossMonths(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 6, 1, 0, 0, 5, 0, time.UTC)
+	mine := writeCost(t, root, "local-loop-1",
+		`[{"at":"2026-05-31T23:59:59Z","est_usd":0.25},{"at":"2026-06-01T00:00:02Z","est_usd":0.5},{"at":"2026-06-01T00:00:03Z"}]`)
+	writeCost(t, root, "local-loop-2", `{"at":"2026-06-01T00:00:01Z","est_usd":9}`)
+	got := spend.BundleTotal(mine)
+	if got.KnownUSD != "0.75" || got.KnownCount != 2 || got.UnknownCount != 1 {
+		t.Fatalf("BundleTotal = %+v, want 0.75 known across the boundary and one unknown", got)
+	}
+	if all := spend.AggregateMTD(stateDirOf(root), now); all.KnownUSD != "9.5" {
+		t.Fatalf("AggregateMTD = %+v, want June only (9.5)", all)
+	}
+}
+
+// TestSpawnRowsAreNotCoveredByUnidentifiedCost proves the single-source rule
+// treats a loop spawn row as its own receipt: an unidentified recorded cost
+// in the same second still covers a projection row, but not a spawn row.
+func TestSpawnRowsAreNotCoveredByUnidentifiedCost(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
-	mine := writeCost(t, root, "local-loop-1", `[{"at":"2026-05-15T11:00:00Z","est_usd":0.25},{"at":"2026-05-15T11:30:00Z"}]`)
-	writeCost(t, root, "local-loop-2", `{"at":"2026-05-15T11:00:00Z","est_usd":9}`)
-	got := spend.BundleMTD(mine, now)
-	if got.KnownUSD != "0.25" || got.KnownCount != 1 || got.UnknownCount != 1 {
-		t.Fatalf("BundleMTD = %+v, want 0.25 known from one record and one unknown", got)
+	dir := writeCost(t, root, "local-loop-1", `{"at":"2026-05-15T12:00:00Z","est_usd":0.5}`)
+	ledger := `[{"at":"2026-05-15T12:00:00Z","execution_id":"proj","projected_usd":null},` +
+		`{"at":"2026-05-15T12:00:00Z","execution_id":"loop-x-1-fix","scope":"spawn","projected_usd":null}]`
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if all := spend.AggregateMTD(stateDirOf(root), now); all.KnownUSD != "9.25" {
-		t.Fatalf("AggregateMTD = %+v, want both bundles (9.25)", all)
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "0.5" || got.UnknownCount != 1 {
+		t.Fatalf("AggregateMTD = %+v, want 0.5 known and only the spawn row unknown", got)
 	}
 }
 

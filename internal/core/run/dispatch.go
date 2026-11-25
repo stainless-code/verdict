@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -21,23 +20,26 @@ import (
 //
 // A refusal is the one a review launch would report for the same process
 // outcome (canceled, agent-spawn-failed, agent-timeout, agent-failed), so a
-// caller surfaces the run verb's wording unchanged. With req.Print set the
-// argv is resolved and returned without spawning anything.
+// caller surfaces the run verb's wording unchanged. ran reports whether an
+// agent process started at all, so a caller can tell spend that happened
+// from a launch that never did. With req.Print set the argv is resolved and
+// returned without spawning anything.
 func Dispatch(
 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent, directive string,
-) ([]string, *core.RefusalError) {
+) (argv []string, ran bool, ref *core.RefusalError) {
 	if ref := checkAgents(agents); ref != nil {
-		return nil, ref
+		return nil, false, ref
 	}
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
 	args, ref := st.dispatchArgs(ctx, directive)
 	if ref != nil {
-		return nil, ref
+		return nil, false, ref
 	}
 	if req.Print {
-		return args.argv, nil
+		return args.argv, false, nil
 	}
-	return args.argv, st.dispatchSpawn(ctx, args)
+	ran, ref = st.dispatchSpawn(ctx, args)
+	return args.argv, ran, ref
 }
 
 // dispatchArgs resolves the agent, the watchdog budget, and the argv. The
@@ -67,37 +69,61 @@ func (st *state) dispatchArgs(ctx context.Context, directive string) (*launchArg
 // dispatchSpawn runs the resolved argv under the watchdog. No artifact is
 // asserted: a present, regular, fresh state makes the shared verdict answer
 // for the process outcome alone.
-func (st *state) dispatchSpawn(ctx context.Context, args *launchArgs) *core.RefusalError {
+func (st *state) dispatchSpawn(ctx context.Context, args *launchArgs) (bool, *core.RefusalError) {
 	res, err := st.spawn(ctx, args.argv, args.timeout)
-	return st.verdict(ctx, args, res, err, artifactState{exists: true, regular: true, fresh: true})
+	ran := err == nil && res != nil
+	return ran, st.verdict(ctx, args, res, err, artifactState{exists: true, regular: true, fresh: true})
+}
+
+// admit runs the request's admission hook before one spawn.
+func (st *state) admit(ctx context.Context, attempt int) *core.RefusalError {
+	if st.req.Admit == nil {
+		return nil
+	}
+	return st.req.Admit(ctx, attempt)
 }
 
 // AuthorizeSpawn admits one launch run does not price — the self-review
-// loop's review and fix spawns — and writes its receipt. Run authorizes a
-// priced S5 execution itself; these launches carry no projection, so the
-// repository's monthly ceiling is enforced against month-to-date known spend
-// alone, and require_known_estimate refuses them exactly as it refuses an
-// unpriced run.
+// loop's review attempts and fix spawns — and writes its receipt. Run
+// authorizes a priced S5 execution itself; these launches carry no
+// projection, so the repository's monthly ceiling is enforced against
+// month-to-date known spend alone, and require_known_estimate refuses them
+// with or without a ceiling: an unpriced launch can never meet it.
 //
 // Admission appends one budget.json row for the launch (execution_id is
-// launchID, projected_usd null) under the same monthly lock and ledger writer
-// run's own spend receipt uses, so the month-to-date scan counts the spawn —
-// as unknown spend until [PriceSpawn] records a reported amount. The row is
-// dated after every recorded cost receipt already in the bundle, so the
-// review's own cost.json can never read as covering a later spawn.
+// launchID, scope spawn, projected_usd null) under the same monthly lock and
+// ledger writer run's own spend receipt uses, so the month-to-date scan
+// counts the spawn — as unknown spend until [PriceSpawn] records an amount.
+// The row carries the admission time, so it counts in the month it was
+// admitted; a spawn row is covered only by a recorded receipt naming its own
+// launch, never by the bundle's unidentified cost.json.
 //
 // dir is the fetched bundle: its run.json carries the effective ceiling after
 // repository and personal precedence. A bundle without one falls back to the
 // operator's personal policy. The returned warnings are the ones the check
-// raised (an unreadable month-to-date scan, unknown-cost receipts).
+// raised (an unreadable month-to-date scan, unknown-cost receipts). A cancel
+// or deadline that lands while admission waits for a lock is the canceled
+// refusal, never a record failure.
 func AuthorizeSpawn(ctx context.Context, req *core.RunRequest, dir, launchID string) ([]string, *core.RefusalError) {
 	st := &state{req: req}
+	warnings, ref := st.authorizeSpawn(ctx, dir, launchID)
+	if ref != nil && ctx.Err() != nil {
+		return warnings, st.refuse(codeCanceled, msgCanceled)
+	}
+	return warnings, ref
+}
+
+func (st *state) authorizeSpawn(ctx context.Context, dir, launchID string) ([]string, *core.RefusalError) {
 	policy, ref := st.spawnPolicy(dir)
 	if ref != nil {
 		return nil, ref
 	}
 	if !spend.ValidLimit(policy.MonthlyCap) {
 		return nil, st.refuse(codeBadFlags, "monthly spend ceiling must be a finite nonnegative USD amount")
+	}
+	if policy.RequireKnown && policy.MonthlyCap == "" && !st.req.ConsentOverBudget {
+		return nil, st.refuse("budget-unknown", "an agent spawn has no known price — the operator settings "+
+			"require a known estimate, so the loop cannot launch it")
 	}
 	// The lock spans the scan and the append, as it does for run: two loops
 	// must not both admit against the same month-to-date.
@@ -109,45 +135,41 @@ func AuthorizeSpawn(ctx context.Context, req *core.RunRequest, dir, launchID str
 	if ref := st.authorizeMonthlyCap(spend.Projection{}, policy); ref != nil {
 		return st.warnings, ref
 	}
-	// Receipts carry whole seconds, so the comparison does too: a row a
-	// fraction past the recorded second would print as that second.
-	at := st.now().UTC().Truncate(time.Second)
-	if through, ok := spend.RecordedThrough(dir); ok && !at.After(through) {
-		at = through.Add(time.Second)
-	}
-	record := jq.NewObj("at", core.NowUTC(at), "execution_id", launchID, "scope", "spawn",
+	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", launchID, "scope", spend.ScopeSpawn,
 		"projected_usd", nil, "budget_usd", budgetNumber(policy.Budget),
 		"personal_limit_usd", budgetNumber(policy.Personal), "require_known_estimate", policy.RequireKnown,
 		"budget_src", st.budgetSource())
 	return st.warnings, st.updateLedger(ctx, dir, func(ledger []any) []any { return append(ledger, record) })
 }
 
-// PriceSpawn records the agent-reported spend of one admitted spawn on the
-// ledger row [AuthorizeSpawn] wrote for it, so the month-to-date scan counts
-// the amount instead of an unknown. A row that is missing is left alone: the
-// spawn stays unknown, never free.
-func PriceSpawn(ctx context.Context, req *core.RunRequest, dir, launchID, usd string) *core.RefusalError {
+// PriceSpawn records one admitted spawn's amount on the ledger row
+// [AuthorizeSpawn] wrote for it, so the month-to-date scan counts the amount
+// instead of an unknown. source names where the amount came from: the
+// agent's own report, the review's cost.json, or a launch that never started
+// (zero). A row that is missing is left alone: the spawn stays unknown,
+// never free.
+func PriceSpawn(ctx context.Context, req *core.RunRequest, dir, launchID, usd, source string) *core.RefusalError {
 	st := &state{req: req}
 	if !spend.ValidLimit(usd) || usd == "" {
 		return st.refuse(codeBadFlags, "reported spend must be a finite nonnegative USD amount")
 	}
 	return st.updateLedger(ctx, dir, func(ledger []any) []any {
 		for _, row := range ledger {
-			priceRow(row, launchID, usd)
+			priceRow(row, launchID, usd, source)
 		}
 		return ledger
 	})
 }
 
-// priceRow sets the reported amount on the ledger row the launch owns.
-func priceRow(row any, launchID, usd string) {
+// priceRow sets the amount on the ledger row the launch owns.
+func priceRow(row any, launchID, usd, source string) {
 	obj, ok := row.(*jq.Obj)
 	if !ok {
 		return
 	}
 	if id, _ := obj.Get("execution_id"); id == launchID {
 		obj.Set("projected_usd", json.Number(usd))
-		obj.Set("reported", "agent")
+		obj.Set("priced_by", source)
 	}
 }
 

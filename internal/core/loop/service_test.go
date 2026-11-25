@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -31,7 +32,7 @@ func (c *fakeClock) Now() time.Time { return c.now }
 
 // script answers each phase per round (1-based) and logs the calls in order.
 type script struct {
-	authRef    map[int]*core.RefusalError
+	admitRef   map[string]*core.RefusalError
 	sigs       map[int][]string
 	hang       map[string]bool
 	verifyRef  *Refusal
@@ -89,15 +90,35 @@ func (f *fake) fetch(ctx context.Context, name string) ([]string, *core.RefusalE
 	return nil, f.s.fetchRef[n]
 }
 
-func (f *fake) authorize(
-	_ context.Context, b *reviewflow.Bundle, _ reviewflow.Launch, _, launchID string,
-) ([]string, *core.RefusalError) {
+// admit records one admission in the ordered call list without moving the
+// clock, and answers the scripted refusal for that spawn.
+func (f *fake) admit(launchID string) *core.RefusalError {
 	f.s.admitted = append(f.s.admitted, launchID)
-	return nil, f.s.authRef[roundOf(f.t, b.Pr)]
+	label := spawnLabel.FindString(launchID)
+	if label == "" {
+		f.t.Fatalf("launch id %q names no round spawn", launchID)
+	}
+	label = label[1:]
+	f.s.calls = append(f.s.calls, "admit "+label)
+	return f.s.admitRef[label]
 }
 
-func (f *fake) review(_ context.Context, b *reviewflow.Bundle, launch reviewflow.Launch) ([]string, *core.RefusalError) {
+// spawnLabel is the round-and-spawn tail of a launch id: "1-review-1", "1-fix".
+var spawnLabel = regexp.MustCompile(`-\d+-(review-\d+|fix)$`)
+
+func (f *fake) authorize(
+	_ context.Context, _ *reviewflow.Bundle, _ reviewflow.Launch, _, launchID string,
+) ([]string, *core.RefusalError) {
+	return nil, f.admit(launchID)
+}
+
+func (f *fake) review(
+	_ context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, _, prefix string,
+) ([]string, *core.RefusalError) {
 	n := roundOf(f.t, b.Pr)
+	if ref := f.admit(prefix + "-1"); ref != nil {
+		return nil, ref
+	}
 	f.log("review " + strconv.Itoa(n) + " timeout " + launch.TimeoutRaw + " rounds " + launch.RoundsRaw)
 	return nil, f.s.reviewRef[n]
 }
@@ -151,7 +172,7 @@ func (f *fake) verify(_ context.Context, b *reviewflow.Bundle, timeout string) (
 	return &Verify{Exit: &exit}, nil
 }
 
-func (f *fake) cost(dir string, _ time.Time) spend.MTD {
+func (f *fake) cost(dir string) spend.MTD {
 	known := f.s.cost[roundOf(f.t, dir)]
 	if known == "" {
 		return spend.MTD{UnknownCount: 1}
@@ -231,7 +252,7 @@ func TestLoopPassesOnTheFirstCleanGate(t *testing.T) {
 	if !resp.Data.Passed || stopOf(t, resp.Data) != StopPass {
 		t.Fatalf("passed=%v stop=%v, want a pass", resp.Data.Passed, resp.Data.Stop)
 	}
-	want := []string{"fetch 1", "review 1 timeout 300 rounds 2", "record 1", "gate 1"}
+	want := []string{"fetch 1", "admit 1-review-1", "review 1 timeout 300 rounds 2", "record 1", "gate 1"}
 	if !slices.Equal(h.script.calls, want) {
 		t.Errorf("calls = %q, want %q", h.script.calls, want)
 	}
@@ -256,8 +277,8 @@ func TestLoopFixesThenPassesOnTheReReview(t *testing.T) {
 		t.Fatalf("stop=%s rounds=%d, want pass after 2", resp.Data.Stop, len(resp.Data.Rounds))
 	}
 	assertCalls(t, h.script.calls,
-		"fetch 1", "review 1 timeout 300 rounds 2", "record 1", "gate 1", "fix 1", "verify 1 timeout 300",
-		"fetch 2", "review 2 timeout 297 rounds 2", "record 2", "gate 2")
+		"fetch 1", "admit 1-review-1", "review 1 timeout 300 rounds 2", "record 1", "gate 1", "admit 1-fix", "fix 1", "verify 1 timeout 300",
+		"fetch 2", "admit 2-review-1", "review 2 timeout 297 rounds 2", "record 2", "gate 2")
 	first := resp.Data.Rounds[0]
 	if !slices.Equal(first.OpenSigs, []string{"sig-0", "sig-1"}) {
 		t.Errorf("round 1 open sigs = %q, want the two open sigs only", first.OpenSigs)
@@ -323,7 +344,8 @@ func TestLoopStopsAtMaxRoundsWithoutAnUnreviewedFix(t *testing.T) {
 	if stopOf(t, resp.Data) != StopMaxRounds || resp.Data.Passed {
 		t.Fatalf("stop = %s, want max-rounds", stopOf(t, resp.Data))
 	}
-	if got := strings.Join(h.script.calls, ","); strings.Count(got, "fix") != 1 || strings.HasSuffix(got, "fix 2") {
+	if !slices.Contains(h.script.calls, "fix 1") || slices.Contains(h.script.calls, "fix 2") {
+		got := strings.Join(h.script.calls, ",")
 		t.Errorf("calls = %s, want one fix after round 1 and none after the last round", got)
 	}
 	if resp.Data.Rounds[1].Fix != nil {
@@ -435,7 +457,7 @@ func TestLoopSplitsTheReviewBudgetAcrossAttempts(t *testing.T) {
 	h.script.gate[1] = true
 	h.run(t)
 	// 7s budget, 1s spent fetching: 6s left over two attempts.
-	assertCalls(t, h.script.calls, "fetch 1", "review 1 timeout 3 rounds 2", "record 1", "gate 1")
+	assertCalls(t, h.script.calls, "fetch 1", "admit 1-review-1", "review 1 timeout 3 rounds 2", "record 1", "gate 1")
 }
 
 func TestLoopStopsOnTheWallBudget(t *testing.T) {
@@ -504,7 +526,7 @@ func TestLoopUnmeasuredSpendStopsACostCeilingedLoop(t *testing.T) {
 	if !strings.Contains(resp.Data.Refusal.Message, "round 1's spend could not be measured") {
 		t.Errorf("refusal message = %q, want it to say the spend could not be measured", resp.Data.Refusal.Message)
 	}
-	assertCalls(t, h.script.calls, "fetch 1", "review 1 timeout 300 rounds 2", "record 1", "gate 1")
+	assertCalls(t, h.script.calls, "fetch 1", "admit 1-review-1", "review 1 timeout 300 rounds 2", "record 1", "gate 1")
 }
 
 // TestLoopUnmeasuredSpendStopsBeforeTheNextReview proves a fix spawn that
@@ -547,8 +569,8 @@ func (u *unknownAfterFix) fix(
 	return u.fake.fix(ctx, b, l, directive, dir, id)
 }
 
-func (u *unknownAfterFix) cost(dir string, now time.Time) spend.MTD {
-	mtd := u.fake.cost(dir, now)
+func (u *unknownAfterFix) cost(dir string) spend.MTD {
+	mtd := u.fake.cost(dir)
 	if u.fixed[roundOf(u.t, dir)] {
 		mtd.UnknownCount++
 	}
@@ -580,7 +602,7 @@ func TestLoopAdmitsEverySpawn(t *testing.T) {
 	h.script.open[1] = 1
 	h.script.gate[2] = true
 	h.run(t)
-	want := []string{"-1-review", "-1-fix", "-2-review"}
+	want := []string{"-1-review-1", "-1-fix", "-2-review-1"}
 	if len(h.script.admitted) != len(want) {
 		t.Fatalf("admitted = %q, want one admission per spawn %q", h.script.admitted, want)
 	}
@@ -594,7 +616,7 @@ func TestLoopAdmitsEverySpawn(t *testing.T) {
 func TestLoopMonthlyCeilingIsTheCostBudget(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, 3)
-	h.script.authRef = map[int]*core.RefusalError{1: {Code: "spend-capped", Message: "monthly ceiling reached"}}
+	h.script.admitRef = map[string]*core.RefusalError{"1-review-1": {Code: "spend-capped", Message: "monthly ceiling reached"}}
 	resp := h.run(t)
 	if stopOf(t, resp.Data) != StopCostBudget || resp.Data.Refusal == nil || resp.Data.Refusal.Code != "spend-capped" {
 		t.Fatalf("stop=%s refusal=%+v, want cost-budget carrying spend-capped", stopOf(t, resp.Data), resp.Data.Refusal)
@@ -737,6 +759,7 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"two sandboxes": func(r *Request) { r.VerifySandbox, r.VerifySandboxNetworkOnly = true, true },
 		"no agent":      func(r *Request) { r.Agent = "" },
 		"zero rounds":   func(r *Request) { r.MaxRounds = 0 },
+		"too many":      func(r *Request) { r.MaxRounds = 21 },
 		"zero budget":   func(r *Request) { r.Budget = 0 },
 		"negative cost": func(r *Request) { r.MaxCostUSD = "-1" },
 		"zero cost":     func(r *Request) { r.MaxCostUSD = "0" },
@@ -781,5 +804,78 @@ func TestLoopPlanPassesTheVerifySandbox(t *testing.T) {
 		if resp.Data.Plan[5].Phase != PhaseVerify || verify[len(verify)-1] != flag {
 			t.Errorf("verify step = %q, want it to end with %s", verify, flag)
 		}
+	}
+}
+
+// TestLoopRefusedFixAdmissionNeverFixes proves the fix spawn is admitted
+// before it launches: a ceiling that refuses the fix stops the loop on the
+// cost budget and no fix runs.
+func TestLoopRefusedFixAdmissionNeverFixes(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 3)
+	h.script.open[1] = 1
+	h.script.admitRef = map[string]*core.RefusalError{"1-fix": {Code: "spend-capped", Message: "monthly ceiling reached"}}
+	resp := h.run(t)
+	if resp.Data.Stop != StopCostBudget || resp.Data.Refusal == nil || resp.Data.Refusal.Code != "spend-capped" {
+		t.Fatalf("stop=%s refusal=%+v, want cost-budget carrying spend-capped", resp.Data.Stop, resp.Data.Refusal)
+	}
+	assertCalls(t, h.script.calls,
+		"fetch 1", "admit 1-review-1", "review 1 timeout 300 rounds 2", "record 1", "gate 1", "admit 1-fix")
+}
+
+// TestLoopAdmissionErrorIsNotTheCostBudget proves only a spend ceiling's
+// refusal is the cost budget: a malformed ceiling keeps its own refusal.
+func TestLoopAdmissionErrorIsNotTheCostBudget(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 3)
+	h.script.open[1] = 1
+	h.script.admitRef = map[string]*core.RefusalError{"1-fix": {Code: codeBadFlags, Message: "monthly spend ceiling must be a finite nonnegative USD amount"}}
+	resp := h.run(t)
+	if resp.Data.Stop != StopRefused || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeBadFlags {
+		t.Fatalf("stop=%s refusal=%+v, want refused carrying bad-flags", resp.Data.Stop, resp.Data.Refusal)
+	}
+}
+
+// TestLoopCancelAfterAPassingGateIsACancel proves a ^C that lands after the
+// gate passes is still reported as the cancel, never exit-0 success.
+func TestLoopCancelAfterAPassingGateIsACancel(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 3)
+	h.script.gate[1] = true
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	resp, ref := run(ctx, h.req, &cancelAtGate{fake: &fake{t: t, s: h.script}, cancel: cancel})
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if resp.Data.Passed || resp.Data.Stop != StopRefused || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeCanceled {
+		t.Fatalf("passed=%v stop=%s refusal=%+v, want the canceled refusal", resp.Data.Passed, resp.Data.Stop, resp.Data.Refusal)
+	}
+}
+
+// cancelAtGate cancels the loop just as the gate answers pass.
+type cancelAtGate struct {
+	*fake
+	cancel context.CancelFunc
+}
+
+func (c *cancelAtGate) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []string, *core.RefusalError) {
+	passed, warnings, ref := c.fake.gate(ctx, b)
+	c.cancel()
+	return passed, warnings, ref
+}
+
+// TestLoopOneRoundStillResolvesTheAgent proves a one-round loop, which
+// plans no fix, refuses an unknown agent before any work.
+func TestLoopOneRoundStillResolvesTheAgent(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1)
+	h.req.Agent = "no-such-agent"
+	_, ref := run(t.Context(), h.req, &fake{t: t, s: h.script})
+	if ref == nil || ref.Code != "unknown-agent" {
+		t.Fatalf("ref = %v, want unknown-agent", ref)
+	}
+	if len(h.script.calls) != 0 {
+		t.Errorf("calls = %q, want none", h.script.calls)
 	}
 }

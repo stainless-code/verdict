@@ -1,7 +1,9 @@
 package loopcore
 
-// Stop reasons, one per way a loop ends. A pass is the only success; every
-// other reason exits 1 with the same receipts written.
+// Stop reasons, one per way a loop ends. A pass exits 0 and so does a
+// --print render (planned); an operator cancel (refused, carrying the
+// canceled refusal) exits 3; every other reason exits 1. The receipts are
+// written either way.
 const (
 	StopPass        = "pass"
 	StopMaxRounds   = "max-rounds"

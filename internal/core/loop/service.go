@@ -52,6 +52,11 @@ const (
 
 	// codeBudgetUnknown is run's own code for spend it cannot measure.
 	codeBudgetUnknown = "budget-unknown"
+	// codeSpendCapped is run's code for a spawn the monthly ceiling refuses.
+	codeSpendCapped = "spend-capped"
+	// maxRounds bounds --max-rounds: every round is a fresh bundle and up to
+	// three agent spawns, and the plan renders each one.
+	maxRounds = 20
 	// reviewAttempts is the review's launch-to-check rounds: run's default,
 	// passed explicitly so the per-attempt watchdog can split the budget.
 	reviewAttempts = 2
@@ -202,8 +207,9 @@ func validate(req *Request) *core.RefusalError {
 	case req.Agent == "":
 		return &core.RefusalError{Code: codeBadFlags, Message: "loop needs --agent <name> (any name from " +
 			"`verdict run`'s agent table or your settings.json agents)"}
-	case req.MaxRounds < 1:
-		return &core.RefusalError{Code: codeBadFlags, Message: "--max-rounds must be a positive whole number"}
+	case req.MaxRounds < 1 || req.MaxRounds > maxRounds:
+		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+			"--max-rounds must be a whole number from 1 to %d", maxRounds)}
 	case req.Budget <= 0:
 		return &core.RefusalError{Code: codeBadFlags, Message: "--budget must be a positive duration"}
 	case req.VerifySandbox && req.VerifySandboxNetworkOnly:
@@ -362,12 +368,21 @@ func (lp *loop) round(ctx context.Context, rd *Round) (string, *Refusal) {
 	}
 	rd.Gate = &passed
 	if passed {
-		return StopPass, nil
+		return lp.passed(ctx)
 	}
 	if stop, ref := lp.afterFailedGate(rd, dir); stop != "" {
 		return stop, ref
 	}
 	return lp.fix(ctx, dctx, rd, b, dir)
+}
+
+// passed is a passing gate's stop. A pass the operator canceled into is
+// still a cancel: the run must not exit 0 after a ^C.
+func (lp *loop) passed(ctx context.Context) (string, *Refusal) {
+	if ctx.Err() != nil {
+		return StopRefused, canceledRefusal()
+	}
+	return StopPass, nil
 }
 
 // refused maps a composed verb's refusal onto the loop's stop. A cancel is
@@ -399,7 +414,7 @@ func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 	if !lp.now().Before(lp.deadline) {
 		return StopWallBudget, nil
 	}
-	pending := lp.ph.cost(dir, lp.now())
+	pending := lp.ph.cost(dir)
 	if lp.overCostWith(pending) {
 		return StopCostBudget, nil
 	}
@@ -435,10 +450,12 @@ func (lp *loop) noProgress(rd *Round) bool {
 	return true
 }
 
-// review launches the review-only agent run against the round's bundle, after
-// the spawn is admitted. Run's repair loop makes up to reviewAttempts launches,
-// so each one's watchdog gets that share of the remaining budget, and the
-// round's deadline bounds the whole review either way.
+// review launches the review-only agent run against the round's bundle. Run
+// admits every attempt it spawns through the phase (the first launch and each
+// repair round, receipted separately); its repair loop makes up to
+// reviewAttempts launches, so each one's watchdog gets that share of the
+// remaining budget, and the round's deadline bounds the whole review either
+// way.
 func (lp *loop) review(
 	ctx, dctx context.Context, n int, b *reviewflow.Bundle, dir string,
 ) (string, *Refusal) {
@@ -451,10 +468,7 @@ func (lp *loop) review(
 		TimeoutRaw: strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
 		RoundsRaw:  strconv.Itoa(reviewAttempts),
 	}
-	if stop, ref := lp.admit(ctx, dctx, b, launch, dir, lp.name(n)+"-review"); stop != "" {
-		return stop, ref
-	}
-	warnings, ref := lp.ph.review(dctx, b, launch)
+	warnings, ref := lp.ph.review(dctx, b, launch, dir, lp.name(n)+"-review")
 	lp.warnAll(warnings)
 	if ref != nil {
 		return lp.refused(ctx, ref)
@@ -462,8 +476,10 @@ func (lp *loop) review(
 	return "", nil
 }
 
-// admit applies the monthly spend ceiling and writes the spawn's ledger
-// receipt: a launch the ceiling forbids is the cost budget, whoever set it.
+// admit applies the monthly spend ceiling and writes the fix spawn's ledger
+// receipt. A spend ceiling's refusal is the cost budget, whoever set it; any
+// other admission refusal (a malformed ceiling, an unwritable ledger, a
+// cancel) keeps its own outcome.
 func (lp *loop) admit(
 	ctx, dctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string,
 ) (string, *Refusal) {
@@ -472,10 +488,7 @@ func (lp *loop) admit(
 	if ref == nil {
 		return "", nil
 	}
-	if ref.Code == codeCanceled {
-		return lp.refused(ctx, ref)
-	}
-	return StopCostBudget, asRefusal(ref)
+	return lp.refused(ctx, ref)
 }
 
 // fix runs the fix phase: one agent spawn with the fix directive, then verify
@@ -584,7 +597,7 @@ func (lp *loop) observe(rd *Round, data *core.RecordData) {
 // ceiling enforced against known spend only, and says so.
 func (lp *loop) roundCost(rd *Round) *float64 {
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), rd.Bundle)
-	mtd := lp.ph.cost(dir, lp.now())
+	mtd := lp.ph.cost(dir)
 	if mtd.UnknownCount > 0 {
 		lp.unknown = true
 		// With a cost ceiling the next round's start stops on this instead.
@@ -695,6 +708,8 @@ func refusalStop(ref *core.RefusalError) string {
 		return StopAgentFailed
 	case codeAgentTimeout:
 		return StopWallBudget
+	case codeSpendCapped, codeBudgetUnknown:
+		return StopCostBudget
 	}
 	return StopRefused
 }

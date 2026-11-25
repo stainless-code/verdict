@@ -14,7 +14,8 @@
 #   stale  review edits the working tree after the fetch (coverage-stale)
 #   fail   the review spawn exits 7
 #   slow   the review spawn sleeps past a short wall budget
-#   cost   like never, plus a priced cost.json beside the review
+#   cost   like never, plus a priced cost.json beside the review, in the
+#          review prompt's own schema-2 shape (undated, total at the root)
 #
 # LOOP_LOG receives one "<name> review|fix" line per spawn.
 set -euo pipefail
@@ -64,7 +65,8 @@ if grep -q 'new line' notes.txt; then
 fi
 printf '{"schema_version":"1","summary":"Reviewed the complete notes change.","findings":%s,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":%s}\n' "$comments" "$receipts" >"$artifact"
 if [ "$mode" = cost ]; then
-  printf '{"at":"%s","est_usd":0.6}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$(dirname "$artifact")/cost.json"
+  printf '{"schema_version":"2","effort":"standard","run":"loop","models":[],"lenses":[],"group_costs":[],"est_usd":0.6}\n' \
+    >"$(dirname "$artifact")/cost.json"
 fi
 if [ "$mode" = stale ]; then
   printf 'top\nedited during review\nbottom\n' >notes.txt

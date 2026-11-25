@@ -778,6 +778,9 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	}
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
+	if ref := st.admit(ctx, 1); ref != nil {
+		return nil, ref
+	}
 	res, err := st.spawn(ctx, args.argv, args.timeout)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref

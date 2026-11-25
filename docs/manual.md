@@ -7104,29 +7104,40 @@ The loop stops on the first of:
 | Stop           | When                                                                                                                                                                                       |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pass`         | the round's gate passed                                                                                                                                                                    |
-| `max-rounds`   | the last round's gate failed (`--max-rounds`, default 3)                                                                                                                                   |
+| `max-rounds`   | the last round's gate failed (`--max-rounds` 1–20, default 3)                                                                                                                              |
 | `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed — a phase or a spawn's watchdog ran out of the budget that remained                                                  |
 | `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, a round's spend could not be measured while `--max-cost-usd` is set (`budget-unknown`), or the monthly spend ceiling refused a spawn |
 | `no-progress`  | no finding open after the previous round was resolved — every previous open sig is still open                                                                                              |
 | `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                                                        |
 | `refused`      | any other typed refusal (`coverage-stale`, `review-insufficient`, `agent-missing`, …), carried in `refusal`                                                                                |
 
-Every spawn the loop makes — the review and the fix — is admitted first:
+Every spawn the loop makes — each review attempt (the first launch and the
+repair round `run` may add) and the fix — is admitted right before it starts:
 the repository's monthly ceiling (`monthly_budget_usd`, the stricter of the
 repository and personal values) is checked against month-to-date known spend,
-exactly as `run` does for a priced execution (`require_known_estimate` refuses
-an unpriced spawn the same way), and the spawn's receipt is appended to the
-round bundle's `budget.json` through the same ledger writer under the same
-lock (`execution_id` `loop-<id>-<n>-review` or `-fix`, `projected_usd`
-`null`). The month-to-date scan therefore counts every spawn: the review is
-priced by the `cost.json` its prompt asks for, the fix by the
-`{"est_usd": <dollars>}` it reports in `fix-cost.json` (the loop records it on
-the fix's receipt), and a spawn that reports nothing stays unknown spend,
-never free.
+exactly as `run` does for a priced execution; `require_known_estimate` refuses
+every unpriced spawn, with or without a ceiling. The spawn's receipt is then
+appended to the round bundle's `budget.json` through the same ledger writer
+under the same lock (`scope` `spawn`, `execution_id` `loop-<id>-<n>-review-<k>`
+or `loop-<id>-<n>-fix`, `projected_usd` `null`), dated at its admission so it
+counts in that month. A spawn row is covered only by a recorded receipt naming
+its own launch, never by the bundle's unidentified `cost.json`.
+
+The receipts are then priced. The review's are priced from its `cost.json`:
+the undated schema-2 record its prompt asks for is the run's total, so its root
+`est_usd` prices the first attempt and the later attempts are zero inside it;
+a record carrying its own `at` is already counted by the month-to-date scan,
+so the attempts are zero beside it. The fix is priced from the `{"est_usd": <dollars>}`
+it reports in `fix-cost.json`, even when it exits non-zero — it ran, so it
+spent. A spawn whose process never started is zero. A spawn that reports
+nothing stays unknown spend, never free. Reports are read the way the cost
+scan reads the bundle: confined to it, regular files only, never blocking.
 
 A round's `cost_usd` is the round bundle's known spend under that accounting —
-the same one `report --cost` and the monthly ceiling use — `null` when nothing
-priced it; the summary sums the known amounts. With `--max-cost-usd` set, a
+the same one `report --cost` and the monthly ceiling use, over every receipt in
+the bundle whatever its month, so a round that crosses a UTC month boundary is
+not understated — `null` when nothing priced it; the summary sums the known
+amounts. With `--max-cost-usd` set, a
 round whose spend could not be measured stops the loop before its next spawn
 (`cost-budget`, refusal `budget-unknown`) rather than spending blind; without
 it, the loop warns and continues.
@@ -7139,7 +7150,11 @@ the fix declared no command) and `refusal` — and `summary.json` with the stop
 reason, `passed`, the limits, the summed cost, the plan, and every round. A
 phase that never ran leaves its observation `null`. `--json` prints the same
 summary as the envelope's `data` (`$defs/loopData`). Exit 0 means the last gate
-passed; 1 any other stop; 2 usage; 3 canceled.
+passed (or a `--print` render); 1 any other stop, a `wall-budget` stop whose
+deadline canceled a phase included; 2 usage; 3 an operator cancel — a `^C`
+reported as `refused` with the `canceled` refusal, even when it lands after a
+gate passed. `--fix-prompt <file>` works spaced or as `--fix-prompt=<file>`:
+after `loop`, the spelling is the loop's flag, not the global publish toggle.
 
 `--print` renders every command the loop can run, round by round, as its CLI
 equivalent, with the fix phase as the exact agent argv (prompt included), and

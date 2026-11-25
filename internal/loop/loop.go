@@ -118,13 +118,15 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return exitFor(resp.Data)
 }
 
-// exitFor maps the outcome: a pass exits 0, a canceled loop 3, any other stop
-// 1 — the receipts are written either way.
+// exitFor maps the outcome: a pass and a --print render exit 0; an operator
+// cancel — the refused stop carrying the canceled refusal — exits 3; every
+// other stop exits 1, including a wall-budget stop whose deadline canceled a
+// phase. The receipts are written either way.
 func exitFor(d *loopcore.Data) int {
 	switch {
 	case d.Stop == loopcore.StopPlanned || d.Passed:
 		return cli.ExitOK
-	case d.Refusal != nil && d.Refusal.Code == cli.CodeCanceled:
+	case d.Stop == loopcore.StopRefused && d.Refusal != nil && d.Refusal.Code == cli.CodeCanceled:
 		return cli.ExitBroke
 	}
 	return cli.ExitRefused

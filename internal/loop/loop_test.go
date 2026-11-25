@@ -182,6 +182,8 @@ func TestExitFor(t *testing.T) {
 		{loopcore.Data{Stop: loopcore.StopMaxRounds}, cli.ExitRefused},
 		{loopcore.Data{Stop: loopcore.StopAgentFailed, Refusal: &loopcore.Refusal{Code: "agent-failed"}}, cli.ExitRefused},
 		{loopcore.Data{Stop: loopcore.StopRefused, Refusal: &loopcore.Refusal{Code: "canceled"}}, cli.ExitBroke},
+		// A deadline that canceled a phase is the wall budget, not a ^C.
+		{loopcore.Data{Stop: loopcore.StopWallBudget, Refusal: &loopcore.Refusal{Code: "canceled"}}, cli.ExitRefused},
 	} {
 		if got := exitFor(&tc.data); got != tc.want {
 			t.Errorf("exitFor(%s) = %d, want %d", tc.data.Stop, got, tc.want)

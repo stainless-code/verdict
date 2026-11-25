@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,9 +33,23 @@ const agentBinary = "claude"
 type agentCommander struct {
 	t      *testing.T
 	spawns []string
+	// fixExit is the fix process's exit code.
+	fixExit int
 	// reportFixCost makes the fix agent report its spend in fix-cost.json.
 	reportFixCost bool
+	// datedCost writes the legacy dated cost record instead of the
+	// undated schema-2 record the review prompt asks for.
+	datedCost bool
+	// fixNeverStarts fails the fix spawn before any process starts.
+	fixNeverStarts bool
 }
+
+// flowNow is the integration clock: one fixed instant inside one month, so
+// the receipts and the month-to-date scans can never straddle a boundary.
+func flowNow() time.Time { return time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC) }
+
+// errNeverStarted is the spawn failure of a fix process that never started.
+var errNeverStarted = errors.New("exec: no such file")
 
 var (
 	reviewPath = regexp.MustCompile(`Write (\S+review\.json) FIRST with \{`)
@@ -51,16 +66,20 @@ func (a *agentCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 		a.review(cmd.Dir, m[1])
 		return core.Result{}, nil
 	}
+	if a.fixNeverStarts {
+		return core.Result{}, errNeverStarted
+	}
 	a.spawns = append(a.spawns, "fix")
 	a.fix(cmd.Dir, directive)
-	return core.Result{}, nil
+	return core.Result{ExitCode: a.fixExit}, nil
 }
 
 func (a *agentCommander) LookPath(string) error { return nil }
 
 // review writes the review of the fetched diff: the changed line is a finding
 // until it is fixed, then a clean review with one receipt per hunk. It prices
-// itself in cost.json, as the review prompt asks.
+// itself in cost.json in the prompt's own schema-2 shape — undated, the total
+// at the root — unless the leg asks for the legacy dated record.
 func (a *agentCommander) review(checkout, artifact string) {
 	if !filepath.IsAbs(artifact) {
 		artifact = filepath.Join(checkout, artifact)
@@ -78,7 +97,12 @@ func (a *agentCommander) review(checkout, artifact string) {
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
 		`,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":`+receipts+`}`)
-	write(a.t, filepath.Join(dir, "cost.json"), `{"at":"`+core.NowUTC(time.Now())+`","est_usd":0.1}`)
+	cost := `{"schema_version":"2","effort":"standard","run":"loop","models":[{"name":"m","input_tokens":1,` +
+		`"output_tokens":1}],"lenses":[],"group_costs":[],"est_usd":0.1}`
+	if a.datedCost {
+		cost = `{"at":"` + core.NowUTC(flowNow()) + `","est_usd":0.1}`
+	}
+	write(a.t, filepath.Join(dir, "cost.json"), cost)
 }
 
 // fix rewrites the line, declares the verify command, and optionally reports
@@ -198,6 +222,8 @@ func write(t *testing.T, path, body string) {
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
+	// A descendant holding the captured pipe open must not hold the helper.
+	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(nil)
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -229,7 +255,9 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 	home := t.TempDir()
 	return &Request{
 		Flow: &reviewflow.Flow{
-			Runtime:        &core.Runtime{Env: map[string]string{"HOME": home}, Progress: &testkit.Collector{}},
+			Runtime: &core.Runtime{
+				Env: map[string]string{"HOME": home}, Now: flowNow, Progress: &testkit.Collector{},
+			},
 			Root:           &root,
 			Effective:      core.Defaults(),
 			Commander:      coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
@@ -254,8 +282,9 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 // TestLoopThroughTheShippedServices proves the production wiring end to end:
 // round 1 reviews, records, fails the gate, fixes, and verifies; round 2
 // re-fetches the fixed tree and passes. Both spawns of round 1 reach the
-// month-to-date scan: the review through its cost.json, the fix through the
-// ledger row its reported spend priced.
+// month-to-date scan priced: the review from its prompt-shaped (undated,
+// schema-2) cost.json, the fix from its fix-cost.json report — so a loop
+// with --max-cost-usd proceeds past round 1 with the review counted.
 //
 // fetch-local reads the process working directory, so the test chdirs and
 // cannot run in parallel.
@@ -263,7 +292,9 @@ func TestLoopThroughTheShippedServices(t *testing.T) {
 	repo := flowRepo(t)
 	t.Chdir(repo)
 	agent := &agentCommander{t: t, reportFixCost: true}
-	resp, ref := Run(t.Context(), flowRequest(t, repo, agent))
+	req := flowRequest(t, repo, agent)
+	req.MaxCostUSD = "5"
+	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("loop refused: %v", ref)
 	}
@@ -275,7 +306,7 @@ func TestLoopThroughTheShippedServices(t *testing.T) {
 		t.Errorf("spawns = %s, want review,fix,review", got)
 	}
 	assertFixedRound(t, &resp.Data.Rounds[0])
-	mtd := spend.AggregateMTD(readcommon.StateDir(repo), time.Now())
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
 	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
 		t.Errorf("month-to-date = %+v, want 0.5 known (two reviews and the priced fix)", mtd)
 	}
@@ -314,8 +345,62 @@ func TestLoopUnreportedFixSpendStopsACostCeiling(t *testing.T) {
 	if got := strings.Join(agent.spawns, ","); got != "review,fix" {
 		t.Errorf("spawns = %s, want review,fix and nothing after the unmeasured fix", got)
 	}
-	mtd := spend.AggregateMTD(readcommon.StateDir(repo), time.Now())
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
 	if mtd.UnknownCount != 1 || mtd.KnownUSD != "0.1" {
 		t.Errorf("month-to-date = %+v, want the review's 0.1 known and the fix spawn unknown", mtd)
+	}
+}
+
+// flowLoop runs one integration loop to completion.
+func flowLoop(t *testing.T, agent *agentCommander, maxCost string) (*Response, string) {
+	t.Helper()
+	repo := flowRepo(t)
+	t.Chdir(repo)
+	req := flowRequest(t, repo, agent)
+	req.MaxCostUSD = maxCost
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	return resp, repo
+}
+
+// TestLoopDatedCostIsNotCountedTwice proves the legacy dated cost record,
+// which the month-to-date scan counts itself, prices the review's receipt at
+// zero beside it instead of adding the amount twice.
+func TestLoopDatedCostIsNotCountedTwice(t *testing.T) {
+	resp, repo := flowLoop(t, &agentCommander{t: t, reportFixCost: true, datedCost: true}, "5")
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want 0.5 known: each review once and the fix", mtd)
+	}
+}
+
+// TestLoopFixThatNeverStartedIsFree proves a fix whose process never started
+// is priced at zero rather than left as unknown spend forever.
+func TestLoopFixThatNeverStartedIsFree(t *testing.T) {
+	resp, repo := flowLoop(t, &agentCommander{t: t, fixNeverStarts: true}, "")
+	if resp.Data.Stop != StopRefused || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeSpawnFailed {
+		t.Fatalf("stop=%s refusal=%+v, want refused carrying agent-spawn-failed", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.1" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want the review's 0.1 and the unstarted fix free", mtd)
+	}
+}
+
+// TestLoopFailedFixKeepsItsReportedSpend proves a fix that exits non-zero
+// after reporting its spend is still priced: it ran, so it spent.
+func TestLoopFailedFixKeepsItsReportedSpend(t *testing.T) {
+	resp, repo := flowLoop(t, &agentCommander{t: t, reportFixCost: true, fixExit: 3}, "")
+	if resp.Data.Stop != StopAgentFailed {
+		t.Fatalf("stop=%s refusal=%+v, want agent-failed", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.4" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want the review's 0.1 plus the failed fix's reported 0.3", mtd)
 	}
 }

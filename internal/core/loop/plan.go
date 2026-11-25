@@ -26,6 +26,11 @@ const (
 // review's attempts — so a rendered --timeout is the most a spawn can get.
 // The last round has no fix: nothing would review it.
 func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
+	// The agent resolves before any step is planned, so a one-round loop —
+	// which plans no fix — still refuses an unknown agent before work starts.
+	if _, ref := lp.fixArgv(ctx, 1, strconv.Itoa(lp.data.BudgetS)); ref != nil {
+		return nil, ref
+	}
 	steps := []PlanStep{}
 	budget := strconv.Itoa(lp.data.BudgetS)
 	reviewTimeout := strconv.Itoa(max(1, (lp.data.BudgetS+reviewAttempts-1)/reviewAttempts))
@@ -69,7 +74,8 @@ func (lp *loop) fixArgv(ctx context.Context, n int, budget string) ([]string, *c
 	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: budget}, nil)
 	req.Print = true
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), b.Pr)
-	return runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
+	argv, _, ref := runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
+	return argv, ref
 }
 
 // verifyArgv is the verify step's CLI equivalent, with the sandbox the
