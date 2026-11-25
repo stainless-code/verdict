@@ -22,7 +22,7 @@ const benchCondition = "    if: needs.changes.outputs.full == 'true' && github.e
 // benchUpload is the artifact action the lane uploads through: the pinned
 // release the eval lanes already use, so a bump cannot leave one lane behind
 // on a SHA the rest of the workflow has left.
-const benchUpload = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+const benchUpload = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9"
 
 // testdataPath is the directory `go test ./...` refuses to load, and the
 // separator that marks a file inside one.
