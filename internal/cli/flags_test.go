@@ -29,6 +29,24 @@ func TestStripGlobalToggles(t *testing.T) {
 	checkForce(t, "fix prompt", g.PublishFixPromptForce, cli.FlagOn)
 }
 
+// TestStripGlobalLeavesLoopsFixPrompt proves `loop --fix-prompt <file>` reaches
+// the loop's own parser with its operand, while the same spelling on any
+// other verb stays the publish toggle.
+func TestStripGlobalLeavesLoopsFixPrompt(t *testing.T) {
+	rest, g := mustStrip(t, []string{"--compact", "loop", "acme/app", "--agent", "claude", "--fix-prompt", "fix.md"})
+	want := []string{"loop", "acme/app", "--agent", "claude", "--fix-prompt", "fix.md"}
+	if strings.Join(rest, " ") != strings.Join(want, " ") {
+		t.Fatalf("rest = %q, want %q", rest, want)
+	}
+	checkForce(t, "fix prompt", g.PublishFixPromptForce, "")
+	checkForce(t, "compact", g.CompactForce, cli.FlagOn)
+	rest, g = mustStrip(t, []string{"record", "acme/app", "local-x", "--fix-prompt"})
+	if len(rest) != 3 {
+		t.Fatalf("record rest = %q, want the toggle stripped", rest)
+	}
+	checkForce(t, "record fix prompt", g.PublishFixPromptForce, cli.FlagOn)
+}
+
 func checkForce(t *testing.T, name, got, want string) {
 	t.Helper()
 	if got != want {

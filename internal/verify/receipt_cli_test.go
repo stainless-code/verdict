@@ -31,6 +31,7 @@ func TestVerifyPatchReceiptTreeScope(t *testing.T) {
 		wantHead bool
 	}{
 		{name: "state-and-generated-gitignore", extra: ".gitignore", wantHead: true},
+		{name: "loop-round-receipts", extra: "loop/20261125T000000Z/round-1.json", wantHead: true},
 		{name: "untracked-regression-test", extra: "tests/regress_test.go"},
 		{name: "untracked-kb", extra: "kb.jsonl"},
 	} {

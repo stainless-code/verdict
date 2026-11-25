@@ -50,6 +50,10 @@ type treeProbe struct {
 // verify-env) is reviewed input and counts toward a dirty tree.
 var stateDirRel = config.VerdictDir + "/" + config.StateDirName
 
+// loopDirRel is where `verdict loop` writes its round receipts while it runs
+// verify, so it is verdict's own state too, never reviewed input.
+var loopDirRel = config.VerdictDir + "/loop"
+
 // probeTree reads the checked-out head and the working-tree status at root
 // through the injected commander. --no-optional-locks keeps the status read
 // from rewriting the index of the tree it is vouching for. Besides the state
@@ -78,7 +82,7 @@ func treeDirty(ctx context.Context, commander core.Commander, root string) (bool
 		Argv: []string{
 			"git", "--no-optional-locks", "-C", root, "status", "--porcelain",
 			"--untracked-files=all", "--ignore-submodules=none",
-			"--", ".", ":(exclude)" + stateDirRel, ":(exclude)" + config.GitignorePath,
+			"--", ".", ":(exclude)" + stateDirRel, ":(exclude)" + loopDirRel, ":(exclude)" + config.GitignorePath,
 		},
 		OutputCap: statusProbeCap,
 	})

@@ -93,26 +93,35 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 func WithAgents(
 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
 ) (resp *core.RunResponse, ref *core.RefusalError) {
+	if ref := checkAgents(agents); ref != nil {
+		return nil, ref
+	}
+	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
+	return execute(ctx, st)
+}
+
+// checkAgents refuses an operator definition that shadows a shipped row or
+// repeats a name, so one --agent value always resolves to one definition.
+func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 	seen := make(map[string]bool, len(agents))
 	for i := range agents {
 		def := &agents[i]
 		path := "$.agents." + def.Name
 		if _, ok := lookupAgent(def.Name); ok {
-			return nil, &core.RefusalError{
+			return &core.RefusalError{
 				Code:    codeBadSettings,
 				Message: path + ": collides with a built-in agent; pick another name",
 			}
 		}
 		if seen[def.Name] {
-			return nil, &core.RefusalError{
+			return &core.RefusalError{
 				Code:    codeBadSettings,
 				Message: path + ": defined twice; use one agent per name",
 			}
 		}
 		seen[def.Name] = true
 	}
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
-	return execute(ctx, st)
+	return nil
 }
 
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
@@ -769,6 +778,9 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	}
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
+	if ref := st.admit(ctx, 1); ref != nil {
+		return nil, ref
+	}
 	res, err := st.spawn(ctx, args.argv, args.timeout)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref

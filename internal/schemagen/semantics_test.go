@@ -382,7 +382,14 @@ var publishedSemantics = map[string]string{
 	// description now states that sandboxed means the full shape (the
 	// network-only mechanism never sets it). No existing property, required
 	// key, enum, or type changed; an unwrapped run omits both keys.
-	"envelope.schema.json": "d0b21501b52d3e0660806f5e2865b9076f9d75cd0c5c9154f3193f5e52412755",
+	// Self-review loop: additive $defs/loopData with its loopRound, loopFix,
+	// loopVerify, loopRefusal, and loopPlanStep entries (the loop --json data
+	// profile and summary.json). Additions only; no existing property,
+	// required key, enum, or type changed.
+	// Loop spend receipts: prose only. The loopData stop and cost_usd
+	// descriptions name the budget.json receipt every spawn leaves, the
+	// budget-unknown stop, and the resolved-sig plateau rule.
+	"envelope.schema.json": "f014c7d48dfd165e0d405eed92e259b4eb809af1c3d9da99f2aef9ecac62daf0",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
