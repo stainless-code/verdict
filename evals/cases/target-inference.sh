@@ -104,3 +104,5 @@ assert_eq "T5 hostile URLs made no host call" "$calls_before" "$(wc -l <"$EVAL_S
 # T6 fetch-local keeps its own syntax: a bare invocation is still usage.
 run_review fetch-local
 assert_exit "T6 fetch-local with no name stays a usage error" 2
+
+eval_end
