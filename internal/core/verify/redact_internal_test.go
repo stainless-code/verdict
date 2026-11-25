@@ -153,8 +153,8 @@ func TestStripControlChars(t *testing.T) {
 	}
 }
 
-// TestSanitizeTail pins the composition order: environment values, then
-// shapes, then control characters.
+// TestSanitizeTail pins the composition order: control characters first, then
+// environment values, then shapes.
 func TestSanitizeTail(t *testing.T) {
 	environ := []string{"PATH=/bin", "EVAL_PROBE_TOKEN=supersecretvalue123"}
 	in := "\x1b[1mlogin\x1b[0m supersecretvalue123 Authorization: Bearer abcdefgh12345678\r\n"
@@ -244,5 +244,69 @@ func TestAdjOfReportsDeepNesting(t *testing.T) {
 				t.Fatalf("adjOf deep = %v, want %v", deep, tc.wantDeep)
 			}
 		})
+	}
+}
+
+// TestSanitizeTailRedactsCredentialsSplitByEscapes: an escape sequence inside a
+// credential must not hide it from the redactors and then rejoin it when the
+// escape is stripped.
+func TestSanitizeTailRedactsCredentialsSplitByEscapes(t *testing.T) {
+	environ := []string{"EVAL_PROBE_TOKEN=supersecretvalue123"}
+	for name, in := range map[string]string{
+		"shape":  "key=sk-\x1b[0mant-api03-12345678901234567890 done",
+		"bearer": "Authorization: Be\x1b[31marer abcdefgh12345678",
+		"env":    "env=supersecret\x1b[0mvalue123 done",
+		"osc":    "ghp_\x1b]0;title\x07abcdefghijklmnop1234 done",
+	} {
+		t.Run(name, func(t *testing.T) {
+			requireNoLeak(t, in, sanitizeTail(in, environ))
+		})
+	}
+}
+
+func requireNoLeak(t *testing.T, in, got string) {
+	t.Helper()
+	for _, leak := range []string{"api03-1234", "abcdefgh12345678", "supersecretvalue123", "abcdefghijklmnop1234"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("sanitizeTail(%q) = %q leaks %q", in, got, leak)
+		}
+	}
+}
+
+// TestSanitizeTailRedactsASecretValueCarryingAControlChar: the tail is matched
+// after control characters are stripped, so a value that carries one (a token
+// read from a CRLF file) must still be found in its stripped form.
+func TestSanitizeTailRedactsASecretValueCarryingAControlChar(t *testing.T) {
+	environ := []string{"EVAL_PROBE_TOKEN=secretpart\rvaluerest123"}
+	got := sanitizeTail("boom secretpart\rvaluerest123 done", environ)
+	if strings.Contains(got, "valuerest123") {
+		t.Fatalf("sanitizeTail leaks the CR-carrying secret: %q", got)
+	}
+	if got := StripControlledSecrets([]string{"argsecret\r12345"}); len(got) != 2 || got[1] != "argsecret12345" {
+		t.Fatalf("StripControlledSecrets = %q, want the raw and stripped forms", got)
+	}
+}
+
+// TestStripControlCharsEndsAnOpenOSCAtTheLineBreak: one stray OSC introducer
+// must not blank the rest of a capture that is sanitized whole.
+func TestStripControlCharsEndsAnOpenOSCAtTheLineBreak(t *testing.T) {
+	in := "\x1b]0;no terminator here\n" + strings.Repeat("y", 50) + "\nlast-line\n"
+	got := stripControlChars(in)
+	if !strings.HasSuffix(got, "last-line\n") || strings.Contains(got, "no terminator") {
+		t.Fatalf("stripControlChars = %q", got)
+	}
+	// The break ends the OSC and goes with it, so a credential the escape was
+	// planted in is rejoined and redacted rather than split across lines.
+	environ := []string{"EVAL_PROBE_TOKEN=secretpartvaluerest123"}
+	for _, split := range []string{"sk-\x1b]0;x\nant-abcdefghijklmnop123 end", "boom secretpart\x1b]0;x\nvaluerest123 done"} {
+		requireNoLeak(t, split, sanitizeTail(split, environ))
+		if got := sanitizeTail(split, environ); strings.Contains(got, "abcdefghijklmnop123") {
+			t.Fatalf("sanitizeTail(%q) = %q leaks the split shape", split, got)
+		}
+	}
+	// A stripped form under the 8-byte floor is never added: it would shred
+	// ordinary text.
+	if got := StripControlledSecrets([]string{"abc\rdefg"}); len(got) != 1 {
+		t.Fatalf("StripControlledSecrets(short) = %q, want only the raw form", got)
 	}
 }

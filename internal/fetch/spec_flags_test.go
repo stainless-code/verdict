@@ -78,3 +78,26 @@ func TestParseFetchIssueEmptyOperandRefusesUsage(t *testing.T) {
 		t.Fatalf("diagnostics = %q, want the flag named", got)
 	}
 }
+
+// TestParseLocalPathFiltersNeedTheSeparator pins that a bare word is a usage
+// error, not a path filter: a glob or variable the shell expanded into an
+// unexpected word must never narrow the review. The documented `--` form keeps
+// selecting.
+func TestParseLocalPathFiltersNeedTheSeparator(t *testing.T) {
+	t.Parallel()
+	diag := &bytes.Buffer{}
+	r := &cli.Runner{Out: &bytes.Buffer{}, Diag: diag}
+	_, code, done := parseLocalFlags(r, []string{"--staged", "cmd/verdict/main.go"})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("bare positional = (code=%d, done=%v), want exit %d", code, done, cli.ExitUsage)
+	}
+	if got := diag.String(); !strings.Contains(got, "unexpected argument 'cmd/verdict/main.go'") ||
+		!strings.Contains(got, "after '--'") {
+		t.Fatalf("usage error = %q, want the unexpected word and the `--` remedy", got)
+	}
+	f, code, done := parseLocalFlags(&cli.Runner{Out: &bytes.Buffer{}, Diag: &bytes.Buffer{}},
+		[]string{"--staged", "--", "cmd/verdict/main.go", "docs"})
+	if done || code != 0 || !slices.Equal(f.Paths, []string{"cmd/verdict/main.go", "docs"}) {
+		t.Fatalf("documented form = (code=%d, done=%v, paths=%q), want the two paths", code, done, f.Paths)
+	}
+}
