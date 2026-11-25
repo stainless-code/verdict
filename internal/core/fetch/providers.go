@@ -1529,14 +1529,14 @@ func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azur
 		return err
 	}
 	remote, hs, bs := azureMergeRef(conn.meta)
-	fetchRes, err := r.run(ctx, "-C", tmp, "fetch", "-q", remote, hs, bs)
+	fetchRes, err := r.runIn(ctx, tmp, "fetch", "-q", remote, hs, bs)
 	if werr := writeErrFile(dir+suffixDiffErr, fetchRes.Stderr); werr != nil {
 		return werr
 	}
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: "azure git fetch failed: " + headBytes(fetchRes.Stderr, numExcerpt)}
 	}
-	diffRes, err := r.run(ctx, "-C", tmp, gitCmdDiff, bs, hs)
+	diffRes, err := r.runIn(ctx, tmp, gitCmdDiff, bs, hs)
 	if err != nil {
 		return azureDiffFail(dir, diffRes.Stderr)
 	}

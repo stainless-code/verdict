@@ -22,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // The launch tests stay unix-only: the fake agent is a POSIX PATH entry — a
@@ -1221,5 +1222,23 @@ func TestReplayPlantAlwaysMaterializes(t *testing.T) {
 	}
 	if !info.Mode().IsRegular() {
 		t.Fatalf("agent mode = %v, want regular file", info.Mode())
+	}
+}
+
+// TestReplayCheckoutRunsNoRepoCode pins that a replay checks each candidate
+// head out without running any program the repository chose: with every
+// worktree armed — a hooks directory holding the checkout and index hooks,
+// an fsmonitor, a clean/smudge filter and a textconv driver selected for
+// every path, and an external diff — the replay completes and none of them
+// leaves a marker. The checkout writes each file as its blob bytes.
+func TestReplayCheckoutRunsNoRepoCode(t *testing.T) {
+	t.Parallel()
+	f := newReplayFixture(t)
+	code := testkit.ArmRepoCode(t, f.repo.dir)
+	code.Worktrees(t, f.repo.dir)
+	f.plant(t, "write", "0.6")
+	runReplayOK(t, f.request(t, nil))
+	if ran := code.Ran(t); len(ran) > 0 {
+		t.Errorf("replay ran repository-controlled code: %q", ran)
 	}
 }

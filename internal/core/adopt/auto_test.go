@@ -8,10 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const autoTestPatch = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
@@ -118,7 +120,7 @@ type autoStubCommander struct {
 }
 
 func (c *autoStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && slices.Equal(args, []string{"patch-id", "--stable"}) && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil {
 			if id, ok := c.ids[string(raw)]; ok {

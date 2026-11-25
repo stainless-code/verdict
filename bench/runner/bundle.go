@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -200,7 +201,7 @@ func repoState(ctx context.Context, root string) (string, bool) {
 }
 
 func gitOut(ctx context.Context, root string, argv ...string) (string, error) {
-	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: append([]string{"git", "-C", root}, argv...), Env: toolEnv()})
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: gitcmd.Argv(root, argv...), Env: gitcmd.Env(toolEnv())})
 	if err != nil {
 		return "", jq.NewErrf("git %s: %s", argv[0], err)
 	}

@@ -12,10 +12,6 @@ import (
 // modeWorktree is the kind of a bundle that reviews the working tree.
 const modeWorktree = "worktree"
 
-// treeDiffFlags keep a tree-to-tree read to git's own bytes: no external
-// diff program or textconv driver the checkout's attributes could select.
-var treeDiffFlags = []string{"--no-ext-diff", "--no-textconv"}
-
 // nameWorktree names a working-tree bundle's content — the index paths with
 // their working-tree bytes, the same tree verify snapshots — once, before
 // anything else is read. The diff, the file list, and the stats are then all

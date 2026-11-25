@@ -141,7 +141,13 @@ In scope (highest priority first):
   running while `verify` makes the snapshot, before the sandbox exists: a git
   hook (including through a `core.hooksPath` that names tree content), a clean
   or smudge filter (git-lfs included), or an fsmonitor program; and so is a
-  run that falls back to the user's checkout when the snapshot cannot be made. The receipt defends against claims nobody observed, not
+  run that falls back to the user's checkout when the snapshot cannot be made.
+  The same holds for every other git call verdict makes on reviewed content
+  (`fetch-local`, `fix --test --commit`, `backtest` replay): a hook, an
+  fsmonitor, a textconv or external diff driver, or a smudge filter on a
+  checkout verdict writes is a vulnerability. Clean and process filters (a
+  driver's `clean` or `process` command) on the operator's own working tree
+  run by design. The receipt defends against claims nobody observed, not
   against a process with the operator's own file access: such a process
   can rewrite the receipt or `findings.json` directly, so forging the
   receipt that way is out of scope.
@@ -175,13 +181,18 @@ Do not "fix" the inherited side: it is the documented local posture.
   the developer's environment because verdict is a local CLI acting for the
   operator: the calls must use the operator's existing `gh` auth and git
   configuration, and shadowing either would break the command rather than
-  harden it. The spawn site passes no environment, so the child inherits the
+  harden it. A `gh` spawn passes no environment, so the child inherits the
   parent's (`internal/core/exec`). The host choice is not inherited: when the
   target names a host (a URL or `origin` target, `demo <url>`, and every
   `post`, which pins to its bundle's host), every `gh` and `glab` argv names it
   explicitly (`core.PinHostArgv`), so `GH_HOST` or `GITLAB_HOST` cannot redirect
   a call to another host's pull request. A typed `<owner/repo> <pr>` read names
-  no host and follows the CLI's default (`docs/manual.md` § Targets).
+  no host and follows the CLI's default (`docs/manual.md` § Targets). A `git`
+  call inherits the environment minus git's location variables,
+  `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with hooks and fsmonitor off
+  (`internal/gitcmd`). A syntactic guard in `internal/archtest` fails on a
+  `git` argv spelled outside it — a `"git"` literal, a constant concatenation,
+  a `sh`/`bash` script naming git — but not on a name computed at run time.
 - **Default-deny allowlist: the agent-written `bash -c` verify command.**
   `verify` runs the agent's claimed proof (or deep-group `--command`) with a
   default-deny filtered slice of the caller's environment

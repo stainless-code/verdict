@@ -405,7 +405,7 @@ type gitCall struct {
 func (c *gitCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	_, deadline := ctx.Deadline()
 	c.calls = append(c.calls, gitCall{
-		argv: slices.Clone(cmd.Argv), dir: cmd.Dir, env: slices.Clone(cmd.Env), deadline: deadline,
+		argv: slices.Clone(cmd.Argv), dir: gitDir(c.t, cmd), env: slices.Clone(cmd.Env), deadline: deadline,
 	})
 	if slices.Contains(cmd.Argv, "clone") {
 		dest := cmd.Argv[len(cmd.Argv)-1]
@@ -457,12 +457,9 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 	}
 	clone := cmdr.calls[0]
 	tmp := filepath.Dir(clone.argv[len(clone.argv)-1])
-	hooks := "/dev/null"
-	if runtime.GOOS == "windows" {
-		hooks = filepath.Join(tmp, "hooks")
-	}
 	wantClone := []string{
-		"git", "-c", "core.hooksPath=" + hooks, "-c", "protocol.file.allow=never",
+		"git", "-C", ".", "-c", "protocol.file.allow=never",
+		"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false",
 		"clone", "--depth=1", "--no-tags", "--no-recurse-submodules",
 		"--branch", "v1.2.3", url, filepath.Join(tmp, "repo"),
 	}
@@ -478,7 +475,10 @@ func TestAddGitPinsHermeticArgvEnvAndRecordsSha(t *testing.T) {
 		}
 	}
 	assertGitEnv(t, clone.env, tmp)
-	prefix := []string{"git", "-c", "core.hooksPath=" + hooks, "-c", "protocol.file.allow=never"}
+	prefix := []string{
+		"git", "-C", filepath.Join(tmp, "repo"), "-c", "protocol.file.allow=never",
+		"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false",
+	}
 	wantRevParse := append(slices.Clone(prefix), "rev-parse", "HEAD")
 	if got := cmdr.calls[1].argv; !slices.Equal(got, wantRevParse) {
 		t.Errorf("rev-parse argv = %q, want %q", got, wantRevParse)
@@ -563,6 +563,9 @@ func assertGitEnv(t *testing.T, env []string, tmp string) {
 		"XDG_CONFIG_HOME=" + filepath.Join(tmp, "config"),
 		"XDG_DATA_HOME=" + filepath.Join(tmp, "data"),
 		"XDG_STATE_HOME=" + filepath.Join(tmp, "state"),
+		"GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=" + os.DevNull,
+		"GIT_CONFIG_KEY_1=core.fsmonitor", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_COUNT=2",
 	}
 	if !slices.Equal(env, want) {
 		t.Fatalf("env = %q, want %q", env, want)

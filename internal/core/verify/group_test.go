@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // groupCommander answers the two argv shapes group validation issues: the
@@ -49,16 +50,17 @@ func (c *groupCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 
 // contentAnswer is the scripted deviation from gitAnswer: a checkout whose
 // content is another tree, or a reviewed commit the repository lacks.
-func (c *groupCommander) contentAnswer(a []string) (core.Result, bool) {
-	if len(a) <= 3 || a[0] != "git" {
+func (c *groupCommander) contentAnswer(argv []string) (core.Result, bool) {
+	_, a, ok := gitcmd.Split(argv)
+	if !ok || len(a) == 0 {
 		return core.Result{}, false
 	}
 	switch {
-	case a[3] == "write-tree" && c.worktree != "":
+	case a[0] == "write-tree" && c.worktree != "":
 		return core.Result{Stdout: c.worktree + "\n"}, true
-	case a[3] == "rev-parse" && c.missing && strings.HasPrefix(a[len(a)-1], groupHead):
+	case a[0] == "rev-parse" && c.missing && strings.HasPrefix(a[len(a)-1], groupHead):
 		return core.Result{ExitCode: 1}, true
-	case c.stuck && a[3] == "worktree" && len(a) > 4 && a[4] == "remove":
+	case c.stuck && a[0] == "worktree" && len(a) > 1 && a[1] == "remove":
 		return core.Result{ExitCode: 1, Stderr: "fatal: cannot remove a locked working tree"}, true
 	}
 	return core.Result{}, false

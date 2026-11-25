@@ -126,11 +126,14 @@ func TestFixPRBundleNoWritesOutsideCheckout(t *testing.T) {
 // bundle: reads and a diff only, never push, post, or a host CLI.
 func requireReadOnlyGitCalls(t *testing.T, calls [][]string, root string) {
 	t.Helper()
+	hookFree := func(args ...string) []string {
+		return slices.Concat([]string{"git", "-C", root, "-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false"}, args)
+	}
 	want := [][]string{
-		{"git", "ls-files", "-u"},
-		{"git", "-C", root, "rev-parse", "HEAD"},
-		{"git", "diff", "HEAD", "--no-color", "--no-ext-diff"},
-		{"git", "status", "--porcelain", "-z"},
+		hookFree("ls-files", "-u"),
+		hookFree("rev-parse", "HEAD"),
+		hookFree("diff", "--no-ext-diff", "--no-textconv", "HEAD", "--no-color"),
+		hookFree("status", "--porcelain", "-z"),
 	}
 	if len(calls) != len(want) {
 		t.Fatalf("git calls = %v, want %v", calls, want)

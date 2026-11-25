@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
@@ -41,9 +42,17 @@ func (s *scriptCmd) Run(ctx context.Context, cmd *core.Command) (core.Result, er
 	if err := ctx.Err(); err != nil {
 		return core.Result{}, err
 	}
-	s.calls = append(s.calls, slices.Clone(cmd.Argv))
+	argv := slices.Clone(cmd.Argv)
+	if argv[0] == "git" {
+		root, args, ok := gitcmd.Split(argv)
+		if !ok || root != "." || cmd.Env == nil {
+			s.t.Errorf("git call %q is not hook-free in the working directory", argv)
+		}
+		argv = slices.Concat([]string{"git"}, args)
+	}
+	s.calls = append(s.calls, argv)
 	s.pinned = append(s.pinned, core.HostOf(ctx))
-	res, ok := s.results[strings.Join(cmd.Argv, "\x00")]
+	res, ok := s.results[strings.Join(argv, "\x00")]
 	if !ok {
 		return core.Result{}, errUnexpectedArgv
 	}

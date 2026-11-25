@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // ResolveProvider chooses an explicit provider or infers it from origin. An
@@ -19,7 +21,7 @@ func ResolveProvider(ctx context.Context, cmdr Commander, root, explicit string,
 	}
 	ctx, cancel := context.WithTimeout(ctx, providerTimeout)
 	defer cancel()
-	res, err := cmdr.Run(ctx, &Command{Dir: root, Argv: []string{"git", "remote", "get-url", "origin"}})
+	res, err := cmdr.Run(ctx, &Command{Argv: gitcmd.Argv(root, "remote", "get-url", "origin"), Env: gitcmd.Env(nil)})
 	if ctx.Err() != nil {
 		return "", "", &RefusalError{Code: "canceled", Message: "provider lookup canceled or timed out"}
 	}

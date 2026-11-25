@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -46,10 +47,11 @@ var gitPins = []string{
 	"-c", "log.showSignature=false",
 }
 
-// diffPins are the diff-family flags: they fix the prefixes, the algorithm,
-// and the external-tool and textconv hooks that would reshape `-U0` output.
+// diffPins are the diff-family flags: they fix the prefixes and the
+// algorithm that would reshape `-U0` output. [gitcmd.Argv] adds the
+// --no-ext-diff and --no-textconv every diff, log, and show carries.
 var diffPins = []string{
-	"--no-color", "--no-ext-diff", "--no-textconv",
+	"--no-color",
 	"--src-prefix=a/", "--dst-prefix=b/", "--diff-algorithm=myers",
 }
 
@@ -110,8 +112,8 @@ func (st *state) readTrust(ctx context.Context) []string {
 // reads.
 func (st *state) gitUser(ctx context.Context, args ...string) (string, int, error) {
 	cmd := &core.Command{
-		Argv:      slices.Concat([]string{"git"}, args),
-		Env:       gitUserEnv(st.snapshot()),
+		Argv:      gitcmd.Argv("", args...),
+		Env:       gitcmd.Env(gitUserEnv(st.snapshot())),
 		OutputCap: commandOutputCap,
 	}
 	res, err := st.commander().Run(ctx, cmd)
@@ -205,8 +207,8 @@ func gitSnapDropped(name string, userConfig bool) bool {
 func (st *state) gitCapped(
 	ctx context.Context, limit int, dir string, args ...string,
 ) (string, int, string, bool, error) {
-	argv := slices.Concat([]string{"git", "-C", dir}, st.trustArgs(), gitPins, args)
-	cmd := &core.Command{Argv: argv, Env: gitEnv(st.snapshot()), OutputCap: limit}
+	argv := gitcmd.Argv(dir, slices.Concat(st.trustArgs(), gitPins, args)...)
+	cmd := &core.Command{Argv: argv, Env: gitcmd.Env(gitEnv(st.snapshot())), OutputCap: limit}
 	res, err := st.commander().Run(ctx, cmd)
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
@@ -215,7 +217,7 @@ func (st *state) gitCapped(
 		if _, ok := errors.AsType[*core.OutputCappedError](err); ok {
 			return res.Stdout, res.ExitCode, res.Stderr, true, nil
 		}
-		return "", 0, "", false, jq.Sealed("git "+args[0], err)
+		return "", 0, "", false, jq.Sealed("git "+gitcmd.Subcommand(argv), err)
 	}
 	return res.Stdout, res.ExitCode, res.Stderr, res.StdoutTruncated, nil
 }
