@@ -15,6 +15,7 @@ import (
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Request wires a gate run.
@@ -115,7 +116,7 @@ func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 		return
 	}
 	if hint := gateHint(gate); hint != "" {
-		fmt.Fprintln(r.Human, "try: "+hint)
+		fmt.Fprintln(r.Human, "try: "+untrusted.Line(hint))
 	}
 }
 
@@ -123,7 +124,7 @@ func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 func gateLines(gate *core.ReportGate) []string {
 	lines := make([]string, 0, len(gate.Dimensions)+2)
 	for _, dim := range gate.Dimensions {
-		lines = append(lines, fmt.Sprintf("gate: %-*s %s  %s", idWidth, dim.ID, dim.Status, dim.Detail))
+		lines = append(lines, fmt.Sprintf("gate: %-*s %s  %s", idWidth, dim.ID, dim.Status, untrusted.Line(dim.Detail)))
 	}
 	verdict := "gate: PASS"
 	if !gate.Passed {

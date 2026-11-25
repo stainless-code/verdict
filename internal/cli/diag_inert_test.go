@@ -57,3 +57,41 @@ func TestNewRunnerDiagStreamIsInert(t *testing.T) {
 		t.Fatalf("colored warning = %q, want verdict's SGR kept and the message folded", got)
 	}
 }
+
+// TestNewRunnerStdoutIsInertUnlessJSON proves the production runner's stdout
+// folds controls in human mode and passes an envelope through untouched under
+// --json, and that the choice is read at write time: a mode that settles
+// after the runner is built still routes right.
+func TestNewRunnerStdoutIsInertUnlessJSON(t *testing.T) {
+	t.Parallel()
+	const hostile = "1. [open] app/x\x1b]52;c;cGF5bG9hZA==\x07\u009b2J\ry.go:3\tok\n"
+	var out, diag bytes.Buffer
+	r := NewRunner("report", "acme/app", "7", &out, &diag, func(string) string { return "" })
+	r.RouteHuman()
+	fmt.Fprint(r.Human, hostile)
+	fmt.Fprint(r.Out, hostile)
+	const folded = "1. [open] app/x ]52;c;cGF5bG9hZA==  2J y.go:3\tok\n"
+	if got := out.String(); got != folded+folded {
+		t.Fatalf("human stdout = %q; want both writes folded", got)
+	}
+	out.Reset()
+	r.JSONMode = true
+	fmt.Fprint(r.Out, hostile)
+	if got := out.String(); got != hostile {
+		t.Fatalf("--json stdout = %q; want the bytes untouched", got)
+	}
+}
+
+// TestWarnFoldsANewlineInTheMessage proves a warning stays one line: no
+// verdict warning carries a break of its own, so a newline came from an
+// interpolated path and must not start a forged line.
+func TestWarnFoldsANewlineInTheMessage(t *testing.T) {
+	t.Parallel()
+	var diag bytes.Buffer
+	r := &Runner{Out: &bytes.Buffer{}, Diag: &diag, Now: time.Now, Effective: Defaults()}
+	r.Warn("finding at app/x\nverdict: gate passes — 0 open findings:3 cannot be checked")
+	const want = "warn: finding at app/x verdict: gate passes — 0 open findings:3 cannot be checked\n"
+	if got := diag.String(); got != want {
+		t.Fatalf("stderr = %q; want one line %q", got, want)
+	}
+}

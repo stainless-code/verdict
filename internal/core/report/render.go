@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // strZero renders a zero count so every cost line spells it identically.
@@ -334,7 +335,7 @@ func buildHuman(st *state) []string {
 		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
-			readcommon.Locator(item.Entry), sigHuman(item.Entry))+reproductionOutput(item.Entry))
+			untrusted.Line(readcommon.Locator(item.Entry)), sigHuman(item.Entry))+reproductionOutput(item.Entry))
 	}
 	lines = appendHumanTail(st, lines)
 	if st.flags.Provenance {
@@ -369,7 +370,9 @@ func appendHumanTail(st *state, lines []string) []string {
 		lines = append(lines, riskHuman(st.risk)...)
 	}
 	lines = append(lines, validationHuman(st)...)
-	lines = append(lines, quietLines(st)...)
+	for _, line := range quietLines(st) {
+		lines = append(lines, untrusted.Line(line))
+	}
 	return append(lines, extraHuman(st)...)
 }
 
@@ -394,7 +397,8 @@ func complianceHuman(st *state) string {
 		return fmt.Sprintf("compliance: unmet — %d blocking finding(s)", len(st.compliance.Blockers))
 	case len(st.compliance.Conflicts) > 0:
 		first := st.compliance.Conflicts[0]
-		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)", first.Path, first.Rule)
+		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)",
+			untrusted.Line(first.Path), untrusted.Line(first.Rule))
 	case st.compliance.Unverified:
 		return "compliance: unknown — captured provenance unavailable"
 	case len(st.compliance.Pending) > 0:

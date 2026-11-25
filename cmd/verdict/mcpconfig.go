@@ -26,6 +26,7 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 		return code
 	}
 	r := newRunner("mcp", "", "", stdout, stderr, getenv)
+	defer r.Flush()
 	r.JSONMode = flags.json
 	cwd, err := os.Getwd()
 	if err != nil {
