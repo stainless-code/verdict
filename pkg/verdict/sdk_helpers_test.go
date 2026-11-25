@@ -287,6 +287,19 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	}
 }
 
+// gitHead reads dir's checked-out commit.
+func gitHead(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	cmd.Env = testenv.Base(nil)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // sdkGitRepo initializes dir as a git checkout holding the named files in
 // one seed commit with the working tree clean.
 func sdkGitRepo(t *testing.T, dir string, files map[string]string) {

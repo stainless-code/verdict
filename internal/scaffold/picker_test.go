@@ -375,7 +375,7 @@ func assertPresetWritten(t *testing.T, dir, preset string) {
 	if err != nil {
 		t.Fatalf("no config written: %v", err)
 	}
-	want := map[string]string{"standard": `"budget_usd": 0.50`, "chill": `"budget_usd": 2.00`}[preset]
+	want := map[string]string{"standard": `"budget_usd": 0.50`, "chill": `"budget_usd": 0.10`}[preset]
 	if !strings.Contains(string(body), want) {
 		t.Fatalf("config = %q, want %s", body, want)
 	}

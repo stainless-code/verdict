@@ -684,3 +684,33 @@ func IsFile(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
 }
+
+const (
+	checkoutHeadTimeout = 30 * time.Second
+	checkoutHeadCap     = 4 << 10
+	gitBin              = "git"
+)
+
+// CheckoutHead reads the commit checked out at root through the injected
+// commander, so a verb that acts on the checkout (validation, fix) can prove
+// it is on the head a bundle reviewed. exit is git's status when it ran and
+// failed; err is a spawn failure. Callers own the refusal wording.
+func CheckoutHead(ctx context.Context, commander core.Commander, root string) (head string, exit int, err error) {
+	tctx, cancel := context.WithTimeout(ctx, checkoutHeadTimeout)
+	defer cancel()
+	res, err := commander.Run(tctx, &core.Command{
+		Argv:      []string{gitBin, "-C", root, "rev-parse", "HEAD"},
+		OutputCap: checkoutHeadCap,
+	})
+	if err != nil {
+		//nolint:wrapcheck // callers render the spawn error in their own refusal
+		return "", 0, err
+	}
+	if res.ExitCode != 0 {
+		return "", res.ExitCode, nil
+	}
+	if i := strings.IndexAny(res.Stdout, "\r\n"); i >= 0 {
+		return res.Stdout[:i], 0, nil
+	}
+	return res.Stdout, 0, nil
+}

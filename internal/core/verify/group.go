@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -36,8 +35,6 @@ const (
 	receiptSuffix     = ".json"
 	receiptCap        = 64 << 10
 	maxGroupIDLen     = 64
-	headProbeTimeout  = 30 * time.Second
-	headArgCap        = 4 << 10
 )
 
 // RunGroup performs deep group-validation mode: it proves the captured run
@@ -472,21 +469,15 @@ func ReceiptCurrent(r *core.ValidationReceipt, run, inputsSHA, group, head strin
 // gitHead reads the checked-out commit at root through the injected
 // commander: the head the validation command would actually run on.
 func gitHead(ctx context.Context, commander core.Commander, root string) (string, *core.RefusalError) {
-	tctx, cancel := context.WithTimeout(ctx, headProbeTimeout)
-	defer cancel()
-	res, err := commander.Run(tctx, &core.Command{
-		Argv:      []string{"git", "-C", root, "rev-parse", "HEAD"},
-		Env:       nil,
-		OutputCap: headArgCap,
-	})
+	head, exit, err := readcommon.CheckoutHead(ctx, commander, root)
 	if err != nil {
 		return "", failed(err)
 	}
-	if res.ExitCode != 0 {
+	if exit != 0 {
 		return "", &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
-			"could not read the checked-out head at %s (git exit %d)", root, res.ExitCode)}
+			"could not read the checked-out head at %s (git exit %d)", root, exit)}
 	}
-	return firstLine(res.Stdout), nil
+	return head, nil
 }
 
 // firstLine trims the head read to its commit line.
