@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview   2 Queue   3 Detail   4 Diff   5 Compare   6 Cost  [7 Precision]
+────────────────────────────────────────────────────────────────────────────────
+ by category · as of 2026-11-25T09:00:00Z; run verdict calibrate <repo> <pr> t…
+   CATEGORY                        OPEN     UNFIXED     UNKNOWN       FIXED
+   security                           1           2           0           —
+   logic                              0           1           1           —
+   total                              1           3           1           —
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

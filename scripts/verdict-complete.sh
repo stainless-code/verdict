@@ -42,7 +42,7 @@ _verdict_flags() { # $1 = verb
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     acp) printf '%s\n' --root --check --max-bundles --json;;
-    dashboard) printf '%s\n' --root --once --width --height --json;;
+    dashboard) printf '%s\n' --root --once --tab --width --height --check --interval --sweep --no-watch --json;;
     lsp) printf '%s\n' --root --bundle --check --max-bundles --max-roots --interval --sweep --no-watch --json;;
     serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --interactive --allow-post --json;;
     init) printf '%s\n' --preset --yes --force --json --ci --agent --key-secret --print --comment-trigger;;
@@ -58,10 +58,11 @@ _verdict_values() { # $1 = verb, $2 = flag
     --provider) printf '%s\n' github gitlab gitcafe forgejo bitbucket azure;;
     --check)
       case "$1" in
-        report) printf '%s\n' critical important informational;;
+        report | dashboard) printf '%s\n' critical important informational;;
         *) return 0;;
       esac;;
     --kind) printf '%s\n' inline section all;;
+    --tab) printf '%s\n' overview queue detail diff compare cost precision;;
     --agent)
       case "$1" in
         run | backtest) printf '%s\n' claude codex cursor opencode;;

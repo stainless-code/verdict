@@ -21,7 +21,7 @@ func TestArityMatrix(t *testing.T) {
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready", "pr-wait", "gate",
 	})
-	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve", "dashboard", "acp", "lsp"})
+	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve", "acp", "lsp"})
 	checkTrendArity(t)
 	checkUnknownArity(t)
 }
@@ -87,9 +87,10 @@ func TestSplitCommandRest(t *testing.T) {
 	checkSplit(t, nil, "", "", "", 0)
 }
 
-// TestSplitCommandOptionalVerb pins the one verb with an optional positional:
-// `demo [<url>]` carries its URL as a rest argument, never as the repo/pr pair,
-// so an absent URL stays distinguishable from a present one.
+// TestSplitCommandOptionalVerb pins the verbs with one optional positional:
+// `demo [<url>]` and `dashboard [<owner/repo>]` carry it as a rest argument,
+// never as the repo/pr pair, so an absent one stays distinguishable from a
+// present one and the verb parses its own flags around it.
 func TestSplitCommandOptionalVerb(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -101,11 +102,14 @@ func TestSplitCommandOptionalVerb(t *testing.T) {
 			rest: []string{"https://github.com/acme/app/pull/7", "--json"},
 		},
 		{args: []string{"demo"}, rest: []string{}},
+		{args: []string{"dashboard", "acme/app", "--once"}, rest: []string{"acme/app", "--once"}},
+		{args: []string{"dashboard", "--root", "x"}, rest: []string{"--root", "x"}},
+		{args: []string{"dashboard"}, rest: []string{}},
 	} {
 		cmd, repo, pr, rest := splitCommand(tc.args)
-		if cmd != "demo" || repo != "" || pr != "" || !slices.Equal(rest, tc.rest) {
-			t.Errorf("split %v = %q %q %q %q, want demo with rest %q",
-				tc.args, cmd, repo, pr, rest, tc.rest)
+		if cmd != tc.args[0] || repo != "" || pr != "" || !slices.Equal(rest, tc.rest) {
+			t.Errorf("split %v = %q %q %q %q, want %s with rest %q",
+				tc.args, cmd, repo, pr, rest, tc.args[0], tc.rest)
 		}
 	}
 }

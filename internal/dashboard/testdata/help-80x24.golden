@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview  [2 Queue]  3 Detail   4 Diff   5 Compare   6 Cost   7 Precision
+────────────────────────────────────────────────────────────────────────────────
+ Keys
+   1-7 tab  j/k or arrows move  g/G or Home/End first/last  Ctrl-D/U half page
+   Enter open: Queue to Detail, Detail to Diff   Esc back, or clear the search
+   / search this list   Tab next file (Diff) or grouping (Cost, Precision)
+   u split/unified diff (100+ columns)   b pick the Compare baseline
+   y copy the finding's fix prompt (OSC 52)   r refresh   ? help   q quit
+ Severity  !!! critical  !! important  ! informational  - untagged
+ Rigor     said < pointed < walked < ran < reproduced, then the quote check:
+           verified, ? unverified, blank when unchecked
+ Exit      0 quit   1 refused   2 usage   3 Ctrl-C or SIGTERM
+ Read-only: nothing here writes a store, posts, or runs a command.
+ Esc or ? closes this help.
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

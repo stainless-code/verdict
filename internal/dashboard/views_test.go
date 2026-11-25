@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -66,7 +67,7 @@ func TestComposingFrame(t *testing.T) {
 	if got := lines[bodyTop]; got != " composing…" {
 		t.Fatalf("body = %q, want the composing marker", got)
 	}
-	if got := lines[minRows-1]; got != " 1 overview   2 queue   q quit" {
+	if got := lines[minRows-1]; got != " 1-7 tabs  Enter queue  r refresh  ? help  q quit" {
 		t.Fatalf("key row = %q", got)
 	}
 }
@@ -139,5 +140,92 @@ func TestTextCapsCombiningMarksAtTwo(t *testing.T) {
 	got := strings.Split(g.lines(), "\n")[1:3]
 	if got[0] != "  á̂ two" || got[1] != "  á̂ three" {
 		t.Fatalf("rows = %q, want both marks kept and the third dropped", got)
+	}
+}
+
+// tabState composes one tab through the same job --once runs, so a golden
+// shows exactly what the layer's view decodes to.
+func tabState(t *testing.T, tb tab, mutate func(st *frameState)) *frameState {
+	t.Helper()
+	src := partialFixture()
+	st := &frameState{tab: tb}
+	if mutate != nil {
+		mutate(st)
+	}
+	res := runJob(t.Context(), src, pickTarget(st))
+	if res.snap == nil {
+		t.Fatalf("compose failed: %v", res.err)
+	}
+	st.snap = filterRepo(res.snap, st.repo)
+	installView(st, &res.want, res.view, res.err)
+	return st
+}
+
+func tabFrame(t *testing.T, tb tab, w, h int, mutate func(st *frameState)) string {
+	t.Helper()
+	return compose(tabState(t, tb, mutate), w, h, look{pal: &paletteMono, cs: charsetUnicode}).lines()
+}
+
+// TestTabGoldens pins every PR B tab at the 80×24 minimum, the split diff at
+// 100 columns, the help overlay, and the baseline picker.
+func TestTabGoldens(t *testing.T) {
+	t.Parallel()
+	golden.Check(t, "detail-80x24", tabFrame(t, tabDetail, minCols, minRows, nil))
+	golden.Check(t, "diff-80x24", tabFrame(t, tabDiff, minCols, minRows, nil))
+	golden.Check(t, "diff-split-100x30", tabFrame(t, tabDiff, splitCols, 30, func(st *frameState) { st.split = true }))
+	golden.Check(t, "compare-80x24", tabFrame(t, tabCompare, minCols, minRows, func(st *frameState) {
+		st.target, st.baseline = target{root: "a1b2c3d4e5f6", bundle: "4232"}, "4301"
+	}))
+	golden.Check(t, "compare-nobaseline-80x24", tabFrame(t, tabCompare, minCols, minRows, nil))
+	golden.Check(t, "cost-80x24", tabFrame(t, tabCost, minCols, minRows, nil))
+	golden.Check(t, "precision-80x24", tabFrame(t, tabPrecision, minCols, minRows, nil))
+	golden.Check(t, "help-80x24", tabFrame(t, tabQueue, minCols, minRows, func(st *frameState) { st.help = true }))
+	golden.Check(t, "picker-80x24", tabFrame(t, tabCompare, minCols, minRows, func(st *frameState) {
+		st.target = target{root: "a1b2c3d4e5f6", bundle: "4232"}
+		st.picker = &picker{rows: []string{"local-feature-branch-with-a-very-long-name", "4301"}, pos: 1}
+	}))
+}
+
+// TestDetailRefusalShowsInTheTab opens the refused bundle: its Detail body
+// is the refusal, and the rest of the frame still draws.
+func TestDetailRefusalShowsInTheTab(t *testing.T) {
+	t.Parallel()
+	got := tabFrame(t, tabDetail, minCols, minRows, func(st *frameState) {
+		st.target = target{root: "a1b2c3d4e5f6", bundle: "77"}
+	})
+	if !strings.Contains(got, " 77: bundle-unreadable: findings.json is a FIFO") || !strings.Contains(got, "[3 Detail]") {
+		t.Fatalf("frame lacks the refusal in the Detail body:\n%s", got)
+	}
+}
+
+// FuzzDecode feeds arbitrary JSON to every view decoder and draws the
+// result: a payload of any shape decodes to rows or to nothing, never a
+// panic, and the frame still holds no control byte.
+func FuzzDecode(f *testing.F) {
+	for _, seed := range []string{
+		`{}`, `{"rows":[{"open":1}],"counts":null}`, `{"report":{"items":[{"body":"\u001b[2J"}]}}`,
+		`{"files":[{"hunks":[{"lines":[{"kind":"add","new_no":-3}]}]}]}`, `{"cost":{"rows":[{"est_usd":1e308}]}}`, `[1,2]`,
+	} {
+		f.Add([]byte(seed))
+	}
+	f.Fuzz(checkDecodeAny)
+}
+
+func checkDecodeAny(t *testing.T, raw []byte) {
+	v, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return
+	}
+	data := asObj(v)
+	view := &query.View{Data: data}
+	st := &frameState{
+		snap: decode(view, view), detail: decodeDetail(view), diff: decodeDiff(view),
+		cmp: decodeCompare(view), cost: decodeCost(view), prec: decodePrecision(view),
+	}
+	for tb := range tabCount {
+		st.tab = tb
+		if got := compose(st, minCols, minRows, look{pal: &paletteMono, cs: charsetUnicode}).lines(); strings.ContainsAny(got, "\x1b\x07") {
+			t.Fatalf("tab %d frame carries a control byte", tb)
+		}
 	}
 }

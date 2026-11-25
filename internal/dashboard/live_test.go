@@ -4,20 +4,31 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
+	"time"
+
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
-// fakeTTY scripts a terminal: each read returns the next chunk (an empty
-// chunk is an idle tick), and the output length is sampled at every read so
-// a test can see what each tick wrote.
+// fakeTick is one read tick, the VTIME the real terminal waits.
+const fakeTick = 100 * time.Millisecond
+
+// fakeTTY scripts a terminal: each read waits one (virtual) tick and returns
+// the next chunk (an empty chunk is an idle tick), and the output length is
+// sampled at every read so a test can see what each tick wrote. Run it inside
+// a synctest bubble: a compose job's result is then deterministically in by
+// the next tick.
 type fakeTTY struct {
 	out       *bytes.Buffer
 	resizes   map[int]bool // read index -> report a resize after it
-	onRead    func(n int)
-	readError error
 	stops     map[int]bool // read index -> report Ctrl-Z after it
+	onRead    func(n int)
 	onSuspend func()
+	readError error
 	chunks    []string
 	sampled   []int
 	cols      int
@@ -39,6 +50,7 @@ func (f *fakeTTY) read(p []byte) (int, error) {
 	if f.readError != nil {
 		return 0, f.readError
 	}
+	time.Sleep(fakeTick)
 	if f.reads >= len(f.chunks) {
 		return copy(p, "q"), nil
 	}
@@ -64,189 +76,312 @@ func (f *fakeTTY) restore() error {
 	return nil
 }
 
-func runLiveFixture(ctx context.Context, term *fakeTTY, opts *options) (*bytes.Buffer, error) {
+func runLiveFixture(ctx context.Context, term *fakeTTY, opts *options, src source) (*bytes.Buffer, error) {
 	var out bytes.Buffer
 	term.out = &out
-	src := partialFixture()
-	err := live(ctx, term, &out, pickLook("auto", "xterm"), opts,
-		func(ctx context.Context) (*snapshot, error) { return load(ctx, src) })
+	err := live(ctx, term, &out, pickLook("auto", "xterm"), opts, src)
 	return &out, err
 }
 
-// TestLiveSessionSwitchesTabsAndRestores drives a whole session: an idle
-// tick, `2`, another idle tick, `q`. The idle ticks write nothing, the final
-// screen is the Queue, and the terminal is restored exactly once.
-func TestLiveSessionSwitchesTabsAndRestores(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "2", "", "q"}}
-	out, err := runLiveFixture(t.Context(), term, &options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if term.restores != 1 {
-		t.Fatalf("terminal restored %d times, want 1", term.restores)
-	}
-	if s := term.sampled; len(s) != 4 || s[1] != s[0] || s[3] != s[2] || s[2] == s[1] {
-		t.Fatalf("output length per read = %v, want idle ticks to write nothing and `2` to repaint", s)
-	}
-	checkBrackets(t, out.String())
-	scr := newScreen(minCols, minRows)
-	scr.replay(t, out.Bytes())
-	if scr.alt || scr.cursorHidden || scr.sync {
-		t.Fatalf("after quit alt=%v hidden=%v sync=%v, want all false", scr.alt, scr.cursorHidden, scr.sync)
-	}
-	want := compose(&frameState{snap: mustLoad(partialFixture()), tab: tabQueue, live: true}, minCols, minRows,
-		pickLook("auto", "xterm"))
-	scr.matches(t, want, &paletteANSI)
+func newSource() fixtureSource {
+	src := partialFixture()
+	src.calls = &callLog{}
+	return src
 }
 
-// TestLiveResizeRepaints proves a reported resize repaints the whole frame
-// even though nothing in it changed.
+// TestLiveSessionSwitchesTabsAndRestores drives a whole session: the first
+// compose lands, an idle tick writes nothing, `2` opens the Queue, `q`
+// quits. The final screen is the settled Queue and the terminal is restored
+// exactly once.
+func TestLiveSessionSwitchesTabsAndRestores(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "2", "", "", "q"}}
+		src := newSource()
+		out, err := runLiveFixture(t.Context(), term, &options{}, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if term.restores != 1 {
+			t.Fatalf("terminal restored %d times, want 1", term.restores)
+		}
+		if s := term.sampled; len(s) < 3 || s[1] == s[0] || s[2] != s[1] {
+			t.Fatalf("output length per read = %v, want the first compose to paint and the next idle tick to write nothing", s)
+		}
+		checkBrackets(t, out.String())
+		scr := newScreen(minCols, minRows)
+		scr.replay(t, out.Bytes())
+		want := &frameState{snap: mustLoad(src), tab: tabQueue, live: true}
+		scr.matches(t, compose(want, minCols, minRows, pickLook("auto", "xterm")), &paletteANSI)
+	})
+}
+
+// TestLiveIdleTicksWriteNothing is the flicker contract in the live loop: once
+// the compose lands, every idle tick writes zero bytes.
+func TestLiveIdleTicksWriteNothing(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "", "", "", "q"}}
+		if _, err := runLiveFixture(t.Context(), term, &options{}, newSource()); err != nil {
+			t.Fatal(err)
+		}
+		s := term.sampled
+		for i := 2; i < len(s); i++ {
+			if s[i] != s[1] {
+				t.Fatalf("output length per read = %v, want no bytes after the compose landed", s)
+			}
+		}
+	})
+}
+
+// TestLiveCoalescesAChangeBurst pushes 20 change events between two ticks:
+// they cost exactly one recompose (one more Bundles read), not twenty.
+func TestLiveCoalescesAChangeBurst(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		src.changes = make(chan query.Change, 32)
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "", "", "", "q"}}
+		term.onRead = burstAt(2, src.changes)
+		if _, err := runLiveFixture(t.Context(), term, &options{}, src); err != nil {
+			t.Fatal(err)
+		}
+		if got := src.calls.count("Bundles"); got != 2 {
+			t.Fatalf("Bundles composed %d times, want 2 (the first view and one for the whole burst)", got)
+		}
+	})
+}
+
+// burstAt pushes 20 change events into the stream on read n.
+func burstAt(n int, changes chan<- query.Change) func(int) {
+	return func(read int) {
+		if read != n {
+			return
+		}
+		for range 20 {
+			changes <- query.Change{Root: "a1b2c3d4e5f6"}
+		}
+	}
+}
+
+// TestLiveClosedChangeStreamDoesNotRecompose runs with the --no-watch shape,
+// an already-closed change channel: it is set aside, not read as a change
+// on every tick.
+func TestLiveClosedChangeStreamDoesNotRecompose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "", "", "", "q"}}
+		if _, err := runLiveFixture(t.Context(), term, &options{}, src); err != nil {
+			t.Fatal(err)
+		}
+		if got := src.calls.count("Bundles"); got != 1 {
+			t.Fatalf("Bundles composed %d times over idle ticks with a closed stream, want 1", got)
+		}
+	})
+}
+
+// TestLiveInputNeverWaitsOnACompose gives `r` a refresh that takes ten
+// seconds: the keys after it switch tabs and quit on their own ticks, long
+// before the compose would finish.
+func TestLiveInputNeverWaitsOnACompose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		var slow atomic.Bool
+		src.onBundles = slowWhen(&slow)
+		start := time.Now()
+		var quitAt time.Duration
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "r", "2", "1", "q"}}
+		term.onRead = func(n int) {
+			slow.CompareAndSwap(false, n == 2)
+			quitAt = elapsedAt(n, 5, start, quitAt)
+		}
+		if _, err := runLiveFixture(t.Context(), term, &options{}, src); err != nil {
+			t.Fatal(err)
+		}
+		checkQuickQuit(t, quitAt, src.calls)
+	})
+}
+
+// checkQuickQuit fails unless q was read within a second, r dropped the
+// layer cache once, and the tab switches made while the slow compose ran
+// started no second compose beside it (one job at a time).
+func checkQuickQuit(t *testing.T, quitAt time.Duration, calls *callLog) {
+	t.Helper()
+	if quitAt == 0 || quitAt > time.Second {
+		t.Fatalf("q was read %v into the session, want within a second despite a 10s compose", quitAt)
+	}
+	if calls.count("Invalidate") != 1 {
+		t.Fatal("r did not drop the layer cache")
+	}
+	if got := calls.count("Bundles"); got != 2 {
+		t.Fatalf("Bundles composed %d times, want 2: the first view and the slow refresh, nothing beside it", got)
+	}
+}
+
+// slowWhen makes every Bundles read take ten seconds once slow is set.
+func slowWhen(slow *atomic.Bool) func(ctx context.Context) {
+	return func(ctx context.Context) {
+		if !slow.Load() {
+			return
+		}
+		select {
+		case <-time.After(10 * time.Second):
+		case <-ctx.Done():
+		}
+	}
+}
+
+// elapsedAt records the time since start on read want, keeping prev otherwise.
+func elapsedAt(read, want int, start time.Time, prev time.Duration) time.Duration {
+	if read == want {
+		return time.Since(start)
+	}
+	return prev
+}
+
+// runRecovering runs a live session that is expected to panic and returns
+// the recovered value; the session's own error is reported if it returns.
+func runRecovering(t *testing.T, term *fakeTTY, opts *options, src source) (recovered any) {
+	t.Helper()
+	defer func() { recovered = recover() }()
+	if _, err := runLiveFixture(t.Context(), term, opts, src); err != nil {
+		t.Errorf("live returned %v instead of panicking", err)
+	}
+	t.Error("live returned instead of panicking")
+	return nil
+}
+
+// checkRestored fails unless the terminal was restored exactly once and the
+// output ends with the restore sequence.
+func checkRestored(t *testing.T, term *fakeTTY) {
+	t.Helper()
+	if term.restores != 1 || !strings.HasSuffix(term.out.String(), escShowCursor+escSyncEnd+escLeaveAlt) {
+		t.Fatalf("%d restores, output ends %q; want one restore and the restore sequence",
+			term.restores, term.out.String()[max(term.out.Len()-24, 0):])
+	}
+}
+
+// TestLiveRestoresOnAJobPanic panics inside a compose goroutine, not the
+// loop: the loop re-raises it, so the screen and terminal mode are restored
+// before the panic leaves live, and the original message survives.
+func TestLiveRestoresOnAJobPanic(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		src.onDetail = func() { panic("boom in Detail") }
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "", "q"}}
+		got := runRecovering(t, term, &options{tab: tabDetail}, src)
+		if msg := fmt.Sprint(got); !strings.Contains(msg, "dashboard compose: boom in Detail") {
+			t.Fatalf("recovered %q, want the compose panic re-raised", msg)
+		}
+		checkRestored(t, term)
+	})
+}
+
+// TestLiveRestoresOnALoopPanic keeps the PR A guarantee for a panic on the
+// loop goroutine itself.
+func TestLiveRestoresOnALoopPanic(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows}
+		term.onRead = func(int) { panic("boom in the loop") }
+		if got := runRecovering(t, term, &options{}, newSource()); fmt.Sprint(got) != "boom in the loop" {
+			t.Fatalf("recovered %v, want the loop's panic", got)
+		}
+		checkRestored(t, term)
+	})
+}
+
 func TestLiveResizeRepaints(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "q"}, resizes: map[int]bool{1: true}}
-	if _, err := runLiveFixture(t.Context(), term, &options{}); err != nil {
-		t.Fatal(err)
-	}
-	if s := term.sampled; len(s) != 3 || s[1] == s[0] {
-		t.Fatalf("output length per read = %v, want the tick after a resize to repaint", s)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "", "q"}, resizes: map[int]bool{2: true}}
+		if _, err := runLiveFixture(t.Context(), term, &options{}, newSource()); err != nil {
+			t.Fatal(err)
+		}
+		if s := term.sampled; len(s) < 3 || s[2] == s[1] {
+			t.Fatalf("output length per read = %v, want the tick after a resize to repaint", s)
+		}
+	})
 }
 
 // TestLiveCancelReturnsContextError proves SIGINT's cancel ends the loop with
 // ctx.Err() and still restores the terminal.
 func TestLiveCancelReturnsContextError(t *testing.T) {
-	t.Parallel()
-	ctx, cancel := context.WithCancel(t.Context())
-	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", ""}}
-	term.onRead = func(n int) {
-		if n == 1 {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", ""}}
+		term.onRead = cancelAt(1, cancel)
+		_, err := runLiveFixture(ctx, term, &options{}, newSource())
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("err = %v, want context.Canceled", err)
+		}
+		if term.restores != 1 {
+			t.Fatalf("terminal restored %d times, want 1", term.restores)
+		}
+	})
+}
+
+// cancelAt cancels the session on read n, the way SIGINT would.
+func cancelAt(n int, cancel context.CancelFunc) func(int) {
+	return func(read int) {
+		if read == n {
 			cancel()
 		}
 	}
-	_, err := runLiveFixture(ctx, term, &options{})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v, want context.Canceled", err)
-	}
-	if term.restores != 1 {
-		t.Fatalf("terminal restored %d times, want 1", term.restores)
-	}
 }
 
-// TestLiveRestoresOnPanic proves a panic unwinding through the session still
-// leaves the alternate screen and resets the terminal, and is not swallowed.
-func TestLiveRestoresOnPanic(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: minCols, rows: minRows}
-	var out bytes.Buffer
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("the panic was swallowed")
-			}
-		}()
-		err := live(t.Context(), term, &out, pickLook("auto", "xterm"), &options{},
-			func(context.Context) (*snapshot, error) { panic("compose blew up") })
-		t.Errorf("live returned %v instead of panicking", err)
-	}()
-	if term.restores != 1 || !strings.HasSuffix(out.String(), escShowCursor+escSyncEnd+escLeaveAlt) {
-		t.Fatalf("after a panic: %d restores, output ends %q", term.restores, out.String())
-	}
-}
-
-// TestLiveReadErrorRestores proves a terminal read failure ends the session
-// with that error, restored.
 func TestLiveReadErrorRestores(t *testing.T) {
-	t.Parallel()
-	errGone := errors.New("read: input/output error")
-	term := &fakeTTY{cols: minCols, rows: minRows, readError: errGone}
-	if _, err := runLiveFixture(t.Context(), term, &options{}); !errors.Is(err, errGone) {
-		t.Fatalf("err = %v, want the read error", err)
-	}
-	if term.restores != 1 {
-		t.Fatalf("terminal restored %d times, want 1", term.restores)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		errGone := errors.New("read: input/output error")
+		term := &fakeTTY{cols: minCols, rows: minRows, readError: errGone}
+		if _, err := runLiveFixture(t.Context(), term, &options{}, newSource()); !errors.Is(err, errGone) {
+			t.Fatalf("err = %v, want the read error", err)
+		}
+		if term.restores != 1 {
+			t.Fatalf("terminal restored %d times, want 1", term.restores)
+		}
+	})
 }
 
 // TestLiveSmallTerminalShowsResizePanel proves a terminal under 80×24 gets
 // the one resize panel, not a squeezed frame.
 func TestLiveSmallTerminalShowsResizePanel(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: 60, rows: 20, chunks: []string{"q"}}
-	out, err := runLiveFixture(t.Context(), term, &options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	scr := newScreen(60, 20)
-	scr.replay(t, out.Bytes())
-	for y, want := range []string{"verdict dashboard needs at least 80×24", "this terminal is 60×20", "resize it, or press q"} {
-		if got := strings.TrimRight(string(scr.runes[y]), " "); got != want {
-			t.Fatalf("row %d = %q, want %q", y, got, want)
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: 60, rows: 20, chunks: []string{"q"}}
+		out, err := runLiveFixture(t.Context(), term, &options{}, newSource())
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-}
-
-// TestKeyState drives whole read sequences through the key handler. A lone
-// Esc quits one tick later, unless the next read continues a sequence a
-// terminal split across two reads (an arrow's `[A`).
-func TestKeyState(t *testing.T) {
-	t.Parallel()
-	cases := []struct {
-		name    string
-		reads   []string
-		start   tab
-		wantTab tab
-		quitAt  int // index of the read that quits, -1 for none
-	}{
-		{"digit 2", []string{"2"}, tabOverview, tabQueue, -1},
-		{"digit 1", []string{"1"}, tabQueue, tabOverview, -1},
-		{"q", []string{"q"}, tabOverview, tabOverview, 0},
-		{"lone Esc then idle", []string{"\x1b", ""}, tabQueue, tabQueue, 1},
-		{"lone Esc then a key", []string{"\x1b", "x"}, tabQueue, tabQueue, 1},
-		{"arrow split after ESC", []string{"\x1b", "[A", ""}, tabQueue, tabQueue, -1},
-		{"SS3 split after ESC", []string{"\x1b", "OP", ""}, tabQueue, tabQueue, -1},
-		{"Home's 1 is not a key", []string{"\x1b[1~"}, tabQueue, tabQueue, -1},
-		{"whole arrow", []string{"\x1b[A"}, tabQueue, tabQueue, -1},
-		{"other key", []string{"x"}, tabQueue, tabQueue, -1},
-	}
-	for _, c := range cases {
-		st := &frameState{tab: c.start}
-		if quitAt := quitRead(st, c.reads); quitAt != c.quitAt || st.tab != c.wantTab {
-			t.Errorf("%s: quit at read %d, tab %d; want read %d, tab %d", c.name, quitAt, st.tab, c.quitAt, c.wantTab)
+		scr := newScreen(60, 20)
+		scr.replay(t, out.Bytes())
+		for y, want := range []string{"verdict dashboard needs at least 80×24", "this terminal is 60×20", "resize it, or press q"} {
+			if got := strings.TrimRight(string(scr.runes[y]), " "); got != want {
+				t.Fatalf("row %d = %q, want %q", y, got, want)
+			}
 		}
-	}
-}
-
-// quitRead feeds reads to one key handler and returns the index of the read
-// that quit, or -1.
-func quitRead(st *frameState, reads []string) int {
-	kb := &keyState{}
-	for i, read := range reads {
-		if kb.handle(st, []byte(read)) {
-			return i
-		}
-	}
-	return -1
+	})
 }
 
 // TestLiveSuspendHandsTheScreenBack proves Ctrl-Z leaves the alternate screen
 // before the process stops and repaints the whole frame when it continues.
 func TestLiveSuspendHandsTheScreenBack(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "q"}, stops: map[int]bool{1: true}}
-	var atStop string
-	term.onSuspend = func() { atStop = term.out.String() }
-	out, err := runLiveFixture(t.Context(), term, &options{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "q"}, stops: map[int]bool{2: true}}
+		var atStop string
+		term.onSuspend = func() { atStop = term.out.String() }
+		out, err := runLiveFixture(t.Context(), term, &options{}, newSource())
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkSuspend(t, term, atStop, out.String()[len(atStop):])
+	})
+}
+
+// checkSuspend fails unless the session stopped once with the screen handed
+// back and came back to the alternate screen with a full repaint.
+func checkSuspend(t *testing.T, term *fakeTTY, atStop, after string) {
+	t.Helper()
 	if term.suspends != 1 || term.restores != 1 {
 		t.Fatalf("suspends=%d restores=%d, want 1 and 1", term.suspends, term.restores)
 	}
 	if !strings.HasSuffix(atStop, escShowCursor+escSyncEnd+escLeaveAlt) {
 		t.Fatalf("output at the stop ends %q, want the screen handed back", atStop[max(len(atStop)-24, 0):])
 	}
-	after := out.String()[len(atStop):]
 	if !strings.HasPrefix(after, escEnterAlt+escHideCursor+escSyncBegin+sgrReset+escClear) {
 		t.Fatalf("output after the stop starts %q, want the alternate screen and a full repaint", after[:min(len(after), 32)])
 	}
@@ -256,15 +391,38 @@ func TestLiveSuspendHandsTheScreenBack(t *testing.T) {
 // the live frame: a 120×40 request on an 80×24 terminal draws 80×24, so no
 // row wraps and the screen never scrolls.
 func TestLiveClampsFlagsToTheTerminal(t *testing.T) {
-	t.Parallel()
-	term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"q"}}
-	out, err := runLiveFixture(t.Context(), term, &options{width: 120, height: 40})
-	if err != nil {
-		t.Fatal(err)
-	}
-	newScreen(minCols, minRows).replay(t, out.Bytes()) // fails on any write past column 80 or row 24
+	synctest.Test(t, func(t *testing.T) {
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "q"}}
+		out, err := runLiveFixture(t.Context(), term, &options{width: 120, height: 40}, newSource())
+		if err != nil {
+			t.Fatal(err)
+		}
+		newScreen(minCols, minRows).replay(t, out.Bytes()) // fails on any write past column 80 or row 24
+	})
 }
 
+// TestLiveCopyWritesOSC52 selects the second finding on the Detail tab and
+// presses y: the triage command goes to the terminal as one base64 OSC 52
+// write, and no subprocess exists to run.
+func TestLiveCopyWritesOSC52(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		src := newSource()
+		term := &fakeTTY{cols: minCols, rows: minRows, chunks: []string{"", "", "j", "y", "", "q"}}
+		out, err := runLiveFixture(t.Context(), term, &options{tab: tabDetail}, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := escClipboard + "dmVyZGljdCB0cmlhZ2UgYWNtZS9hcGkgNDIzMiAtLXNpZyBjMTQyMzIgLS1zdGF0dXMgYWRkcmVzc2Vk" + escBell
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("output lacks the OSC 52 write %q", want)
+		}
+		if src.calls.count("Copy") != 1 {
+			t.Fatalf("Copy read %d times, want 1", src.calls.count("Copy"))
+		}
+	})
+}
+
+// TestKeepSize pins the size fallback for a terminal that reports nothing.
 func TestKeepSize(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -286,8 +444,7 @@ func TestKeepSize(t *testing.T) {
 }
 
 // TestKeyInput pins which Windows console records end the read tick with a
-// read: only a key press that yields a character. Anything else would leave
-// ReadFile blocked until the next key, freezing resize and cancel.
+// read: only a key press that yields a character.
 func TestKeyInput(t *testing.T) {
 	t.Parallel()
 	const focus, mouse = 0x0010, 0x0002
@@ -319,5 +476,26 @@ func checkBrackets(t *testing.T, out string) {
 	}
 	if !strings.HasSuffix(out, escShowCursor+escSyncEnd+escLeaveAlt) {
 		t.Fatalf("session ends %q, want the restore sequence", out[max(len(out)-24, 0):])
+	}
+}
+
+// TestStaleResultIsDropped hands the loop a Detail result from an older
+// generation (the user has since opened another bundle): it is not
+// installed, and the current view is marked for a fresh compose.
+func TestStaleResultIsDropped(t *testing.T) {
+	t.Parallel()
+	src := newSource()
+	st := &frameState{live: true, tab: tabDetail, target: target{root: "a1b2c3d4e5f6", bundle: "4301"}}
+	v := &liveView{st: st, results: make(chan result, 1), gen: 2}
+	old := runJob(t.Context(), src, &want{tab: tabDetail, target: target{root: "a1b2c3d4e5f6", bundle: "4232"}})
+	old.gen = 1
+	v.results <- old
+	v.running = true
+	if err := v.drainResults(); err != nil {
+		t.Fatal(err)
+	}
+	if st.detail != nil || st.snap != nil || !v.stale || v.running {
+		t.Fatalf("detail %v snap %v stale %v running %v; want the old result dropped and a recompose pending",
+			st.detail, st.snap != nil, v.stale, v.running)
 	}
 }
