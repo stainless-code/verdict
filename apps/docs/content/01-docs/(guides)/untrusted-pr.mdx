@@ -10,12 +10,14 @@ search:
 Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a patch arriving as text. Fetching and reading are safe; executing the claimed fix is not — so the verify step, never the whole review, runs inside a throwaway sandbox.
 
 <Steps>
-  <Step title="Fetch the PR as data">
+  <Step title="Check the head out and fetch the PR as data">
     ```bash
-    verdict fetch owner/repo 123
+    git fetch origin pull/123/head
+    git -c core.hooksPath=/dev/null worktree add --detach ../pr-123 FETCH_HEAD
+    cd ../pr-123 && verdict fetch owner/repo 123
     ```
 
-    `fetch` only writes the bundle (`PR.json`, `full.diff`, `toc.txt`): no checkout, no execution. The agent review reads that bundle and records claimed fixes with a `verifyCmd`, which is the one thing you do not yet trust. Keep it that way: do not check out the fork, do not apply the patch to your worktree, and do not run the claim yourself first.
+    A `VERIFIED` claim binds only when the verify receipt names the PR head's tree, so work in a throwaway worktree of that head, never your own. Checking it out runs none of its code (hooks are off), and `fetch` only writes the bundle into that checkout's `.verdict/state/`. The agent review reads the bundle and records claimed fixes with a `verifyCmd`, the one thing you do not yet trust: do not run it yourself.
 
   </Step>
 
@@ -24,7 +26,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
     verdict verify owner/repo 123 --sandbox
     ```
 
-    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead: it denies the network — every `bind()` and `connect()`, loopback included — and every Mach service (so the keychain, the clipboard, `defaults`, `open`, and `osascript` cannot act for it), denies every write outside the reviewed root and a private per-run `TMPDIR` (so no LaunchAgent or shell rc file can be planted), and denies reads of the credential paths and the shared host temp roots. It is a policy, not a mount namespace: the rest of the host filesystem stays readable, so full isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record carries `"sandboxed": true` and `sandboxMechanism`, and the `--json` envelope reports both the same way. On either platform the command can write the working tree, which is the PR's own content anyway, but not the repository's git control files: hooks, `.git/config`, and the rest of the git directory are write-denied, so nothing it does there runs later when you use git. `git status` and `git diff` still work; `git commit` inside the sandbox does not.
+    `verify` copies the worktree's content into a private snapshot and runs the command there. On Linux with `bubblewrap` installed, the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every host credential path (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced. On macOS a `sandbox-exec` profile denies the network (loopback included), every Mach service (so the keychain, the clipboard, `defaults`, `open`, and `osascript` cannot act for it), writes outside the snapshot and a private `TMPDIR`, and reads of the credential paths and shared temp roots. It is a policy, not a mount namespace: the rest of the filesystem stays readable, so full isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record and the `--json` envelope carry `"sandboxed": true` and `sandboxMechanism`. The repository's git control files are read-only, so nothing the command does runs later when you use git: `git status` works, `git commit` does not.
 
     Linux hosts without `bubblewrap` can opt into `--sandbox-network-only` instead. It removes the network and nothing else — the host filesystem, other processes' environments, and filesystem unix sockets such as `docker.sock` stay reachable — so it records `sandboxMechanism: "unshare-net"` and never `"sandboxed": true`.
 
@@ -37,7 +39,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
 
 ## What success looks like
 
-On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true` with its `sandboxMechanism`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; your credential paths are hidden on both platforms, the keychain is unreachable on macOS, and full mount isolation on macOS needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
+On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true` with its `sandboxMechanism`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; your credential paths are hidden on both platforms, the keychain is unreachable on macOS, and full mount isolation on macOS needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate). Remove the worktree with `git worktree remove ../pr-123`.
 
 ## Full detail
 
