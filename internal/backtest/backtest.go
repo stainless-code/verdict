@@ -19,6 +19,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	runverb "github.com/stainless-code/verdict/internal/run"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
@@ -48,13 +49,6 @@ const (
 	defaultUntil = "HEAD"
 )
 
-// Request carries the resolved invocation.
-type Request struct {
-	Env      map[string]string
-	Root     string
-	RepoRoot string
-}
-
 // wanted names the flag list a per-mode usage error publishes.
 var wanted = map[string]string{
 	modeMine:    "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --json",
@@ -68,7 +62,7 @@ var wanted = map[string]string{
 }
 
 // Run executes one `backtest <mode>` invocation.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	f, uerr := parseFlags(args)
 	if uerr != nil {
 		return r.ReportUsage(uerr)
@@ -94,7 +88,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 // runMine executes `backtest mine`: the SZZ candidate miner.
-func runMine(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runMine(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	resp, ref := corebacktest.Run(ctx, mineRequest(r, req, f))
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -105,7 +99,7 @@ func runMine(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 }
 
 // runReverts executes `backtest reverts`: the revert memory scan.
-func runReverts(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runReverts(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	resp, ref := corebacktest.RunReverts(ctx, revertsRequest(r, req, f))
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -116,7 +110,7 @@ func runReverts(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 }
 
 // runReplay executes `backtest replay`: the candidate-by-candidate agent run.
-func runReplay(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runReplay(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	resp, ref := corebacktest.RunReplay(ctx, replayRequest(r, req, f, f.run))
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -127,7 +121,7 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 }
 
 // runScore executes `backtest score`: the pure read over a replay's bundles.
-func runScore(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runScore(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	resp, ref := corebacktest.RunScore(ctx, scoreRequest(r, req, f.run))
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -140,7 +134,7 @@ func runScore(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
 // runComposed executes the bare `--since` form: mine, replay, then score, all
 // through the same services the single-mode verbs call. The run id the miner
 // resolved is the one replay and score read, so `--run` is optional here too.
-func runComposed(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runComposed(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	if f.agent == "" {
 		return r.RefuseTyped(&core.RefusalError{
 			Code: "bad-flags",
@@ -169,9 +163,9 @@ func runComposed(ctx context.Context, r *cli.Runner, req Request, f *flags) int 
 }
 
 // mineRequest is one miner invocation.
-func mineRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
+func mineRequest(r *cli.Runner, req readcommon.Request, f *flags) *corebacktest.Request {
 	return &corebacktest.Request{
-		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Runner{MissingTool: true}).Runtime,
+		Runtime:  r.Read(req, coreexec.Runner{MissingTool: true}).Runtime,
 		RepoRoot: req.RepoRoot, Mode: modeMine, Since: f.since, Until: f.until,
 		Run: f.run, Warnings: append([]string{}, r.Warnings...),
 	}
@@ -179,9 +173,9 @@ func mineRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
 
 // revertsRequest is one revert scan. Its window defaults live in the service,
 // so an invocation with no --since scans the last 12 months.
-func revertsRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
+func revertsRequest(r *cli.Runner, req readcommon.Request, f *flags) *corebacktest.Request {
 	return &corebacktest.Request{
-		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Runner{MissingTool: true}).Runtime,
+		Runtime:  r.Read(req, coreexec.Runner{MissingTool: true}).Runtime,
 		RepoRoot: req.RepoRoot, Mode: modeReverts, Since: f.since, Until: f.until,
 		Warnings: append([]string{}, r.Warnings...),
 	}
@@ -190,16 +184,15 @@ func revertsRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request 
 // replayRequest is one replay invocation for the run it is given. The
 // commander is the same split-stream runner fetch-local uses, because the
 // bundle build inside the service is a fetch-local build.
-func replayRequest(r *cli.Runner, req Request, f *flags, run string) *corebacktest.ReplayRequest {
+func replayRequest(r *cli.Runner, req readcommon.Request, f *flags, run string) *corebacktest.ReplayRequest {
 	return &corebacktest.ReplayRequest{
-		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env, PackFS: skillfs.FS}},
-			coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}).Runtime,
+		Runtime:       r.Read(withPack(req), coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}).Runtime,
 		LookPath:      exec.LookPath,
 		Effective:     r.Effective,
 		PassThrough:   f.pass,
 		Environ:       os.Environ(),
 		RepoRoot:      req.RepoRoot,
-		Root:          req.Root,
+		Root:          req.RootPath(),
 		Run:           run,
 		Agent:         f.agent,
 		MaxReviewsRaw: f.maxReviews,
@@ -212,10 +205,18 @@ func replayRequest(r *cli.Runner, req Request, f *flags, run string) *corebackte
 	}
 }
 
+// withPack adds the embedded pack payload the replay's bundle build reads.
+func withPack(req readcommon.Request) readcommon.Request {
+	rt := *req.Runtime
+	rt.PackFS = skillfs.FS
+	req.Runtime = &rt
+	return req
+}
+
 // scoreRequest is one scoring invocation for the run it is given.
-func scoreRequest(r *cli.Runner, req Request, run string) *corebacktest.ScoreRequest {
+func scoreRequest(r *cli.Runner, req readcommon.Request, run string) *corebacktest.ScoreRequest {
 	return &corebacktest.ScoreRequest{
-		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, nil).Runtime,
+		Runtime:  r.Read(req, nil).Runtime,
 		RepoRoot: req.RepoRoot, Run: run, Warnings: append([]string{}, r.Warnings...),
 	}
 }

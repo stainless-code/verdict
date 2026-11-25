@@ -490,9 +490,7 @@ func dispatchLocal(
 	case "init":
 		return scaffold.Run(ctx, r, rest, req), true
 	case cmdBacktest:
-		return backtestverb.Run(ctx, r, rest, backtestverb.Request{
-			Env: env, Root: root, RepoRoot: repoRoot,
-		}), true
+		return backtestverb.Run(ctx, r, rest, req), true
 	case cmdDemo:
 		// demo owns its own positionals (an optional public PR URL), so it
 		// reads neither the repo nor the pr split above.
