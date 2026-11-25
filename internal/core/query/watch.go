@@ -59,21 +59,32 @@ type watchState struct {
 	mu    sync.Mutex
 }
 
-func newWatchState(layer *Layer) *watchState {
+// newWatchState snapshots every root. A canceled ctx stops the walk between
+// roots and bundles; the partial state is then never used.
+func newWatchState(ctx context.Context, layer *Layer) *watchState {
 	w := &watchState{layer: layer, roots: map[string]rootWatch{}}
 	for _, root := range layer.roots {
-		w.roots[root.ID] = w.primeRoot(root)
+		if ctx.Err() != nil {
+			break
+		}
+		w.roots[root.ID] = w.primeRoot(ctx, root)
 	}
 	return w
 }
 
-func (w *watchState) primeRoot(root Root) rootWatch {
+func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
 	stateDir := readcommon.StateDir(root.Path)
 	state := rootWatch{state: w.statMark(stateDir), bundles: map[string]bundleWatch{}}
 	if names, err := w.bundleNames(root, stateDir); err == nil {
 		for _, name := range names {
+			if ctx.Err() != nil {
+				return state
+			}
 			state.bundles[name] = w.primeBundle(root, name)
 		}
+	}
+	if ctx.Err() != nil {
+		return state
 	}
 	overridesDir := filepath.Join(root.Path, filepath.FromSlash(overrides.Dir))
 	state.overrides = w.statMark(overridesDir)
@@ -354,13 +365,24 @@ func (l *Layer) evictBundles(root string, names []string) {
 
 // Changes returns invalidations until ctx is canceled.
 // With watching disabled, the returned channel is already closed.
+//
+// The baseline snapshot is taken before Changes returns, so a caller that
+// reads the bundles after it returns sees every write the watcher will not
+// report, and a write after it returns is always reported: no write can land
+// between the caller's read and a baseline taken later on the goroutine.
+// The snapshot walks the state directories, so Changes does I/O.
 func (l *Layer) Changes(ctx context.Context) <-chan Change {
 	out := make(chan Change, changeBufferSize)
 	if l.noWatch {
 		close(out)
 		return out
 	}
-	go l.runChanges(ctx, out)
+	state := newWatchState(ctx, l)
+	if ctx.Err() != nil {
+		close(out)
+		return out
+	}
+	go l.runChanges(ctx, out, state)
 	return out
 }
 
@@ -401,9 +423,8 @@ func (b *changeBatch) stop() {
 	}
 }
 
-func (l *Layer) runChanges(ctx context.Context, out chan<- Change) {
+func (l *Layer) runChanges(ctx context.Context, out chan<- Change, state *watchState) {
 	defer close(out)
-	state := newWatchState(l)
 	interval := time.NewTicker(l.interval)
 	defer interval.Stop()
 	sweep := time.NewTicker(l.sweep)
