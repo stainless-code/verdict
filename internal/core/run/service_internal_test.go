@@ -193,6 +193,7 @@ func request(root string, cmdr core.Commander) *core.RunRequest {
 // TestRunSuccess proves a successful launch asserts the fresh artifact, records
 // the provenance, and hands off without recording or posting anything itself.
 func TestRunSuccess(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{write: func() { writeReview(t, dir) }}
@@ -216,6 +217,7 @@ func TestRunSuccess(t *testing.T) {
 // agent unchanged and land in the recorded argv between the agent's flags
 // and the directive.
 func TestRunPassThroughArgv(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{write: func() { writeReview(t, dir) }}
@@ -237,6 +239,7 @@ func TestRunPassThroughArgv(t *testing.T) {
 // launcher.json is the provenance record and must hide it; .run.out keeps the
 // raw stream, which is why that log is written 0600.
 func TestRunScrubsArgumentSecretsFromTail(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	const secret = "sk-repro-secret-123"
@@ -302,6 +305,7 @@ func assertRawRunLog(t *testing.T, dir, secret string) {
 // TestRunPrintSpawnsNothing proves --print renders the exact argv and touches
 // neither the store nor the agent.
 func TestRunPrintSpawnsNothing(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	cmdr := &scripted{}
@@ -339,6 +343,7 @@ func (lateExit) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
 // exit, not a kill, because no watchdog recorded one. Inferring the timeout
 // from the expired context relabelled agent failures as agent-timeout.
 func TestRunTrustsTheRecordedWatchdog(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	req := request(root, nil)
 	req.Commander = lateExit{}
@@ -352,6 +357,7 @@ func TestRunTrustsTheRecordedWatchdog(t *testing.T) {
 // TestRunRefusals pins the six failure modes plus the two pre-flight refusals:
 // code, message fragment, and a non-empty hint for every one.
 func TestRunRefusals(t *testing.T) {
+	t.Parallel()
 	cases := []refusalCase{
 		{
 			name:   "agent missing from PATH",
@@ -756,6 +762,7 @@ func launcherRecipe(t *testing.T, dir string) string {
 // recipe resolves into data.recipe, the rendered argv names it, and --print
 // writes nothing.
 func TestRunPrintResolvesTheRepoRecipe(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, repoRecipe)
@@ -789,6 +796,7 @@ func TestRunPrintResolvesTheRepoRecipe(t *testing.T) {
 // renders is byte-identical to the one the next launch hands the agent, recipe
 // paragraph included.
 func TestPrintMatchesTheSpawnedArgv(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, repoRecipe)
@@ -882,6 +890,7 @@ func assertSHA256(t *testing.T, sha string) {
 // TestRunRecordsTheRecipeAndNamesIt proves a launch records the pipeline it ran
 // and names it on one human line immediately before the run line.
 func TestRunRecordsTheRecipeAndNamesIt(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, repoRecipe)
@@ -909,6 +918,7 @@ func TestRunRecordsTheRecipeAndNamesIt(t *testing.T) {
 // TestRunWithoutARecipesFileResolvesTheBuiltin proves the implicit path is a
 // file too: no --recipe and no recipe control resolve the built-in default.
 func TestRunWithoutARecipesFileResolvesTheBuiltin(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, "")
 	cmdr := &scripted{}
@@ -956,6 +966,7 @@ func assertBuiltinPlan(t *testing.T, plan map[string]any) {
 // TestRunRefusesUnknownRecipeBeforeSpawning proves a name no document answers
 // refuses with every available name and starts no process.
 func TestRunRefusesUnknownRecipeBeforeSpawning(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, repoRecipe)
@@ -983,6 +994,7 @@ func TestRunRefusesUnknownRecipeBeforeSpawning(t *testing.T) {
 // the service boundary, naming the JSON path and the offending key, before any
 // process starts.
 func TestRunRefusesAMalformedRecipe(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, `{"schema_version":"1","recipes":{"default":{"version":"1.0.0","synthesize":{},"nope":1}}}`)
 	cmdr := &scripted{}
@@ -1004,6 +1016,7 @@ func TestRunRefusesAMalformedRecipe(t *testing.T) {
 // load warns and the run proceeds. Run's authority is the artifact, so a lens
 // the pack did not ship is context a recipe asked for, not a broken pipeline.
 func TestRunWarnsAnAbsentDeclaredLens(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, `{"schema_version":"1","recipes":{"default":{"version":"1.0.0",`+
@@ -1026,6 +1039,7 @@ func TestRunWarnsAnAbsentDeclaredLens(t *testing.T) {
 // pre-run projection: above the bundle's limit it warns once, at or below is
 // silent, and a bundle with no typed run.json warns nothing.
 func TestRunWarnsABudgetOverThePersonalLimit(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		limit *float64
 		name  string
@@ -1078,6 +1092,7 @@ func assertBudgetWarning(t *testing.T, limit *float64, want string) {
 // broken one is context the operator lost, not a reason to refuse a launch that
 // record and post are the verbs to gate.
 func TestRunWarnsAMalformedRunBundle(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, "")
@@ -1114,6 +1129,7 @@ func writeLimit(t *testing.T, dir string, limit *float64) {
 // judged by: a worktree edit after the controls were snapshotted never reaches
 // the plan, and launcher.json records the base entry.
 func TestRunReadsTheRecipeAtTheBase(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	recipeControl(t, root, `{"schema_version":"1","recipes":{"default":{"version":"9.9.9",`+
@@ -1222,6 +1238,7 @@ func argvParts(kind string) []string {
 // the prompt names the stage and the review the previous one wrote, and nothing
 // is launched or written.
 func TestRunPrintRendersOneStage(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, repoRecipe)
 	cmdr := &scripted{}
@@ -1238,6 +1255,7 @@ func TestRunPrintRendersOneStage(t *testing.T) {
 // rows the recipe declared, with their hints and caps, and no model argument:
 // one stage's lenses each get their own hint, so the argv names none.
 func TestRunPrintStageLensesNamesTheDeclaredCaps(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, repoRecipe)
 	cmdr := &scripted{}
@@ -1268,6 +1286,7 @@ func printStage(t *testing.T, root string, cmdr *scripted, stage string) *core.R
 // stages have no other pin — a cut folding rank into the fall-through return
 // would be otherwise unobserved.
 func TestRunPrintStageStatesItsOwnJob(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		stage string
 		want  string
@@ -1313,6 +1332,7 @@ func TestRunPrintStageStatesItsOwnJob(t *testing.T) {
 // command just printed, then the following stage, and after the last stage the
 // handoff that closes the pipeline.
 func TestRunPrintStageNamesTheNextStage(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"1": "run the printed command, then render stage 2 with verdict run acme/app 42 " +
 			"--agent claude --recipe quick --print --stage 2",
@@ -1337,6 +1357,7 @@ func TestRunPrintStageNamesTheNextStage(t *testing.T) {
 // untouched: the argv is the agent flags and the whole-pipeline directive, byte
 // for byte, and no data.stage is published.
 func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, repoRecipe)
 	req := request(root, &scripted{})
@@ -1391,6 +1412,7 @@ type stageRefusalCase struct {
 // TestRunStageRefusals pins every --stage refusal: the flag renders one stage
 // under --print for a declared recipe, and it owns the model argument.
 func TestRunStageRefusals(t *testing.T) {
+	t.Parallel()
 	cases := map[string]stageRefusalCase{
 		"--stage without --print": {
 			stage: "2", want: "run --stage renders one stage's command for --print",
@@ -1430,6 +1452,7 @@ func TestRunStageRefusals(t *testing.T) {
 // of a pass-through model counts — spaced and inline, long and short — since a
 // tail that dodges one of them would override the hint unrefused.
 func TestRunStageRefusesAModelAgainstTheDeclaredHint(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name        string
 		passThrough []string
@@ -1453,6 +1476,7 @@ func TestRunStageRefusesAModelAgainstTheDeclaredHint(t *testing.T) {
 // half of that rule: the lens stage declares no hint, so the operator's model
 // argument is their own and rides the argv untouched, ahead of the directive.
 func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	recipeControl(t, root, repoRecipe)
 	req := request(root, &scripted{})
@@ -1609,6 +1633,7 @@ func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool) {
 // into the request's own environment array: the two parallel phases call
 // childEnv at once, and appending in place would have both write one slot.
 func TestChildEnvClonesBeforeAppending(t *testing.T) {
+	t.Parallel()
 	environ := make([]string, 1, 4)
 	environ[0] = "PATH=/usr/bin"
 	st := &state{req: &core.RunRequest{JSONMode: true, Environ: environ}}

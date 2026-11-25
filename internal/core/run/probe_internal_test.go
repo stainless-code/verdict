@@ -67,6 +67,7 @@ func (p *probeCdr) launches() int {
 // TestProbeMatchingLaunches pins the probe's argv, child environment, no-stdin
 // contract, 64 KiB capture cap, and launcher record before the real launch.
 func TestProbeMatchingLaunches(t *testing.T) {
+	t.Parallel()
 	root, dir, cdr := probeFixture(t)
 	_, ref := WithAgents(t.Context(), probeRequest(root, cdr), []config.PersonalAgent{probeDef()})
 	if ref != nil {
@@ -142,6 +143,7 @@ type probeRefusalCase struct {
 }
 
 func TestProbeRefusalsBeforeLaunch(t *testing.T) {
+	t.Parallel()
 	tests := []probeRefusalCase{
 		{
 			name: "non-zero exit",
@@ -212,6 +214,7 @@ func assertProbeMessage(t *testing.T, message, result string) {
 // caller cancels while the probe is running: the probe's own deadline still
 // classifies agent-mismatch, but a canceled parent outranks its result.
 func TestProbeKeepsParentCancellation(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -234,6 +237,7 @@ func TestProbeKeepsParentCancellation(t *testing.T) {
 // TestProbeSkippedUnderPrint proves a render spawns nothing at all: no probe
 // process, even when the row declares one.
 func TestProbeSkippedUnderPrint(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	cdr := &probeCdr{answer: func([]string) (core.Result, error) {
 		t.Fatal("a --print render spawned a process")

@@ -1,11 +1,15 @@
 package backtest
 
 import (
+	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,26 +25,156 @@ const replayTestRun = "ra"
 // replayFixture is one mined two-PR run plus the log the fake agent appends to
 // and the recorder the human lines land in. No agent is planted here: planting
 // is a POSIX PATH entry, so only the launch tests do it.
+//
+// Nothing here touches the process environment, so replay tests run in
+// parallel: the environment the agent inherits is [replayFixture.env], and
+// the PATH the launcher resolves the agent on is the [replayFixture.look] seam.
 type replayFixture struct {
+	look func(string) (string, error)
 	repo *repo
 	rec  *recorder
 	log  string
 	mine MineDoc
+	env  []string
 }
 
-// newReplayFixture mines twoCandidateRepo and lands its candidate list in
+// newReplayFixture hands the test its own copy of the mined twoCandidateRepo
+// run: its repository, and its candidate list landed in
 // .verdict/backtest/ra/mine.json, the run the replay reads.
 func newReplayFixture(t *testing.T) *replayFixture {
 	t.Helper()
-	r, base := twoCandidateRepo(t)
+	tpl := replayTemplateFor(t)
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(tpl.dir)); err != nil {
+		t.Fatalf("copy the mined fixture: %v", err)
+	}
+	var doc MineDoc
+	if err := json.Unmarshal(tpl.mine, &doc); err != nil {
+		t.Fatalf("decode the mined fixture: %v", err)
+	}
+	f := &replayFixture{repo: &repo{t: t, dir: dir, day: tpl.day}, mine: doc, rec: &recorder{}}
+	f.log = filepath.Join(t.TempDir(), "agent.log")
+	f.setEnv("HOME", t.TempDir())
+	f.setEnv("XDG_CONFIG_HOME", t.TempDir())
+	return f
+}
+
+// setEnv sets one variable in the environment the replayed agent inherits,
+// replacing an earlier value. The first call snapshots the process
+// environment, so a test never mutates it.
+func (f *replayFixture) setEnv(key, value string) {
+	if f.env == nil {
+		f.env = os.Environ()
+	}
+	prefix := key + "="
+	f.env = slices.DeleteFunc(slices.Clone(f.env), func(kv string) bool { return strings.HasPrefix(kv, prefix) })
+	f.env = append(f.env, prefix+value)
+}
+
+// lookPath is the request's agent lookup: the host PATH until a test plants
+// its own.
+func (f *replayFixture) lookPath(name string) (string, error) {
+	if f.look != nil {
+		return f.look(name)
+	}
+	return exec.LookPath(name)
+}
+
+// runner is the production commander, except that a bare name a test planted
+// resolves in the planted directory. The launcher spawns the agent by its bare
+// name, so the process PATH would decide which binary runs; resolving here
+// keeps that choice per test, where the process PATH is shared by all of them.
+func (f *replayFixture) runner() core.Commander {
+	return plantedRunner{inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}, fixture: f}
+}
+
+// plantedRunner implements [core.Commander] for [replayFixture.runner].
+type plantedRunner struct {
+	inner   core.Commander
+	fixture *replayFixture
+}
+
+// toolGate is the optional check [coreexec.Runner] offers before a first spawn.
+type toolGate interface {
+	LookPath(tool string) error
+}
+
+// LookPath forwards the tool gate fetch calls before its first spawn, like the
+// production runner it wraps.
+func (p plantedRunner) LookPath(tool string) error {
+	if gate, ok := p.inner.(toolGate); ok {
+		return gate.LookPath(tool)
+	}
+	return nil
+}
+
+// Run resolves a bare argv[0] through the fixture's planted lookup, then
+// delegates.
+func (p plantedRunner) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if p.fixture.look != nil && len(cmd.Argv) > 0 && !strings.ContainsRune(cmd.Argv[0], filepath.Separator) {
+		if bin, err := p.fixture.look(cmd.Argv[0]); err == nil {
+			pinned := *cmd
+			pinned.Argv = append([]string{bin}, cmd.Argv[1:]...)
+			cmd = &pinned
+		}
+	}
+	return p.inner.Run(ctx, cmd)
+}
+
+// environ is the environment the replayed agent inherits.
+func (f *replayFixture) environ() []string {
+	if f.env == nil {
+		return os.Environ()
+	}
+	return f.env
+}
+
+// replayTemplate is the mined run every replay fixture starts from. Building
+// it costs about two dozen git processes, and every replay test needs the same
+// bytes (the commits are pinned), so it is built once per test binary and
+// copied per test: the copy is a private repository the test may mutate.
+type replayTemplate struct {
+	dir  string
+	mine []byte
+	day  int
+}
+
+var (
+	replayTemplateMu    sync.Mutex
+	replayTemplateBase  *replayTemplate
+	replayTemplateTries int
+	// replayTemplateRoot outlives every test, so it is [TestMain]'s, not a
+	// test's TempDir, which would vanish with the first test that asked.
+	replayTemplateRoot string
+)
+
+// replayTemplateFor returns the shared template, building it on first use. A
+// build that failed is not remembered: the next test builds again and reports
+// its own failure.
+func replayTemplateFor(t *testing.T) *replayTemplate {
+	t.Helper()
+	replayTemplateMu.Lock()
+	defer replayTemplateMu.Unlock()
+	if replayTemplateBase != nil {
+		return replayTemplateBase
+	}
+	// A fresh directory per attempt: a build that failed halfway leaves its
+	// repository behind, and the next attempt must not commit on top of it.
+	replayTemplateTries++
+	dir := filepath.Join(replayTemplateRoot, "mined-"+strconv.Itoa(replayTemplateTries))
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r, base := buildTwoCandidateRepo(newRepoAt(t, dir))
 	mined := runMine(t, r, base).Mine
 	doc := MineDoc{SchemaVersion: schemaVersion, Method: methodSZZ, Candidates: mined.Candidates, Skipped: mined.Skipped}
-	f := &replayFixture{repo: r, mine: doc, rec: &recorder{}}
-	f.writeMine(t, replayTestRun, &f.mine)
-	f.log = filepath.Join(t.TempDir(), "agent.log")
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	return f
+	(&replayFixture{repo: r}).writeMine(t, replayTestRun, &doc)
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayTemplateBase = &replayTemplate{dir: dir, mine: raw, day: r.day}
+	return replayTemplateBase
 }
 
 // request builds the replay request the case mutates, with a pinned clock.
@@ -48,14 +182,14 @@ func (f *replayFixture) request(t *testing.T, mutate func(*ReplayRequest)) *Repl
 	t.Helper()
 	req := &ReplayRequest{
 		Runtime: &core.Runtime{
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			Commander: f.runner(),
 			Env:       userEnv(t, nil),
 			Progress:  f.rec,
 			Now:       func() time.Time { return time.Date(2024, 2, 1, 12, 0, 0, 0, time.UTC) },
 		},
-		LookPath:  exec.LookPath,
+		LookPath:  f.lookPath,
 		Effective: core.Defaults(),
-		Environ:   os.Environ(),
+		Environ:   f.environ(),
 		RepoRoot:  f.repo.dir,
 		Run:       replayTestRun,
 		Agent:     "claude",
@@ -97,6 +231,7 @@ func writeTestFile(t *testing.T, path, body string) {
 // TestReplayRefusesBadInputs proves the run refuses an unknown run, a bad run
 // id, a bad budget, and an unknown agent before it spends anything.
 func TestReplayRefusesBadInputs(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name   string
 		mutate func(*ReplayRequest)
@@ -127,6 +262,7 @@ func TestReplayRefusesBadInputs(t *testing.T) {
 // a replay can build is exactly the store's 48 bytes, and the index that names
 // it is [replayMaxReviews]'s own.
 func TestRunIDCapFillsTheBundleNameCap(t *testing.T) {
+	t.Parallel()
 	if got := strconv.Itoa(replayMaxReviews); got != "99" {
 		t.Fatalf("replayMaxReviews = %s; the frame budgets for a two-digit index", got)
 	}
@@ -147,6 +283,7 @@ func TestRunIDCapFillsTheBundleNameCap(t *testing.T) {
 // create ends the walk: no candidate can check out, so no row and no agent run
 // would tell the operator anything new.
 func TestReplayRefusesAnUncreatableStateDir(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	state := filepath.Join(f.repo.dir, ".verdict", "state")
 	writeTestFile(t, state, "not a directory")

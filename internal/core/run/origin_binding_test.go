@@ -47,6 +47,7 @@ func (p *forgedOriginCommander) Run(ctx context.Context, cmd *core.Command) (cor
 }
 
 func TestCoordinatorBindsForgedOriginToTrustedOutput(t *testing.T) {
+	t.Parallel()
 	for _, self := range []bool{false, true} {
 		name := "opposite confirmation"
 		if self {

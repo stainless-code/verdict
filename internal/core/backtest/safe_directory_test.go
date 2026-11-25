@@ -27,6 +27,7 @@ func otherOwnerEnv(path string) map[string]string {
 // minable when the user's protected config trusts it: the trust is read with
 // the user's own git environment and forwarded into the scrubbed calls.
 func TestMineHonoursUserSafeDirectory(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	global := writeGitConfig(t, "[safe]\n\tdirectory = *\n")
 	data, _ := mineRun(t, b.r, b.base, otherOwnerEnv(global))
@@ -50,6 +51,7 @@ func mineRefusal(t *testing.T, b bugRepo, env map[string]string) *core.RefusalEr
 // as git names it: the refusal carries git's own line instead of claiming the
 // path is not a repository.
 func TestMineNamesDubiousOwnership(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	ref := mineRefusal(t, b, otherOwnerEnv(writeGitConfig(t, "")))
 	if ref == nil {
@@ -65,6 +67,7 @@ func TestMineNamesDubiousOwnership(t *testing.T) {
 // still narrows the list: dropping the empty value, or reordering the pair,
 // would grant a trust the user withdrew.
 func TestMineHonoursSafeDirectoryReset(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	ref := mineRefusal(t, b, otherOwnerEnv(writeGitConfig(t, "[safe]\n\tdirectory = *\n\tdirectory =\n")))
 	if ref == nil || ref.Code != codeBacktestFail || !strings.Contains(ref.Message, "detected dubious ownership") {
@@ -77,6 +80,7 @@ func TestMineHonoursSafeDirectoryReset(t *testing.T) {
 // color.ui=always and a core.attributesFile no command-scope pin covers yields
 // the same mine.json bytes as one that sets neither.
 func TestMineForwardsOnlySafeDirectory(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	attrs := filepath.Join(t.TempDir(), "attributes")
 	if err := os.WriteFile(attrs, []byte("*.go binary\n"), 0o644); err != nil {
@@ -97,6 +101,7 @@ func TestMineForwardsOnlySafeDirectory(t *testing.T) {
 // carry the user's global config, and every mining call carries the user's
 // values as command scope ahead of the git pins while its config stays nulled.
 func TestMineForwardsSafeDirectoryArgv(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	global := writeGitConfig(t, "[safe]\n\tdirectory = /trusted/one\n\tdirectory = *\n"+hostileGlobalConfig)
 	rec := &pinRecorder{inner: coreexec.Runner{MissingTool: true}}
@@ -165,6 +170,7 @@ func checkForwardedCall(t *testing.T, argv []string, env map[string]string) {
 // its position: git reads it as resetting the list, so dropping it would widen
 // the trust the miner forwards.
 func TestSplitTrustKeepsEmptyReset(t *testing.T) {
+	t.Parallel()
 	if got, want := splitTrust(""), []string(nil); !slices.Equal(got, want) {
 		t.Errorf("splitTrust(\"\") = %q; want %q", got, want)
 	}

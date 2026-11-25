@@ -51,6 +51,7 @@ func completedExecution(t *testing.T) (*core.RunRequest, *phaseCommander) {
 }
 
 func TestSingleFinderSupersedesPreviousExecution(t *testing.T) {
+	t.Parallel()
 	req, previous := completedExecution(t)
 	before := recordSuperseded(t, req)
 	if before.Verification == nil || before.Verification.Finders == nil {
@@ -142,6 +143,7 @@ func assertSupersededArtifacts(t *testing.T, dir string) {
 }
 
 func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	if _, ref := Run(t.Context(), req); ref != nil {
@@ -160,6 +162,7 @@ func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
 }
 
 func TestRetirementFailureRefusesBeforeLaunch(t *testing.T) {
+	t.Parallel()
 	req, previous := completedExecution(t)
 	writeUnder(t, previous.dir, "x-superseded", "blocked")
 	commander := &scripted{}
@@ -210,6 +213,7 @@ func retiredFixture(t *testing.T, dir string, retired bool) {
 }
 
 func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	req.PassThrough = []string{"--resume"}
@@ -232,6 +236,7 @@ func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 }
 
 func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, true)
 	commander.reset()
@@ -247,6 +252,7 @@ func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 // - here every artifact path resolves inside a plain file - the capture stays
 // damaged instead of reading as retired and starting over on top of evidence.
 func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
+	t.Parallel()
 	bundle := filepath.Join(t.TempDir(), "local-damaged")
 	if err := os.WriteFile(bundle, []byte("not a bundle"), 0o600); err != nil {
 		t.Fatal(err)
@@ -257,6 +263,7 @@ func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
 }
 
 func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, false)
 	commander.reset()
@@ -274,6 +281,7 @@ func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
 // code let phaseDirectory fail with "cannot create fresh phase directory",
 // which names the symptom and leaves the operator to delete artifacts by hand.
 func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.FindersRaw = "2"
 	// A partial run nothing marks: no launcher record, and a capture that names
@@ -300,6 +308,7 @@ func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
 // no finders and no execution reference. The artifacts themselves record the
 // execution, so they are retired and the replacement run proceeds.
 func TestSupersedeRetiresAnInterruptedPriorRunAfterRefetch(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	writeUnder(t, commander.dir, "launcher.json",

@@ -76,6 +76,7 @@ func twoMarkerRepo(t *testing.T) (r *repo, base, older string) {
 // cancel lands while the first added-only seed is read, and the second seed
 // would otherwise run to completion because nothing else checks between them.
 func TestMineCanceledBetweenSeeds(t *testing.T) {
+	t.Parallel()
 	r, base, older := twoMarkerRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cmdr := &cancelAfter{
@@ -103,6 +104,7 @@ func TestMineCanceledBetweenSeeds(t *testing.T) {
 // cancel lands after the first hunk's anchor and before the second line's
 // blame is spawned.
 func TestMineCanceledBetweenLines(t *testing.T) {
+	t.Parallel()
 	r, base, _ := twoHunkRepo(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cmdr := &cancelAfter{
@@ -135,6 +137,7 @@ func (truncatingCommander) Run(context.Context, *core.Command) (core.Result, err
 // TestMineWindowTooLarge proves a capped commit list refuses by name with the
 // narrowing hint, not as a generic git failure.
 func TestMineWindowTooLarge(t *testing.T) {
+	t.Parallel()
 	rt := &core.Runtime{Commander: truncatingCommander{}}
 	st := &state{req: &Request{Runtime: rt}, rt: rt, root: t.TempDir()}
 	_, ref := st.rangeCommits(t.Context(), "aaaaaaa", "bbbbbbb")
@@ -161,6 +164,7 @@ func (c cancelingCommander) Run(context.Context, *core.Command) (core.Result, er
 // TestGitFailureReportsCancel proves a git step that fails after a cancel
 // reports the cancel code, never a git failure message.
 func TestGitFailureReportsCancel(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		err  error
 		name string

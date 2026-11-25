@@ -23,6 +23,7 @@ func newTitledFeatureRepo(t *testing.T) (*repo, string) {
 // TestMineTitledFeatureCommitIsNotASquashLanding proves a `(#N)` title inside a
 // merged PR reconstructs through the merge, not as its own squash PR.
 func TestMineTitledFeatureCommitIsNotASquashLanding(t *testing.T) {
+	t.Parallel()
 	r, base := newTitledFeatureRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
