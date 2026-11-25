@@ -26,6 +26,7 @@ func spendState(t *testing.T) (*state, string) {
 }
 
 func TestSpendConsentIsPerInvocation(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
 	if ref := state.authorizeSpend(t.Context(), dir, 2); ref != nil {
@@ -50,6 +51,7 @@ func TestSpendConsentIsPerInvocation(t *testing.T) {
 }
 
 func TestSpendKnownLowerBoundRequiresConsent(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	state.req.Env["REVIEW_BUDGET_USD"] = "1"
 	state.req.SpendPlan = []spend.Phase{{ExecutionID: "execution-A", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}}
@@ -60,6 +62,7 @@ func TestSpendKnownLowerBoundRequiresConsent(t *testing.T) {
 }
 
 func TestSpendReceiptChangesWithTopology(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
 	if ref := state.authorizeSpend(t.Context(), dir, 2); ref != nil {
@@ -97,6 +100,7 @@ func twoSpendReceipts(t *testing.T, dir string) []any {
 }
 
 func TestSpendRefusesMalformedCapture(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
@@ -111,6 +115,7 @@ func TestSpendRefusesMalformedCapture(t *testing.T) {
 }
 
 func TestSpendAppendKeepsLedgerReadable(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
 	raw := append(append([]byte(`["`), bytes.Repeat([]byte("a"), 1048570)...), []byte("\"]\n")...)
@@ -132,6 +137,7 @@ func TestSpendAppendKeepsLedgerReadable(t *testing.T) {
 }
 
 func TestCanceledSpendPreparation(t *testing.T) {
+	t.Parallel()
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
 	unlock, err := storelock.Acquire(filepath.Join(dir, "budget.json"), 0)

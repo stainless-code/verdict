@@ -66,6 +66,7 @@ func assertNamesHandedContext(t *testing.T, prompt string, want bool) {
 // with context.txt names it as handed spec and evidence, and one without it
 // names no context file.
 func TestDirectiveNamesHandedContext(t *testing.T) {
+	t.Parallel()
 	plan := builtinPlan(t)
 	for _, tc := range []struct {
 		name       string
@@ -84,6 +85,7 @@ func TestDirectiveNamesHandedContext(t *testing.T) {
 // TestStageDirectiveNamesHandedContext pins the same clause on a stage render,
 // where the read line carries the previous stage's review as well.
 func TestStageDirectiveNamesHandedContext(t *testing.T) {
+	t.Parallel()
 	plan := builtinPlan(t)
 	at := staged{index: 2, stage: plan.Stages[1]}
 	for _, tc := range []struct {

@@ -13,6 +13,7 @@ import (
 // replay bundle's diff: a finding that names only the phrase the diff carries
 // is unmatched, while the same finding names the defect against a control diff.
 func TestScoreFiltersDiffSpelledPhrase(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		diff string

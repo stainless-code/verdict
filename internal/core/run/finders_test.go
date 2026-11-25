@@ -12,6 +12,7 @@ import (
 )
 
 func TestDefaultLaunchUsesTwoFinders(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.FindersRaw = ""
 	response, ref := Run(t.Context(), req)
@@ -31,6 +32,7 @@ func TestDefaultLaunchUsesTwoFinders(t *testing.T) {
 }
 
 func TestSingleFinderKeepsLegacyArtifacts(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
@@ -56,6 +58,7 @@ func TestSingleFinderKeepsLegacyArtifacts(t *testing.T) {
 }
 
 func TestTwoFinderRenderingRefusesWithoutWrites(t *testing.T) {
+	t.Parallel()
 	for _, stage := range []string{"", "1"} {
 		t.Run("stage="+stage, func(t *testing.T) {
 			assertRenderingRefuses(t, stage)
@@ -64,6 +67,7 @@ func TestTwoFinderRenderingRefusesWithoutWrites(t *testing.T) {
 }
 
 func TestFinderCountRejectsInvalid(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"0", "3", "two", "+1", "01"} {
 		t.Run(raw, func(t *testing.T) {
 			req, _ := coordinatorFixture(t)
@@ -76,6 +80,7 @@ func TestFinderCountRejectsInvalid(t *testing.T) {
 }
 
 func TestCapturedSingleFinderDefault(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	writeUnder(t, dir, "run.json", `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
@@ -89,6 +94,7 @@ func TestCapturedSingleFinderDefault(t *testing.T) {
 }
 
 func TestFinderFlagOverridesCapturedDefault(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
 	req.FindersRaw = "2"

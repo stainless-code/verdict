@@ -15,11 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
-	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -144,6 +144,20 @@ func materializeFakeBinary(t *testing.T, dst string, src *os.File) {
 	if err := out.Close(); err != nil {
 		t.Fatalf("close the fake agent: %v", err)
 	}
+	settleForks()
+}
+
+// settleForks makes a just-written executable safe to exec while other tests
+// run in parallel. A fork that began while the file was still open for writing
+// holds a copy of that descriptor until its exec, and executing the file in
+// that window fails with ETXTBSY ("text file busy") on Linux. The runtime
+// holds [syscall.ForkLock] across a spawn until the child has exec'd, so taking
+// it once after the close waits out every such child; a fork that starts later
+// never saw the descriptor. Every test that writes an executable and then runs
+// it calls this between the close and the first exec.
+func settleForks() {
+	syscall.ForkLock.Lock()
+	defer syscall.ForkLock.Unlock()
 }
 
 // plant makes the fake agent the claude the launcher resolves, in mode, with
@@ -152,14 +166,31 @@ func materializeFakeBinary(t *testing.T, dst string, src *os.File) {
 func (f *replayFixture) plant(t *testing.T, mode, price string) {
 	t.Helper()
 	f.pathWithoutAgents(t)
-	bin := os.Getenv("PATH")
-	plantFakeBinary(t, filepath.Join(bin, "claude"))
-	t.Setenv(fakeAgentEnv, mode)
-	t.Setenv(fakeAgentCostEnv, price)
-	t.Setenv(fakeAgentLogEnv, f.log)
+	plantFakeBinary(t, filepath.Join(f.agentPath(), "claude"))
+	f.setEnv(fakeAgentEnv, mode)
+	f.setEnv(fakeAgentCostEnv, price)
+	f.setEnv(fakeAgentLogEnv, f.log)
+	f.setEnv("GORACE", fakeAgentRace(os.Getenv("GORACE")))
 }
 
-// pathWithoutAgents leaves git resolvable and every agent absent.
+// fakeAgentRace returns the GORACE the fake agent child starts under. The race
+// runtime sleeps atexit_sleep_ms (default 1000) before every process exits, so
+// each launch of this -race test binary cost one idle second whatever the stub
+// did; zero keeps race detection on while the child exits at once. A GORACE the
+// operator already set keeps its other options, and an explicit
+// atexit_sleep_ms of theirs wins.
+func fakeAgentRace(operator string) string {
+	if strings.Contains(operator, "atexit_sleep_ms=") {
+		return operator
+	}
+	if operator == "" {
+		return "atexit_sleep_ms=0"
+	}
+	return operator + " atexit_sleep_ms=0"
+}
+
+// pathWithoutAgents leaves git resolvable and every agent absent: the agent's
+// PATH, and the launcher's lookup of it, name one directory holding git alone.
 func (f *replayFixture) pathWithoutAgents(t *testing.T) {
 	t.Helper()
 	git, err := exec.LookPath("git")
@@ -173,7 +204,20 @@ func (f *replayFixture) pathWithoutAgents(t *testing.T) {
 	if err := os.Symlink(git, filepath.Join(dir, "git")); err != nil {
 		t.Fatalf("link git: %v", err)
 	}
-	t.Setenv("PATH", dir)
+	f.setEnv("PATH", dir)
+	f.look = func(name string) (string, error) { return lookPathIn(dir, name) }
+}
+
+// lookPathIn resolves name the way [exec.LookPath] does inside one PATH entry:
+// an executable regular file, followed through symlinks, so a dangling link
+// does not resolve.
+func lookPathIn(dir, name string) (string, error) {
+	path := filepath.Join(dir, name)
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || info.Mode().Perm()&0o111 == 0 {
+		return "", &exec.Error{Name: name, Err: exec.ErrNotFound}
+	}
+	return path, nil
 }
 
 // launches counts the agent invocations the fake logged.
@@ -231,6 +275,7 @@ func storedPR(t *testing.T, f *replayFixture, n int) ReplayPRDoc {
 // candidate's own base..head bundle, launches the agent in a detached checkout
 // of that head, records the review, and removes the checkout again.
 func TestReplayRunsEachCandidateAtItsHistoricalHead(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	resp := runReplayOK(t, f.request(t, nil))
@@ -376,6 +421,7 @@ func checkLaunch(t *testing.T, f *replayFixture, i int, line []string) {
 // differ only in their last byte build distinct bundles: at the cap the store
 // truncates nothing, so neither run can land on the other's diff.
 func TestReplayLongRunIDsKeepDistinctBundles(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	stem := strings.Repeat("a", 41)
@@ -399,6 +445,7 @@ func TestReplayLongRunIDsKeepDistinctBundles(t *testing.T) {
 // accepting both would let the second overwrite the first's diff, and resuming
 // the first would report ok against the second's.
 func TestReplayRefusesTheRunIDsThatWouldShareABundle(t *testing.T) {
+	t.Parallel()
 	prefix := strings.Repeat("a", 43)
 	for _, id := range []string{prefix + "x", prefix + "y"} {
 		f := newReplayFixture(t)
@@ -414,6 +461,7 @@ func TestReplayRefusesTheRunIDsThatWouldShareABundle(t *testing.T) {
 // TestReplayResumeSkipsRecordedPRs proves a rerun replays nothing that already
 // recorded a review and reports the same rows.
 func TestReplayResumeSkipsRecordedPRs(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	first := runReplayOK(t, f.request(t, nil)).Data
@@ -435,6 +483,7 @@ func TestReplayResumeSkipsRecordedPRs(t *testing.T) {
 // TestReplayResumeRefusesAnotherAgentOrPassThrough proves a recorded PR is not
 // silently rewritten when the operator changes what would produce it.
 func TestReplayResumeRefusesAnotherAgentOrPassThrough(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		mutate func(*ReplayRequest)
 		name   string
@@ -466,6 +515,7 @@ func checkResumeMismatch(t *testing.T, mutate func(*ReplayRequest)) {
 // candidate's resolution: a re-mined head or base refuses run-mismatch instead
 // of resuming the earlier price.
 func TestReplayResumeRefusesAReminedCandidate(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		mutate func(*Candidate)
 		name   string
@@ -498,6 +548,7 @@ func checkReminedMismatch(t *testing.T, mutate func(*Candidate)) {
 // TestReplayResumeRedoesALostBundle proves a stored `ok` is not trusted when
 // the recorded bundle or its findings.json is gone: the row is replayed.
 func TestReplayResumeRedoesALostBundle(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		lose func(t *testing.T, bundle string)
 		name string
@@ -543,6 +594,7 @@ func checkRedone(t *testing.T, lose func(*testing.T, string)) {
 // TestReplayStopsAtMaxReviews proves the cap bounds the number of agent runs
 // and that the stop reason says so.
 func TestReplayStopsAtMaxReviews(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.MaxReviewsRaw = "1" })).Data
@@ -558,6 +610,7 @@ func TestReplayStopsAtMaxReviews(t *testing.T) {
 // stops the run before a review that would pass the ceiling, and reports the
 // spend that already happened.
 func TestReplayStopsWhenTheNextReviewWouldCrossTheBudget(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.BudgetRaw = "1" })).Data
@@ -576,6 +629,7 @@ func TestReplayStopsWhenTheNextReviewWouldCrossTheBudget(t *testing.T) {
 // the priced reviews, not the largest: 0.1 and 0.5 project 0.3 and let the next
 // review run, while the maximum would stop the walk a row early.
 func TestReplayStopsOnTheMedianProjection(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.rewriteMine(t, func(doc *MineDoc) { repeatCandidates(doc, 4) })
 	f.plant(t, "write", "0.1,0.5,1.0")
@@ -595,6 +649,7 @@ func TestReplayStopsOnTheMedianProjection(t *testing.T) {
 // review that outlives it is that candidate's agent-timeout row, and the walk
 // continues.
 func TestReplayWatchdogTimeoutIsAgentTimeout(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "sleep", "")
 	data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.TimeoutRaw = "1" })).Data
@@ -615,6 +670,7 @@ func TestReplayWatchdogTimeoutIsAgentTimeout(t *testing.T) {
 // PR's row, not the run's, that the next invocation retries it, and that both
 // attempts remove their checkout.
 func TestReplayRecordsPerPRFailureAndRetriesIt(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "exit", "")
 	failed := runReplayOK(t, f.request(t, nil)).Data
@@ -680,6 +736,7 @@ func checkRetriedRun(t *testing.T, f *replayFixture, retried *ReplayData) {
 // not resolve is one failed row, with no bundle and no checkout left behind,
 // and the run goes on.
 func TestReplayPerPRCheckoutFailureContinues(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.rewriteMine(t, func(doc *MineDoc) {
 		editCandidate(t, doc, replayRowPRs[0], func(c *Candidate) {
@@ -707,6 +764,7 @@ func TestReplayPerPRCheckoutFailureContinues(t *testing.T) {
 // be resolved is one failed row, that its checkout is removed, and the run goes
 // on.
 func TestReplayPerPRBundleFailureContinues(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.rewriteMine(t, func(doc *MineDoc) {
 		editCandidate(t, doc, replayRowPRs[0], func(c *Candidate) {
@@ -750,9 +808,10 @@ func (g *gitGone) Run(ctx context.Context, cmd *core.Command) (core.Result, erro
 // TestReplayMissingGitStopsTheWalk proves a git that disappears mid-run ends
 // the run with the install hint, not a failed row per candidate.
 func TestReplayMissingGitStopsTheWalk(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
-	cmdr := &gitGone{inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}
+	cmdr := &gitGone{inner: f.runner()}
 	ref := runReplayRefusal(t, f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr }))
 	if !cmdr.fired {
 		t.Fatal("the replay never reached the checkout")
@@ -769,6 +828,7 @@ func TestReplayMissingGitStopsTheWalk(t *testing.T) {
 // names the replay verb, and that a cancel in flight still removes the
 // checkout.
 func TestReplayCancelReportsTheReplayVerb(t *testing.T) {
+	t.Parallel()
 	t.Run("pre-flight", checkCancelBeforeTheWalk)
 	t.Run("during the checkout", checkCancelDuringTheCheckout)
 	t.Run("during the review", checkCancelDuringTheReview)
@@ -784,7 +844,7 @@ func checkCancelBeforeTheWalk(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	cmdr := &cancelAfter{
-		inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}, cancel: cancel,
+		inner: f.runner(), cancel: cancel,
 		stop: func(cmd *core.Command) bool { return slices.Contains(cmd.Argv, "--show-toplevel") },
 	}
 	_, ref := RunReplay(ctx, f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr }))
@@ -801,7 +861,7 @@ func checkCancelDuringTheCheckout(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	cmdr := &cancelAfter{
-		inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}, cancel: cancel,
+		inner: f.runner(), cancel: cancel,
 		stop: func(cmd *core.Command) bool {
 			return slices.Contains(cmd.Argv, gitWorktree) && slices.Contains(cmd.Argv, gitWorktreeAdd)
 		},
@@ -871,7 +931,7 @@ func checkCancelBeforeTheRecord(t *testing.T) {
 	f.plant(t, "write", "0.6")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	cmdr := &agentRan{inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}}
+	cmdr := &agentRan{inner: f.runner()}
 	req := f.request(t, func(r *ReplayRequest) { r.Runtime.Commander = cmdr })
 	clock := req.Runtime.Now
 	req.Runtime.Now = func() time.Time {
@@ -900,7 +960,7 @@ func checkCancelBetweenReviews(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	cmdr := &cancelAfter{
-		inner: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}, cancel: cancel,
+		inner: f.runner(), cancel: cancel,
 		stop: func(cmd *core.Command) bool {
 			return slices.Contains(cmd.Argv, "remove") && pathExists(cmd.Argv[len(cmd.Argv)-1])
 		},
@@ -944,6 +1004,7 @@ func pathExists(path string) bool {
 // TestReplayMissingAgentStopsTheRun proves an uninstalled agent ends the run
 // with the launcher's own code instead of failing every candidate in turn.
 func TestReplayMissingAgentStopsTheRun(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.pathWithoutAgents(t)
 	ref := runReplayRefusal(t, f.request(t, nil))
@@ -958,6 +1019,7 @@ func TestReplayMissingAgentStopsTheRun(t *testing.T) {
 // TestReplayUnpricedReviewReportsUnknownSpend proves a review that reported no
 // price is unknown spend, never zero dollars.
 func TestReplayUnpricedReviewReportsUnknownSpend(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "")
 	data := runReplayOK(t, f.request(t, nil)).Data
@@ -973,6 +1035,7 @@ func TestReplayUnpricedReviewReportsUnknownSpend(t *testing.T) {
 // up in the agent's own argv: after the row's discovery restriction, so the
 // replay reviews read-only like every other launch, and ahead of the directive.
 func TestReplayPassThroughReachesTheAgent(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.PassThrough = []string{"--model", "fast"} }))
@@ -985,6 +1048,7 @@ func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 // TestReplayHumanOutput pins the human contract: the plan header, one row per
 // candidate, the stop reason, the spend, and the not-citable footer.
 func TestReplayHumanOutput(t *testing.T) {
+	t.Parallel()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	runReplayOK(t, f.request(t, nil))
@@ -1001,22 +1065,45 @@ func TestReplayHumanOutput(t *testing.T) {
 	}
 }
 
-// TestReplayPlantIsolatesPathFromHostAgents proves a planted fake agent
-// scrubs the inherited PATH to git and the fake binary alone: if the planted
-// claude symlink is dangling or another agent is requested, LookPath must
-// refuse agent-missing instead of falling through to a host CLI on PATH that
-// exits non-zero as agent-failed with zero fake launches.
+// TestReplayPlantIsolatesPathFromHostAgents proves the agent the replay runs
+// is the one resolved through the request's LookPath, never a `claude` that
+// happens to sit on the process PATH. A decoy that exits 1 is the only claude
+// the process PATH can reach (every other entry holding one is scrubbed, so
+// the result does not depend on this machine's installs). It stays serial:
+// the process PATH is what production falls back to when the request's lookup
+// is missing, so the test must own it.
 func TestReplayPlantIsolatesPathFromHostAgents(t *testing.T) {
+	ran := plantHostDecoy(t)
+	t.Run("a dangling planted agent refuses", func(t *testing.T) { checkDanglingPlantRefuses(t, ran) })
+	t.Run("a valid planted agent wins", func(t *testing.T) { checkValidPlantWins(t, ran) })
+}
+
+// plantHostDecoy puts a claude that exits 1 first on the process PATH, scrubs
+// every other claude from it, and returns the marker file the decoy writes
+// when it runs.
+func plantHostDecoy(t *testing.T) string {
+	t.Helper()
 	hostBin := t.TempDir()
-	hostClaude := filepath.Join(hostBin, "claude")
-	if err := os.WriteFile(hostClaude, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+	ran := filepath.Join(hostBin, "decoy-ran")
+	decoy := "#!/bin/sh\necho ran >> " + shellQuote(ran) + "\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(hostBin, "claude"), []byte(decoy), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", hostBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	settleForks()
+	t.Setenv("PATH", hostBin+string(os.PathListSeparator)+pathWithoutAgentEntries(os.Getenv("PATH")))
+	if _, err := exec.LookPath("claude"); err != nil {
+		t.Fatalf("the decoy must be the claude on the process PATH: %v", err)
+	}
+	return ran
+}
+
+// checkDanglingPlantRefuses proves a planted claude whose binary is gone
+// refuses agent-missing instead of falling through to the host decoy.
+func checkDanglingPlantRefuses(t *testing.T, ran string) {
+	t.Helper()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
-	plantedDir, _, _ := strings.Cut(os.Getenv("PATH"), string(os.PathListSeparator))
-	plantedClaude := filepath.Join(plantedDir, "claude")
+	plantedClaude := filepath.Join(f.agentPath(), "claude")
 	if err := os.Remove(plantedClaude); err != nil {
 		t.Fatal(err)
 	}
@@ -1030,9 +1117,62 @@ func TestReplayPlantIsolatesPathFromHostAgents(t *testing.T) {
 	if got := f.launches(t); got != 0 {
 		t.Errorf("launches = %d, want 0", got)
 	}
+	checkDecoyIdle(t, ran)
+}
+
+// checkValidPlantWins proves the planted claude is the one every launch runs.
+func checkValidPlantWins(t *testing.T, ran string) {
+	t.Helper()
+	f := newReplayFixture(t)
+	f.plant(t, "write", "0.6")
+	data := runReplayOK(t, f.request(t, nil)).Data
+	if got := f.launches(t); got != len(replayRowPRs) {
+		t.Errorf("launches = %d, want one planted launch per candidate", got)
+	}
+	for i, row := range data.PRs {
+		if row.Status != statusOKCode {
+			t.Errorf("row %d status = %q, want ok", i+1, row.Status)
+		}
+	}
+	checkDecoyIdle(t, ran)
+}
+
+// checkDecoyIdle proves the host decoy never ran.
+func checkDecoyIdle(t *testing.T, ran string) {
+	t.Helper()
+	if _, err := os.Stat(ran); !os.IsNotExist(err) {
+		t.Errorf("the host claude on the process PATH ran: %v", err)
+	}
+}
+
+// pathWithoutAgentEntries drops every PATH entry that holds a claude.
+func pathWithoutAgentEntries(path string) string {
+	var keep []string
+	for _, dir := range filepath.SplitList(path) {
+		if _, err := lookPathIn(dir, "claude"); err != nil {
+			keep = append(keep, dir)
+		}
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
+}
+
+// shellQuote single-quotes one path for a sh script.
+func shellQuote(path string) string {
+	return "'" + strings.ReplaceAll(path, "'", "'\\''") + "'"
+}
+
+// agentPath is the PATH the replayed agent inherits.
+func (f *replayFixture) agentPath() string {
+	for _, kv := range f.environ() {
+		if value, ok := strings.CutPrefix(kv, "PATH="); ok {
+			return value
+		}
+	}
+	return ""
 }
 
 func TestReplayPlantMaterializesUnlinkedTestBinary(t *testing.T) {
+	t.Parallel()
 	const childPath = "VERDICT_TEST_UNLINK_EXE"
 	if exe := os.Getenv(childPath); exe != "" {
 		assertReplayAfterUnlink(t, exe)
@@ -1052,7 +1192,7 @@ func assertReplayAfterUnlink(t *testing.T, exe string) {
 	t.Helper()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
-	plantedClaude := filepath.Join(os.Getenv("PATH"), "claude")
+	plantedClaude := filepath.Join(f.agentPath(), "claude")
 	if err := os.Remove(plantedClaude); err != nil {
 		t.Fatal(err)
 	}
@@ -1072,6 +1212,7 @@ func assertReplayAfterUnlink(t *testing.T, exe string) {
 }
 
 func TestReplayPlantAlwaysMaterializes(t *testing.T) {
+	t.Parallel()
 	dst := filepath.Join(t.TempDir(), "claude")
 	plantFakeBinary(t, dst)
 	info, err := os.Lstat(dst)

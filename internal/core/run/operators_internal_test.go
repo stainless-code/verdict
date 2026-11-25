@@ -21,6 +21,7 @@ func operatorDef(name string) config.PersonalAgent {
 // equal to the shipped table: a new row that the parser does not refuse as a
 // name would let a prefs file shadow it.
 func TestBuiltinNamesMatchTheConfigList(t *testing.T) {
+	t.Parallel()
 	got, want := config.BuiltinAgentNames(), AgentNames()
 	slices.Sort(got)
 	slices.Sort(want)
@@ -33,6 +34,7 @@ func TestBuiltinNamesMatchTheConfigList(t *testing.T) {
 // pass-through, prompt placement, print parity, and the provenance marker that
 // says where the definition came from.
 func TestOperatorAgentLaunchAndPrint(t *testing.T) {
+	t.Parallel()
 	defs := []config.PersonalAgent{operatorDef("local")}
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
@@ -71,6 +73,7 @@ func TestOperatorAgentLaunchAndPrint(t *testing.T) {
 // TestOperatorAgentMissingBinaryKeepsItsInstallHint proves a custom row uses
 // the built-in missing-binary refusal and carries its own install step.
 func TestOperatorAgentMissingBinaryKeepsItsInstallHint(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	req := request(root, &scripted{})
 	req.Agent = "local"
@@ -87,6 +90,7 @@ func TestOperatorAgentMissingBinaryKeepsItsInstallHint(t *testing.T) {
 // TestOperatorAgentDiscoveryLabelsBothSources pins the unknown-agent list:
 // built-in names keep their prefix and the prefs names are labeled separately.
 func TestOperatorAgentDiscoveryLabelsBothSources(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	req := request(root, &scripted{})
 	req.Agent = "nope"
@@ -107,6 +111,7 @@ func TestOperatorAgentDiscoveryLabelsBothSources(t *testing.T) {
 // TestOperatorAgentCollisionRefusesSettings pins the no-shadowing rule in the
 // service too, for callers that supply definitions without the prefs parser.
 func TestOperatorAgentCollisionRefusesSettings(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	req := request(root, &scripted{})
 	req.Agent = "claude"
@@ -122,6 +127,7 @@ func TestOperatorAgentCollisionRefusesSettings(t *testing.T) {
 // TestOperatorAgentWithoutModelFlag proves an optional model flag renders no
 // model argument, rather than an empty argument the binary would misread.
 func TestOperatorAgentWithoutModelFlag(t *testing.T) {
+	t.Parallel()
 	def := agentcatalog.Launch{Name: "local", Binary: "local-agent", ModelFlag: "", PromptFlag: "-t"}
 	if got := argvFor(&def, "M", nil, []string{"--x"}, "PROMPT"); !slices.Equal(got,
 		[]string{"local-agent", "--x", "-t", "PROMPT"}) {

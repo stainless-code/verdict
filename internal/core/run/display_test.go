@@ -10,6 +10,7 @@ import (
 
 // TestDisplayPassThrough pins the agent launch contract.
 func TestDisplayPassThrough(t *testing.T) {
+	t.Parallel()
 	args := []string{"--model", "opus", "--max-budget-usd=2.5"}
 	got, safe := displayPassThrough(args, nil)
 	if !safe || !slices.Equal(got, []string{"--model", "opus", "--max-budget-usd=2.5"}) {
@@ -25,6 +26,7 @@ func TestDisplayPassThrough(t *testing.T) {
 
 // TestPrintRefusesUnsafeArguments pins the agent launch contract.
 func TestPrintRefusesUnsafeArguments(t *testing.T) {
+	t.Parallel()
 	req := request(fixtureRoot(t), &scripted{})
 	req.Print = true
 	req.PassThrough = []string{"--custom=private-value-123"}
@@ -36,6 +38,7 @@ func TestPrintRefusesUnsafeArguments(t *testing.T) {
 
 // TestMissingAgentInstallStep pins the agent launch contract.
 func TestMissingAgentInstallStep(t *testing.T) {
+	t.Parallel()
 	req := request(fixtureRoot(t), &scripted{})
 	req.Agent = "codex"
 	req.LookPath = missingLookPath
@@ -47,6 +50,7 @@ func TestMissingAgentInstallStep(t *testing.T) {
 
 // TestAgentProbePrecedesDirective pins the agent launch contract.
 func TestAgentProbePrecedesDirective(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	cmdr := &scripted{write: func() { writeReview(t, bundleDir(root)) }}
 	req := request(root, cmdr)
@@ -64,6 +68,7 @@ func TestAgentProbePrecedesDirective(t *testing.T) {
 
 // TestProvenanceHidesUnknownArguments pins the agent launch contract.
 func TestProvenanceHidesUnknownArguments(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	cmdr := &scripted{write: func() { writeReview(t, bundleDir(root)) }}
 	req := request(root, cmdr)
@@ -85,6 +90,7 @@ func TestProvenanceHidesUnknownArguments(t *testing.T) {
 
 // TestPrintedArgvMatchesSpawn pins the agent launch contract.
 func TestPrintedArgvMatchesSpawn(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	cmdr := &scripted{write: func() { writeReview(t, bundleDir(root)) }}
 	req := request(root, cmdr)

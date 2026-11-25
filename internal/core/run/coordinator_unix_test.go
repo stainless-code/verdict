@@ -14,6 +14,7 @@ import (
 )
 
 func TestCoordinatorOfflineLauncherSkipsEmptyCrossBatches(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	count := filepath.Join(t.TempDir(), "launches")
 	script := "#!/bin/sh\nset -eu\n" +
@@ -25,7 +26,7 @@ func TestCoordinatorOfflineLauncherSkipsEmptyCrossBatches(t *testing.T) {
 		"printf '%s\\n' \"$marker\" >> " + shellLiteral(count) + "\n" +
 		"printf '%s' " + shellLiteral(`{"schema_version":"1","findings":[],"summary":"All changed hunks reviewed.",`+fixtureReceipts+`}`) + " > \"$output\"\n"
 	bin := plantStub(t, "claude", script)
-	req.Commander = coreexec.Watchdog{}
+	req.Commander = stubCommander{inner: coreexec.Watchdog{}, name: "claude", bin: bin}
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatal(ref)

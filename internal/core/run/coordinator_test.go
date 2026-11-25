@@ -227,6 +227,7 @@ func readPhaseObject(t *testing.T, path string) *jq.Obj {
 }
 
 func TestCoordinatorIsolatesAndCrossesBothOrigins(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatalf("%v manifest=%s", ref, jq.Compact(readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))))
@@ -302,6 +303,7 @@ func assertFinderProcedures(t *testing.T, dir string) {
 }
 
 func TestCoordinatorFailedFinderIsPartial(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	commander.fail = true
 	_, ref := TwoFinders(t.Context(), req)
@@ -318,6 +320,7 @@ func TestCoordinatorFailedFinderIsPartial(t *testing.T) {
 }
 
 func TestCoordinatorDriftStopsBeforeNextPhase(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	commander.drift = true
 	commander.repair = true
@@ -338,6 +341,7 @@ func TestCoordinatorDriftStopsBeforeNextPhase(t *testing.T) {
 }
 
 func TestCoordinatorRepairsFinderIndependently(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.RoundsRaw = "2"
 	commander.repair = true
@@ -349,6 +353,7 @@ func TestCoordinatorRepairsFinderIndependently(t *testing.T) {
 }
 
 func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.RoundsRaw = "5"
 	commander.crossRepair = true
@@ -360,6 +365,7 @@ func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
 }
 
 func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.RoundsRaw = "5"
 	commander.crossBroken = true
@@ -376,6 +382,7 @@ func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 // launch, which is where a parallel discovery can see it: both finders' phases
 // are bound by then, so the checkpoint that refuses is the running check's own.
 func TestCoordinatorDetectsChangedCompletedFinder(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	commander.tamper = true
 	_, ref := TwoFinders(t.Context(), req)
@@ -392,6 +399,7 @@ func TestCoordinatorDetectsChangedCompletedFinder(t *testing.T) {
 }
 
 func TestCoordinatorManifestBindsPrivateRepairArtifacts(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.RoundsRaw = "2"
 	commander.repair = true
@@ -425,6 +433,7 @@ func oppositeClaim(phase string) string {
 }
 
 func TestCoordinatorCrossDispatchesOnlyOppositeCandidates(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	commander.distinct = true
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
@@ -454,6 +463,7 @@ func (p *phaseCommander) assertCrossCandidate(phase string, finding any) {
 }
 
 func TestCoordinatorPublishesExecutionSummary(t *testing.T) {
+	t.Parallel()
 	req, _ := coordinatorFixture(t)
 	response, ref := TwoFinders(t.Context(), req)
 	if ref != nil {
@@ -466,6 +476,7 @@ func TestCoordinatorPublishesExecutionSummary(t *testing.T) {
 }
 
 func TestCoordinatorPublishesPartialFailures(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	commander.fail = true
 	response, ref := TwoFinders(t.Context(), req)
@@ -539,6 +550,7 @@ type launcherCase struct {
 // launcher.json from the coordinator's in-memory record, so a stub agent alone
 // cannot leave the marker absent by the time coordinate reaches this call.
 func TestCoordinatorReportsMissingExecutionWithoutPanicking(t *testing.T) {
+	t.Parallel()
 	cases := []launcherCase{
 		{name: "launcher keeps a complete status but loses the execution id", launcher: func(t *testing.T, dir string) {
 			t.Helper()
@@ -564,6 +576,7 @@ func TestCoordinatorReportsMissingExecutionWithoutPanicking(t *testing.T) {
 // TestCoordinatorRefusesMissingExecution proves the tail returns an operator
 // refusal rather than a bare null when no earlier phase refused first.
 func TestCoordinatorRefusesMissingExecution(t *testing.T) {
+	t.Parallel()
 	c := missingExecutionCoordinator(t, func(t *testing.T, dir string) {
 		t.Helper()
 		writeUnder(t, dir, "launcher.json", `{"schema_version":"2","status":"complete"}`)
@@ -580,6 +593,7 @@ func TestCoordinatorRefusesMissingExecution(t *testing.T) {
 }
 
 func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name        string
 		agent       string
@@ -623,6 +637,7 @@ func assertResumePassThrough(t *testing.T, agent string, passThrough []string, r
 }
 
 func TestCoordinatorHandsOffTheAggregateBundle(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	response, ref := Run(t.Context(), req)

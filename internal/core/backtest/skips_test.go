@@ -29,6 +29,7 @@ func newPartialRepo(t *testing.T) (r *repo, base, fix string) {
 // candidate and a skipped row at once: the anchorable line is a bug, and the
 // excluded line is counted with its own position.
 func TestMinePartialAnchorKeepsCandidateAndCountsDrops(t *testing.T) {
+	t.Parallel()
 	r, base, fix := newPartialRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {

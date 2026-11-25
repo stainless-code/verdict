@@ -12,6 +12,7 @@ import (
 // secret values - the environment's and the argument ones the argv redactor
 // hid - while leaving the rest of the output intact.
 func TestScrubSecrets(t *testing.T) {
+	t.Parallel()
 	environ := []string{"GH_TOKEN=ghp_examplevalue", "PATH=/usr/bin"}
 	got := scrubSecrets("auth with ghp_examplevalue failed at /usr/bin/gh", environ, nil)
 	if strings.Contains(got, "ghp_examplevalue") {
@@ -86,6 +87,7 @@ func TestScrubSecretsKeepsItsPolicy(t *testing.T) {
 // bundle, the exact review file, and the boundary. The local variant names
 // source.json instead of PR.json.
 func TestDirectiveNamesTheArtifact(t *testing.T) {
+	t.Parallel()
 	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false, false,
 		builtinPlan(t))
 	for _, want := range []string{
@@ -130,6 +132,7 @@ const pipelineDirective = "Review acme/app PR 42 and write exactly one review fi
 // metadata file swapped in the argument list reads as "the bundle at PR.json:
 // .verdict/state/42" while all of them still pass.
 func TestDirectiveIsByteExact(t *testing.T) {
+	t.Parallel()
 	got := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false, false,
 		builtinPlan(t))
 	if got != pipelineDirective {
@@ -144,6 +147,7 @@ func TestDirectiveIsByteExact(t *testing.T) {
 // argument of directive's outer Sprintf and render "Write %!s(MISSING) with
 // ...".
 func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
+	t.Parallel()
 	bundle := "/checkouts/%s/%d/100%%/42"
 	artifact := bundle + "/review.json"
 	plan := builtinPlan(t)
@@ -163,6 +167,7 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 // TestStageDirectivesKeepThePercentPathLiteral pins the two write instructions:
 // stage 1 creates the placeholder, and stage 2 preserves what it replaced.
 func TestStageDirectivesKeepThePercentPathLiteral(t *testing.T) {
+	t.Parallel()
 	bundle := "/checkouts/%s/%d/100%%/42"
 	artifact := bundle + "/review.json"
 	plan := builtinPlan(t)
@@ -213,6 +218,7 @@ func assertAgentTableFields(t *testing.T, table []string) {
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {
+	t.Parallel()
 	table := tableNames()
 	if !slices.IsSorted(table) {
 		t.Errorf("agent table is not sorted: %v", table)

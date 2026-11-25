@@ -11,6 +11,7 @@ import (
 )
 
 func TestLaunchTargetSeparatesEvidenceAndOutput(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	evidence := bundleDir(root)
 	output := filepath.Join(evidence, "x-finder-1")
@@ -36,6 +37,7 @@ func TestLaunchTargetSeparatesEvidenceAndOutput(t *testing.T) {
 }
 
 func TestLaunchTargetChecker(t *testing.T) {
+	t.Parallel()
 	checked := false
 	args := &launchArgs{target: launchTarget{
 		evidence: "evidence",
@@ -60,6 +62,7 @@ func TestLaunchTargetChecker(t *testing.T) {
 }
 
 func TestLaunchTargetDefaultCheckerReadsEvidence(t *testing.T) {
+	t.Parallel()
 	dir := bundleDir(fixtureRoot(t))
 	args := &launchArgs{dir: filepath.Join(dir, "x-finder-1"), target: launchTarget{evidence: dir}}
 	result, ref := args.checkReview([]byte(reviewDoc))
