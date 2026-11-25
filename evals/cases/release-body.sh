@@ -253,6 +253,9 @@ cat > "$BIG/node_modules/.bin/changeset" <<EOF
 echo "changeset \$*" >> "$BIG/git.log"
 EOF
 chmod +x "$BIG/bin/git" "$BIG/node_modules/.bin/changeset"
+# A seeded log lets the absence check below prove the omission: a log that was
+# never written cannot pass as "no call".
+printf 'call log\n' > "$BIG/git.log"
 set +e
 PATH="$BIG/bin:$EVAL_STUBBIN:$PATH" bash "$BIG/scripts/release.sh" tag >"$EVAL_OUT" 2>"$EVAL_ERR"
 EVAL_STATUS=$?
@@ -267,10 +270,6 @@ if matches -F "GitHub refuses a release body over 125000" "$EVAL_ERR"; then
 else
   bad "the failure does not name the body limit: $(cat "$EVAL_ERR")"
 fi
-if [ -s "$BIG/git.log" ]; then
-  bad "the tag stage tagged before the body check: $(cat "$BIG/git.log")"
-else
-  good "the tag stage made no changeset or git call"
-fi
+assert_file_nogrep "the tag stage made no changeset or git call" "$BIG/git.log" '^(git|changeset) ' -E
 
 eval_end
