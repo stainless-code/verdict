@@ -2,6 +2,7 @@ package core
 
 import (
 	"context"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -261,5 +262,127 @@ func checkEndpointConflict(t *testing.T, name string, env map[string]string, nam
 		if !strings.Contains(ref.Message, s) {
 			t.Errorf("%s: refusal does not name %q: %s", name, s, ref.Message)
 		}
+	}
+}
+
+func envOf(env map[string]string) func(string) string {
+	return func(k string) string { return env[k] }
+}
+
+// TestPinHostArgvInRunsAPortedGlabHostUnpinned pins the one host the pin
+// cannot name: glab's --hostname takes no port, so on a host with a port the
+// call carries no host at all and reaches glab's default, which GITLAB_HOST
+// makes that host. The want is the literal argv glab receives: no --hostname,
+// and -R as the bare group/project.
+func TestPinHostArgvInRunsAPortedGlabHostUnpinned(t *testing.T) {
+	t.Parallel()
+	const host = "gitlab.corp.example:8443"
+	env := envOf(map[string]string{"GITLAB_HOST": "https://gitlab.corp.example:8443"})
+	for _, tc := range []struct {
+		name     string
+		in, want []string
+	}{
+		{"api read", []string{"glab", "api", "projects/g%2Fapp/merge_requests/7"}, []string{"glab", "api", "projects/g%2Fapp/merge_requests/7"}},
+		{
+			"api review POST",
+			[]string{"glab", "api", "projects/g%2Fapp/merge_requests/7/notes", "--method", "POST", "--input", "-"},
+			[]string{"glab", "api", "projects/g%2Fapp/merge_requests/7/notes", "--method", "POST", "--input", "-"},
+		},
+		{"mr view, bare repo", []string{"glab", "mr", "view", "7", "-R", "g/app"}, []string{"glab", "mr", "view", "7", "-R", "g/app"}},
+		{
+			"mr list, repo as the lookup's URL",
+			[]string{"glab", "mr", "list", "-R", "https://gitlab.corp.example:8443/g/sub/app", "--source-branch=fix-x"},
+			[]string{"glab", "mr", "list", "-R", "g/sub/app", "--source-branch=fix-x"},
+		},
+		{"auth status", []string{"glab", "auth", "status"}, []string{"glab", "auth", "status"}},
+		{"version touches no host", []string{"glab", "--version"}, []string{"glab", "--version"}},
+	} {
+		got, ref := PinHostArgvIn(tc.in, host, env)
+		if ref != nil || !slices.Equal(got, tc.want) {
+			t.Errorf("%s: PinHostArgvIn(%q) = %q, %v; want %q", tc.name, tc.in, got, ref, tc.want)
+		}
+	}
+}
+
+// TestPinHostArgvInRefusesWhatStaysAmbiguousUnpinned pins the fail-closed half
+// of the unpinned form: with the environment right, a call that names a host of
+// its own, or whose repository glab could read as a host, still refuses; and
+// gh, which has no unpinned form, refuses a ported host whatever the env says.
+func TestPinHostArgvInRefusesWhatStaysAmbiguousUnpinned(t *testing.T) {
+	t.Parallel()
+	const host = "gitlab.corp.example:8443"
+	env := envOf(map[string]string{"GITLAB_HOST": host, "GH_HOST": host})
+	for _, tc := range []struct {
+		name, host string
+		argv       []string
+	}{
+		{"api naming --hostname", host, []string{"glab", "api", "--hostname", "gitlab.corp.example", "user"}},
+		{"api with a repo flag", host, []string{"glab", "api", "user", "-R", "g/app"}},
+		{"api absolute URL", host, []string{"glab", "api", "https://gitlab.other.example/api/v4/user"}},
+		{"auth status naming a host", host, []string{"glab", "auth", "status", "--hostname", "gitlab.other.example"}},
+		{"mr repo URL on another host", host, []string{"glab", "mr", "view", "7", "-R", "https://gitlab.other.example/g/app"}},
+		{"mr repo URL on the same host, another port", host, []string{"glab", "mr", "view", "7", "-R", "https://gitlab.corp.example:9443/g/app"}},
+		{"mr repo with a host-looking first segment", host, []string{"glab", "mr", "view", "7", "-R", "gitlab.other.example/g/app"}},
+		{"mr repo with a colon", host, []string{"glab", "mr", "view", "7", "-R", "gitlab.other.example:8443/g/app"}},
+		{"mr repo as a git URL", host, []string{"glab", "mr", "view", "7", "-R", "git@gitlab.other.example:g/app.git"}},
+		{"mr two repos", host, []string{"glab", "mr", "view", "7", "-R", "g/app", "-R", "g/other"}},
+		{"mr unnamed repo", host, []string{"glab", "mr", "view", "7"}},
+		{"unknown subcommand", host, []string{"glab", "issue", "list"}},
+		{"gh on a ported host", "ghe.corp.example:8443", []string{"gh", "api", "user"}},
+	} {
+		got, ref := PinHostArgvIn(tc.argv, tc.host, env)
+		if ref == nil || ref.Code != CodeHostMismatch {
+			t.Errorf("%s: PinHostArgvIn = %q, %v; want a host-mismatch refusal", tc.name, got, ref)
+		}
+	}
+}
+
+// TestGlabDefaultConflict pins exactly which environment lets a ported glab
+// host run unpinned: GITLAB_HOST names the authority with its port, no other
+// variable moves glab's host or API server, and anything else refuses naming
+// the variable to fix. Each env is literal; a case that must refuse names the
+// text the operator needs to act on.
+func TestGlabDefaultConflict(t *testing.T) {
+	t.Parallel()
+	const host = "gitlab.corp.example:8443"
+	ci := map[string]string{"GLAB_ENABLE_CI_AUTOLOGIN": "true", "GITLAB_CI": "true"}
+	with := func(base map[string]string, kv ...string) map[string]string {
+		out := maps.Clone(base)
+		for i := 0; i < len(kv); i += 2 {
+			out[kv[i]] = kv[i+1]
+		}
+		return out
+	}
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want string // "" allows; else a substring of the refusal
+	}{
+		{"URL form", map[string]string{"GITLAB_HOST": "https://gitlab.corp.example:8443"}, ""},
+		{"bare form, any case", map[string]string{"GITLAB_HOST": "GitLab.Corp.Example:8443"}, ""},
+		{"trailing slash", map[string]string{"GITLAB_HOST": "https://gitlab.corp.example:8443/"}, ""},
+		{"API host is the same", map[string]string{"GITLAB_HOST": host, "GITLAB_API_HOST": "https://" + host}, ""},
+		{"CI auto-login names it too", with(ci, "GITLAB_HOST", host, "CI_SERVER_FQDN", host), ""},
+		{"GITLAB_HOST unset", map[string]string{}, "GITLAB_HOST is unset"},
+		{"GITLAB_HOST another port", map[string]string{"GITLAB_HOST": "gitlab.corp.example:9443"}, "GITLAB_HOST is gitlab.corp.example:9443"},
+		{"GITLAB_HOST no port", map[string]string{"GITLAB_HOST": "gitlab.corp.example"}, "GITLAB_HOST is gitlab.corp.example"},
+		{"GITLAB_HOST another host", map[string]string{"GITLAB_HOST": "gitlab.other.example:8443"}, "GITLAB_HOST is gitlab.other.example:8443"},
+		{"GITLAB_HOST with a subfolder", map[string]string{"GITLAB_HOST": host + "/gitlab"}, "carries a path"},
+		{"API host elsewhere", map[string]string{"GITLAB_HOST": host, "GITLAB_API_HOST": "gitlab.corp.example"}, "GITLAB_API_HOST names gitlab.corp.example "},
+		{"GITLAB_REPO set", map[string]string{"GITLAB_HOST": host, "GITLAB_REPO": "g/app"}, "GITLAB_REPO"},
+		{"CI auto-login, FQDN unset", with(ci, "GITLAB_HOST", host), "CI_SERVER_FQDN (unset)"},
+		{"CI auto-login, FQDN elsewhere", with(ci, "GITLAB_HOST", host, "CI_SERVER_FQDN", "gitlab.corp.example"), "CI_SERVER_FQDN (gitlab.corp.example)"},
+	} {
+		checkGlabDefault(t, tc.name, GlabDefaultConflict(host, envOf(tc.env)), tc.want)
+	}
+}
+
+func checkGlabDefault(t *testing.T, name string, ref *RefusalError, want string) {
+	t.Helper()
+	switch {
+	case want == "" && ref != nil:
+		t.Errorf("%s: refused, want the unpinned form allowed: %v", name, ref)
+	case want != "" && (ref == nil || ref.Code != CodeHostMismatch || !strings.Contains(ref.Message, want)):
+		t.Errorf("%s: GlabDefaultConflict = %v, want a host-mismatch refusal containing %q", name, ref, want)
 	}
 }

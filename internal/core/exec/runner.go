@@ -102,9 +102,13 @@ func (r Runner) argv(ctx context.Context, cmd *core.Command) ([]string, error) {
 		return nil, err
 	}
 	host := core.HostOf(ctx)
-	argv, ref := core.PinHostArgv(cmd.Argv, host)
+	getenv := func(string) string { return "" }
+	if host != "" && filepath.Base(cmd.Argv[0]) == glabBin {
+		getenv = envLookup(childEnviron(cmd))
+	}
+	argv, ref := core.PinHostArgvIn(cmd.Argv, host, getenv)
 	if ref == nil && host != "" && filepath.Base(cmd.Argv[0]) == glabBin {
-		ref = core.GlabEndpointConflict(host, envLookup(childEnviron(cmd)))
+		ref = core.GlabEndpointConflict(host, getenv)
 	}
 	if ref != nil {
 		return nil, ref //nolint:wrapcheck // the typed refusal reaches the verb as is, so its code renders
