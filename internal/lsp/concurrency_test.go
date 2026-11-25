@@ -299,7 +299,7 @@ func TestUNCRootIsNeverProbed(t *testing.T) {
 	s.windows = true
 	s.cfg.eval = spy.eval
 	root := newServedRoot(`\\server\share\repo`, true)
-	if got := s.physicalRoot(&root); got != "" || spy.calls.Load() != 0 {
+	if got, _ := s.physicalRoot(&root); got != "" || spy.calls.Load() != 0 {
 		t.Fatalf("a UNC root resolved to %q after %d probes", got, spy.calls.Load())
 	}
 }

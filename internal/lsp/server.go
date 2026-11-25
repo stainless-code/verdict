@@ -36,6 +36,9 @@ const (
 	// maxFindingsTracked bounds the findings one bundle contributes; past
 	// it the highest-ranked findings are kept and the rest are reported cut.
 	maxFindingsTracked = 20_000
+	// maxSlowPaths bounds the walk misses remembered for log de-duplication;
+	// past it an arbitrary one is forgotten (at worst it logs again).
+	maxSlowPaths = 256
 	// shutdownGrace is how long `shutdown` lets in-flight requests finish
 	// before canceling the rest.
 	shutdownGrace = 5 * time.Second
@@ -86,6 +89,9 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 	// eval resolves a path's physical spelling; tests fake it with
 	// Windows-shaped inputs. nil is filepath.EvalSymlinks.
 	eval func(string) (string, error)
+	// checkout probes a root's checkout; tests fake a hung volume. nil is
+	// checkoutProblem.
+	checkout func(dir string) string
 	// expire replaces the resolve budget's clock (see resolver.expire);
 	// nil is the wall-clock lim.resolve.
 	expire func(key string) <-chan struct{}
@@ -140,10 +146,11 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	writeErr error
 	closed   bool
 
-	// logMu guards the queued log lines and the paths already reported slow.
+	// logMu guards the queued log lines and the paths whose last walk miss
+	// was reported (pruned when the path resolves, bounded by maxSlowPaths).
 	logMu    sync.Mutex
 	pendLogs []logMessageParams
-	slow     map[string]bool
+	slow     map[string]miss
 	resolver *resolver
 
 	// bgMu and bgClosed gate the background group: work starts only while
@@ -211,6 +218,9 @@ func New(cfg *Config) *Server {
 	if c.eval == nil {
 		c.eval = evalOS
 	}
+	if c.checkout == nil {
+		c.checkout = checkoutProblem
+	}
 	if c.MaxRoots <= 0 || c.MaxRoots > MaxRoots {
 		c.MaxRoots = DefaultMaxRoots
 	}
@@ -223,7 +233,7 @@ func New(cfg *Config) *Server {
 		lim:       lim,
 		windows:   runtime.GOOS == "windows",
 		calls:     map[string]context.CancelFunc{},
-		slow:      map[string]bool{},
+		slow:      map[string]miss{},
 		resolver:  res,
 		queue:     jobQueue{limit: lim.inflight, capacity: lim.queued},
 		states:    map[string]*bundleState{},
@@ -238,7 +248,9 @@ func New(cfg *Config) *Server {
 }
 
 // rootsOf derives the served form of absolute OS paths, deduplicated by
-// identity and bounded by MaxRoots.
+// identity and bounded by MaxRoots. The physical spellings resolve
+// concurrently under the resolver's bounds, so N roots on a hung volume cost
+// about one budget, not N; the roots and their log lines keep input order.
 func (s *Server) rootsOf(paths []string) []servedRoot {
 	roots := make([]servedRoot, 0, len(paths))
 	seen := map[string]bool{}
@@ -247,23 +259,29 @@ func (s *Server) rootsOf(paths []string) []servedRoot {
 		if seen[root.ID] || len(roots) >= s.cfg.MaxRoots {
 			continue
 		}
-		root.physical = s.physicalRoot(&root)
 		seen[root.ID] = true
 		roots = append(roots, root)
+	}
+	misses := make([]miss, len(roots))
+	s.resolver.each(len(roots), func(i int) {
+		roots[i].physical, misses[i] = s.physicalRoot(&roots[i])
+	})
+	for i := range roots {
+		s.noteMiss(roots[i].slash, misses[i])
 	}
 	return roots
 }
 
-// physicalRoot resolves a root's physical spelling. A UNC root is never
-// probed: its slash spelling has the host stripped, so probing it would
-// resolve an unrelated local path. It walks the filesystem; it never runs
-// under stateMu.
-func (s *Server) physicalRoot(root *servedRoot) string {
+// physicalRoot resolves a root's physical spelling without logging a miss
+// (the caller does, in order). A UNC root is never probed: its slash
+// spelling has the host stripped, so probing it would resolve an unrelated
+// local path. It walks the filesystem; it never runs under stateMu.
+func (s *Server) physicalRoot(root *servedRoot) (string, miss) {
 	if root.host != "" {
-		return ""
+		return "", missNone
 	}
-	phys, _ := s.physicalOf(root.slash)
-	return phys
+	phys, _, why := s.walkPhysical(root.slash)
+	return phys, why
 }
 
 // physicalOf resolves one absolute slash path through the bounded resolver.
@@ -271,26 +289,76 @@ func (s *Server) physicalRoot(root *servedRoot) string {
 // reads as unresolved: the caller matches by the spelling it was given and a
 // later save resolves again. It never blocks longer than the budget.
 func (s *Server) physicalOf(p string) (string, bool) {
-	phys, ok, timedOut := s.resolver.run("path\x00"+p, func() (string, bool) {
-		return physicalPath(p, s.windows, s.cfg.eval)
-	})
-	if timedOut {
-		s.noteSlow(p)
-	}
+	phys, ok, why := s.walkPhysical(p)
+	s.noteMiss(p, why)
 	return phys, ok
 }
 
-// noteSlow queues one log line the first time a path's walk misses the
-// budget.
-func (s *Server) noteSlow(p string) {
-	s.logMu.Lock()
-	first := !s.slow[p]
-	s.slow[p] = true
-	s.logMu.Unlock()
-	if first {
-		s.queueLogf(msgWarning, "verdict: resolving %s took longer than %s; it is matched by the spelling "+
-			"given until a later save resolves it", p, s.lim.resolve)
+func (s *Server) walkPhysical(p string) (string, bool, miss) {
+	return s.resolver.run("path\x00"+p, func() (string, bool) {
+		return physicalPath(p, s.windows, s.cfg.eval)
+	})
+}
+
+// noteMiss reports a walk's outcome for p: a resolved path is forgotten, a
+// miss is logged the first time (and again if its cause changes). Once the
+// session is up the line goes out at once; before that it waits for the
+// initialize answer, which nothing may precede.
+func (s *Server) noteMiss(p string, why miss) {
+	if !s.recordMiss(p, why) {
+		return
 	}
+	s.queueLogf(msgWarning, "verdict: %s", s.missText(p, why))
+	if s.isInitialized() {
+		s.flushLogs()
+	}
+}
+
+// recordMiss updates the slow-path table and reports whether the miss is new
+// news: a first miss, or one whose cause differs from the last reported.
+func (s *Server) recordMiss(p string, why miss) bool {
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
+	if why == missCanceled {
+		return false
+	}
+	if why == missNone {
+		delete(s.slow, p)
+		return false
+	}
+	last, seen := s.slow[p]
+	if !seen {
+		s.evictSlow()
+	}
+	s.slow[p] = why
+	return !seen || last != why
+}
+
+// evictSlow makes room for one more path in the slow table by forgetting an
+// arbitrary one when it is full; the worst case is that path logs again.
+func (s *Server) evictSlow() {
+	if len(s.slow) < maxSlowPaths {
+		return
+	}
+	for k := range s.slow {
+		delete(s.slow, k)
+		return
+	}
+}
+
+func (s *Server) missText(p string, why miss) string {
+	const fallback = "it is matched by the spelling given until a later save resolves it"
+	if why == missNoSlot {
+		return fmt.Sprintf("resolving %s was skipped: all %d filesystem walks are still outstanding (a volume may be "+
+			"hung); %s", p, s.resolver.limit, fallback)
+	}
+	return fmt.Sprintf("resolving %s took longer than %s; %s", p, s.lim.resolve, fallback)
+}
+
+func (s *Server) isInitialized() bool {
+	s.callMu.Lock()
+	defer s.callMu.Unlock()
+	return s.initialized
 }
 
 // goBackground starts fn on the background group unless teardown has closed
@@ -411,6 +479,7 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interru
 	s.out = out
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	s.resolver.stop = ctx.Done()
 	read := make(chan error, 1)
 	go func() { read <- s.readLoop(ctx, in) }()
 	var readErr error
@@ -531,17 +600,25 @@ func (s *Server) drain() {
 }
 
 // startPump consumes the layer's invalidations until stopPump. Each change
-// recomposes the named root and republishes. The caller holds callMu.
+// recomposes the named root and republishes. The caller holds no lock: the
+// watcher's baseline snapshot walks the disk, and holding callMu (which every
+// incoming frame takes) or stateMu across it would stall the read loop. The
+// pump's slot is reserved under callMu first, so a concurrent stopPump finds
+// it and waits for the goroutine started below.
 func (s *Server) startPump(ctx context.Context) {
+	s.callMu.Lock()
 	if s.cfg.NoWatch || s.pumpCancel != nil || s.shutdown {
+		s.callMu.Unlock()
 		return
 	}
 	pumpCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	s.pumpCancel, s.pumpDone = cancel, done
+	s.callMu.Unlock()
 	s.stateMu.Lock()
-	changes := s.layer.Changes(pumpCtx)
+	layer := s.layer
 	s.stateMu.Unlock()
+	changes := layer.Changes(pumpCtx)
 	go func() {
 		defer close(done)
 		for change := range changes {

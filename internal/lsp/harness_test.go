@@ -145,6 +145,13 @@ func newConfig(roots ...string) *Config {
 
 func startSession(t *testing.T, cfg *Config) *session {
 	t.Helper()
+	return startSessionCtx(context.Background(), t, cfg)
+}
+
+// startSessionCtx is startSession with the session's own context, so a test
+// can cancel it the way a client that dies does.
+func startSessionCtx(ctx context.Context, t *testing.T, cfg *Config) *session {
+	t.Helper()
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	server := New(cfg)
@@ -153,7 +160,7 @@ func startSession(t *testing.T, cfg *Config) *session {
 		server: server, writes: make(chan []byte, 4096),
 	}
 	go func() {
-		err := server.Serve(context.Background(), inR, outW)
+		err := server.Serve(ctx, inR, outW)
 		_ = outW.Close()
 		s.done <- err
 	}()
