@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // fakeLookPath answers the installed-binary set a test declares.
@@ -240,7 +241,7 @@ func runPickedInit(t *testing.T, tc *pickCase) string {
 	dir := t.TempDir()
 	picker, prompts := scriptedPicker(tc.answers, tc.remote, tc.installed, true, true)
 	r, _ := testRunner()
-	if code := Run(t.Context(), r, nil, Request{RepoRoot: dir, Picker: picker}); code != cli.ExitOK {
+	if code := run(t.Context(), r, nil, &readcommon.Request{RepoRoot: dir}, picker); code != cli.ExitOK {
 		t.Fatalf("picked init exit = %d\n%s", code, prompts)
 	}
 	if prompts.Len() == 0 {
@@ -254,7 +255,7 @@ func runExplicitInit(t *testing.T, args []string) string {
 	t.Helper()
 	dir := t.TempDir()
 	r, _ := testRunner()
-	if code := Run(t.Context(), r, args, Request{RepoRoot: dir}); code != cli.ExitOK {
+	if code := Run(t.Context(), r, args, readcommon.Request{RepoRoot: dir}); code != cli.ExitOK {
 		t.Fatalf("explicit init %q exit = %d", args, code)
 	}
 	return dir
@@ -358,7 +359,7 @@ func checkPickerStaysOut(t *testing.T, tc *gateCase) {
 	picker, prompts := scriptedPicker("", "", nil, tc.stdinTTY, tc.stdoutTTY)
 	r, _ := testRunner()
 	r.JSONMode = tc.json
-	if code := Run(t.Context(), r, tc.args, Request{RepoRoot: dir, Picker: picker}); code != cli.ExitOK {
+	if code := run(t.Context(), r, tc.args, &readcommon.Request{RepoRoot: dir}, picker); code != cli.ExitOK {
 		t.Fatalf("exit = %d, want 0 (the picker read stdin)", code)
 	}
 	if prompts.Len() != 0 {
@@ -465,7 +466,7 @@ func TestRunCancelInsideAPromptExitsCanceled(t *testing.T) {
 	}
 	r, out := testRunner()
 	done := make(chan int, 1)
-	go func() { done <- Run(ctx, r, nil, Request{RepoRoot: dir, Picker: picker}) }()
+	go func() { done <- run(ctx, r, nil, &readcommon.Request{RepoRoot: dir}, picker) }()
 	waitPrompt(t, prompts, "preset (")
 	cancel()
 	select {
@@ -495,7 +496,7 @@ func TestPickerAbortWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	picker, _ := scriptedPicker("standard\n", "git@github.com:o/r.git", nil, true, true)
 	r, diag := testRunner()
-	if code := Run(t.Context(), r, nil, Request{RepoRoot: dir, Picker: picker}); code != cli.ExitRefused {
+	if code := run(t.Context(), r, nil, &readcommon.Request{RepoRoot: dir}, picker); code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
 	}
 	if _, err := os.Lstat(filepath.Join(dir, ".verdict")); !os.IsNotExist(err) {

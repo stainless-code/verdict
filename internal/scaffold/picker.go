@@ -16,6 +16,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -70,11 +71,10 @@ type Picker struct {
 // streams are terminals, and answers the flags it resolved. A run that named
 // any selection flag, set --json, or has a redirected stream never prompts: CI,
 // evals, and scripts keep the non-interactive behavior they already had.
-func pickIfInteractive(ctx context.Context, r *cli.Runner, req Request, f *flags) (int, bool) {
+func pickIfInteractive(ctx context.Context, r *cli.Runner, req *readcommon.Request, picker *Picker, f *flags) (int, bool) {
 	if f.given || r.JSONMode {
 		return 0, false
 	}
-	picker := req.Picker
 	if picker == nil {
 		picker = productionPicker(r, req)
 	}
@@ -386,7 +386,7 @@ func cutAuthority(rest string) string {
 // productionPicker is the seam the shipped CLI installs: the real stdin, the
 // diagnostic stream for prompts, the two terminal probes, and the PATH and git
 // probes.
-func productionPicker(r *cli.Runner, req Request) *Picker {
+func productionPicker(r *cli.Runner, req *readcommon.Request) *Picker {
 	return &Picker{
 		In:        os.Stdin,
 		Out:       r.Diag,

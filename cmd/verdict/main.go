@@ -437,7 +437,7 @@ func dispatchMutating(
 	if code, ok := dispatchFetch(ctx, cmd, r, rest, req); ok {
 		return code, true
 	}
-	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest); ok {
+	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest, req); ok {
 		return code, true
 	}
 	switch cmd {
@@ -488,10 +488,11 @@ func dispatchStoreVerbs(
 // small enough to read.
 func dispatchLocal(
 	ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string,
+	req readcommon.Request,
 ) (int, bool) {
 	switch cmd {
 	case "init":
-		return scaffold.Run(ctx, r, rest, scaffold.Request{Env: env, RepoRoot: repoRoot}), true
+		return scaffold.Run(ctx, r, rest, req), true
 	case cmdBacktest:
 		return backtestverb.Run(ctx, r, rest, backtestverb.Request{
 			Env: env, Root: root, RepoRoot: repoRoot,
