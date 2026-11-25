@@ -286,6 +286,7 @@ fi
 
 run_review next --coverage
 assert_exit "next --coverage requires positionals" 2
-assert_file_grep "missing positionals lead with an error" "$EVAL_ERR" '^error: next requires <owner/repo> and <pr\|local-name>$'
+assert_file_grep "missing positionals lead with the target refusal" "$EVAL_ERR" '^error: no target given .*verdict next <owner/repo> <pr>' "-E"
+assert_file_grep "the refusal ends with next's usage line" "$EVAL_ERR" '^usage: verdict next <owner/repo> <pr> '
 
 eval_end

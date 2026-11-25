@@ -32,6 +32,11 @@ type HostCapabilities struct {
 	// implementations to it, so a host cannot be advertised before it is built.
 	Ready  bool
 	PRWait bool
+	// BranchLookup says the host CLI can list the open pull request whose head
+	// is a branch (`gh pr list --head`, `glab mr list --source-branch`), which
+	// target inference asks only for verbs that already talk to the host.
+	// Internal like Ready and PRWait; a test pins the lookup argv to it.
+	BranchLookup bool
 	// ReviewVerdicts is the compatibility sum of Approve and RequestChanges.
 	// CapabilitiesFor derives it, so no table row can claim a verdict pair it
 	// does not carry; new readers branch on the two split flags instead.
@@ -112,11 +117,11 @@ var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
-		ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
+		ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 	},
 	providerGitLab: {
 		Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true,
-		Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
+		Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 	},
 	providerGitCafe: {Provider: providerGitCafe, Fetch: true},
 	providerForgejo: {
@@ -154,6 +159,12 @@ func ReadyProviders() []string {
 // surface that advertises the verb's providers reads this list.
 func PRWaitProviders() []string {
 	return providersWith(func(c HostCapabilities) bool { return c.PRWait })
+}
+
+// BranchLookupProviders lists the hosts whose CLI can name the open pull
+// request for a branch, sorted.
+func BranchLookupProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.BranchLookup })
 }
 
 func providersWith(has func(HostCapabilities) bool) []string {

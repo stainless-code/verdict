@@ -22,7 +22,8 @@ func usageText() string {
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    <owner/repo> <pr> may be one pull/merge request URL (it implies --provider), or omitted: the pair is then read\n" +
-		"    offline from the origin remote and the bundle recorded for the current branch (docs/manual.md § Targets).\n" +
+		"    from the origin remote and the bundle recorded for the current branch, or, when none records it, the\n" +
+		"    host CLI's open PR for that branch (docs/manual.md § Targets).\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -743,7 +744,9 @@ func usageText() string {
 		"  Targets: every verb that takes <owner/repo> <pr> also takes one pull/merge request URL in their place\n" +
 		"  (github, gitlab, forgejo, bitbucket, azure; a self-hosted host only when GITLAB_HOST or FORGEJO_HOST maps it),\n" +
 		"  and with no positionals infers the pair from the origin remote and the recorded bundle whose head ref is the\n" +
-		"  current branch. A derived target is echoed on stderr; an ambiguous one refuses with the args to pass.\n" +
+		"  current branch (fetch, pr-wait, ready, threads, and drain --post also ask the host's CLI for the branch's open PR\n" +
+		"  when no bundle records it). A derived target is echoed on stderr; no resolvable target exits 2 with the refusal and\n" +
+		"  the verb's usage line.\n" +
 		"  fetch-local keeps <owner/repo> <name>.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
@@ -815,11 +818,4 @@ func arityUsage(cmd, repo, pr string) bool {
 
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
-}
-
-func arityText(cmd string) string {
-	if cmd == "next" {
-		return "error: next requires <owner/repo> and <pr|local-name>\n" + usageText()
-	}
-	return usageText()
 }

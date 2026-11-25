@@ -181,7 +181,8 @@ func TestEnvelopeNormalizationRefusesMissingOrMalformedTimestamps(t *testing.T) 
 	}
 }
 
-// TestMisplacedFlagFetchRefusesAtTheFrontDoor pins usage, no bundle.
+// TestMisplacedFlagFetchRefusesAtTheFrontDoor pins the usage-class refusal
+// (a global flag is not a target), no bundle.
 func TestMisplacedFlagFetchRefusesAtTheFrontDoor(t *testing.T) {
 	hermeticEnv(t)
 	t.Setenv("PATH", t.TempDir())
@@ -191,11 +192,11 @@ func TestMisplacedFlagFetchRefusesAtTheFrontDoor(t *testing.T) {
 	if got.code != cli.ExitUsage {
 		t.Fatalf("fetch --color always exit = %d; want %d (stderr: %s)", got.code, cli.ExitUsage, got.err)
 	}
-	if got.err != usageText() {
-		t.Fatalf("stderr is not the usage block:\n%s", got.err)
+	if !strings.Contains(got.err, "error: no target given") || !strings.Contains(got.err, "\nusage: verdict fetch <owner/repo> <pr> ") {
+		t.Fatalf("stderr is not the target refusal plus the fetch usage line:\n%s", got.err)
 	}
 	if got.out != "" {
-		t.Errorf("stdout = %q; want the usage block on stderr only", got.out)
+		t.Errorf("stdout = %q; want the refusal on stderr only", got.out)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".verdict", "state")); err == nil {
 		t.Error("the refused fetch wrote a .verdict/state bundle")

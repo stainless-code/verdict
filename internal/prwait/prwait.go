@@ -90,3 +90,12 @@ func render(r *cli.Runner, req readcommon.Request, resp *readycore.WaitResponse)
 		fmt.Fprintln(r.Out, resp.Data.Wire().MarshalCompact())
 	}
 }
+
+// CheckFlags validates pr-wait's flags alone, refusing exactly as Run would,
+// so the front door rejects a mistyped flag before any host lookup.
+func CheckFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	if ref := Parse(args, &readycore.WaitRequest{}); ref != nil {
+		return r.Refuse(ref), true
+	}
+	return 0, false
+}
