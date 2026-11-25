@@ -301,7 +301,7 @@ func (c *coordinator) crossAttempt(ctx context.Context, args *launchArgs, attemp
 	if ref := c.check(); ref != nil {
 		return ref
 	}
-	args.argv = argvFor(&args.def, args.model(), args.restriction, c.st.req.PassThrough, args.prompt)
+	args.argv = argvFor(&args.def, args.model(), args.fixed(), c.st.req.PassThrough, args.prompt)
 	var ref *core.RefusalError
 	out.response, ref = worker.launch(ctx, args)
 	if drift := c.phaseEnded(ctx); drift != nil {

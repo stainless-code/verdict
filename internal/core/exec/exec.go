@@ -9,6 +9,7 @@ package exec
 import (
 	"context"
 	"errors"
+	"io"
 	osexec "os/exec"
 	"sync"
 	"sync/atomic"
@@ -31,12 +32,12 @@ type Watchdog struct{}
 // errors; completed processes — any exit code — come back as results.
 func (Watchdog) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	if len(cmd.Argv) == 0 {
-		return core.Result{}, errEmptyArgv
+		return core.Result{}, &core.StartError{Err: errEmptyArgv}
 	}
 	var expired atomic.Bool
 	proc, waitDone, out, term, err := spawnWatched(ctx, cmd, &expired)
 	if err != nil {
-		return core.Result{}, err
+		return core.Result{}, &core.StartError{Err: err}
 	}
 	defer releaseTree(proc)
 	timedOut := false
@@ -57,6 +58,7 @@ func (Watchdog) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 		TimedOut:        timedOut,
 		Decoy:           decoy,
 		StdoutTruncated: out.Truncated(),
+		StdoutTapped:    cmd.StdoutTap != nil,
 	}, nil
 }
 
@@ -80,6 +82,11 @@ func spawnWatched(ctx context.Context, cmd *core.Command,
 	proc.WaitDelay = waitDelay
 	out := newBoundedBuffer(outputCap(cmd.OutputCap, VerifyOutputCap), captureTail)
 	proc.Stdout = out
+	if cmd.StdoutTap != nil {
+		// The tap reads stdout alone, uncapped by the tail capture: stderr
+		// never reaches it.
+		proc.Stdout = io.MultiWriter(out, cmd.StdoutTap)
+	}
 	proc.Stderr = out
 	proc.Env = cmd.Env
 	proc.Stdin = cmd.Stdin

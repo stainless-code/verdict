@@ -1,0 +1,1 @@
+{"type":"result","subtype":"success","is_error":false,"duration_ms":48210,"duration_api_ms":46102,"num_turns":9,"result":"Wrote .verdict/state/local-x/review.json.","stop_reason":"

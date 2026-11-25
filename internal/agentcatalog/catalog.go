@@ -27,50 +27,52 @@ type MCP struct {
 
 // Launch describes one non-interactive invocation.
 type Launch struct {
-	PermissionHint     string
-	PermissionCitation string
-	Citation           string
-	Name               string
-	Binary             string
-	Install            string
-	ModelFlag          string
-	PromptFlag         string
-	Source             string
-	// KeyEnv names the environment variable this CLI reads its model key
-	// from, with the doc that states it; a row without one needs an explicit
-	// --key-secret from the operator.
-	KeyEnv         string
-	KeyEnvCitation string
-	// ProbeMatch is the substring the launcher expects from the identity probe.
-	ProbeMatch string
-	// LaunchWarning is emitted once on stderr at launch when a headless CLI
-	// carries a known reliability caveat.
-	LaunchWarning string
-	Args          []string
-	// ResumeArgs names this row's session-continuation options beyond the
-	// shared flag vocabulary, spelled the way its own CLI spells them:
-	// Codex continues with a `resume` subcommand, Claude with `-c`. A
-	// two-finder run refuses them, because each finder starts fresh.
-	ResumeArgs []string
-	// ResumeCitation names the docs that spell those options for this row.
-	ResumeCitation string
-	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
-	// row declares it only when another tool shares the binary name.
-	ProbeArgs []string
-	// DiscoveryArgs are this row's documented discovery-phase restrictions:
-	// options that block shell and command execution while leaving file reads
-	// and the artifact write (`review.json`, `verdicts.json`, `drain.replies.json`)
-	// intact. A row declares them only when its own CLI documents the exact
-	// spelling, and never with a flag that would stop that write. `verify
-	// --sandbox` is a separate surface and reads none of this.
-	DiscoveryArgs []string
-	// DiscoveryCitation names the doc that spells those options for this row.
-	DiscoveryCitation string
-	// DiscoveryOverrideFlags are the operator spellings that already decide
-	// tool selection. One of them after `--` suppresses DiscoveryArgs, so one
-	// argv never carries two answers to the same question.
+	Usage                  *Usage
+	KeyEnvCitation         string
+	Citation               string
+	Name                   string
+	Binary                 string
+	Install                string
+	ModelFlag              string
+	PromptFlag             string
+	Source                 string
+	PermissionHint         string
+	KeyEnv                 string
+	PermissionCitation     string
+	LaunchWarning          string
+	ProbeMatch             string
+	DiscoveryCitation      string
+	ResumeCitation         string
+	ProbeArgs              []string
+	DiscoveryArgs          []string
+	ResumeArgs             []string
 	DiscoveryOverrideFlags []string
+	Args                   []string
 }
+
+// Usage describes one CLI's structured output that carries its run's cost or
+// token usage. Args request it (the first one is the flag an operator's own
+// spelling after `--` overrides); Format names the parser that reads it from
+// the captured stdout; Citation is the doc that states the output shape.
+type Usage struct {
+	Format   string
+	Citation string
+	Args     []string
+}
+
+// The structured-output formats verdict parses. Each names one CLI's own
+// documented shape; a parse that does not match it measures nothing.
+const (
+	// UsageClaudeJSON is `claude -p --output-format json`: one result object
+	// carrying total_cost_usd and the final text in result.
+	UsageClaudeJSON = "claude-json"
+	// UsageCodexJSONL is `codex exec --json`: a JSONL event stream whose
+	// turn.completed events carry token usage, priced from the price table.
+	UsageCodexJSONL = "codex-jsonl"
+	// UsageOpenCodeJSONL is `opencode run --format json`: a JSONL event stream
+	// whose step_finish events carry each step's cost.
+	UsageOpenCodeJSONL = "opencode-jsonl"
+)
 
 // modelFlag is the argument every shipped row takes a model name on; a row
 // whose binary spells it differently carries its own value.
@@ -79,8 +81,20 @@ const modelFlag = "--model"
 // The docs each row cites for its CLI facts, shared by the launch citation and
 // the permission or continuation claim beside it.
 const (
-	docBobShell     = "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive"
-	docClaudeCLI    = "https://code.claude.com/docs/en/cli-reference.md"
+	docBobShell  = "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive"
+	docClaudeCLI = "https://code.claude.com/docs/en/cli-reference.md"
+	// docClaudeHeadless states the json output's result object, including
+	// total_cost_usd and the final text in result — read 2026-11-25.
+	docClaudeHeadless = "https://code.claude.com/docs/en/headless"
+	// docCodexExecJSON states `codex exec --json` and its event stream;
+	// codex-rs/exec/src/exec_events.rs holds turn.completed's usage struct —
+	// read 2026-11-25.
+	docCodexExecJSON = "https://learn.chatgpt.com/docs/non-interactive-mode"
+	// docOpenCodeRun states `opencode run --format json`; the event shape
+	// (step_finish's part.cost and tokens, text deltas) is in
+	// anomalyco/opencode packages/cli/src/run/noninteractive.ts — read
+	// 2026-11-25.
+	docOpenCodeRun  = "https://opencode.ai/docs/cli/commands"
 	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
 	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
@@ -212,6 +226,10 @@ var catalog = []Agent{
 			DiscoveryOverrideFlags: []string{
 				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
 			},
+			Usage: &Usage{
+				Format: UsageClaudeJSON, Citation: docClaudeHeadless,
+				Args: []string{"--output-format", "json"},
+			},
 			Install: "curl -fsSL https://claude.ai/install.sh | bash",
 		},
 		Skills: &Skills{
@@ -274,6 +292,7 @@ var catalog = []Agent{
 			Args:           []string{argsExec},
 			ResumeArgs:     []string{"resume"},
 			ResumeCitation: docCodexReadme,
+			Usage:          &Usage{Format: UsageCodexJSONL, Citation: docCodexExecJSON, Args: []string{"--json"}},
 			Install:        "npm install -g @openai/codex",
 		},
 		Skills: &Skills{
@@ -631,7 +650,11 @@ var catalog = []Agent{
 			Args:           []string{argsRun},
 			ResumeArgs:     []string{"-c", "-s", "--fork"},
 			ResumeCitation: docOpenCodeCLI,
-			Install:        "npm install -g @opencode/cli",
+			Usage: &Usage{
+				Format: UsageOpenCodeJSONL, Citation: docOpenCodeRun,
+				Args: []string{"--format", "json"},
+			},
+			Install: "npm install -g @opencode/cli",
 		},
 		Skills: &Skills{
 			Base:     "config",

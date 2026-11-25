@@ -57,10 +57,11 @@ func TestDiscoveryLaunchesCarryTheRowRestriction(t *testing.T) {
 }
 
 // assertRestrictedArgv fails unless one launch carries the claude row's
-// restriction exactly once, before the directive.
+// restriction exactly once, before the directive, after the json output a
+// two-finder execution requests to measure each spawn's spend.
 func assertRestrictedArgv(t *testing.T, argv []string) {
 	t.Helper()
-	if want := []string{"claude", "-p", discoveryFlag}; !slices.Equal(argv[:3], want) {
+	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag}; !slices.Equal(argv[:5], want) {
 		t.Errorf("argv = %q, want the prefix %q", argv, want)
 	}
 	if n := countArg(argv, discoveryFlag); n != 1 {
@@ -238,7 +239,10 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", discoveryFlag, "--model", "opus", redactedValue, redactedValue, promptPlaceholder}
+	want := []string{
+		"claude", "-p", "--output-format", "json", discoveryFlag,
+		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
+	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {
 		t.Fatalf("recorded argv = %q, want %q", shape, want)
 	}

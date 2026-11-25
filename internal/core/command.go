@@ -12,25 +12,12 @@ import (
 // inherits the caller's stdin (the verify contract); a nil Env inherits the
 // process environment.
 type Command struct {
-	Stdin io.Reader
-	// Dir is the working directory the child runs in. Empty keeps the
-	// inherited working directory, exactly like os/exec. Deep group
-	// validation sets it to the canonical reviewed root, so a command is
-	// never certified at the repository root while actually running in
-	// the caller's subdirectory.
-	Dir  string
-	Argv []string
-	Env  []string
-	// OutputCap is the capture cap in bytes: per stream for the separated
-	// commanders, combined for the watchdog. 0 (or negative) keeps the
-	// commander's documented default. A commander never grows a capture
-	// past this bound: the surplus is discarded and recorded.
-	OutputCap int
-	// GracePeriod is how long a terminated command's process group gets to
-	// exit after the stop signal before the group is killed outright. Zero
-	// (the default) kills at once, the posture every verb but the agent
-	// launcher keeps; a positive period asks the group to stop first, so an
-	// agent that flushes its work on SIGTERM is not left half-written.
+	Stdin       io.Reader
+	StdoutTap   io.Writer
+	Dir         string
+	Argv        []string
+	Env         []string
+	OutputCap   int
 	GracePeriod time.Duration
 }
 
@@ -52,6 +39,8 @@ type Result struct {
 	Decoy           bool
 	StdoutTruncated bool
 	StderrTruncated bool
+	// StdoutTapped reports that the commander fed Command.StdoutTap.
+	StdoutTapped bool
 }
 
 // Commander runs one process to completion. The production implementation
@@ -85,6 +74,20 @@ type MissingToolError struct {
 
 // Error implements error.
 func (e *MissingToolError) Error() string { return "missing tool: " + e.Tool }
+
+// StartError is a launch that failed before its process existed: the
+// binary could not be started at all. It is the one commander failure that
+// proves nothing ran — every other error comes from a process that may have
+// run, and spent, before it failed.
+type StartError struct {
+	Err error
+}
+
+// Error implements error.
+func (e *StartError) Error() string { return e.Err.Error() }
+
+// Unwrap exposes the start failure.
+func (e *StartError) Unwrap() error { return e.Err }
 
 // OutputCappedError reports a stream that hit its capture cap before the
 // child finished. A commander returns it when the capped stream is still
