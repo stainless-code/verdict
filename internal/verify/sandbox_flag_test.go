@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func TestSandboxFlagReachesTheRequest(t *testing.T) {
@@ -15,7 +16,7 @@ func TestSandboxFlagReachesTheRequest(t *testing.T) {
 	if !flags.sandbox {
 		t.Fatal("--sandbox did not set the parsed flag")
 	}
-	req := verifyRequest(&cli.Runner{}, Request{Repo: "acme/app", Pr: "7"}, &flags)
+	req := verifyRequest(&cli.Runner{}, &readcommon.Request{Repo: "acme/app", Pr: "7"}, &flags)
 	if !req.Sandbox {
 		t.Error("verify request lost the sandbox opt-in")
 	}
@@ -33,7 +34,7 @@ func TestEnvAllowlistFlagReachesTheRequest(t *testing.T) {
 	if !slices.Equal(flags.envAllowlist, want) {
 		t.Fatalf("flags.envAllowlist = %v, want %v", flags.envAllowlist, want)
 	}
-	req := verifyRequest(&cli.Runner{}, Request{Repo: "acme/app", Pr: "7"}, &flags)
+	req := verifyRequest(&cli.Runner{}, &readcommon.Request{Repo: "acme/app", Pr: "7"}, &flags)
 	if !slices.Equal(req.EnvAllowlist, want) {
 		t.Errorf("req.EnvAllowlist = %v, want %v", req.EnvAllowlist, want)
 	}
@@ -50,7 +51,7 @@ func TestSandboxNetworkOnlyFlagReachesTheRequest(t *testing.T) {
 	if flags.sandbox || !flags.networkOnly {
 		t.Fatalf("flags = %+v, want networkOnly alone", flags)
 	}
-	req := verifyRequest(&cli.Runner{}, Request{Repo: "acme/app", Pr: "7"}, &flags)
+	req := verifyRequest(&cli.Runner{}, &readcommon.Request{Repo: "acme/app", Pr: "7"}, &flags)
 	if req.Sandbox || !req.SandboxNetworkOnly {
 		t.Errorf("request sandbox/networkOnly = %v/%v, want false/true", req.Sandbox, req.SandboxNetworkOnly)
 	}

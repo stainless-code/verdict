@@ -133,6 +133,19 @@ func TestUnknownCmdMessage(t *testing.T) {
 	}
 }
 
+// TestUnknownCmdListsVerbsInTableOrder pins the user-visible hint to a literal:
+// it names every verb once, in the order of verbTable, so a reordered or
+// dropped row moves the text a person reads.
+func TestUnknownCmdListsVerbsInTableOrder(t *testing.T) {
+	t.Parallel()
+	want := "unknown cmd 'bogus' (want demo|fetch|fetch-local|run|loop|panel|record|adopt|ingest|fix|post|triage|" +
+		"report|next|show|check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|" +
+		"journal|backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp)"
+	if got := unknownCmdMessage("bogus"); got != want {
+		t.Fatalf("unknownCmdMessage = %q, want %q", got, want)
+	}
+}
+
 // TestVerbsHintMatchesUsage keeps the unknown-cmd hint and the usage
 // synopsis naming the same verbs, so a new verb cannot reach one and not the
 // other.
@@ -240,13 +253,13 @@ func writeCorruptSettings(t *testing.T) {
 	}
 }
 
-// TestServeDispatchShape pins the two registries the transport needs: serve
-// is a bare verb whose flags pass through, and it is not a read verb (a read
-// row would die on not-a-repo before --root was read).
+// TestServeDispatchShape pins the two facts the transport needs: serve is a
+// bare verb whose flags pass through, and its table row has no handler (a
+// handler would die on not-a-repo before --root was read).
 func TestServeDispatchShape(t *testing.T) {
 	t.Parallel()
-	if _, ok := readVerbs["serve"]; ok {
-		t.Fatal("serve is a readVerbs entry; the transport must dispatch before resolveRepoRoot")
+	if spec := verbIndex["serve"]; spec == nil || spec.Run != nil {
+		t.Fatal("serve has a table handler; the transport must dispatch before resolveRepoRoot")
 	}
 	if !bareVerbs["serve"] {
 		t.Fatal("serve is not a bareVerbs entry; splitCommand would read --root as a positional")

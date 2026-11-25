@@ -16,23 +16,19 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved ingest invocation.
-type Request struct {
-	Stdin    io.Reader
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `ingest <owner/repo> <pr> --from sarif <file|-> [--json]`,
 // returning the process exit code. Human progress goes to the runner's human
 // stream; --json mode prints one envelope to stdout. The legacy `--sarif
 // <file|->` form names the same source and stays accepted.
-func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
+	return run(ctx, r, args, &req, os.Stdin)
+}
+
+// run is Run with the stdin seam exposed: a `-` source reads from stdin.
+func run(ctx context.Context, r *cli.Runner, args []string, req *readcommon.Request, stdin io.Reader) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
 	source, code, done := parseFlags(r, args)
@@ -42,7 +38,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	if code, done := r.Canceled(ctx, ingestcore.VerbIngest); done {
 		return code
 	}
-	creq, ref := ingestRequest(r, req, source)
+	creq, ref := ingestRequest(r, req, stdin, source)
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -57,22 +53,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	return cli.ExitOK
 }
 
-func ingestRequest(r *cli.Runner, req *Request, source input) (*ingestcore.Request, *core.RefusalError) {
-	read := r.Read(core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env},
-		Repo:     req.Repo,
-		Pr:       req.Pr,
-		RepoRoot: req.RepoRoot,
-	}, nil)
-	out := &ingestcore.Request{ReadRequest: read, From: source.Format, SARIF: source.Path}
+func ingestRequest(r *cli.Runner, req *readcommon.Request, stdin io.Reader, source input) (*ingestcore.Request, *core.RefusalError) {
+	out := &ingestcore.Request{ReadRequest: r.Read(*req, nil), From: source.Format, SARIF: source.Path}
 	if source.Path != "-" {
 		return out, nil
 	}
-	in := req.Stdin
-	if in == nil {
-		in = os.Stdin
-	}
-	raw, err := jq.Capped(in, ingestcore.MaxSARIFBytes)
+	raw, err := jq.Capped(stdin, ingestcore.MaxSARIFBytes)
 	if err != nil {
 		if errors.Is(err, jq.ErrTooLarge) {
 			return nil, &core.RefusalError{

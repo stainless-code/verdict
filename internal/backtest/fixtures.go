@@ -6,12 +6,13 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	qualitycore "github.com/stainless-code/verdict/internal/core/quality"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // runFixtures executes `backtest fixtures`: a pure read of the shipped
 // recordings against the hand-known defects in the fixture catalog. It never
 // launches an agent and never calls a host.
-func runFixtures(ctx context.Context, r *cli.Runner, req Request, f *flags) int {
+func runFixtures(ctx context.Context, r *cli.Runner, req readcommon.Request, f *flags) int {
 	resp, ref := qualitycore.RunFixtures(ctx, &qualitycore.Request{
 		RepoRoot:       req.RepoRoot,
 		FixtureID:      f.fixture,

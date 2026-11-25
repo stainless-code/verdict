@@ -18,94 +18,163 @@ var hiddenVerbs = map[string]string{
 }
 
 // TestVerbRegistriesAgree fails when a verb reaches one CLI registry and not
-// the others: the frozen usage synopsis, the "did you mean" hint, the dispatch
-// tables, and the shell completion list. It is the twin check for a new verb
-// that lands on one surface only.
+// the others: the frozen usage synopsis, the verb table (which also supplies
+// the "did you mean" hint, the arity gate, and the handlers), the verbs
+// dispatch serves before the table, and the shell completion list. It is the
+// twin check for a new verb that lands on one surface only.
 func TestVerbRegistriesAgree(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
 	usage := cliVerbs(t, root)
-	hint := hintVerbs(t, root)
-	dispatch := dispatchVerbs(t, root)
+	rows := tableRows(t, root)
+	table := tableNames(rows)
+	served := servedBeforeTable(t, root)
 	completion := completionVerbs(t, root)
 	checkUnique(t, "cli verb", usage)
-	checkUnique(t, "hint verb", hint)
-	checkUnique(t, "dispatch verb", dispatch)
+	checkUnique(t, "table verb", table)
+	checkUnique(t, "served verb", served)
 	checkUnique(t, "completion verb", completion)
-	checkIncludes(t, "hint", hint, "cli verb", usage)
-	checkIncludes(t, "usage synopsis", usage, "hint verb", hint)
-	checkIncludes(t, "dispatch", dispatch, "cli verb", without(usage, names(hiddenVerbs)))
-	checkIncludes(t, "usage synopsis", usage, "dispatch verb", dispatch)
+	checkIncludes(t, "table", table, "cli verb", usage)
+	checkIncludes(t, "usage synopsis", usage, "table verb", table)
 	checkIncludes(t, "completion", completion, "cli verb", without(usage, names(hiddenVerbs)))
 	checkIncludes(t, "usage synopsis", usage, "completion verb", completion)
+	checkIncludes(t, "dispatch", served, "handlerless table verb", without(handlerless(rows), names(hiddenVerbs)))
+	checkIncludes(t, "handlerless table verbs", handlerless(rows), "served verb", served)
 	for _, verb := range names(hiddenVerbs) {
-		if !slices.Contains(usage, verb) {
-			t.Errorf("hidden verb %q is not in the usage synopsis", verb)
+		if !slices.Contains(handlerless(rows), verb) {
+			t.Errorf("hidden verb %q must be a table row with no handler: run() serves it before the table", verb)
 		}
-		if slices.Contains(dispatch, verb) || slices.Contains(completion, verb) {
-			t.Errorf("hidden verb %q must stay out of the dispatch tables and completion", verb)
+		if slices.Contains(served, verb) || slices.Contains(completion, verb) {
+			t.Errorf("hidden verb %q must stay out of dispatch's served verbs and completion", verb)
 		}
 	}
 }
 
-func hintVerbs(t *testing.T, root string) []string {
-	t.Helper()
-	consts := dirStringConsts(t, filepath.Join(root, "cmd", "verdict"))
-	hint, ok := consts["verbsHint"]
-	if !ok {
-		t.Fatal("cmd/verdict declares no verbsHint constant; the hint registry moved")
-	}
-	return strings.Split(hint, "|")
+// TestVerbTableMatchesSurfaces keeps the verb table, the usage synopsis, and
+// the MCP tool registry one list: the table names exactly the synopsis verbs,
+// and every table verb outside the documented MCP omissions is an MCP tool,
+// while every MCP tool outside the query surface is a table verb. A verb
+// added to the table alone, or to a surface alone, fails here.
+func TestVerbTableMatchesSurfaces(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	table := tableNames(tableRows(t, root))
+	usage := cliVerbs(t, root)
+	tools := without(mcpToolNames(t, root), names(mcpQuerySurface))
+	checkIncludes(t, "table", table, "usage verb", usage)
+	checkIncludes(t, "usage synopsis", usage, "table verb", table)
+	checkIncludes(t, "mcp tools", tools, "table verb outside the mcp omissions", without(table, names(mcpOmittedVerbs)))
+	checkIncludes(t, "table", table, "mcp tool", tools)
+	checkIncludes(t, "table", table, "mcp omission", names(mcpOmittedVerbs))
 }
 
-func dispatchVerbs(t *testing.T, root string) []string {
+// tableRow is one verbTable row: the verb and whether it carries a handler.
+type tableRow struct {
+	name   string
+	hasRun bool
+}
+
+// tableRows reads the verb table's rows from the source: each is a keyed
+// {Name, Arity, Run} literal, and a nil Run marks a verb served before the
+// table.
+func tableRows(t *testing.T, root string) []tableRow {
 	t.Helper()
 	dir := filepath.Join(root, "cmd", "verdict")
-	path := filepath.Join(dir, "main.go")
 	consts := dirStringConsts(t, dir)
-	verbs := readVerbMapKeys(t, path, consts)
-	for _, name := range []string{"dispatch", "dispatchMutating", "dispatchFetch", "dispatchLocal", "dispatchStoreVerbs"} {
-		verbs = append(verbs, switchCaseVerbs(t, path, name, consts)...)
-	}
-	if len(verbs) == 0 {
-		t.Fatal("cmd/verdict dispatches no verbs; the dispatch registry did not parse")
-	}
-	return verbs
-}
-
-func readVerbMapKeys(t *testing.T, path string, consts map[string]string) []string {
-	t.Helper()
-	var verbs []string
-	for _, decl := range parseGo(t, path).Decls {
+	var rows []tableRow
+	for _, decl := range parseGo(t, filepath.Join(dir, "verbs.go")).Decls {
 		gen, ok := decl.(*ast.GenDecl)
 		if !ok || gen.Tok != token.VAR {
 			continue
 		}
 		for _, spec := range gen.Specs {
-			verbs = append(verbs, readVerbSpec(t, spec, consts)...)
+			rows = append(rows, tableSpecRows(t, spec, consts)...)
 		}
 	}
-	if len(verbs) == 0 {
-		t.Fatal("readVerbs declares no verbs; the read registry did not parse")
+	if len(rows) == 0 {
+		t.Fatal("verbTable declares no verbs; the verb registry did not parse")
 	}
-	return verbs
+	return rows
 }
 
-func readVerbSpec(t *testing.T, spec ast.Spec, consts map[string]string) []string {
+func tableSpecRows(t *testing.T, spec ast.Spec, consts map[string]string) []tableRow {
 	t.Helper()
 	value, ok := spec.(*ast.ValueSpec)
-	if !ok || len(value.Names) != 1 || len(value.Values) != 1 || value.Names[0].Name != "readVerbs" {
+	if !ok || len(value.Names) != 1 || len(value.Values) != 1 || value.Names[0].Name != "verbTable" {
 		return nil
 	}
 	lit, ok := value.Values[0].(*ast.CompositeLit)
 	if !ok {
-		t.Fatal("readVerbs is not a composite literal")
+		t.Fatal("verbTable is not a composite literal")
 	}
-	var verbs []string
+	rows := make([]tableRow, 0, len(lit.Elts))
 	for _, elt := range lit.Elts {
-		if kv, ok := elt.(*ast.KeyValueExpr); ok {
-			verbs = append(verbs, verbLiteral(t, kv.Key, consts))
+		rows = append(rows, tableRowOf(t, elt, consts))
+	}
+	return rows
+}
+
+// tableRowOf reads one row's Name and whether its Run is anything but nil.
+func tableRowOf(t *testing.T, elt ast.Expr, consts map[string]string) tableRow {
+	t.Helper()
+	row, ok := elt.(*ast.CompositeLit)
+	if !ok {
+		t.Fatalf("verbTable row %T is not a composite literal", elt)
+	}
+	var out tableRow
+	for _, field := range row.Elts {
+		key, value := rowField(t, field)
+		switch key {
+		case "Name":
+			out.name = verbLiteral(t, value, consts)
+		case "Run":
+			handler, isIdent := value.(*ast.Ident)
+			out.hasRun = !isIdent || handler.Name != "nil"
 		}
+	}
+	return out
+}
+
+// rowField splits one keyed field of a verbTable row.
+func rowField(t *testing.T, field ast.Expr) (string, ast.Expr) {
+	t.Helper()
+	kv, ok := field.(*ast.KeyValueExpr)
+	if !ok {
+		t.Fatalf("verbTable row field %T is not keyed", field)
+	}
+	key, ok := kv.Key.(*ast.Ident)
+	if !ok {
+		t.Fatalf("verbTable row key %T is not a field name", kv.Key)
+	}
+	return key.Name, kv.Value
+}
+
+func tableNames(rows []tableRow) []string {
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = row.name
+	}
+	return out
+}
+
+func handlerless(rows []tableRow) []string {
+	var out []string
+	for _, row := range rows {
+		if !row.hasRun {
+			out = append(out, row.name)
+		}
+	}
+	return out
+}
+
+// servedBeforeTable reads the verbs dispatch serves before the table: the
+// case labels of its switch.
+func servedBeforeTable(t *testing.T, root string) []string {
+	t.Helper()
+	dir := filepath.Join(root, "cmd", "verdict")
+	verbs := switchCaseVerbs(t, filepath.Join(dir, "main.go"), "dispatch", dirStringConsts(t, dir))
+	if len(verbs) == 0 {
+		t.Fatal("dispatch serves no verbs before the table; the registry did not parse")
 	}
 	return verbs
 }

@@ -8,24 +8,15 @@ import (
 	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved triage invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `triage <owner/repo> <slug> --sig <s> --status <st>
 // --rationale <r> [--force] [--dry-run] [--json]`, returning the process exit
 // code. Human progress goes to the runner's human stream; --json mode prints
 // exactly one envelope to stdout.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
 	flags, code, done := parseFlags(r, args)
@@ -35,7 +26,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "triage"); done {
 		return code
 	}
-	resp, ref := triagecore.Run(ctx, triageRequest(r, req, flags))
+	resp, ref := triagecore.Run(ctx, triageRequest(r, &req, flags))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -48,22 +39,15 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // triageRequest injects the runner's clock and progress observer into the
 // typed service request.
-func triageRequest(r *cli.Runner, req Request, flags flags) *triagecore.Request {
-	read := r.Read(core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env},
-		Repo:     req.Repo,
-		Pr:       req.Pr,
-		RepoRoot: req.RepoRoot,
-	}, nil)
-	out := &triagecore.Request{
-		Sig:       flags.sig,
-		Status:    flags.status,
-		Rationale: flags.rationale,
-		Force:     flags.force,
-		DryRun:    flags.dryRun,
+func triageRequest(r *cli.Runner, req *readcommon.Request, flags flags) *triagecore.Request {
+	return &triagecore.Request{
+		ReadRequest: r.Read(*req, nil),
+		Sig:         flags.sig,
+		Status:      flags.status,
+		Rationale:   flags.rationale,
+		Force:       flags.force,
+		DryRun:      flags.dryRun,
 	}
-	out.ReadRequest = read
-	return out
 }
 
 // flags carries the parsed triage options.

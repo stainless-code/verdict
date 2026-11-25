@@ -10,36 +10,26 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved record invocation.
-type Request struct {
-	Env      map[string]string
-	Forces   *cli.GlobalForces
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `record <owner/repo> <local-slug> [--dry-run] [--strict]
 // [--cost-names[=<names>]] [--json]`, returning the
 // process exit code. Human progress goes to the runner's human stream;
 // --json mode prints exactly one envelope to stdout.
-func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
-	setupRunner(r, req)
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
+	setupRunner(r, &req)
 	f, code, done := parseRecordFlags(r, args)
 	if done {
 		return code
 	}
-	r.Rentry = recordRentry(req, f, r.JSONMode)
+	r.Rentry = recordRentry(&req, f, r.JSONMode)
 	if code, done := r.Canceled(ctx, "record"); done {
 		return code
 	}
-	rc := recordRequest(r, req)
+	rc := recordRequest(r, &req)
 	rc.DryRun = f.dryRun
 	rc.Strict = f.strict
 	rc.Flags.CostNames = f.costNames
@@ -56,25 +46,16 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 }
 
 // recordRequest builds the core request from the runner and invocation.
-func recordRequest(r *cli.Runner, req *Request) *recordcore.Request {
-	root := req.Root
-	read := r.Read(core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env},
-		Repo:     req.Repo,
-		Pr:       req.Pr,
-		Forces:   req.Forces,
-		Root:     &root,
-		RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{})
+func recordRequest(r *cli.Runner, req *readcommon.Request) *recordcore.Request {
 	return &recordcore.Request{
-		ReadRequest: read,
+		ReadRequest: r.Read(*req, coreexec.Runner{}),
 		Effective:   r.Effective,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
 
 // setupRunner records the invocation for envelopes and usage lines.
-func setupRunner(r *cli.Runner, req *Request) {
+func setupRunner(r *cli.Runner, req *readcommon.Request) {
 	r.Repo, r.Pr = req.Repo, req.Pr
 }
 
@@ -137,7 +118,7 @@ func splitPanel(value string) ([]string, bool) {
 }
 
 // recordRentry rebuilds the exact re-run command after flag parsing.
-func recordRentry(req *Request, f recordFlags, jsonMode bool) string {
+func recordRentry(req *readcommon.Request, f recordFlags, jsonMode bool) string {
 	s := "verdict record " + req.Repo + " " + req.Pr
 	if f.dryRun {
 		s += " --dry-run"

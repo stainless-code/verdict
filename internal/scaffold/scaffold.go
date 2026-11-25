@@ -13,38 +13,35 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved init invocation (init takes no positionals).
-type Request struct {
-	// Picker overrides the interactive picker's terminal seam: tests script the
-	// answers, the PATH probe, and the origin remote instead of reading a real
-	// terminal. A nil picker installs the production one.
-	Picker   *Picker
-	Env      map[string]string
-	RepoRoot string
-}
 
 // Run executes
 // `init [--preset <chill|standard|strict>] [--ci github|forgejo|gitlab
 // [--agent <name>] [--key-secret <NAME>] [--print] [--comment-trigger]]
 // [--yes] [--json]`, returning the process exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
+	return run(ctx, r, args, &req, nil)
+}
+
+// run is Run with the interactive picker's terminal seam exposed: tests script
+// the answers, the PATH probe, and the origin remote instead of reading a real
+// terminal. A nil picker installs the production one.
+func run(ctx context.Context, r *cli.Runner, args []string, req *readcommon.Request, picker *Picker) int {
 	r.Repo, r.Pr = "", ""
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	return runResolved(ctx, r, req, flags)
+	return runResolved(ctx, r, req, picker, flags)
 }
 
 // runResolved finishes one invocation whose argv is parsed: the picker may
 // still answer a bare terminal, then the service runs and the plan renders.
-func runResolved(ctx context.Context, r *cli.Runner, req Request, flags flags) int {
-	if code, done := pickIfInteractive(ctx, r, req, &flags); done {
+func runResolved(ctx context.Context, r *cli.Runner, req *readcommon.Request, picker *Picker, flags flags) int {
+	if code, done := pickIfInteractive(ctx, r, req, picker, &flags); done {
 		return code
 	}
 	if code, done := revalidate(r, &flags); done {
@@ -59,7 +56,7 @@ func runResolved(ctx context.Context, r *cli.Runner, req Request, flags flags) i
 
 // runService calls the init service and maps its refusal, abort, and envelope
 // onto the process exit code.
-func runService(ctx context.Context, r *cli.Runner, req Request, flags flags) int {
+func runService(ctx context.Context, r *cli.Runner, req *readcommon.Request, flags flags) int {
 	resp, ref := initcore.Run(ctx, initRequest(r, req, flags))
 	if ref != nil {
 		if ref.Code == initcore.CodeNeedsConfirm {
@@ -88,7 +85,7 @@ func revalidate(r *cli.Runner, f *flags) (int, bool) {
 
 // initRequest injects the runner's clock, streams, stdin seam, and the
 // production commander into the typed service request.
-func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
+func initRequest(r *cli.Runner, req *readcommon.Request, f flags) *initcore.Request {
 	out := &initcore.Request{
 		Preset:         f.preset,
 		CI:             f.ci,
@@ -103,12 +100,7 @@ func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
 		Diag:           r.Diag,
 		ReadAnswer:     readAnswer,
 	}
-	out.ReadRequest = r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
-		},
-		RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+	out.ReadRequest = r.Read(*req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return out
 }
 

@@ -12,24 +12,15 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved verify invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `verify <owner/repo> <slug> [--timeout <secs>]
 // [--group <stableID> --command <cmd>] [--sandbox | --sandbox-network-only]
 // [--json]`, returning the process exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
 	flags, code, done := parseFlags(r, args)
@@ -39,7 +30,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "verify"); done {
 		return code
 	}
-	resp, ref := verifycore.Run(ctx, verifyRequest(r, req, &flags))
+	resp, ref := verifycore.Run(ctx, verifyRequest(r, &req, &flags))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -53,16 +44,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // environ snapshot for the child and redaction, the production watchdog,
 // the progress observer), the raw timeout string, and the JSON-mode flag
 // for the child's NO_COLOR default.
-func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *verifycore.Request {
-	root := req.Root
-	read := r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
-		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}, coreexec.Watchdog{})
+func verifyRequest(r *cli.Runner, req *readcommon.Request, flags *verifyFlags) *verifycore.Request {
 	return &verifycore.Request{
-		ReadRequest:        read,
+		ReadRequest:        r.Read(*req, coreexec.Watchdog{}),
 		TimeoutRaw:         flags.timeout,
 		Group:              flags.group,
 		Command:            flags.command,

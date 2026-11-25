@@ -24,16 +24,20 @@ warning routing, envelope rendering (`internal/trend/trend.go`). Add
 
 ## 3. Dispatch
 
-`cmd/verdict/main.go`: read verbs go in the `readVerbs` map, mutating verbs
-get a `case` in `dispatchMutating`, and fetch-shaped verbs in `dispatchFetch`.
-A verb served before argument parsing (`mcp`) belongs in `run` and in the
-`hiddenVerbs` allowlist of `internal/archtest/verb_twins_test.go`.
+`cmd/verdict/verbs.go`: one row in `verbTable` — the name, its positional
+shape (`arityPair`, `arityRepo`, `arityOptional`, or `arityBare`), and the
+adapter's `Run`, which takes a `readcommon.Request`. The row's position is its
+place in the "did you mean" hint, and the table also feeds the arity gate and
+`bareVerbs`. A verb served before the repository root resolves (`serve`, a
+transport) takes a nil `Run` plus a `case` in `dispatch`; one served before
+argument parsing (`mcp`) belongs in `run` and in the `hiddenVerbs` allowlist
+of `internal/archtest/verb_twins_test.go`.
 
 ## 4. Usage, help, completion
 
-- `cmd/verdict/usage.go`: add the verb to the frozen synopsis in `usageText`,
-  write its block, and add it to `bareVerbs` when it takes no positionals.
-- `cmd/verdict/main.go`: add it to `verbsHint`, the "did you mean" list.
+- `cmd/verdict/usage.go`: add the verb to the frozen synopsis in `usageText`
+  and write its block; `TestVerbTableMatchesSurfaces` fails until the table
+  and the synopsis name the same verbs.
 - `scripts/verdict-complete.sh`: add it to `_verdict_verbs` and give it a
   `_verdict_flags` case.
 - `cmd/verdict/verbhelp.go`: no edit unless the verb owns its help output

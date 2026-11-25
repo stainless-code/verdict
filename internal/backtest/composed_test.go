@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -23,7 +25,7 @@ func TestComposedRefusesMissingAgentBeforeMining(t *testing.T) {
 		Now: time.Now, Effective: cli.Defaults(), EnvNoColor: true,
 	}
 	code := Run(t.Context(), r, []string{"--since", "90d"},
-		Request{Env: map[string]string{"HOME": t.TempDir()}, Root: root, RepoRoot: root})
+		readcommon.Request{Runtime: &core.Runtime{Env: map[string]string{"HOME": t.TempDir()}}, Root: &root, RepoRoot: root})
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want %d; output:\n%s", code, cli.ExitRefused, diag.String())
 	}

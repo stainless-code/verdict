@@ -28,17 +28,9 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
 )
-
-// Request carries the resolved run invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // DefaultTimeoutS is the watchdog budget when --timeout is absent: the same
 // default verify gives the commands it spawns.
@@ -70,13 +62,13 @@ const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <se
 // [--print] [-- <agent args>...] [--json]`, returning the process exit code. A
 // non-zero agent exit is preserved as this process's exit code after the typed
 // refusal is rendered, so CI surfaces the real failure.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	r.Rentry = rentry(req, &flags, r.JSONMode)
+	r.Rentry = rentry(&req, &flags, r.JSONMode)
 	if code, done := r.Canceled(ctx, "run"); done {
 		return code
 	}
@@ -84,11 +76,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if ref != nil {
 		return refuse(r, nil, &core.RefusalError{Code: ref.Code, Message: ref.Message})
 	}
-	request := runRequest(r, req, &flags)
+	request := runRequest(r, &req, &flags)
 	request.SpendPolicy = policy
 	resp, ref := runcore.WithAgents(ctx, request, agents)
 	if ref != nil {
-		addPermissionHint(ref, req, &flags)
+		addPermissionHint(ref, &req, &flags)
 		return refuse(r, resp, ref)
 	}
 	r.Warnings = resp.Warnings
@@ -127,11 +119,10 @@ func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 // runRequest injects the production commander (the verify watchdog), the PATH
 // probe, the ordered process environment, and the runner's clock and progress
 // observer into the typed service request.
-func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
-	root := req.Root
+func runRequest(r *cli.Runner, req *readcommon.Request, flags *flags) *core.RunRequest {
 	return &core.RunRequest{
-		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Watchdog{}).Runtime,
-		Repo:    req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
+		Runtime: r.Read(*req, coreexec.Watchdog{}).Runtime,
+		Repo:    req.Repo, Pr: req.Pr, Root: req.Root, RepoRoot: req.RepoRoot,
 		LookPath:          exec.LookPath,
 		PassThrough:       flags.pass,
 		Environ:           os.Environ(),
@@ -293,7 +284,7 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 // rentry rebuilds the exact re-run command after flag parsing. The
 // pass-through tail is not reproduced: its quoting belongs to whatever shell
 // the operator used.
-func rentry(req Request, f *flags, jsonMode bool) string {
+func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + argSep + req.Pr + flagTail(f)
 	if f.consent {
 		s += " --consent-over-budget"
@@ -359,7 +350,7 @@ func quoteArg(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }
 
-func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
+func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags) {
 	if ref.Code != "no-review-artifact" || len(f.pass) != 0 {
 		return
 	}
