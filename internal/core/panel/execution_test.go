@@ -521,15 +521,15 @@ func TestExecutionStaleReviewReferenceKeepsOneFinderPolicyManual(t *testing.T) {
 	}
 }
 
+// TestExecutionFailsClosedOnOutOfRangeFinderCount proves a run.json count above
+// two keeps the cross requirement: it is the one statement whose value, not
+// its presence, decides the mode, and reading it as manual would clear the
+// stamp. No receipt backs it, so nothing else could arm the requirement.
 func TestExecutionFailsClosedOnOutOfRangeFinderCount(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
-	writeStoredFinders(t, dir, "record.json", 3)
-
-	state := CheckExecution(dir, nil)
-	if !state.CrossRequired {
-		t.Fatalf("CrossRequired = false; want an out-of-range stored count to stay cross-required (state=%+v)", state)
-	}
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":3}`))
+	requirePendingCross(t, dir)
 }
 
 func TestExecutionStaleReceiptKeepsOneFinderPolicyManual(t *testing.T) {
