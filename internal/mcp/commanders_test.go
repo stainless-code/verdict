@@ -50,7 +50,7 @@ func TestToolCommanders(t *testing.T) {
 		"triage":         "<nil>",
 		"verify":         "exec.Watchdog",
 	}
-	tools := allTools(false, true)
+	tools := allTools(Posture(false))
 	if len(want) != len(tools) {
 		t.Fatalf("commander pin has %d entries, tools = %d", len(want), len(tools))
 	}

@@ -4,7 +4,7 @@
   <img src="apps/docs/public/logo.svg" alt="Verdict" height="48" />
 </p>
 
-Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in, read-only surface, loopback by default.
+Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in surface, loopback by default, that writes locally unless `--read-only`.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **A fix prompt, not just a complaint.** Every open, verified, unrefuted `critical` or `important` finding with a structured brief renders a collapsed `Prompt for AI agent` block in the posted body, computed from settled finding data — no extra model call.

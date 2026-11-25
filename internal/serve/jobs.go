@@ -416,7 +416,7 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 // runner, so no host write can ship through this path. On an --allow-post
 // server a succeeded preview mints the Tier C single-use nonce bound to its
 // digest and the bundle fingerprint, published beside the preview wire; a
-// plain --interactive server mints nothing and its result is the bare wire.
+// server without --allow-post mints nothing and its result is the bare wire.
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
 	// The fingerprint is taken before the dry-run reads the bundle, under the
@@ -694,7 +694,7 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	s.writeJob(w, current, http.StatusOK)
 }
 
-// handleGetJob looks up one job in interactive mode, scoped to the
+// handleGetJob looks up one job on a writable server, scoped to the
 // authenticated session the guard already required.
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	current, ok := s.jobs.get(r.PathValue("id"))

@@ -35,6 +35,7 @@ import (
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/posture"
 )
 
 var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
@@ -122,8 +123,6 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	destructive        bool
 	idempotent         bool
 	openWorld          bool
-	operatorOnly       bool
-	operatorWrite      func(any) bool
 	writeArgs          map[string]string
 	refusedArgs        map[string]bool
 	decode             func(json.RawMessage) (any, error)
@@ -132,7 +131,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 }
 
 //nolint:revive // the registry reads as one block
-func allTools(readOnly, operator bool) []*tool {
+func allTools(rule posture.Rule) []*tool {
 	tools := []*tool{
 		dataTool(&toolSpec{
 			name: "adopt",
@@ -399,15 +398,15 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Review trend", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeTrend, wireTrend, trendcore.Run,
 			func(resp *trendcore.Response) *jq.Obj { return wireData(resp.Data) }),
-		operatorTool(dataTool(&toolSpec{
+		dataTool(&toolSpec{
 			name: "triage",
-			description: "Operator-only: flip one finding's status with a " +
-				"rationale. Never call while reviewing a PR; propose triage[] in review.json " +
+			description: "Flip one finding's status with a rationale. Human-owned: " +
+				"never call while reviewing a PR; propose triage[] in review.json " +
 				"instead. Writes findings.json and stages KB credit.",
 			required: []string{argRepo, argPr, argSig, argStatus},
 			meta:     toolMeta{title: "Triage finding", mutates: localWrites, destructive: true},
 		}, toolDeps{}, decodeTriage, wireTriage, triagecore.Run,
-			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) })),
+			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
@@ -420,20 +419,15 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
 			func(resp *verifycore.Response) *jq.Obj { return wireData(resp.Data) }),
 	}
-	for _, t := range tools {
-		if t.name == "threads" {
-			t.operatorWrite = threadsResolveWrite
-		}
-	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
-		if readOnly {
+		if !rule.LocalWrites() {
 			t.narrowReadOnly()
 			if t.readOnlyDryRun {
 				t.requireDryRun = true
 			}
 		}
-		if !exposed(t, readOnly, operator) {
+		if !exposed(t, rule) {
 			continue
 		}
 		kept = append(kept, t)
@@ -454,16 +448,13 @@ func (t *tool) narrowReadOnly() {
 	t.omit = omit
 }
 
-func exposed(t *tool, readOnly, operator bool) bool {
-	if readOnly && t.mutates != noLocalWrites && !t.servedWhenReadOnly {
-		return false
-	}
-	return !t.operatorOnly || (!readOnly && operator)
-}
-
-func operatorTool(t *tool) *tool {
-	t.operatorOnly = true
-	return t
+// exposed is the shared write-posture rule applied to the registry: a tool
+// that writes local state (post and the threads resolve mode included, since
+// this surface's host-post consent is the tool being exposed at all) is
+// served only when the rule allows local writes, plus the constrained forms
+// servedWhenReadOnly names.
+func exposed(t *tool, rule posture.Rule) bool {
+	return rule.LocalWrites() || t.mutates == noLocalWrites || t.servedWhenReadOnly
 }
 
 func dataTool[Req, S any](
@@ -506,7 +497,6 @@ func newTool[Req any](
 		destructive:        spec.meta.destructive,
 		idempotent:         spec.meta.idempotent,
 		openWorld:          spec.meta.openWorld,
-		operatorOnly:       false,
 		refusedArgs:        map[string]bool{},
 	}
 	t.decode = func(raw json.RawMessage) (any, error) {
@@ -535,13 +525,6 @@ func wireThreadsData(resp *fetchcore.ThreadsResponse) *jq.Obj {
 		return resp.Resolve.Wire()
 	}
 	return wireData(resp.Data)
-}
-
-// threadsResolveWrite reports whether one threads request is the operator-only
-// resolve mode, so the server can refuse it without --operator.
-func threadsResolveWrite(raw any) bool {
-	req, ok := raw.(*fetchcore.ThreadsRequest)
-	return ok && req.Resolve
 }
 
 func invokeService[R, S any](
@@ -731,8 +714,8 @@ func rawMarshal(o *jq.Obj) json.RawMessage { return json.RawMessage(o.MarshalCom
 
 // ToolNames lists the tool names a server with this surface exposes, in
 // registry order. `verdict mcp --help` is checked against it.
-func ToolNames(readOnly, operator bool) []string {
-	tools := allTools(readOnly, operator)
+func ToolNames(readOnly bool) []string {
+	tools := allTools(Posture(readOnly))
 	out := make([]string, 0, len(tools))
 	for _, t := range tools {
 		out = append(out, t.name)

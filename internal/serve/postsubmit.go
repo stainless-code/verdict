@@ -26,7 +26,8 @@ import (
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
-// Tier C host posting: an explicit --allow-post opt-in beyond --interactive.
+// Tier C host posting: an explicit --allow-post opt-in beyond the default
+// local-writes posture.
 // A fresh post-preview mints a single-use nonce bound to a preview digest;
 // the submit route validates it, takes the bundle lock, re-checks the bundle
 // fingerprint, spends the nonce under that lock, and only then delegates to
@@ -107,7 +108,7 @@ type previewStore struct {
 // store. The clock is fixed here, after applyServerDefaults, so no request
 // ever lazily assigns it twice.
 func newPreviewStore(cfg *Config) *previewStore {
-	if !cfg.AllowPost {
+	if !cfg.rule().HostPost() {
 		return nil
 	}
 	return &previewStore{entries: map[string]*previewEntry{}, now: cfg.Now, ttl: previewTTL}
@@ -333,9 +334,9 @@ type postSubmitBody struct {
 // JSON, and this handler enforces confirmation, single-use preview, live
 // bundle staleness, and then delegates to core/post.
 func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.AllowPost {
+	if !s.rule.HostPost() {
 		s.problem(w, http.StatusForbidden, "post-disabled",
-			"host posting is disabled; restart with --interactive --allow-post to enable it")
+			"host posting is disabled; restart with --allow-post to enable it")
 		return
 	}
 	var body postSubmitBody

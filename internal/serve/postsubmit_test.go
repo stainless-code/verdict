@@ -34,7 +34,7 @@ func postServer(
 		cfg.Now = fixedNow
 	}
 	cfg.Port, cfg.Token = testPort, testToken
-	cfg.Interactive, cfg.AllowPost = true, true
+	cfg.AllowPost = true
 	cfg.VerifyRunner = okVerifyRunner()
 	cfg.PostPreviewRunner = preview
 	cfg.PostSubmitRunner = submit

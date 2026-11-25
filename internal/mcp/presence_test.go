@@ -16,7 +16,7 @@ import (
 func TestPresenceFieldsCovered(t *testing.T) {
 	t.Parallel()
 	visited := map[reflect.Type]bool{}
-	for _, tool := range allTools(false, true) {
+	for _, tool := range allTools(Posture(false)) {
 		auditPresence(t, tool.name, tool.request, visited)
 	}
 }
