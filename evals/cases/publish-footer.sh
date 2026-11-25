@@ -159,9 +159,9 @@ run_review check-tree --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-settings" ] \
   && grep -Fq 'off|product|full' "$EVAL_OUT"; then
-  good "day-old P1 attribution bool refuses with the enum migration named"
+  good "attribution bool refuses like any non-string, naming the enum"
 else
-  bad "bool migration gave exit $EVAL_STATUS"
+  bad "attribution bool gave exit $EVAL_STATUS"
 fi
 unset XDG_CONFIG_HOME || true
 run_review report acme/app 4501 --output "$EVAL_SANDBOX/out-4505.md" --no-footer

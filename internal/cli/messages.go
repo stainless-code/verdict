@@ -23,8 +23,6 @@ const (
 	msgPublishKeys = "settings file %s: unknown publish key '%s' (want only footer, " +
 		"attribution, attribution_text, copyright, logo, logo_url, overview, diagrams, fix_prompt)"
 	msgPublishBool  = "settings file %s: publish.%s must be a boolean (want %s)"
-	msgAttrMigrated = "settings file %s: publish.attribution is now off|product|full (P1b " +
-		"migration from the day-old P1 bool — use \"off\" for false, \"product\" for true)"
 	msgAttrUnknown  = "settings file %s: publish.attribution '%s' unknown (want off|product|full)"
 	msgAttrType     = "settings file %s: publish.attribution must be a string (want off|product|full)"
 	msgTextType     = "settings file %s: publish.%s must be a string%s"
