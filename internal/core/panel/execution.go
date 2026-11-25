@@ -27,6 +27,10 @@ const (
 	executionHead         = "head_sha"
 	executionDiffSHA      = "diff_sha256"
 	executionPlanSHA      = "plan_sha256"
+	twoFinders            = 2
+	recordFile            = "record.json"
+	postFile              = "post.json"
+	fieldFinders          = "finders"
 )
 
 // CodeQuote locates the checker evidence independently of the finding.
@@ -64,8 +68,19 @@ type Execution struct {
 	Gap            string
 	SpecViolations []string
 	Completed      int
-	Retired        bool
 	Active         bool
+	// CrossRequired records that the bundle captured two-finder mode. It
+	// outlives the artifacts the capture bound: a receipt that still states
+	// the execution forbids reading its findings as a manual review.
+	CrossRequired bool
+	// oneFinder records that the resolved capture states a one-finder policy
+	// and no live marker stated a count. Such a capture is manual by
+	// declaration: a leftover receipt must not re-arm cross checks on it.
+	oneFinder bool
+	// finders is the captured count, largest seen first, so a stale receipt
+	// can never downgrade a live two-finder capture, and a one-finder policy
+	// captured over a retired execution reads manual.
+	finders int
 }
 
 // CheckExecution prevents captured automatic work from becoming manual.
@@ -76,14 +91,7 @@ func CheckExecution(dir string, review *jq.Obj) *Execution {
 	rootReview, raw := readObject(dir, "review.json")
 	state.readReferences(captured, rootReview, review)
 	state.readReceiptReference()
-	if !state.Active {
-		return state
-	}
-	state.Eligible = make(map[string]bool)
-	state.Expected = make(map[string][]string)
-	state.Checked = make(map[string][]any)
-	state.Origins = make(map[string][]string)
-	if state.Gap != "" {
+	if !state.liveCapture() || state.Gap != "" {
 		return state
 	}
 	if review == nil {
@@ -107,22 +115,74 @@ func CheckExecution(dir string, review *jq.Obj) *Execution {
 }
 
 func executionState(dir string) *Execution {
-	state := &Execution{dir: dir}
+	state := &Execution{
+		dir: dir, Eligible: make(map[string]bool), Expected: make(map[string][]string),
+		Checked: make(map[string][]any), Origins: make(map[string][]string),
+	}
 	manifest, _ := readObject(dir, "launcher.json")
 	if id := jq.StrOf(readcommon.FieldOf(manifest, executionIDKey)); id != "" {
 		state.ID = id
 		state.Active = true
+		state.captureFinders(twoFinders)
 	}
 	return state
 }
 
+// storedFinders reads the finder count a stored record or post receipt states:
+// the receipt keeps a captured execution legible after its run capture and
+// bound artifacts are gone, so those findings never become manual again.
+func storedFinders(dir string) int {
+	largest := 0
+	for _, name := range []string{recordFile, postFile} {
+		doc, _ := readObject(dir, name)
+		finders := readcommon.FieldOf(readcommon.FieldOf(doc, "verification"), fieldFinders)
+		if count, _ := jq.IntOf(readcommon.FieldOf(finders, "completed")); count > largest {
+			largest = count
+		}
+	}
+	return largest
+}
+
+// captureFinders folds one capture statement into the recorded topology: the
+// largest count wins, so a receipt for a retired execution cannot override a
+// live one, and a capture that states nothing leaves the mode undecided.
+func (s *Execution) captureFinders(count int) {
+	// A capture that declares one finder is manual by decision: every later
+	// statement is a leftover reference, so folding two into it would re-arm a
+	// cross check the policy never asked for.
+	if s.oneFinder && count > 1 {
+		return
+	}
+	s.finders = max(s.finders, count)
+	// At least two finders require a cross check. An out-of-range count fails
+	// closed: treating it as manual would clear the stamp and let a
+	// quote-only finding pass as an unreviewed capture.
+	s.CrossRequired = s.finders >= twoFinders
+}
+
+// liveCapture settles the capture mode from the stored receipt when no live
+// marker stated one, and reports whether the bound files can be read. A
+// captured execution whose artifacts are gone keeps its gap: it may never be
+// read as a manual review.
+func (s *Execution) liveCapture() bool {
+	if s.finders == 0 {
+		s.captureFinders(storedFinders(s.dir))
+	}
+	if s.CrossRequired && !s.Active {
+		s.Gap = "captured execution artifacts missing"
+		return false
+	}
+	return s.Active
+}
+
 func (s *Execution) readReceiptReference() {
-	if s.Active {
+	if s.Active || s.oneFinder {
 		return
 	}
 	receipt, _ := readObject(s.dir, filepath.Join(executionVerification, "verdicts.json"))
 	if id := jq.StrOf(readcommon.FieldOf(receipt, executionIDKey)); id != "" {
 		s.ID, s.Active = id, true
+		s.captureFinders(twoFinders)
 	}
 }
 
@@ -133,7 +193,7 @@ func (s *Execution) readReferences(docs ...*jq.Obj) {
 }
 
 func (s *Execution) readReference(doc *jq.Obj) {
-	if doc == nil {
+	if doc == nil || s.oneFinder {
 		return
 	}
 	value, exists := doc.Get("execution")
@@ -141,8 +201,9 @@ func (s *Execution) readReference(doc *jq.Obj) {
 		return
 	}
 	s.Active = true
+	s.captureFinders(twoFinders)
 	id := jq.StrOf(readcommon.FieldOf(value, "id"))
-	if jq.R(readcommon.FieldOf(value, "finders")) != "2" {
+	if jq.R(readcommon.FieldOf(value, fieldFinders)) != "2" {
 		s.Gap = "execution requires two finders"
 	}
 	if id == "" || (s.ID != "" && s.ID != id) {
@@ -383,15 +444,17 @@ func checkResultQuote(idx *evidence.DiffIndex, result *Result) bool {
 	return evidence.MatchQuote(idx, evidence.QuoteRequest{Path: q.Path, Side: q.Side, Line: q.Line, Quote: q.Text}).Verified()
 }
 
-// Stamp discards agent-written cross standing.
+// Stamp discards agent-written cross standing. A captured two-finder
+// execution always re-derives it from the bound artifacts, and a manual
+// capture never keeps an automatic standing the store still carries.
 func (s *Execution) Stamp(entries []any) {
-	if !s.Active {
-		if s.Retired {
-			clearRetiredCross(entries)
-		}
+	if !s.CrossRequired {
+		clearCross(entries)
 		return
 	}
-	s.refreshCapture()
+	if s.Active {
+		s.refreshCapture()
+	}
 	for _, row := range entries {
 		s.stampEntry(row)
 	}
@@ -432,7 +495,7 @@ func (s *Execution) stampEntry(row any) {
 
 // ApplyEvidence makes a broken execution insufficient even for an empty union.
 func (s *Execution) ApplyEvidence(receipt *core.EvidenceReceipt) {
-	if !s.Active || (s.Gap == "" && s.BlockingGap == "") || receipt == nil {
+	if !s.CrossRequired || (s.Gap == "" && s.BlockingGap == "") || receipt == nil {
 		return
 	}
 	receipt.Insufficient = true
@@ -441,7 +504,7 @@ func (s *Execution) ApplyEvidence(receipt *core.EvidenceReceipt) {
 
 // Problem is the bound execution failure exposed by readiness.
 func (s *Execution) Problem() string {
-	if !s.Active {
+	if !s.CrossRequired {
 		return ""
 	}
 	if s.Gap != "" {
@@ -573,7 +636,9 @@ func completedCross(cross any) bool {
 	return jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) != "" && readcommon.FieldOf(cross, fieldStatus) == confirmed
 }
 
-func clearRetiredCross(entries []any) {
+// clearCross removes the derived stamp from every entry: a manual capture
+// never carries automatic standing, whatever the store it read held.
+func clearCross(entries []any) {
 	for _, entry := range entries {
 		verification, ok := readcommon.FieldOf(entry, executionVerification).(*jq.Obj)
 		if ok {
@@ -583,9 +648,22 @@ func clearRetiredCross(entries []any) {
 }
 
 func (s *Execution) readTopology(captured any) {
-	count, _ := jq.IntOf(readcommon.FieldOf(captured, "finders"))
-	s.Retired = count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
-	if count == 2 {
+	count, _ := jq.IntOf(readcommon.FieldOf(captured, fieldFinders))
+	// A live manifest already stated the capture; a resolved policy beside it
+	// is configuration, not a statement about the execution that ran.
+	if count == 0 && !s.Active {
+		defaults := readcommon.FieldOf(readcommon.FieldOf(captured, "resolved"), "defaults")
+		values := readcommon.FieldOf(defaults, "values")
+		// Only an explicit one-finder policy lowers the count: the resolved
+		// default is two, so honoring it here would arm cross checks on a
+		// capture that never ran two finders.
+		if policy, _ := jq.IntOf(readcommon.FieldOf(values, fieldFinders)); policy == 1 {
+			count = policy
+			s.oneFinder = true
+		}
+	}
+	s.captureFinders(count)
+	if count == twoFinders {
 		s.Active = true
 	}
 }
