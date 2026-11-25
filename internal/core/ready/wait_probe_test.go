@@ -51,11 +51,12 @@ func TestWaitProbeConditionalAndFailedChecks(t *testing.T) {
 }
 
 func TestWaitProbeUnsupported(t *testing.T) {
-	for _, provider := range []string{"gitlab", "forgejo"} {
+	for _, provider := range []string{"forgejo", "gitcafe", "bitbucket", "azure", "bogus"} {
 		host := &waitHost{}
 		_, err := (&WaitProbe{}).Read(t.Context(), &core.ReadRequest{Runtime: &core.Runtime{Commander: host}}, provider, "merged")
 		ref, ok := errors.AsType[*core.RefusalError](err)
-		if !ok || ref.Code != "provider-unimplemented" || !strings.Contains(ref.Message, provider) || len(host.calls) != 0 {
+		want := "pr-wait has no live reads for " + provider + " — supported hosts: github, gitlab"
+		if !ok || ref.Code != "provider-unimplemented" || ref.Message != want || len(host.calls) != 0 {
 			t.Fatalf("provider %s: ref=%v calls=%v", provider, err, host.calls)
 		}
 	}

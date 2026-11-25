@@ -1,0 +1,11 @@
+{
+  "iid": 7,
+  "state": "opened",
+  "sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "merged_at": null,
+  "head_pipeline": {
+    "id": 21,
+    "status": "running",
+    "sha": "cccccccccccccccccccccccccccccccccccccccc"
+  }
+}

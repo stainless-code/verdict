@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "threads-failed",
-    "message": "could not read live review threads\ntry: run 'gh auth status', confirm the repo/PR spelling, then re-run"
+    "message": "could not read live review threads\ntry: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run"
   }
 }
 --- stderr ---
