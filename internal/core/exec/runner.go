@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	osexec "os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
@@ -103,11 +102,11 @@ func (r Runner) argv(ctx context.Context, cmd *core.Command) ([]string, error) {
 	}
 	host := core.HostOf(ctx)
 	getenv := func(string) string { return "" }
-	if host != "" && filepath.Base(cmd.Argv[0]) == glabBin {
+	if host != "" && core.ToolName(cmd.Argv[0]) == glabBin {
 		getenv = envLookup(childEnviron(cmd))
 	}
 	argv, ref := core.PinHostArgvIn(cmd.Argv, host, getenv)
-	if ref == nil && host != "" && filepath.Base(cmd.Argv[0]) == glabBin {
+	if ref == nil && host != "" && core.ToolName(cmd.Argv[0]) == glabBin {
 		ref = core.GlabEndpointConflict(host, getenv)
 	}
 	if ref != nil {

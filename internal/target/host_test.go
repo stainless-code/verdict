@@ -75,7 +75,7 @@ func TestResolveRefusesAHostNoCallCanBePinnedTo(t *testing.T) {
 			g: fakeGit{origin: forgeOrigin}, q: Request{Verb: "post", Repo: "5", Env: map[string]string{"FORGEJO_HOST": "forge.corp.example"}},
 		},
 		{
-			name: "gitlab URL with a port, GITLAB_API_HOST elsewhere", hosts: []string{"the target is on git.corp.example:8443", "GITLAB_API_HOST names git.corp.example"},
+			name: "gitlab URL with a port, GITLAB_API_HOST elsewhere", hosts: []string{"the target is on git.corp.example:8443", `GITLAB_API_HOST is "git.corp.example"`},
 			q: Request{
 				Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
 				Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443", "GITLAB_API_HOST": "git.corp.example"},

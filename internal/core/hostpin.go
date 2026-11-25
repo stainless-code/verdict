@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -71,6 +72,7 @@ const (
 	schemeHTTPS = "https"
 	schemeHTTP  = "http"
 	schemeSep   = "://"
+	exeSuffix   = ".exe"
 	pathSep     = "/"
 	// ghHostedParts is gh's HOST/OWNER/REPO; OWNER/REPO has one part fewer.
 	ghHostedParts = 3
@@ -112,6 +114,18 @@ func PinHostArgv(argv []string, host string) ([]string, *RefusalError) {
 	return pinArgv(argv, host, false)
 }
 
+// ToolName is the tool an argv[0] runs: the file name without its directory or
+// a Windows `.exe`, so `/usr/local/bin/glab` is glab. The pin and the runner's
+// environment check both key on it; a literal compare would let a path-spelled
+// glab or gh skip both.
+func ToolName(argv0 string) string {
+	base := filepath.Base(argv0)
+	if len(base) > len(exeSuffix) && strings.EqualFold(base[len(base)-len(exeSuffix):], exeSuffix) {
+		return base[:len(base)-len(exeSuffix)]
+	}
+	return base
+}
+
 // PinHostArgvIn is [PinHostArgv] for a runner that can read the environment the
 // child inherits (getenv). It differs for exactly one target: a glab call on a
 // host with a port. glab's --hostname takes no port, so that call cannot be
@@ -120,7 +134,7 @@ func PinHostArgv(argv []string, host string) ([]string, *RefusalError) {
 // its -R as the bare `group/project`, so the default is what it reaches. Any
 // other environment refuses with [CodeHostMismatch], as [PinHostArgv] does.
 func PinHostArgvIn(argv []string, host string, getenv func(string) string) ([]string, *RefusalError) {
-	if host == "" || len(argv) < 2 || argv[0] != pinGlab || !strings.Contains(host, ":") {
+	if host == "" || len(argv) < 2 || ToolName(argv[0]) != pinGlab || !strings.Contains(host, ":") {
 		return PinHostArgv(argv, host)
 	}
 	if ref := GlabDefaultConflict(host, getenv); ref != nil {
@@ -137,7 +151,7 @@ func pinArgv(argv []string, host string, defaultHost bool) ([]string, *RefusalEr
 		return argv, nil
 	}
 	repoSub, qualify := "pr", qualifyGH
-	switch argv[0] {
+	switch ToolName(argv[0]) {
 	case pinGH:
 	case pinGlab:
 		repoSub, qualify = "mr", glabQualifier(defaultHost)
@@ -274,19 +288,29 @@ func glabQualifier(defaultHost bool) func(repo, host string) (string, bool) {
 // takes that segment for a host when its own config lists it) refuses too.
 // glab: internal/glrepo/repo.go FromFullName, `case 2`.
 func unqualifyGlab(repo, host string) (string, bool) {
-	if IsTargetURL(repo) {
-		u, err := url.Parse(repo)
-		path := ""
-		if err == nil {
-			path = strings.Trim(u.Path, pathSep)
-		}
-		return path, err == nil && path != "" && u.RawQuery == "" && u.Fragment == "" && URLAuthority(u) == host
+	if !IsTargetURL(repo) {
+		return repo, hostFreeRepo(repo)
 	}
-	parts := strings.Split(repo, pathSep)
-	if repo == "" || strings.ContainsAny(repo, ":@") || slices.Contains(parts, "") {
+	u, err := url.Parse(repo)
+	if err != nil || u.RawQuery != "" || u.Fragment != "" || URLAuthority(u) != host {
 		return "", false
 	}
-	return repo, len(parts) < ghHostedParts || !strings.Contains(parts[0], ".")
+	// The path is what glab reads as the repository once the URL is dropped,
+	// so it takes the same test a bare name does: `-R https://h:8443/a.b/g/p`
+	// would otherwise become `a.b/g/p`, which glab reads as host a.b.
+	path := strings.Trim(u.Path, pathSep)
+	return path, hostFreeRepo(path)
+}
+
+// hostFreeRepo reports a bare repository name glab cannot read as
+// `HOST/OWNER/REPO`: no colon or `@`, no empty segment, and no dotted first
+// segment of a three-part-or-longer path.
+func hostFreeRepo(repo string) bool {
+	parts := strings.Split(repo, pathSep)
+	if repo == "" || strings.ContainsAny(repo, ":@") || slices.Contains(parts, "") {
+		return false
+	}
+	return len(parts) < ghHostedParts || !strings.Contains(parts[0], ".")
 }
 
 func unpinnable(argv []string, host, why string) *RefusalError {
@@ -359,10 +383,12 @@ const (
 //     match it or glab errors; GITLAB_HOST is read ahead of GITLAB_URI and
 //     GL_HOST (config.GetFromEnvWithSource), so those cannot override it;
 //   - GITLAB_HOST has no path, which glab would read as a subfolder;
-//   - GITLAB_API_HOST, if set, names the same authority: glab sends the call
-//     there instead (NewClientFromConfig reads api_host);
-//   - under CI auto-login, CI_SERVER_FQDN is set and names it too: glab then
-//     reads host and api_host from it and ignores GITLAB_HOST
+//   - GITLAB_API_HOST, if set, is exactly host: glab sends the call there
+//     instead (NewClientFromConfig reads api_host) and splices it, unparsed,
+//     into `<protocol>://<api_host>/api/v4/` (glinstance.APIEndpoint), so a
+//     scheme or a path makes it a different server or a subfolder and refuses;
+//   - under CI auto-login, CI_SERVER_FQDN is set and is exactly host too:
+//     glab then reads host and api_host from it and ignores GITLAB_HOST
 //     (config_mapping.go ciAutologinEnvOverrides);
 //   - GITLAB_REPO is unset: an api call with no -R would resolve its host from
 //     that repository instead (cmdutils/repo_override.go).
@@ -385,13 +411,18 @@ func GlabDefaultConflict(host string, getenv func(string) string) *RefusalError 
 			"the target is on %s, but GITLAB_REPO is set and glab would take its host from that repository on a call "+
 				"with no -R; unset GITLAB_REPO", host)}
 	}
-	if ref := endpointConflict(host, envGlabAPIHost, getenv); ref != nil {
-		return ref
+	// GITLAB_API_HOST is checked even under CI auto-login, which makes glab
+	// ignore it: a refusal there only over-refuses, never reaches another host.
+	if api := strings.TrimSpace(getenv(envGlabAPIHost)); api != "" && !strings.EqualFold(api, host) {
+		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+			"the target is on %s, but GITLAB_API_HOST is %q and glab reads it as a bare host:port (a scheme or a "+
+				"path makes it a different server or a subfolder) and %s; unset GITLAB_API_HOST, or set it to %s",
+			host, api, glabEndpointNote, host)}
 	}
-	if glabCIAutologin(getenv) && EnvHostAuthority(getenv(envCIServerFQDN)) != host {
+	if fqdn := strings.TrimSpace(getenv(envCIServerFQDN)); glabCIAutologin(getenv) && !strings.EqualFold(fqdn, host) {
 		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
 			"the target is on %s, but under glab's CI auto-login its default host is CI_SERVER_FQDN (%s), "+
-				"not GITLAB_HOST; set CI_SERVER_FQDN to %s", host, orUnset(EnvHostAuthority(getenv(envCIServerFQDN))), host)}
+				"not GITLAB_HOST, and glab reads it as a bare host:port; set CI_SERVER_FQDN to %s", host, orUnset(fqdn), host)}
 	}
 	return nil
 }

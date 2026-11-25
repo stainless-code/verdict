@@ -57,7 +57,7 @@ func TestPinBundleHost(t *testing.T) {
 		{
 			name: "gitlab bundle on a ported host, API host elsewhere", record: gitlabPorted,
 			env:     map[string]string{"GITLAB_HOST": "git.corp.example:8443", "GITLAB_API_HOST": "git.corp.example"},
-			refusal: []string{"GITLAB_API_HOST names git.corp.example "},
+			refusal: []string{`GITLAB_API_HOST is "git.corp.example"`},
 		},
 		{
 			name: "gitlab bundle on a ported host, target names it too", record: gitlabPorted, target: "git.corp.example:8443",

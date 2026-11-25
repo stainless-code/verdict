@@ -9,6 +9,7 @@ package exec_test
 import (
 	"errors"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -114,6 +115,7 @@ func TestPortedGlabHostRunsUnpinnedOnlyAsGlabsDefault(t *testing.T) {
 	}{
 		{"GITLAB_HOST is the target", []string{"GITLAB_HOST=https://gitlab.corp.example:8443"}, false},
 		{"GITLAB_HOST and API host are the target", []string{"GITLAB_HOST=" + host, "GITLAB_API_HOST=" + host}, false},
+		{"API host as a URL", []string{"GITLAB_HOST=" + host, "GITLAB_API_HOST=https://" + host}, true},
 		{"GITLAB_HOST unset", nil, true},
 		{"GITLAB_HOST another port", []string{"GITLAB_HOST=gitlab.corp.example:9443"}, true},
 		{"GITLAB_HOST another host", []string{"GITLAB_HOST=gitlab.other.example:8443"}, true},
@@ -143,5 +145,38 @@ func checkPortedGlab(t *testing.T, lookup []string, log string, extra []string, 
 	}
 	if want := "mr list -R g/app --source-branch=fix-x\n"; err != nil || res.ExitCode != 0 || calls != want {
 		t.Errorf("%s: err = %v exit %d, glab calls %q; want exactly %q", name, err, res.ExitCode, calls, want)
+	}
+}
+
+// TestPathSpelledGlabIsGatedLikeGlab proves the runner gates a glab spawned by
+// absolute path exactly as it gates the bare name: on a ported host with no
+// matching GITLAB_HOST it refuses before the spawn, and on a pinned host the
+// call still carries --hostname. A literal compare on argv[0] let this one
+// through to glab's default host.
+func TestPathSpelledGlabIsGatedLikeGlab(t *testing.T) {
+	log := stubGlab(t)
+	path, err := osexec.LookPath("glab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"HOME=" + t.TempDir()}
+	ctx := core.WithHost(t.Context(), "gitlab.corp.example:8443")
+	_, err = coreexec.Runner{}.Run(ctx, &core.Command{Argv: []string{path, "api", "user"}, Env: env})
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != core.CodeHostMismatch || readLog(t, log) != "" {
+		t.Errorf("ported host, path-spelled glab: err = %v, glab calls %q; want a host-mismatch refusal and no spawn", err, readLog(t, log))
+	}
+	// The endpoint check keys on the tool too: a pinned call whose API host is
+	// elsewhere refuses, however glab is spelled.
+	elsewhere := append([]string{"GITLAB_API_HOST=gitlab.corp.example"}, env...)
+	_, err = coreexec.Runner{}.Run(core.WithHost(t.Context(), "gitlab.com"), &core.Command{Argv: []string{path, "api", "user"}, Env: elsewhere})
+	if !errors.As(err, &ref) || ref.Code != core.CodeHostMismatch || readLog(t, log) != "" {
+		t.Errorf("pinned host, API host elsewhere, path-spelled glab: err = %v, glab calls %q; want a host-mismatch refusal and no spawn", err, readLog(t, log))
+	}
+	if _, err = (coreexec.Runner{}).Run(core.WithHost(t.Context(), "gitlab.com"), &core.Command{Argv: []string{path, "api", "user"}, Env: env}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := readLog(t, log), "api --hostname gitlab.com user\n"; got != want {
+		t.Errorf("pinned host, path-spelled glab: glab calls %q, want %q", got, want)
 	}
 }
