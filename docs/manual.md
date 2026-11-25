@@ -2653,9 +2653,13 @@ disk) delays the one `didOpen`, `didSave`, or `initialize` that touches it
 and never stalls `didChange`, `$/cancelRequest`, `exit`, or anything else.
 A walk that misses the budget is logged once per path, the document is
 matched by the spelling the client gave, and a later save resolves it again;
-a root whose checkout probe misses the budget is dropped with a warning. A
-walk stuck in the kernel cannot be canceled and lingers until the volume
-answers. One file open under two spellings stays tracked until both close,
+a root whose checkout probe misses the budget is dropped with a warning. When
+all eight slots are held by walks still stuck, a new walk is not started and
+its line says so instead of blaming the budget. The roots of one `initialize`
+or folder change resolve concurrently within the same bounds, so a hung
+volume costs one budget however many roots sit on it. A walk stuck in the
+kernel cannot be canceled and lingers until the volume answers, but ending
+the session stops waiting for it. One file open under two spellings stays tracked until both close,
 each with its own version: publishes use the spelling changed most
 recently. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one

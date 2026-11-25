@@ -105,9 +105,7 @@ func decodeOption[T any](wire map[string]json.RawMessage, key string, into *T) {
 func (s *Server) handleInitialized(ctx context.Context) {
 	// The watcher starts before the first compose, so a bundle write lands
 	// on one side or the other (see settleRoots).
-	s.callMu.Lock()
 	s.startPump(ctx)
-	s.callMu.Unlock()
 	s.composeMu.Lock()
 	s.stateMu.Lock()
 	roots := s.rootsSnapshot()
