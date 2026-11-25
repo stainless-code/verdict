@@ -639,6 +639,9 @@ type groupSandboxCommander struct {
 }
 
 func (c *groupSandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isStatusProbe(cmd) {
+		return core.Result{}, nil
+	}
 	c.runs = append(c.runs, cmd)
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
 		return core.Result{Stdout: groupHead + "\n"}, nil

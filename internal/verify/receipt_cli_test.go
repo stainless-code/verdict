@@ -104,3 +104,41 @@ func runPatchVerify(t *testing.T, root string) (core.VerifyReceipt, string) {
 	}
 	return receipt, diag.String()
 }
+
+// TestVerifyPatchReceiptIgnoresStatusConfig pins that the checkout's status
+// config cannot hide input from the clean-tree rule: with
+// status.showUntrackedFiles=no an untracked source file still marks the tree
+// dirty, and a clean checkout with the same config still binds its head.
+func TestVerifyPatchReceiptIgnoresStatusConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		wantHead bool
+	}{{"untracked-source-hidden-by-config", false}, {"clean-with-config", true}} {
+		t.Run(tc.name, func(t *testing.T) { checkStatusConfig(t, tc.wantHead) })
+	}
+}
+
+// checkStatusConfig verifies a committed repo whose status config hides
+// untracked files, with an untracked source file unless wantHead.
+func checkStatusConfig(t *testing.T, wantHead bool) {
+	t.Helper()
+	root := t.TempDir()
+	gitOrFatal(t, root, "init", "-q")
+	gitOrFatal(t, root, "config", "user.email", "t@example.com")
+	gitOrFatal(t, root, "config", "user.name", "t")
+	gitOrFatal(t, root, "config", "status.showUntrackedFiles", "no")
+	writeTreeFile(t, root, "marker.txt", "root\n")
+	gitOrFatal(t, root, "add", "marker.txt")
+	gitOrFatal(t, root, "commit", "-q", "-m", "c")
+	head := gitOrFatal(t, root, "rev-parse", "HEAD")
+	writeTreeFile(t, root, ".verdict/state/5201/patch.json", `{"verifyCmd":"true"}`)
+	want := head
+	if !wantHead {
+		writeTreeFile(t, root, "helper.go", "package main\n")
+		want = ""
+	}
+	receipt, warnings := runPatchVerify(t, root)
+	if receipt.Head != want {
+		t.Fatalf("receipt head = %q, want %q (warnings %q)", receipt.Head, want, warnings)
+	}
+}

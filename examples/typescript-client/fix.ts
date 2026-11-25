@@ -134,7 +134,7 @@ try {
   expect(row.outcome, "ready", "the row is ready to patch");
   expect(
     batch.next,
-    "patch each anchor, commit the fixes, run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all",
+    "patch each anchor, commit the fixes, re-run fetch-local so the bundle head is that commit, run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all",
     "the envelope names the batch steps",
   );
   ok("fix --all hands out one ready pass per open finding");

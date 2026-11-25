@@ -18,16 +18,24 @@ import (
 // scripted per test so a nonzero exit and a moved head are distinguishable.
 type groupCommander struct {
 	// onRun acts for the operator's command while it "runs".
-	onRun   func()
-	head    string
-	out     string
-	runs    []*core.Command
+	onRun func()
+	head  string
+	out   string
+	runs  []*core.Command
+	// status answers the working-tree status probes in order (the last
+	// repeats); empty reads clean.
+	status  []string
+	probes  int
 	exit    int
 	headErr bool
 	timed   bool
 }
 
 func (c *groupCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isStatusProbe(cmd) {
+		c.probes++
+		return core.Result{Stdout: scripted(c.status, c.probes-1, "")}, nil
+	}
 	c.runs = append(c.runs, cmd)
 	if len(cmd.Argv) > 2 && cmd.Argv[0] == "git" && cmd.Argv[3] == "rev-parse" {
 		if c.headErr {

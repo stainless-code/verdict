@@ -29,7 +29,8 @@
    changed: test, review own diff, remove bloat, confirm every dirty file maps to an
    addressed thread or explicit request (stop-and-report on hitchhikers — never auto-revert),
    record `.verdict/state/N/patch.json`
-   (`{findingSig, filesChanged[], commandsRun[], verifyCmd, verifyOutput, baseHead, resultHead}` from `git diff --name-only` before/after;
+   (`{findingSig?, filesChanged[], commandsRun[], verifyCmd, verifyOutput, baseHead, resultHead}` from `git diff --name-only` before/after;
+   `findingSig` only when the pass fixes exactly one finding, see step 6;
    `verifyCmd` is the exact rerun proving the fix, `verifyOutput` its tail,
    `baseHead`/`resultHead` bracket verification),
    commit (`git add && git commit`), push.
@@ -43,7 +44,12 @@
    matching HEAD flips `addressed`, and only beside a passing `verify-receipt.json` that
    `verdict verify owner/repo N` alone writes: run it on the committed, pushed, re-fetched
    HEAD with a clean tree, and cite its `verifyCmd` in the entry — a claim without that
-   receipt only logs, and `patch.json` is never one. Otherwise reply without resolving.
+   receipt only logs, and `patch.json` is never one. One `verdict verify` run writes one
+   receipt, bound to `patch.json`'s `findingSig` when set: for a pass that fixes one
+   thread, set `findingSig` to that finding's full sig; when one `verifyCmd` proves several
+   threads, leave `findingSig` out, so the receipt backs every `VERIFIED` entry citing that
+   exact `verifyCmd` at that HEAD — the command and head are then the whole binding. A
+   receipt naming one finding never backs another's entry. Otherwise reply without resolving.
 7. Finalize ONLY if code changed → land it as a single commit (amend as you iterate, push
    once at the end); on push failure report exact error and STOP (don't
    claim fix or resolve threads). Reply ONCE per relevant thread: on GitHub the reply takes

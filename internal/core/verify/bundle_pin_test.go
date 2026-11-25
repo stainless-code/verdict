@@ -241,3 +241,60 @@ func TestVerifyGroupTailSanitizesBeforeTheCut(t *testing.T) {
 		t.Fatalf("tail keeps the cut credential's second half: %q", receipt.OutputTail[:64])
 	}
 }
+
+// TestVerifyGroupRefusesDirtyTree pins deep-group validation to the patch
+// path's clean-tree rule: HEAD alone says nothing about uncommitted edits, so
+// a dirty tree refuses before the command runs and writes no receipt.
+func TestVerifyGroupRefusesDirtyTree(t *testing.T) {
+	root := groupBundle(t)
+	cmdr := &groupCommander{head: groupHead, out: "ok\n", status: []string{" M app.go\n"}}
+	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
+	if ref == nil || ref.Code != "head-mismatch" || !strings.Contains(ref.Message, "uncommitted changes") {
+		t.Fatalf("refusal = %v, want head-mismatch naming the uncommitted changes", ref)
+	}
+	requireNoGroupReceipt(t, filepath.Join(root, ".verdict", "state", "7"))
+}
+
+// TestVerifyGroupFailsTreeLeftDirty pins the other half: a command that
+// leaves the tree dirty fails the receipt, which then binds no execution head.
+func TestVerifyGroupFailsTreeLeftDirty(t *testing.T) {
+	root := groupBundle(t)
+	cmdr := &groupCommander{head: groupHead, out: "ok\n", status: []string{"", "?? scratch.go\n"}}
+	resp, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
+	if ref != nil {
+		t.Fatalf("Run: %v", ref)
+	}
+	receipt, found, rref := verifycore.ReadValidationReceipt(filepath.Join(root, ".verdict", "state", "7"), "group-a1")
+	if rref != nil || !found {
+		t.Fatalf("receipt found=%v ref=%v", found, rref)
+	}
+	if receipt.Passed || receipt.Status != "stale-head" || receipt.ExecutionHead != "" || resp.Data.Head != "" {
+		t.Fatalf("receipt = %+v, data head %q; want a failed receipt binding no head", receipt, resp.Data.Head)
+	}
+}
+
+// TestReadValidationReceiptRejectsTrailingData pins the strict read: a
+// passing group receipt followed by another value is unreadable, never the
+// first value alone.
+func TestReadValidationReceiptRejectsTrailingData(t *testing.T) {
+	root := groupBundle(t)
+	if _, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...",
+		&groupCommander{head: groupHead, out: "ok\n"})); ref != nil {
+		t.Fatalf("Run: %v", ref)
+	}
+	path := filepath.Join(root, ".verdict", "state", "7", "validation-group-a1.json")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"passed":true}`); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, _, ref := verifycore.ReadValidationReceipt(filepath.Dir(path), "group-a1")
+	if ref == nil || !strings.Contains(ref.Message, "trailing data after the receipt object") {
+		t.Fatalf("read = %v, want the trailing-data refusal", ref)
+	}
+}

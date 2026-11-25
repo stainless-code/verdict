@@ -81,7 +81,7 @@ func (st *state) applyVerdict(target *jq.Obj, full string, claim verifyClaim) {
 	switch {
 	case claim.verdict == "VERIFIED" && shaOK && claim.vcmd != "":
 		// The claim is attestation; only the receipt verify wrote is proof.
-		if gap := verifyReceiptGap(st.dir, st.headFull, full, claim.vcmd); gap != "" {
+		if gap := verifyReceiptGap(st.dir, st.headFull, full, claim.vcmd, st.entries); gap != "" {
 			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap, readcommon.ShortSHA(st.headFull)))
 			st.recordRevalidation(target, claim)
 			return
@@ -264,7 +264,7 @@ func hasPrefix(s, prefix string) bool {
 // claim's finding when it names one, on the clean gated head. The bundle owns
 // the receipt, so it was written for this bundle and its root; the head is the
 // binding it can go stale on.
-func verifyReceiptGap(dir, head, full, vcmd string) string {
+func verifyReceiptGap(dir, head, full, vcmd string, entries []any) string {
 	receipt, found, problem := verifycore.ReadVerifyReceipt(dir)
 	switch {
 	case problem != "":
@@ -276,20 +276,24 @@ func verifyReceiptGap(dir, head, full, vcmd string) string {
 	case receipt.TimedOut:
 		return "the verify receipt timed out"
 	}
-	return receiptBindingGap(&receipt, head, full, vcmd)
+	return receiptBindingGap(&receipt, head, full, vcmd, entries)
 }
 
 // receiptBindingGap checks what the passing run was bound to: the command,
 // the finding, and the head.
-func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string) string {
-	switch {
-	case receipt.Command != vcmd:
+func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string, entries []any) string {
+	if receipt.Command != vcmd {
 		return fmt.Sprintf("the verify receipt ran %q, not the claim's %q", receipt.Command, vcmd)
-	case receipt.Sig != "" && !sigCovers(receipt.Sig, full):
-		return "the verify receipt is for finding " + readcommon.Prefix(receipt.Sig)
-	case receipt.Head == "":
+	}
+	if receipt.Sig != "" {
+		if gap := receiptSigGap(receipt.Sig, full, entries); gap != "" {
+			return gap
+		}
+	}
+	if receipt.Head == "" {
 		return "the verify receipt records no clean HEAD"
-	case receipt.Head != head:
+	}
+	if receipt.Head != head {
 		return "the verify receipt covers HEAD " + readcommon.ShortSHA(receipt.Head)
 	}
 	return ""
@@ -298,7 +302,19 @@ func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string) str
 // minSigPrefixLen is the shortest sig prefix a receipt may name a finding by.
 const minSigPrefixLen = 8
 
-// sigCovers reports whether a receipt's sig (full or an 8+ prefix) names full.
-func sigCovers(sig, full string) bool {
-	return sig == full || (len(sig) >= minSigPrefixLen && hasPrefix(full, sig))
+// receiptSigGap resolves the receipt's sig the way every claim resolves a
+// sig — against the store, unique or nothing — and requires it to name the
+// claim's own finding. A prefix two findings share backs neither.
+func receiptSigGap(sig, full string, entries []any) string {
+	if len(sig) < minSigPrefixLen {
+		return "the verify receipt names finding " + sig + ", too short a sig to resolve"
+	}
+	resolved, code := resolveSig(entries, sig)
+	switch {
+	case code == sigMany:
+		return "the verify receipt's finding " + readcommon.Prefix(sig) + " is ambiguous in the store"
+	case code == sigNone || resolved != full:
+		return "the verify receipt is for finding " + readcommon.Prefix(sig)
+	}
+	return ""
 }

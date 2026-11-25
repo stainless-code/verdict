@@ -60,23 +60,36 @@ func probeTree(ctx context.Context, commander core.Commander, root string) treeP
 	if ref != nil {
 		return treeProbe{ref: ref}
 	}
+	dirty, ref := treeDirty(ctx, commander, root)
+	if ref != nil {
+		return treeProbe{ref: ref}
+	}
+	return treeProbe{head: head, dirty: dirty}
+}
+
+// treeDirty reports whether anything outside verdict's bundle state differs
+// from HEAD. The flags pin what counts regardless of the checkout's config:
+// status.showUntrackedFiles=no would otherwise hide an untracked input, and
+// diff.ignoreSubmodules would hide a modified submodule.
+func treeDirty(ctx context.Context, commander core.Commander, root string) (bool, *core.RefusalError) {
 	tctx, cancel := context.WithTimeout(ctx, statusProbeTimeout)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
 		Argv: []string{
 			"git", "--no-optional-locks", "-C", root, "status", "--porcelain",
+			"--untracked-files=all", "--ignore-submodules=none",
 			"--", ".", ":(exclude)" + stateDirRel, ":(exclude)" + config.GitignorePath,
 		},
 		OutputCap: statusProbeCap,
 	})
 	if err != nil {
-		return treeProbe{ref: failed(err)}
+		return false, failed(err)
 	}
 	if res.ExitCode != 0 {
-		return treeProbe{ref: &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
-			"could not read the working tree status at %s (git exit %d)", root, res.ExitCode)}}
+		return false, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+			"could not read the working tree status at %s (git exit %d)", root, res.ExitCode)}
 	}
-	return treeProbe{head: head, dirty: strings.TrimSpace(res.Stdout) != ""}
+	return strings.TrimSpace(res.Stdout) != "", nil
 }
 
 // boundHead is the commit the receipt vouches for: both probes must read the
@@ -245,13 +258,26 @@ func ReadVerifyReceipt(dir string) (receipt core.VerifyReceipt, found bool, prob
 	if err != nil {
 		return receipt, true, err.Error()
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&receipt); err != nil {
-		return receipt, true, err.Error()
+	if problem := decodeStrict(raw, &receipt); problem != "" {
+		return receipt, true, problem
 	}
 	if receipt.SchemaVersion != receiptSchema {
 		return receipt, true, fmt.Sprintf("schema_version %q, want %s", receipt.SchemaVersion, receiptSchema)
 	}
 	return receipt, true, ""
+}
+
+// decodeStrict decodes exactly one JSON object with no unknown fields and
+// nothing after it but whitespace: a second value or a malformed suffix
+// makes the whole file unreadable rather than letting the first value pass.
+func decodeStrict(raw []byte, into any) string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(into); err != nil {
+		return err.Error()
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return "trailing data after the receipt object"
+	}
+	return ""
 }

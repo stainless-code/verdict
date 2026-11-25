@@ -39,8 +39,12 @@ const (
 	nextBatchEmptyPaths     = "widen --paths, lower --min-severity, or fix one sig with --sig"
 	nextBatchRecipe         = "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig"
 	nextBatchRecipeNoLenses = "pick a recipe that declares lenses or a different batch scope"
-	nextBatchPasses         = "patch each anchor, commit the fixes, run the verify command through verdict verify, write one " +
-		"verification.json claim per sig, land with record, then re-run fix --all"
+	nextBatchPasses         = "patch each anchor, commit the fixes, " + refreshLocal + ", run the verify command " +
+		"through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all"
+	// refreshLocal and refreshPR move the bundle head to the fix commit, which
+	// the receipt's clean head must equal before record or post applies a claim.
+	refreshLocal      = "re-run fetch-local so the bundle head is that commit"
+	refreshPR         = "push and re-fetch so the bundle head is that commit"
 	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
 	floorOff          = "off"
@@ -347,8 +351,12 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 	st.printBatchInstructions(dir, verify, joinAnchors(anchors))
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
-	st.humanf("next: patch %s, commit, run verify %q through verdict verify, write verification.json, "+
-		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), verify,
+	refresh := "re-run fetch-local"
+	if st.providerBundle() {
+		refresh = "push, re-fetch"
+	}
+	st.humanf("next: patch %s, commit, %s, run verify %q through verdict verify, write verification.json, "+
+		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), refresh, verify,
 		st.landVerb(), st.batchMode())
 	return ready
 }
@@ -554,7 +562,8 @@ func (st *state) batchMsg(msg string) string {
 func (st *state) batchNext(next string) string {
 	out := st.batchMsg(next)
 	if st.providerBundle() {
-		return strings.ReplaceAll(out, "land with record", "push the fix, re-fetch, and land with post")
+		out = strings.ReplaceAll(out, refreshLocal, refreshPR)
+		return strings.ReplaceAll(out, "land with record", "land with post")
 	}
 	return out
 }

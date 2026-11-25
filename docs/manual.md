@@ -315,8 +315,9 @@ Only `verdict verify` writes `verify-receipt.json`, and only it is the tool's
 observation: the command it ran (`command`, the bundle's `patch.json` `verifyCmd`),
 the finding `patch.json` named (`sig`, from `findingSig` or `sig`), the exit,
 whether the watchdog fired, and `head` — the commit checked out at the repo root,
-recorded only when `git status` showed a clean tree and the same commit both
-before and after the command. The status read skips only verdict's own bundle
+recorded only when `git status` (with untracked files and submodules always
+counted, whatever the checkout's status config) showed a clean tree and the same
+commit both before and after the command. The status read skips only verdict's own bundle
 state (`.verdict/state/`) and the generated `.verdict/.gitignore`; everything else
 under `.verdict/` (config, KB, packs, regression tests, `verify-env`) is reviewed
 input and counts. `verify` resolves the bundle like every writing verb (a
@@ -326,10 +327,16 @@ so a failed, aborted, or unrecordable run leaves no receipt at all. Every write
 goes through that pinned directory, and a command that moves or replaces the
 bundle directory makes verify refuse with nothing recorded. `verify --group`
 pins the bundle the same way before its command runs, so a group receipt is
-written only into the bundle it validated. `record`/`post`
+written only into the bundle it validated, and applies the same clean-tree rule: a
+dirty tree refuses before the command runs (`head-mismatch`), and a tree left dirty
+fails the receipt with no execution head. `record`/`post`
 read only that file. They flip a `VERIFIED` claim only when it shows exit 0, no
-timeout, the claim's exact `verifyCmd`, the claim's finding when it names one, and a
-`head` equal to the HEAD they grade. Anything else does not flip: no receipt (a pass
+timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
+`sig` must resolve to exactly that one finding in the store; a prefix two findings
+share backs neither), and a `head` equal to the HEAD they grade. A receipt with no
+`sig` — `patch.json` named no finding — backs every claim that cites its command at
+that head: when one command proves several findings, the command and head are the
+whole binding. Anything else does not flip: no receipt (a pass
 written into `patch.json` is not one), a failed or timed-out run, another command,
 another finding, a run on a dirty tree or a moving head, or a receipt for another
 HEAD (stale). The finding keeps its status, the claim is logged as a `revalidation`

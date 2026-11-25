@@ -11,7 +11,7 @@ anchors: other.txt:2-2 side=RIGHT anchored=true
 instructions: patch each anchor file (app.txt, other.txt), record the verify command (go test ./...) as verifyCmd in .verdict/state/local-batch/patch.json, commit the fixes and re-run fetch-local so the bundle's head is that commit, then run it through verdict verify acme/app local-batch and write verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict VERIFIED, that verifyCmd, and resultHead matching HEAD (a claim flips only on the verify-receipt.json verify writes — exit 0 for that command on the clean, committed HEAD); land it with record acme/app local-batch; re-run fix acme/app local-batch --all for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell — it writes no receipt, so settle that finding with verdict triage
 loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
-next: patch app.txt, other.txt, commit, run verify "go test ./..." through verdict verify, write verification.json, run record to land it, then re-run fix --all
+next: patch app.txt, other.txt, commit, re-run fetch-local, run verify "go test ./..." through verdict verify, write verification.json, run record to land it, then re-run fix --all
 --- stderr ---
 
 --- files ---

@@ -1,7 +1,6 @@
 package verifycore
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -172,6 +171,17 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 			"checked-out head %s is not the reviewed head %s — validation runs on the reviewed commit only",
 			readcommon.ShortSHA(before), readcommon.ShortSHA(reviewedHead))}
 	}
+	// HEAD alone says nothing about uncommitted edits, so a receipt can only
+	// certify the reviewed commit when the tree it runs on is that commit.
+	dirty, ref := treeDirty(ctx, run.commander, run.root)
+	if ref != nil {
+		return ref
+	}
+	if dirty {
+		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+			"the working tree at %s has uncommitted changes — commit or stash them; "+
+				"validation certifies the reviewed commit only", run.root)}
+	}
 	run.reviewedHead = reviewedHead
 	return nil
 }
@@ -208,6 +218,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	st.applyExecution(ctx, req, &receipt, res, runRef)
 	after, headRef := gitHead(ctx, run.commander, run.root)
 	st.applyPostChecks(dir, run, &receipt, after, headRef)
+	applyTreeCheck(ctx, run, &receipt)
 	if ref := bundle.writeValidationReceipt(filepath.Base(run.receiptPath), &receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -275,6 +286,24 @@ func (st *state) applyPostChecks(dir string, run *validationRun, receipt *core.V
 
 // classifyReceipt derives the final status only from recorded facts: a clean
 // exit passes, and anything else fails with the real exit named.
+// applyTreeCheck re-reads the working tree after the command: a tree left
+// with uncommitted changes means the run certified no commit, so the receipt
+// fails and binds no execution head.
+func applyTreeCheck(ctx context.Context, run *validationRun, receipt *core.ValidationReceipt) {
+	dirty, ref := treeDirty(ctx, run.commander, run.root)
+	switch {
+	case ref != nil:
+		receipt.Status, receipt.Failure = statusUnavailable, ref.Message
+	case dirty:
+		receipt.Status = statusStaleHead
+		receipt.Failure = "the working tree had uncommitted changes after validation — it certifies no commit"
+	default:
+		return
+	}
+	receipt.ExecutionHead = ""
+	receipt.Passed = false
+}
+
 func classifyReceipt(receipt *core.ValidationReceipt) {
 	if receipt.Status == "" {
 		receipt.Status = statusFailed
@@ -461,12 +490,10 @@ func ReadValidationReceipt(dir, groupID string) (core.ValidationReceipt, bool, *
 		return core.ValidationReceipt{}, false, failed(err)
 	}
 	var receipt core.ValidationReceipt
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&receipt); err != nil {
+	if problem := decodeStrict(raw, &receipt); problem != "" {
 		return core.ValidationReceipt{}, false, &core.RefusalError{
 			Code:    codeVerifyFailed,
-			Message: fmt.Sprintf("validation receipt %s is unreadable (%v); re-run the group validation", path, err),
+			Message: fmt.Sprintf("validation receipt %s is unreadable (%s); re-run the group validation", path, problem),
 		}
 	}
 	if receipt.SchemaVersion != validationSchema {

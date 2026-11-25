@@ -809,6 +809,54 @@ func TestRunRecordTriageCannotAddress(t *testing.T) {
 	}
 }
 
+// TestRunRecordReceiptSigResolvesUniquely pins that a receipt's sig resolves
+// the way every claim sig does — against the store, unique or nothing. Two
+// stored findings share the receipt's 8-character prefix, so it names
+// neither and backs no claim; the full sig of the other finding backs no
+// claim on this one.
+func TestRunRecordReceiptSigResolvesUniquely(t *testing.T) {
+	const (
+		sigA = "1111111122222222222222222222222222222222"
+		sigB = "11111111ffffffffffffffffffffffffffffffff"
+	)
+	for _, tc := range []struct{ name, receiptSig, wantWarn string }{
+		{"shared-prefix", "11111111", "the verify receipt's finding 11111111 is ambiguous in the store"},
+		{"other-finding", sigB, "the verify receipt is for finding 11111111"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkSharedPrefixReceipt(t, sigA, sigB, tc.receiptSig, tc.wantWarn)
+		})
+	}
+}
+
+// checkSharedPrefixReceipt stores two open findings, claims the first
+// VERIFIED beside a receipt naming receiptSig, and requires it stays open.
+func checkSharedPrefixReceipt(t *testing.T, sigA, sigB, receiptSig, wantWarn string) {
+	t.Helper()
+	entry := func(sig, body string) string {
+		return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,` +
+			`"body":"` + body + `","suggestion":null,"kb":[],"inBounds":true,"rigor":"walked",` +
+			`"severity":"important","sig":"` + sig + `","sig_version":"1","firstSeen":"ddddddd",` +
+			`"lastSeen":"ddddddd","status":"open","rationale":"","history":[]}`
+	}
+	writeStoreBundle(t, "local-sp", `{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
+	testkit.WriteFile(t, ".verdict/state/local-sp/findings.json",
+		"["+entry(sigA, "First stored finding body here.")+","+entry(sigB, "Second stored finding body here.")+"]")
+	testkit.WriteFile(t, ".verdict/state/local-sp/verification.json",
+		`[{"sig":"`+sigA+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
+	testkit.WriteFile(t, ".verdict/state/local-sp/verify-receipt.json", toolReceipt("go test ./...", receiptSig, storeHead, 0, false))
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-sp")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if got := bySig(t, storeEntries(t, "local-sp"))[sigA]["status"]; got != "open" {
+		t.Errorf("status = %v, want open (the receipt names no single finding that is this one)", got)
+	}
+	if !hasWarning(c.Warnings, wantWarn) {
+		t.Errorf("warnings = %q, want one containing %q", c.Warnings, wantWarn)
+	}
+}
+
 // TestRunRecordTriageClaimsCompose proves every triage claim in one run lands:
 // two claims on two findings both flip. A run that stops at the first success
 // silently drops the rest of the operator's triage.
@@ -897,6 +945,13 @@ func TestRunRecordVerifiedNeedsReceipt(t *testing.T) {
 		{
 			name: "unreadable-receipt", receipt: `{"schema_version":"1","command":"go test ./...","exit":0,"extra":true}`, wantStatus: "open",
 			wantWarn: `VERIFIED claim for 101d0761 not applied (the verify receipt is unreadable: json: unknown field "extra")` + tail,
+		},
+		{
+			// A passing receipt with a second value after it is a damaged
+			// file, never the first value alone.
+			name: "trailing-data", receipt: toolReceipt(cmd, "", head, 0, false) + `{"exit":0}`, wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt is unreadable: " +
+				"trailing data after the receipt object)" + tail,
 		},
 	}
 	for _, tc := range tests {
