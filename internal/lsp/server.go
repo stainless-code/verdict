@@ -319,6 +319,9 @@ func (s *Server) noteMiss(p string, why miss) {
 func (s *Server) recordMiss(p string, why miss) bool {
 	s.logMu.Lock()
 	defer s.logMu.Unlock()
+	if why == missCanceled {
+		return false
+	}
 	if why == missNone {
 		delete(s.slow, p)
 		return false
@@ -476,6 +479,7 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interru
 	s.out = out
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	s.resolver.stop = ctx.Done()
 	read := make(chan error, 1)
 	go func() { read <- s.readLoop(ctx, in) }()
 	var readErr error
@@ -596,18 +600,24 @@ func (s *Server) drain() {
 }
 
 // startPump consumes the layer's invalidations until stopPump. Each change
-// recomposes the named root and republishes. The caller holds callMu.
+// recomposes the named root and republishes. The caller holds no lock: the
+// watcher's baseline snapshot walks the disk, and holding callMu (which every
+// incoming frame takes) or stateMu across it would stall the read loop. The
+// pump's slot is reserved under callMu first, so a concurrent stopPump finds
+// it and waits for the goroutine started below.
 func (s *Server) startPump(ctx context.Context) {
+	s.callMu.Lock()
 	if s.cfg.NoWatch || s.pumpCancel != nil || s.shutdown {
+		s.callMu.Unlock()
 		return
 	}
 	pumpCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	s.pumpCancel, s.pumpDone = cancel, done
+	s.callMu.Unlock()
 	s.stateMu.Lock()
 	layer := s.layer
 	s.stateMu.Unlock()
-	// The baseline snapshot walks the disk, so it runs outside stateMu.
 	changes := layer.Changes(pumpCtx)
 	go func() {
 		defer close(done)

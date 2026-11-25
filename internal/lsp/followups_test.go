@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -276,5 +278,89 @@ func TestSlowRootWalkLogsBeforeTheRootsInstall(t *testing.T) {
 	}
 	if err := s.finish(3); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// gatedChanges is a read model whose watcher baseline (Changes) blocks, from
+// the call after the first, until released or the subscription's context
+// ends: a baseline walking a slow volume.
+type gatedChanges struct {
+	ReadModel
+	entered chan struct{}
+	release chan struct{}
+	calls   atomic.Int64
+	once    sync.Once
+}
+
+func (g *gatedChanges) Changes(ctx context.Context) <-chan query.Change {
+	if g.calls.Add(1) > 1 {
+		g.once.Do(func() { close(g.entered) })
+		select {
+		case <-g.release:
+		case <-ctx.Done():
+		}
+	}
+	return g.ReadModel.Changes(ctx)
+}
+
+// TestSlowWatcherBaselineNeverStallsTheReadLoop pins the arming order's other
+// half: the baseline snapshot runs holding no session lock, so a folder
+// change whose watcher restart is stuck on a slow volume leaves the read
+// loop free: a didChange, a $/cancelRequest, and a request behind it are all
+// handled while the baseline is held.
+func TestSlowWatcherBaselineNeverStallsTheReadLoop(t *testing.T) {
+	t.Parallel()
+	first, second := fixtureRoot(t), checkout(t)
+	cfg := newConfig()
+	cfg.NoWatch = false
+	gated := &gatedChanges{
+		ReadModel: productionLayer(cfg, []servedRoot{newServedRoot(first, false)}),
+		entered:   make(chan struct{}), release: make(chan struct{}),
+	}
+	t.Cleanup(func() { close(gated.release) })
+	cfg.Layer = gated
+	s, _ := workspaceSession(t, map[string]any{"workspaceFolders": []any{folder(first)}}, cfg)
+	s.notify(methodInitialized, map[string]any{})
+	uri := fileURI(first, "notes.txt")
+	openDoc(s, uri, 1, notesText)
+	mark := len(s.barrier(2, 0)) + 1
+	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{"added": []any{folder(second)}}})
+	<-gated.entered // the restarted watcher's baseline is now held
+	s.notify(methodDidChange, map[string]any{
+		"textDocument": map[string]any{"uri": uri, "version": 2}, "contentChanges": []any{map[string]any{"text": "y\n"}},
+	})
+	s.notify(methodCancel, map[string]any{"id": 99})
+	s.barrier(3, mark) // answered only if the read loop is free
+	if err := s.finish(4); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCancelDuringAHungResolveEndsTheSession pins the session context
+// reaching the resolver: a folder change whose walk never answers (and whose
+// budget never runs out here) must not hold Serve open after the session is
+// canceled.
+func TestCancelDuringAHungResolveEndsTheSession(t *testing.T) {
+	t.Parallel()
+	first, second := fixtureRoot(t), checkout(t)
+	gate := newGatedEval(t, second)
+	gate.armed.Store(true)
+	cfg := newConfig() // its budget never runs out
+	cfg.eval = gate.eval
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	s := startSessionCtx(ctx, t, cfg)
+	s.request(1, methodInitialize, map[string]any{
+		"capabilities": map[string]any{}, "workspaceFolders": []any{folder(first)},
+	})
+	s.awaitResponse(1)
+	s.notify(methodInitialized, map[string]any{})
+	s.barrier(2, 0)
+	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{"added": []any{folder(second)}}})
+	testenv.Until(t, func() bool { return gate.blocked.Load() > 0 })
+	cancel()
+	// wait fails the test if Serve does not return: it is stuck on the walk.
+	if err := s.wait(); err != nil {
+		t.Fatalf("Serve = %v after cancel, want nil (the cancel is reported by Canceled)", err)
 	}
 }

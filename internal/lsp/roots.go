@@ -140,6 +140,9 @@ func (s *Server) boundedCheckout(dir string) string {
 	if why == missBudget {
 		return "its checkout could not be probed within " + s.lim.resolve.String()
 	}
+	if why == missCanceled {
+		return "its checkout probe was abandoned: the session is ending"
+	}
 	if why == missNoSlot {
 		return fmt.Sprintf("its checkout was not probed: all %d filesystem walks are still outstanding", s.resolver.limit)
 	}
@@ -269,6 +272,9 @@ func (s *Server) applyRootChange(ctx context.Context, params *didChangeRootsPara
 	current := s.rootsSnapshot()
 	s.stateMu.Unlock()
 	plan := s.planRoots(s.nextRootPaths(current, params))
+	if ctx.Err() != nil {
+		return // the session is ending; its walks were abandoned, not answered
+	}
 	s.stateMu.Lock()
 	s.installRoots(plan)
 	s.rekeyDocs()
@@ -302,9 +308,7 @@ func newRoots(before, next []servedRoot) []servedRoot {
 // reads it.
 func (s *Server) settleRoots(ctx context.Context, added []servedRoot) {
 	s.stopPump()
-	s.callMu.Lock()
 	s.startPump(ctx)
-	s.callMu.Unlock()
 	s.composeMu.Lock()
 	defer s.composeMu.Unlock()
 	for i := range added {

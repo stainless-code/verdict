@@ -49,7 +49,7 @@ func TestTickSeesInPlaceWrite(t *testing.T) {
 	layer := New(Snapshot{Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}}, Options{
 		MaxBundles: 10, Stat: stat, ReadDir: os.ReadDir, Clock: fixedNow,
 	})
-	state := newWatchState(layer)
+	state := newWatchState(t.Context(), layer)
 	statCalls = 0
 	marks[bundleDir] = base.Add(time.Second)
 	changes := state.Tick()
@@ -77,7 +77,7 @@ func TestTickStatCostIncludesChunkDirectories(t *testing.T) {
 	layer := New(Snapshot{Roots: []Root{{Path: root}}}, Options{
 		MaxBundles: 10, Stat: stat, ReadDir: os.ReadDir,
 	})
-	state := newWatchState(layer)
+	state := newWatchState(t.Context(), layer)
 	statCalls = 0
 	if changes := state.Tick(); len(changes) != 0 {
 		t.Fatalf("Tick() = %#v, want no changes", changes)
@@ -93,7 +93,7 @@ func TestSweepCatchesInPlaceWrite(t *testing.T) {
 	layer := New(Snapshot{Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}}, Options{
 		MaxBundles: 10, Stat: os.Stat, ReadDir: os.ReadDir, Clock: fixedNow,
 	})
-	state := newWatchState(layer)
+	state := newWatchState(t.Context(), layer)
 	path := filepath.Join(root, ".verdict", "state", "1234", "post.json")
 	if err := os.WriteFile(path, []byte(`{"edited":"with a different byte count"}`), 0o644); err != nil {
 		t.Fatal(err)
@@ -216,4 +216,34 @@ func (g *baselineGate) stat(path string) (os.FileInfo, error) {
 		return info, err
 	}
 	return watchFileInfo{FileInfo: info, modTime: info.ModTime().Add(time.Hour)}, nil
+}
+
+// TestChangesBaselineHonorsCancellation pins that the baseline walk stops
+// when its context ends: a root change or shutdown that cancels while the
+// snapshot is on a slow volume must not wait out the rest of the walk, and no
+// watcher starts for a canceled subscription.
+func TestChangesBaselineHonorsCancellation(t *testing.T) {
+	root, _ := fixture(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var armed atomic.Bool
+	var calls atomic.Int64
+	stat := func(path string) (os.FileInfo, error) {
+		if armed.Load() && calls.Add(1) == 1 {
+			cancel()
+		}
+		return os.Stat(path)
+	}
+	layer := New(Snapshot{Roots: []Root{{Path: root}}}, Options{MaxBundles: 10, Stat: stat, ReadDir: os.ReadDir})
+	armed.Store(true)
+	changes := layer.Changes(ctx)
+	if _, open := <-changes; open {
+		t.Fatal("a canceled subscription delivered a change or stayed open")
+	}
+	// The first stat canceled the walk. A full baseline of this fixture (the
+	// state directory, two bundles with their fingerprints, the overrides
+	// directory) makes well over this many calls.
+	if n := calls.Load(); n > 3 {
+		t.Fatalf("the baseline walk made %d stat calls after cancellation, want it to stop", n)
+	}
 }

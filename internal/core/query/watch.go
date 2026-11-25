@@ -59,19 +59,27 @@ type watchState struct {
 	mu    sync.Mutex
 }
 
-func newWatchState(layer *Layer) *watchState {
+// newWatchState snapshots every root. A canceled ctx stops the walk between
+// roots and bundles; the partial state is then never used.
+func newWatchState(ctx context.Context, layer *Layer) *watchState {
 	w := &watchState{layer: layer, roots: map[string]rootWatch{}}
 	for _, root := range layer.roots {
-		w.roots[root.ID] = w.primeRoot(root)
+		if ctx.Err() != nil {
+			break
+		}
+		w.roots[root.ID] = w.primeRoot(ctx, root)
 	}
 	return w
 }
 
-func (w *watchState) primeRoot(root Root) rootWatch {
+func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
 	stateDir := readcommon.StateDir(root.Path)
 	state := rootWatch{state: w.statMark(stateDir), bundles: map[string]bundleWatch{}}
 	if names, err := w.bundleNames(root, stateDir); err == nil {
 		for _, name := range names {
+			if ctx.Err() != nil {
+				return state
+			}
 			state.bundles[name] = w.primeBundle(root, name)
 		}
 	}
@@ -366,7 +374,12 @@ func (l *Layer) Changes(ctx context.Context) <-chan Change {
 		close(out)
 		return out
 	}
-	go l.runChanges(ctx, out, newWatchState(l))
+	state := newWatchState(ctx, l)
+	if ctx.Err() != nil {
+		close(out)
+		return out
+	}
+	go l.runChanges(ctx, out, state)
 	return out
 }
 

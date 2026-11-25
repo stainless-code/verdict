@@ -28,7 +28,12 @@ type resolver struct {
 	// walk runs out when the returned channel closes, and a nil channel never
 	// runs out. Tests set it so a walk times out because it is hung, never
 	// because the machine is slow.
-	expire  func(key string) <-chan struct{}
+	expire func(key string) <-chan struct{}
+	// stop, when it closes, ends every wait for a walk: the session is over
+	// and nobody should wait out a budget. The walk itself, stuck in the
+	// kernel, cannot be canceled and runs on. Serve sets it before any
+	// walk can start; nil never fires.
+	stop    <-chan struct{}
 	budget  time.Duration
 	limit   int
 	running int
@@ -51,9 +56,10 @@ func newResolver(budget time.Duration, limit int) *resolver {
 type miss int
 
 const (
-	missNone   miss = iota
-	missBudget      // the walk ran past the budget
-	missNoSlot      // every walk slot was held, so no walk was started
+	missNone     miss = iota
+	missBudget        // the walk ran past the budget
+	missNoSlot        // every walk slot was held, so no walk was started
+	missCanceled      // the session ended; the caller is going away
 )
 
 // run returns fn's result for key if it finishes within the budget. A miss
@@ -61,6 +67,11 @@ const (
 // retries later, while the walk, if started, runs on and frees its slot when
 // the filesystem answers.
 func (r *resolver) run(key string, fn func() (string, bool)) (result string, ok bool, why miss) {
+	select {
+	case <-r.stop:
+		return "", false, missCanceled
+	default:
+	}
 	w, started := r.start(key, fn)
 	if !started {
 		return "", false, missNoSlot
@@ -72,6 +83,8 @@ func (r *resolver) run(key string, fn func() (string, bool)) (result string, ok 
 		return w.result, w.ok, missNone
 	case <-expired:
 		return "", false, missBudget
+	case <-r.stop:
+		return "", false, missCanceled
 	}
 }
 

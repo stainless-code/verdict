@@ -2658,7 +2658,8 @@ all eight slots are held by walks still stuck, a new walk is not started and
 its line says so instead of blaming the budget. The roots of one `initialize`
 or folder change resolve concurrently within the same bounds, so a hung
 volume costs one budget however many roots sit on it. A walk stuck in the
-kernel cannot be canceled and lingers until the volume answers. One file open under two spellings stays tracked until both close,
+kernel cannot be canceled and lingers until the volume answers, but ending
+the session stops waiting for it. One file open under two spellings stays tracked until both close,
 each with its own version: publishes use the spelling changed most
 recently. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one
