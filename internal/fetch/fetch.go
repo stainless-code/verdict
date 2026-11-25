@@ -323,7 +323,11 @@ func parseLocalToken(r *cli.Runner, f *fetchcore.LocalFlags, args []string, i in
 				"--preview, --show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
-		f.Paths = append(f.Paths, a)
+		// A bare word is never a path filter: an unquoted glob or variable the
+		// shell expanded would narrow the review silently. Filters go after `--`.
+		msg := fmt.Sprintf("unexpected argument '%s' for fetch-local: path filters go after '--' "+
+			"(fetch-local <owner/repo> <name> -- <paths>)", a)
+		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 	}
 	return i, 0, false
 }

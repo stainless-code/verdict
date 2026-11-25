@@ -80,6 +80,7 @@ const (
 	keyExecutionID = "execution_id"
 	keyFailures    = "failures"
 	keyStatus      = "status"
+	keyPhase       = "phase"
 )
 
 // resumeFingerprint is the deterministic identity of one two-finder
@@ -871,7 +872,7 @@ func (c *coordinator) fingerprintNow(captured *config.RunState, source string) (
 func failedPhases(manifest *jq.Obj) map[string]bool {
 	failed := map[string]bool{}
 	for _, row := range jq.Elements(readcommon.FieldOf(manifest, keyFailures)) {
-		if phase := jq.StrOf(readcommon.FieldOf(row, "phase")); phase != "" {
+		if phase := jq.StrOf(readcommon.FieldOf(row, keyPhase)); phase != "" {
 			failed[phase] = true
 		}
 	}
