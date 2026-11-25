@@ -88,7 +88,7 @@ func seedRequirementBundle(t *testing.T, prior []config.CheckObservation) {
 	t.Helper()
 	files := []struct{ path, body string }{
 		{reqBundle + "/PR.json", `{"state":"OPEN","headRefOid":"` + reqHeadSHA + `","baseRefOid":"` + reqBaseSHA + `",` +
-			`"author":{"login":"someone-else"}}`},
+			`"author":{"login":"someone-else"},"url":"https://github.com/acme/app/pull/7"}`},
 		{reqBundle + "/full.diff", reqDiff},
 		{reqBundle + "/review.json", reqReview},
 	}

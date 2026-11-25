@@ -21,6 +21,8 @@ type fakeGit struct {
 	branch  string
 	hostOut string
 	calls   [][]string
+	// pinned records the host each host CLI call ran pinned to.
+	pinned []string
 	// hostExit scripts the host CLI's exit status.
 	hostExit int
 	// hostTruncated scripts an answer that hit the output cap.
@@ -30,9 +32,10 @@ type fakeGit struct {
 	noRepo   bool
 }
 
-func (f *fakeGit) Run(_ context.Context, c *core.Command) (core.Result, error) {
+func (f *fakeGit) Run(ctx context.Context, c *core.Command) (core.Result, error) {
 	f.calls = append(f.calls, c.Argv)
 	if c.Argv[0] != "git" {
+		f.pinned = append(f.pinned, core.HostOf(ctx))
 		return f.host(), nil
 	}
 	if f.noRepo {

@@ -604,7 +604,7 @@ func postBundle(t *testing.T, review string) {
 	dir := ".verdict/state/7"
 	if err := writeTestFile(dir+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+head+`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",`+
-			`"author":{"login":"someone-else"}}`); err != nil {
+			`"author":{"login":"someone-else"}`+`,"url":"https://github.com/acme/app/pull/7"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeTestFile(dir+"/full.diff",

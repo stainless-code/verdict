@@ -405,6 +405,12 @@ func TestCancelSurvivesUnreadableSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Windows cannot remove an open file, so both close before TempDir's
+	// cleanup (registered earlier, so it runs after this one).
+	t.Cleanup(func() {
+		_ = outFile.Close()
+		_ = errFile.Close()
+	})
 	r := newRunner("fetch", "", "", outFile, errFile, os.Getenv)
 	tgt := &target.Resolved{Refusal: &core.RefusalError{Code: "canceled", Message: "canceled before target resolution completed"}}
 	code, done := gateInvocation(r, "fetch", tgt, &cli.GlobalForces{}, envMap(os.Getenv), os.ReadFile, errFile)

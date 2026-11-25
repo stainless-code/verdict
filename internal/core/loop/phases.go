@@ -1,12 +1,12 @@
 package loopcore
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
@@ -98,13 +98,11 @@ func (p *flowPhases) review(
 	req.Admit = func(ctx context.Context, attempt int) *core.RefusalError {
 		captureLast(dir, attempts)
 		id := launchPrefix + "-" + strconv.Itoa(attempt)
-		// Wall time, not the injected clock: it is compared with the record's
-		// modification time on the filesystem.
-		admitted := time.Now()
+		prior := snapshotCost(dir)
 		w, ref := runcore.AuthorizeSpawn(ctx, req, dir, id, model)
 		warnings = append(warnings, w...)
 		if ref == nil {
-			attempts = append(attempts, &attemptCost{id: id, admitted: admitted})
+			attempts = append(attempts, &attemptCost{id: id, prior: prior})
 		}
 		return ref
 	}
@@ -118,12 +116,37 @@ func (p *flowPhases) review(
 }
 
 // attemptCost is one review attempt's admitted receipt and its own cost
-// record, nil when the attempt wrote none.
+// record, nil when the attempt wrote none. prior is the bundle's cost.json as
+// it stood at admission.
 type attemptCost struct {
-	admitted time.Time
 	measured *spawnPrice
+	prior    *costSnapshot
 	id       string
 	record   []byte
+}
+
+// costSnapshot is the bundle's cost.json as one moment saw it: the file's
+// identity and stamp, and its bytes.
+type costSnapshot struct {
+	info os.FileInfo
+	body []byte
+}
+
+// snapshotCost reads the bundle's cost.json, nil when there is no regular
+// file.
+func snapshotCost(dir string) *costSnapshot {
+	info, err := os.Lstat(filepath.Join(dir, costFile))
+	if err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	return &costSnapshot{info: info, body: spend.ReadBundleFile(dir, costFile)}
+}
+
+// same reports whether two snapshots are one unchanged record: the same file,
+// stamp, size and bytes.
+func (s *costSnapshot) same(o *costSnapshot) bool {
+	return s != nil && o != nil && os.SameFile(s.info, o.info) && s.info.ModTime().Equal(o.info.ModTime()) &&
+		s.info.Size() == o.info.Size() && bytes.Equal(s.body, o.body)
 }
 
 // spawnPrice is one spawn's amount and where it came from.
@@ -133,18 +156,23 @@ type spawnPrice struct {
 }
 
 // captureLast snapshots the bundle's cost.json for the latest attempt, when
-// that attempt wrote it: a file older than the attempt's admission is an
-// earlier attempt's record and leaves this one without a record of its own.
+// that attempt wrote it: the record still standing exactly as it did at the
+// attempt's admission is an earlier attempt's and leaves this one without a
+// record of its own. The test is "changed since admission", never a clock
+// comparison: the filesystem stamps files from a coarser clock than
+// [time.Now], so a record written just after admission can carry an earlier
+// modification time. A rewrite identical in file, stamp, size and bytes reads
+// as unchanged, so the attempt stays unpriced rather than counted twice.
 func captureLast(dir string, attempts []*attemptCost) {
 	if len(attempts) == 0 {
 		return
 	}
 	last := attempts[len(attempts)-1]
-	info, err := os.Lstat(filepath.Join(dir, costFile))
-	if err != nil || !info.Mode().IsRegular() || info.ModTime().Before(last.admitted) {
+	now := snapshotCost(dir)
+	if now == nil || last.prior.same(now) {
 		return
 	}
-	last.record = spend.ReadBundleFile(dir, costFile)
+	last.record = now.body
 }
 
 // priceReview prices each admitted attempt, in priority order: the agent

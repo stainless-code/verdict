@@ -1,0 +1,124 @@
+package postcore
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
+)
+
+// TestPinBundleHost pins where a post's host calls go: always to the host the
+// bundle was fetched from. A target naming another host refuses naming both;
+// a typed pair (no host on the context) takes the bundle's; Forgejo, which has
+// no CLI to pin, refuses when FORGEJO_HOST names another host.
+func TestPinBundleHost(t *testing.T) {
+	t.Parallel()
+	const ghPR = `{"url":"https://github.com/acme/app/pull/5"}`
+	const forgePR = `{"provider":"forgejo","url":"https://forge.corp.example:3000/acme/app/pulls/5"}`
+	for _, tc := range []pinCase{
+		{name: "typed pair takes the bundle's host", record: ghPR, want: "github.com"},
+		{name: "same host", record: ghPR, target: "github.com", want: "github.com"},
+		{
+			name: "target on another host", record: ghPR, target: "ghe.corp.example",
+			refusal: []string{"ghe.corp.example", "github.com"},
+		},
+		{name: "no recorded URL keeps the target", record: `{}`, target: "github.com", want: "github.com"},
+		{
+			name: "github bundle with no URL under a typed pair", record: `{}`,
+			refusal: []string{"records no review URL", "names no host"},
+		},
+		{
+			name: "gitlab bundle with no URL under a typed pair", record: `{"provider":"gitlab"}`,
+			refusal: []string{"records no review URL"},
+		},
+		{name: "forgejo bundle with no URL pins nothing", record: `{"provider":"forgejo"}`, want: ""},
+		{name: "a dry run with no host writes nothing, so it reads unpinned", record: `{}`, dryRun: true, want: ""},
+		{
+			name: "github bundle on a ported host, typed pair", record: `{"url":"https://ghe.corp.example:8443/acme/app/pull/5"}`,
+			refusal: []string{"ghe.corp.example:8443", "takes a port", "even for a typed pair"},
+		},
+		{
+			name: "gitlab bundle on a ported host", record: `{"provider":"gitlab","url":"https://git.corp.example:8443/g/app/-/merge_requests/5"}`,
+			refusal: []string{"git.corp.example:8443"},
+		},
+		{
+			name: "forgejo on FORGEJO_HOST", record: forgePR, forgejoHost: "https://forge.corp.example:3000",
+			want: "forge.corp.example:3000",
+		},
+		{
+			name: "forgejo host moved", record: forgePR, forgejoHost: "https://forge.corp.example",
+			refusal: []string{"forge.corp.example:3000", "FORGEJO_HOST names forge.corp.example and"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkPin(t, &tc)
+		})
+	}
+}
+
+type pinCase struct {
+	name, record, target, forgejoHost string
+	want                              string
+	refusal                           []string
+	dryRun                            bool
+}
+
+func checkPin(t *testing.T, tc *pinCase) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(tc.record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{}
+	if tc.forgejoHost != "" {
+		env["FORGEJO_HOST"] = tc.forgejoHost
+	}
+	st := &state{dir: dir, flags: Flags{DryRun: tc.dryRun}, req: &Request{Runtime: &core.Runtime{Env: env}}}
+	ctx, ref := st.pinBundleHost(core.WithHost(t.Context(), tc.target))
+	if tc.refusal != nil {
+		checkPinRefusal(t, ref, tc.refusal)
+		return
+	}
+	if ref != nil || core.HostOf(ctx) != tc.want {
+		t.Fatalf("pinned host = %q (refusal %v), want %q", core.HostOf(ctx), ref, tc.want)
+	}
+}
+
+func checkPinRefusal(t *testing.T, ref *core.RefusalError, names []string) {
+	t.Helper()
+	if ref == nil || ref.Code != core.CodeHostMismatch {
+		t.Fatalf("want a host-mismatch refusal, got %v", ref)
+	}
+	for _, s := range names {
+		if !strings.Contains(ref.Message, s) {
+			t.Errorf("refusal does not name %q: %s", s, ref.Message)
+		}
+	}
+}
+
+// TestPinBundleHostReadsThePostsOwnSnapshot pins that the host comes from the
+// record snapshot post already read its other fields from, so a PR.json
+// rewritten mid-post cannot move the pin.
+func TestPinBundleHostReadsThePostsOwnSnapshot(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write := func(url string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"url":"`+url+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("https://github.com/acme/app/pull/5")
+	st := &state{dir: dir, req: &Request{Runtime: &core.Runtime{Env: map[string]string{}}}}
+	if got := st.provider(); got != providerGitHub {
+		t.Fatalf("provider = %q", got)
+	}
+	write("https://ghe.corp.example/acme/app/pull/5")
+	ctx, ref := st.pinBundleHost(t.Context())
+	if ref != nil || core.HostOf(ctx) != "github.com" {
+		t.Fatalf("pinned host = %q (refusal %v), want the snapshot's github.com", core.HostOf(ctx), ref)
+	}
+}

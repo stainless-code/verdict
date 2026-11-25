@@ -16,21 +16,21 @@ func TestParseTargetURL(t *testing.T) {
 		name, raw string
 		want      Target
 	}{
-		{"github", "https://github.com/acme/app/pull/12", Target{"github", "acme/app", "12"}},
-		{"github files tail", "https://github.com/acme/app/pull/12/files", Target{"github", "acme/app", "12"}},
-		{"github trailing slash", "https://github.com/acme/app/pull/12/", Target{"github", "acme/app", "12"}},
-		{"github discussion fragment", "https://github.com/acme/app/pull/12#discussion_r99", Target{"github", "acme/app", "12"}},
-		{"github query", "https://github.com/acme/app/pull/12/files?diff=split&w=1", Target{"github", "acme/app", "12"}},
-		{"github host case", "https://GitHub.com/acme/app/pull/12", Target{"github", "acme/app", "12"}},
-		{"github http", "http://github.com/acme/app/pull/3", Target{"github", "acme/app", "3"}},
-		{"gitlab", "https://gitlab.com/acme/app/-/merge_requests/7", Target{"gitlab", "acme/app", "7"}},
-		{"gitlab nested", "https://gitlab.com/acme/sub/deep/app/-/merge_requests/7/diffs", Target{"gitlab", "acme/sub/deep/app", "7"}},
-		{"gitlab legacy", "https://gitlab.com/acme/app/merge_requests/7", Target{"gitlab", "acme/app", "7"}},
-		{"gitlab self-hosted", "https://git.corp.example/g/app/-/merge_requests/4", Target{"gitlab", "g/app", "4"}},
-		{"codeberg", "https://codeberg.org/acme/app/pulls/5/commits", Target{"forgejo", "acme/app", "5"}},
-		{"forgejo self-hosted port", "https://forge.corp.example:3000/acme/app/pulls/5", Target{"forgejo", "acme/app", "5"}},
-		{"bitbucket", "https://bitbucket.org/ws/app/pull-requests/9/diff", Target{"bitbucket", "ws/app", "9"}},
-		{"azure", "https://dev.azure.com/acme-org/My%20Proj/_git/app/pullrequest/21", Target{"azure", "My Proj/app", "21"}},
+		{"github", "https://github.com/acme/app/pull/12", Target{"github", "github.com", "acme/app", "12"}},
+		{"github files tail", "https://github.com/acme/app/pull/12/files", Target{"github", "github.com", "acme/app", "12"}},
+		{"github trailing slash", "https://github.com/acme/app/pull/12/", Target{"github", "github.com", "acme/app", "12"}},
+		{"github discussion fragment", "https://github.com/acme/app/pull/12#discussion_r99", Target{"github", "github.com", "acme/app", "12"}},
+		{"github query", "https://github.com/acme/app/pull/12/files?diff=split&w=1", Target{"github", "github.com", "acme/app", "12"}},
+		{"github host case", "https://GitHub.com/acme/app/pull/12", Target{"github", "github.com", "acme/app", "12"}},
+		{"github http", "http://github.com/acme/app/pull/3", Target{"github", "github.com", "acme/app", "3"}},
+		{"gitlab", "https://gitlab.com/acme/app/-/merge_requests/7", Target{"gitlab", "gitlab.com", "acme/app", "7"}},
+		{"gitlab nested", "https://gitlab.com/acme/sub/deep/app/-/merge_requests/7/diffs", Target{"gitlab", "gitlab.com", "acme/sub/deep/app", "7"}},
+		{"gitlab legacy", "https://gitlab.com/acme/app/merge_requests/7", Target{"gitlab", "gitlab.com", "acme/app", "7"}},
+		{"gitlab self-hosted", "https://git.corp.example/g/app/-/merge_requests/4", Target{"gitlab", "git.corp.example", "g/app", "4"}},
+		{"codeberg", "https://codeberg.org/acme/app/pulls/5/commits", Target{"forgejo", "codeberg.org", "acme/app", "5"}},
+		{"forgejo self-hosted port", "https://forge.corp.example:3000/acme/app/pulls/5", Target{"forgejo", "forge.corp.example:3000", "acme/app", "5"}},
+		{"bitbucket", "https://bitbucket.org/ws/app/pull-requests/9/diff", Target{"bitbucket", "bitbucket.org", "ws/app", "9"}},
+		{"azure", "https://dev.azure.com/acme-org/My%20Proj/_git/app/pullrequest/21", Target{"azure", "dev.azure.com", "My Proj/app", "21"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

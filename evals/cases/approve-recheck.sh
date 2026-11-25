@@ -11,6 +11,9 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   mode="$(cat "${EVAL_SANDBOX:-/tmp}/recheck-mode" 2>/dev/null || echo unreachable)"

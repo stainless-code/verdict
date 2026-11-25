@@ -293,8 +293,10 @@ eval_mk_bundle() {
       ;;
     *)
       rm -f "$dst/source.json"
-      printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"}}\n' \
-        "$EVAL_FIXTURE_HEAD" "$base" >"$dst/PR.json"
+      # The review URL names the host a real fetch records; post pins its host
+      # calls to it.
+      printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/%s"}\n' \
+        "$EVAL_FIXTURE_HEAD" "$base" "$name" >"$dst/PR.json"
       ;;
   esac
 }

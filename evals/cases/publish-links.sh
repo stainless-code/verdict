@@ -16,6 +16,9 @@ trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 case "$*" in
   'api repos/acme/app/pulls/4522 --jq .head.sha') printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
   'api repos/acme/app/pulls/4522/reviews --paginate'|'api repos/acme/app/pulls/4522/comments --paginate'|'api repos/acme/app/issues/4522/comments --paginate') echo '[]'; exit 0;;
@@ -68,6 +71,14 @@ echo "evals-stub-gh: unregistered argv ($*)" >&2
 exit 64
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
+# The stub answers a call pinned to github.com only: a review write pinned to
+# any other host, in either --hostname spelling or twice, must fail.
+for wrong in "api --hostname other.example" "api --hostname=other.example" "api --hostname github.com --hostname other.example"; do
+  status=0
+  # shellcheck disable=SC2086 # the leading words are a deliberate argv prefix
+  "$EVAL_STUBBIN/gh" $wrong repos/acme/app/pulls/4701/reviews --method POST --input - </dev/null >/dev/null 2>&1 || status=$?
+  assert_eq "a review write pinned elsewhere fails ($wrong)" 64 "$status"
+done
 status=0
 "$EVAL_STUBBIN/gh" api repos/acme/app/pulls/4701/reviews --method DELETE >/dev/null 2>&1 || status=$?
 assert_eq "unexpected review deletion is refused" 64 "$status"
