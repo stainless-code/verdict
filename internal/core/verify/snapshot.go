@@ -207,7 +207,8 @@ func (st *state) warnLeftOut(c *contenttree.Content) {
 		st.warn(fmt.Sprintf("%d submodule(s) are empty in the snapshot: %s", len(c.Gitlinks), shownList(c.Gitlinks)))
 	}
 	for _, f := range c.Filtered {
-		st.warn(filteredNote(f) + " — a PR's VERIFIED claim cannot bind to this run; a fetch-local bundle of this checkout still can")
+		st.warn(filteredNote(f) + " — a PR's VERIFIED claim binds to this run only if the PR's head stores those bytes; " +
+			"a fetch-local bundle of this checkout still binds")
 	}
 }
 
@@ -223,7 +224,8 @@ func filteredNote(f contenttree.Filtered) string {
 		stored = "the Git LFS pointers"
 	}
 	return fmt.Sprintf("%d path(s) use the `%s` filter, which verify never runs (%s): the snapshot holds their "+
-		"working-tree content, not %s a commit stores, so its tree matches no commit", len(f.Paths), f.Driver,
+		"working-tree content, not %s a commit stores, so its tree matches only a commit that stores those same bytes",
+		len(f.Paths), f.Driver,
 		shownList(f.Paths), stored)
 }
 

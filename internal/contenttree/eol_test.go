@@ -53,15 +53,26 @@ func addedTree(t *testing.T, root string) string {
 	return runIndexed(t, root, index, "write-tree")
 }
 
-// copyIndex copies root's index to a fresh path.
+// copyIndex copies root's index to a fresh path with its mtime: git trusts
+// an entry's stat data only when the entry is older than the index file, so
+// a copy stamped later would let `git add` skip a same-size edit made in the
+// index's second.
 func copyIndex(t *testing.T, root string) string {
 	t.Helper()
 	index := filepath.Join(t.TempDir(), "index")
-	raw, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	src := filepath.Join(root, ".git", "index")
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(src)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(index, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(index, info.ModTime(), info.ModTime()); err != nil {
 		t.Fatal(err)
 	}
 	return index

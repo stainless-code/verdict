@@ -358,7 +358,8 @@ with hooks off (even with `core.hooksPath` pointing at `.husky/` or other tree
 content), fsmonitor off, and every configured filter driver switched off, so no clean,
 smudge, or process filter runs — git-lfs included. A path whose attributes select one
 is named by its working-tree content, so a smudged Git LFS file names a different
-tree than the commit that stores its pointer: `verify` warns naming LFS and the paths,
+tree than the commit that stores its pointer: `verify` warns naming LFS and the paths
+whose content is neither the index's nor HEAD's,
 a PR bundle's claim does not bind to that run, and a group run refuses
 `head-mismatch` naming LFS (a fetch-local bundle of the same checkout names the same
 content, so its claims still bind). File modes follow git's: only the executable bit

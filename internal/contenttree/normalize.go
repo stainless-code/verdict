@@ -18,7 +18,8 @@ import (
 // paths they select it for. verdict never runs a filter program, so these
 // paths are named by their working-tree bytes (line endings cleaned), not by
 // what the driver would commit — for git-lfs, the real file, never its
-// pointer — and a tree holding one matches no commit that stores them.
+// pointer — and a tree holding one matches only a commit that stores those
+// same bytes.
 type Filtered struct {
 	Driver string
 	Paths  []string
