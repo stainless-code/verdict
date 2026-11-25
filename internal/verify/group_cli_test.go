@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/verify"
 )
 
@@ -93,9 +94,9 @@ func TestVerifyGroupCLIWithoutPatch(t *testing.T) {
 		Out: &out, Diag: &diag, Human: &out,
 		Now: time.Now, Effective: cli.Defaults(), EnvNoColor: true,
 	}
-	code := verify.Run(context.Background(), r, []string{"--group", "group-a1", "--command", "cat marker.txt"}, verify.Request{
-		Env:  map[string]string{"HOME": t.TempDir(), "PATH": os.Getenv("PATH")},
-		Repo: "acme/app", Pr: "5201", Root: root, RepoRoot: root,
+	code := verify.Run(context.Background(), r, []string{"--group", "group-a1", "--command", "cat marker.txt"}, readcommon.Request{
+		Runtime: &core.Runtime{Env: map[string]string{"HOME": t.TempDir(), "PATH": os.Getenv("PATH")}},
+		Repo:    "acme/app", Pr: "5201", Root: &root, RepoRoot: root,
 	})
 	if code != 0 {
 		t.Fatalf("verify exit = %d\nstdout: %s\nstderr: %s", code, out.String(), diag.String())
