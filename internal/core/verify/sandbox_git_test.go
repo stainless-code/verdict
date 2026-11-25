@@ -110,7 +110,35 @@ func TestSandboxArgvRefusesUnprotectableGitPointers(t *testing.T) {
 	t.Run("gitdir is the root", func(t *testing.T) {
 		root := t.TempDir()
 		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: .\n")
-		requireGitRefusal(t, root, "the git location "+root+" is the reviewed root itself")
+		requireGitRefusal(t, root, "the git location "+root+" is the reviewed root or holds it")
+	})
+}
+
+// TestSandboxRefusesAGitDirThatIsOrHoldsTheRoot pins the shared refusal for
+// a git directory the writable root would expose, on both platforms: a
+// linked checkout whose commondir is the root itself (its hooks and config
+// would sit in the writable tree), and a root that is a subdirectory of its
+// own git directory (a checkout at `<gitdir>/hooks` makes the hooks
+// writable). macOS used to keep only strict descendants of the root, so the
+// first shape got no rule at all and the second wrote hooks freely.
+func TestSandboxRefusesAGitDirThatIsOrHoldsTheRoot(t *testing.T) {
+	t.Run("commondir is the root", func(t *testing.T) {
+		root := t.TempDir()
+		mustSandboxFS(t, os.MkdirAll(filepath.Join(root, "wt"), 0o755))
+		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: wt\n")
+		writeGitPointer(t, filepath.Join(root, "wt", "commondir"), "..\n")
+		cause := "the git location " + root + " is the reviewed root or holds it"
+		requireGitRefusal(t, root, cause)
+		requireGitDirsRefusal(t, root, cause)
+	})
+	t.Run("root inside its git directory", func(t *testing.T) {
+		gitdir := t.TempDir()
+		root := filepath.Join(gitdir, "hooks")
+		mustSandboxFS(t, os.Mkdir(root, 0o755))
+		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: ..\n")
+		cause := "the git location " + gitdir + " is the reviewed root or holds it"
+		requireGitRefusal(t, root, cause)
+		requireGitDirsRefusal(t, root, cause)
 	})
 }
 
@@ -210,6 +238,19 @@ func requireGitRefusal(t *testing.T, root, cause string) {
 	argv, ref := bwrapArgv(root, homeInputs(t.TempDir()))
 	if ref == nil || ref.Code != codeSandboxUnavailable {
 		t.Fatalf("argv=%v ref=%v, want sandbox-unavailable", argv, ref)
+	}
+	if want := "sandbox unavailable: " + cause; !strings.HasPrefix(ref.Message, want) {
+		t.Errorf("message = %q, want prefix %q", ref.Message, want)
+	}
+}
+
+// requireGitDirsRefusal asserts the macOS git walk refuses
+// sandbox-unavailable with the literal cause as its message prefix.
+func requireGitDirsRefusal(t *testing.T, root, cause string) {
+	t.Helper()
+	dirs, ref := sandboxGitDirs(root)
+	if ref == nil || ref.Code != codeSandboxUnavailable {
+		t.Fatalf("dirs=%v ref=%v, want sandbox-unavailable", dirs, ref)
 	}
 	if want := "sandbox unavailable: " + cause; !strings.HasPrefix(ref.Message, want) {
 		t.Errorf("message = %q, want prefix %q", ref.Message, want)
