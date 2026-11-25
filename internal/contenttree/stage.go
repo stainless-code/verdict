@@ -363,3 +363,39 @@ func (g Git) hashLines(ctx context.Context, records *bytes.Buffer, b *hashBatch,
 	}
 	return nil
 }
+
+// Tracked reports whether any index path is rel or lies below it: rel holds
+// content the tree names. The match ignores letter case, as check-ignore
+// does under core.ignorecase: on a case-insensitive filesystem NODE_MODULES
+// and node_modules are one directory, so a tracked path under either
+// spelling counts. A listing too long to capture is tracked content all the
+// same.
+func (g Git) Tracked(ctx context.Context, rel string) (bool, error) {
+	res, err := g.exec(ctx, cmdLsFiles, flagZ, "--", ":(icase,literal)"+rel)
+	switch {
+	case err != nil:
+		return false, err
+	case res.ExitCode != 0:
+		return false, jq.NewErrf("git ls-files exited %d: %s", res.ExitCode, firstLine(res.Stderr))
+	}
+	return res.Stdout != "" || res.StdoutTruncated, nil
+}
+
+// Ignored reports whether the repository's exclude rules ignore rel.
+func (g Git) Ignored(ctx context.Context, rel string) (bool, error) {
+	res, err := g.exec(ctx, "check-ignore", "-q", "--", rel)
+	switch {
+	case err != nil:
+		return false, err
+	case res.ExitCode == 0:
+		return true, nil
+	case res.ExitCode == 1:
+		return false, nil
+	}
+	return false, jq.NewErrf("git check-ignore exited %d: %s", res.ExitCode, firstLine(res.Stderr))
+}
+
+func firstLine(s string) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
+	return line
+}

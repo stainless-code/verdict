@@ -91,6 +91,7 @@ func spawnWatched(ctx context.Context, cmd *core.Command,
 	proc.Env = cmd.Env
 	proc.Stdin = cmd.Stdin
 	proc.Dir = cmd.Dir
+	proc.ExtraFiles = cmd.ExtraFiles
 	if err := proc.Start(); err != nil {
 		releaseTree(proc)
 		return nil, nil, nil, nil, watchdogError("start command: " + err.Error())

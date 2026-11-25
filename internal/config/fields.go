@@ -22,7 +22,7 @@ const scopeOnlyNote = "not inside a scope"
 var (
 	topFields = []string{
 		"$schema", "schema_version", "defaults", "requirements", "trigger", "scopes", "profiles", "default_profile",
-		"index", "severity_weights", "rigor_policy", "packs", "tests",
+		"index", "severity_weights", "rigor_policy", "packs", "tests", "verify",
 	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMonthlyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
@@ -32,6 +32,7 @@ var (
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
 	testsFields        = []string{"draft"}
+	verifyFields       = []string{"share"}
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
 	triggerFields      = []string{"authors", "paths_include", "paths_exclude", "labels", "title_matches", "base_branches", "draft"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
@@ -86,6 +87,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: "rigor_policy", check: checkKeysSection(rigorPolicyFields)},
 		{key: "packs", check: checkPacksKeys},
 		{key: "tests", check: checkKeysSection(testsFields)},
+		{key: "verify", check: checkKeysSection(verifyFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
 			return ref

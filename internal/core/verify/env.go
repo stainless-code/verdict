@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/envsecret"
@@ -53,10 +54,11 @@ func (st *state) prepareEnv(dir, base string) *core.RefusalError {
 	if err := validateEnvNames("--env-allowlist", st.req.EnvAllowlist); err != nil {
 		return err
 	}
-	repoNames, ref := readControlsEnvAllowlist(dir, base)
+	repoNames, share, ref := readControls(dir, base)
 	if ref != nil {
 		return ref
 	}
+	st.share = share
 	explicit := make([]string, 0, len(st.req.EnvAllowlist)+len(repoNames))
 	explicit = append(explicit, st.req.EnvAllowlist...)
 	explicit = append(explicit, repoNames...)
@@ -101,7 +103,29 @@ func isEnvCont(c byte) bool {
 	return isEnvStart(c) || (c >= '0' && c <= '9')
 }
 
-func readControlsEnvAllowlist(dir, base string) ([]string, *core.RefusalError) {
+// readControls reads the verify inputs the bundle's base-snapshotted
+// controls carry: the child-environment opt-ins in .verdict/verify-env and
+// the shared directories in .verdict/config.json's verify.share. Both come
+// from the PR base, never the head, so a branch cannot widen either.
+func readControls(dir, base string) (names, share []string, ref *core.RefusalError) {
+	snap, ref := baseControls(dir, base)
+	if ref != nil || snap == nil {
+		return nil, nil, ref
+	}
+	if raw, ok := snap.ReadFile(controls.VerifyEnvPath); ok {
+		if names, ref = parseVerifyEnvFile(raw); ref != nil {
+			return nil, nil, ref
+		}
+	}
+	if share, ref = readShareConfig(snap); ref != nil {
+		return nil, nil, ref
+	}
+	return names, share, nil
+}
+
+// baseControls opens the bundle's verified controls snapshot, or nil when
+// the bundle carries none.
+func baseControls(dir, base string) (*controls.Snapshot, *core.RefusalError) {
 	if _, err := os.Stat(filepath.Join(dir, controls.FileName)); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil
@@ -111,15 +135,21 @@ func readControlsEnvAllowlist(dir, base string) ([]string, *core.RefusalError) {
 			Message: fmt.Sprintf("cannot inspect bundle controls %s: %v", controls.FileName, err),
 		}
 	}
-	snap, ref := controls.Gate(dir, base)
-	if ref != nil {
-		return nil, ref
-	}
-	raw, ok := snap.ReadFile(controls.VerifyEnvPath)
+	return controls.Gate(dir, base)
+}
+
+// readShareConfig reads verify.share from the base configuration; a base
+// configuration that does not parse refuses, as it does for every verb.
+func readShareConfig(snap *controls.Snapshot) ([]string, *core.RefusalError) {
+	raw, ok := snap.ReadFile(config.ConfigPath)
 	if !ok {
 		return nil, nil
 	}
-	return parseVerifyEnvFile(raw)
+	cfg, ref := config.ParseBase(&config.BaseConfig{Raw: raw, Present: true})
+	if ref != nil || cfg == nil || cfg.Verify == nil {
+		return nil, ref
+	}
+	return cfg.Verify.Share, nil
 }
 
 func parseVerifyEnvFile(raw []byte) ([]string, *core.RefusalError) {
