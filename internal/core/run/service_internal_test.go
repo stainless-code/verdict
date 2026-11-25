@@ -1625,3 +1625,22 @@ func TestChildEnvClonesBeforeAppending(t *testing.T) {
 		t.Fatalf("request environment = %q, want it untouched", environ)
 	}
 }
+
+// TestRunFailureMessageScrubsAControlCarryingArgumentSecret: the failure
+// message is scrubbed after control characters are stripped, so an argument
+// credential that itself carries one must be matched in its stripped form.
+func TestRunFailureMessageScrubsAControlCarryingArgumentSecret(t *testing.T) {
+	root := fixtureRoot(t)
+	const secret = "plainargsecret\r9876543"
+	cmdr := &scripted{}
+	cmdr.res = core.Result{Stdout: "echo --api-key " + secret + "\n", ExitCode: 7}
+	req := request(root, cmdr)
+	req.PassThrough = []string{"--api-key", secret}
+	_, ref := Run(t.Context(), req)
+	if ref == nil {
+		t.Fatal("Run succeeded; want the agent failure")
+	}
+	if strings.Contains(ref.Message, "9876543") {
+		t.Fatalf("failure message leaks the argument secret: %q", ref.Message)
+	}
+}
