@@ -452,11 +452,9 @@ func dispatchMutating(
 			Env: env, Forces: forces, Repo: repo, Root: root, RepoRoot: repoRoot,
 		}), true
 	case "record":
-		return record.Run(ctx, r, rest, &record.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces}), true
+		return record.Run(ctx, r, rest, req), true
 	case "post":
-		return record.RunPost(ctx, r, rest, &record.Request{
-			Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces,
-		}), true
+		return record.RunPost(ctx, r, rest, req), true
 	default:
 		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest, req)
 	}
