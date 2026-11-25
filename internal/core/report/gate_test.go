@@ -38,29 +38,29 @@ var severityTiers = "[" + strings.Join([]string{
 }, ",") + "]"
 
 // TestRunReportCheckTierGate pins the tier dimension for all three tiers plus
-// the passing leg. Each expected line names the exact count, so a gate that
+// the passing leg. Each expected detail names the exact count, so a gate that
 // counts non-open findings, positional findings, or off-by-one cannot pass.
 //
-//nolint:revive // the tier matrix asserts the count, the line, and the exit inline
+//nolint:revive // the tier matrix asserts the count, the detail, and the exit inline
 func TestRunReportCheckTierGate(t *testing.T) {
 	tests := []struct {
 		name     string
 		findings string
 		check    string
-		wantLine string
+		want     wantDim
 		wantFail bool
 	}{
 		{
 			name: "critical", findings: severityTiers, check: "critical", wantFail: true,
-			wantLine: "check: 1 open finding(s) at-or-above critical — gate fails",
+			want: wantDim{"findings", "fail", "1 open finding(s) at-or-above critical"},
 		},
 		{
 			name: "important", findings: severityTiers, check: "important", wantFail: true,
-			wantLine: "check: 3 open finding(s) at-or-above important — gate fails",
+			want: wantDim{"findings", "fail", "3 open finding(s) at-or-above important"},
 		},
 		{
 			name: "informational", findings: severityTiers, check: "informational", wantFail: true,
-			wantLine: "check: 4 open finding(s) at-or-above informational — gate fails",
+			want: wantDim{"findings", "fail", "4 open finding(s) at-or-above informational"},
 		},
 		{
 			name: "untagged-and-dispositioned-pass",
@@ -69,7 +69,7 @@ func TestRunReportCheckTierGate(t *testing.T) {
 				entryJSON("9999999999999999999999999999999999999999", "inline", "addressed", `"critical"`, "true"),
 			}, ",") + "]",
 			check: "critical", wantFail: false,
-			wantLine: "check: no open findings at-or-above critical — gate passes",
+			want: wantDim{"findings", "pass", "no open findings at-or-above critical"},
 		},
 	}
 	for _, tc := range tests {
@@ -85,14 +85,18 @@ func TestRunReportCheckTierGate(t *testing.T) {
 			if resp.GateFailed != tc.wantFail {
 				t.Errorf("GateFailed = %v, want %v", resp.GateFailed, tc.wantFail)
 			}
-			if len(resp.CheckLines) != 3 || resp.CheckLines[0] != tc.wantLine {
-				t.Errorf("CheckLines = %q, want tier line %q plus spec and evidence lines", resp.CheckLines, tc.wantLine)
+			if n := len(resp.Gate.Dimensions); n != 4 || resp.Gate.Dimensions[0].ID != "findings" {
+				t.Errorf("dimensions = %s, want the tier dimension, the live probe, spec and evidence", dimSummary(resp))
 			}
+			requireDims(t, resp, tc.want)
 		})
 	}
 }
 
-func TestRunReportGatePassNextNamesMerge(t *testing.T) {
+// TestRunReportGateRunKeepsTheAdvisoryNext proves a run that composes the gate
+// leaves report's own next step alone: the merge hint belongs to the gate verb,
+// which words it from its dimensions.
+func TestRunReportGateRunKeepsTheAdvisoryNext(t *testing.T) {
 	below := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true") + "]"
 	atFloor := "[" + entryJSON("2222222222222222222222222222222222222222", "inline", "open", `"important"`, "true") + "]"
 	tests := []struct {
@@ -101,7 +105,7 @@ func TestRunReportGatePassNextNamesMerge(t *testing.T) {
 		wantNext   string
 		gateFailed bool
 	}{
-		{name: "pass", findings: below, wantNext: "merge — gate passes", gateFailed: false},
+		{name: "pass", findings: below, wantNext: "address open threads", gateFailed: false},
 		{name: "fail", findings: atFloor, wantNext: "address open threads", gateFailed: true},
 	}
 	for _, tc := range tests {
@@ -133,36 +137,37 @@ func assertGateNext(t *testing.T, resp *reportcore.Response, gateFailed bool, wa
 
 // TestRunReportCompletenessGate pins the HEAD-reviewed dimension: a matching
 // post passes, and a missing, head-less, or stale post fails with its typed
-// line naming the re-fetch command. The combined case proves one run fails on
+// cause naming the re-fetch command. The combined case proves one run fails on
 // either dimension.
 //
-//nolint:cyclop,gocognit,revive // each dimension asserts its typed check line inline
+//nolint:cyclop,gocognit,revive // each dimension asserts its typed detail inline
 func TestRunReportCompletenessGate(t *testing.T) {
 	tests := []struct {
 		name       string
 		post       string
-		wantPosted string
+		wantStatus string
 		wantSubs   []string
 		wantFail   bool
 		postSet    bool
 	}{
 		{
 			name: "matching-post-passes", post: `{"head":"` + storeHeadSHA + `"}`, postSet: true,
-			wantPosted: storeHeadSHA, wantFail: false,
-			wantSubs: []string{"check: HEAD aaaaaaa reviewed (post matches fetch) — completeness passes"},
+			wantStatus: "pass", wantFail: false,
+			wantSubs: []string{"HEAD aaaaaaa reviewed (post matches fetch)"},
 		},
 		{
-			name: "missing-post-fails", wantFail: true,
+			name: "missing-post-fails", wantStatus: "unknown", wantFail: true,
 			wantSubs: []string{"missing-post", "verdict fetch acme/app 5101"},
 		},
 		{
-			name: "headless-post-fails", post: `{"state":"POSTED"}`, postSet: true, wantFail: true,
-			wantSubs: []string{"corrupt-post"},
+			name: "headless-post-fails", post: `{"state":"POSTED"}`, postSet: true,
+			wantStatus: "unknown", wantFail: true,
+			wantSubs: []string{"corrupt-post", "fetched HEAD aaaaaaa"},
 		},
 		{
 			name: "stale-post-fails", post: `{"head":"` + strings.Repeat("c", 40) + `"}`, postSet: true,
-			wantPosted: strings.Repeat("c", 40), wantFail: true,
-			wantSubs: []string{"stale-head", "HEAD aaaaaaa != posted ccccccc", "--base-sha ccccccc"},
+			wantStatus: "fail", wantFail: true,
+			wantSubs: []string{"stale-head", "posted HEAD ccccccc != fetched HEAD aaaaaaa", "--base-sha ccccccc"},
 		},
 	}
 	for _, tc := range tests {
@@ -181,29 +186,8 @@ func TestRunReportCompletenessGate(t *testing.T) {
 			if resp.GateFailed != tc.wantFail {
 				t.Errorf("GateFailed = %v, want %v", resp.GateFailed, tc.wantFail)
 			}
-			joined := strings.Join(resp.CheckLines, "\n")
-			for _, sub := range tc.wantSubs {
-				if !strings.Contains(joined, sub) {
-					t.Errorf("CheckLines = %q, want it to contain %q", joined, sub)
-				}
-			}
-			comp := resp.Data.Completeness
-			if comp == nil {
-				t.Fatal("data.completeness is nil under --completeness")
-			}
-			if comp.Reviewed != !tc.wantFail {
-				t.Errorf("data.completeness.reviewed = %v, want %v", comp.Reviewed, !tc.wantFail)
-			}
-			if comp.FetchedHead == nil || *comp.FetchedHead != storeHeadSHA {
-				t.Errorf("data.completeness.fetched_head = %v, want %s", comp.FetchedHead, storeHeadSHA)
-			}
-			if tc.wantPosted == "" {
-				if comp.PostedHead != nil {
-					t.Errorf("data.completeness.posted_head = %v, want null", *comp.PostedHead)
-				}
-			} else if comp.PostedHead == nil || *comp.PostedHead != tc.wantPosted {
-				t.Errorf("data.completeness.posted_head = %v, want %s", comp.PostedHead, tc.wantPosted)
-			}
+			requireDims(t, resp, wantDim{id: "head", status: tc.wantStatus})
+			requireDimDetail(t, resp, "head", tc.wantSubs...)
 		})
 	}
 
@@ -219,14 +203,15 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		if !resp.GateFailed {
 			t.Error("GateFailed = false; a missing post must fail the combined gate")
 		}
-		if len(resp.CheckLines) != 4 {
-			t.Fatalf("CheckLines = %q, want one line per dimension (tier, completeness, spec, evidence)", resp.CheckLines)
+		if len(resp.Gate.Dimensions) != 5 {
+			t.Fatalf("dimensions = %s, want one per dimension (tier, head, live, spec, evidence)", dimSummary(resp))
 		}
-		if !strings.HasPrefix(resp.CheckLines[0], "check: no open findings at-or-above critical — gate passes") {
-			t.Errorf("CheckLines[0] = %q, want the tier line first", resp.CheckLines[0])
+		if first := resp.Gate.Dimensions[0]; first.ID != "findings" || first.Status != "pass" ||
+			!strings.HasPrefix(first.Detail, "no open findings at-or-above critical") {
+			t.Errorf("dimension 0 = %+v, want the passing tier dimension first", first)
 		}
-		if !strings.Contains(resp.CheckLines[1], "missing-post") {
-			t.Errorf("CheckLines[1] = %q, want the completeness line second", resp.CheckLines[1])
+		if second := resp.Gate.Dimensions[1]; second.ID != "head" || !strings.Contains(second.Detail, "missing-post") {
+			t.Errorf("dimension 1 = %+v, want the head dimension second", second)
 		}
 	})
 }
@@ -259,22 +244,22 @@ func TestRunReportPostedHeadRefetchCommand(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.provider, func(t *testing.T) {
-			assertRefetchHint(t, stalePostCheckLines(t, tc.provider), tc.want, tc.absent)
+			assertRefetchHint(t, stalePostHeadDetail(t, tc.provider), tc.want, tc.absent)
 		})
 	}
 }
 
-func assertRefetchHint(t *testing.T, joined, want, absent string) {
+func assertRefetchHint(t *testing.T, detail, want, absent string) {
 	t.Helper()
-	if !strings.Contains(joined, want) {
-		t.Errorf("CheckLines = %q, want it to contain %q", joined, want)
+	if !strings.Contains(detail, want) {
+		t.Errorf("head detail = %q, want it to contain %q", detail, want)
 	}
-	if strings.Contains(joined, absent) {
-		t.Errorf("CheckLines = %q, want it not to contain %q", joined, absent)
+	if strings.Contains(detail, absent) {
+		t.Errorf("head detail = %q, want it not to contain %q", detail, absent)
 	}
 }
 
-func stalePostCheckLines(t *testing.T, provider string) string {
+func stalePostHeadDetail(t *testing.T, provider string) string {
 	t.Helper()
 	req := fixture(t, "[]")
 	writeHostBundle(t, provider)
@@ -289,7 +274,7 @@ func stalePostCheckLines(t *testing.T, provider string) string {
 	if !resp.GateFailed {
 		t.Error("GateFailed = false, want true for a stale post")
 	}
-	return strings.Join(resp.CheckLines, "\n")
+	return dimOf(t, resp, "head").Detail
 }
 
 type threadCommander struct {
@@ -327,7 +312,7 @@ func threadsPage(open, resolved int) string {
 // structural skip stay neutral without touching the network. Advisory runs
 // never probe at all.
 //
-//nolint:gocognit,cyclop,revive // the live matrix asserts calls, lines, warns, and the exit inline
+//nolint:gocognit,cyclop,revive // the live matrix asserts calls, dimensions, warns, and the exit inline
 func TestRunReportLiveGate(t *testing.T) {
 	oneOpen := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"important"`, "true") + "]"
 
@@ -336,7 +321,7 @@ func TestRunReportLiveGate(t *testing.T) {
 		findings  string
 		live      string
 		page      string
-		wantLines []string
+		wantDims  []wantDim
 		wantWarns []string
 		noWarns   []string
 		wantCalls int
@@ -347,43 +332,42 @@ func TestRunReportLiveGate(t *testing.T) {
 		{
 			name: "more-live-than-local-fails", findings: oneOpen, gate: true,
 			page: threadsPage(2, 1), wantCalls: 1, wantFail: true,
-			wantLines: []string{"check: 2 live open thread(s) vs 1 local open finding(s) — gate fails " +
-				"(fetch + triage them, then re-check)"},
+			wantDims: []wantDim{{"live_threads", "fail", "2 live open thread(s) vs 1 local open finding(s)"}},
 		},
 		{
 			name: "equal-count-passes", findings: oneOpen, gate: true,
 			page: threadsPage(1, 1), wantCalls: 1, wantFail: false,
-			wantLines: []string{"check: 1 live open thread(s) vs 1 local open finding(s) — live recheck passes"},
+			wantDims: []wantDim{{"live_threads", "pass", "1 live open thread(s) vs 1 local open finding(s)"}},
 		},
 		{
 			name: "resolved-threads-ignored", findings: oneOpen, gate: true,
 			page: threadsPage(0, 3), wantCalls: 1, wantFail: false,
-			wantLines: []string{"check: 0 live open thread(s) vs 1 local open finding(s) — live recheck passes"},
-			noWarns:   []string{"malformed thread node"},
+			wantDims: []wantDim{{"live_threads", "pass", "0 live open thread(s) vs 1 local open finding(s)"}},
+			noWarns:  []string{"malformed thread node"},
 		},
 		{
 			name: "malformed-thread-counts-open", findings: oneOpen, gate: true,
 			page:      `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":"yes"}]}}}}}`,
 			wantCalls: 1, wantFail: false,
-			wantLines: []string{"check: 1 live open thread(s) vs 1 local open finding(s) — live recheck passes"},
+			wantDims:  []wantDim{{"live_threads", "pass", "1 live open thread(s) vs 1 local open finding(s)"}},
 			wantWarns: []string{"live thread recheck: 1 malformed thread node(s) counted as unresolved (fail-closed)"},
 		},
 		{
 			name: "unreachable-auto-neutral", findings: oneOpen, gate: true,
 			cmdFails: true, wantCalls: 1, wantFail: false,
+			wantDims:  []wantDim{{"live_threads", "skip", "live thread recheck unreachable — gating on local dimensions only"}},
 			wantWarns: []string{"live thread recheck unreachable (boom — gating on local dimensions only)"},
 			noWarns:   []string{"gate fails"},
 		},
 		{
 			name: "unreachable-strict-fails-closed", findings: oneOpen, live: "strict", gate: true,
 			cmdFails: true, wantCalls: 1, wantFail: true,
-			wantLines: []string{"check: live thread recheck unreachable (boom — gate fails: offline posture is strict; " +
-				"restore the network or re-run with --live skip, then re-check)"},
+			wantDims: []wantDim{{"live_threads", "unknown", "live thread recheck unreachable (boom) — offline posture is strict"}},
 		},
 		{
 			name: "skip-explicit-neutral", findings: oneOpen, live: "skip", gate: true,
 			page: threadsPage(9, 0), wantCalls: 0, wantFail: false,
-			wantLines: []string{"check: live recheck skipped (--live skip) — gating on local dimensions only"},
+			wantDims:  []wantDim{{"live_threads", "skip", "live recheck skipped (--live skip)"}},
 			wantWarns: []string{"live recheck skipped (--live skip requested — gating on local dimensions only)"},
 		},
 		{
@@ -410,29 +394,23 @@ func TestRunReportLiveGate(t *testing.T) {
 				t.Errorf("commander calls = %d, want %d", cmd.calls, tc.wantCalls)
 			}
 			if resp.GateFailed != tc.wantFail {
-				t.Errorf("GateFailed = %v, want %v (lines %q)", resp.GateFailed, tc.wantFail, resp.CheckLines)
+				t.Errorf("GateFailed = %v, want %v\n%s", resp.GateFailed, tc.wantFail, dimSummary(resp))
 			}
-			for _, want := range tc.wantLines {
-				if !containsLine(resp.CheckLines, want) {
-					t.Errorf("CheckLines = %q, want it to contain %q", resp.CheckLines, want)
-				}
-			}
+			requireDims(t, resp, tc.wantDims...)
 			for _, want := range tc.wantWarns {
 				if !containsLine(resp.Warnings, want) {
 					t.Errorf("Warnings = %q, want it to contain %q", resp.Warnings, want)
 				}
 			}
 			for _, banned := range tc.noWarns {
-				for _, w := range append(append([]string{}, resp.CheckLines...), resp.Warnings...) {
+				for _, w := range append([]string{dimSummary(resp)}, resp.Warnings...) {
 					if strings.Contains(w, banned) {
 						t.Errorf("line %q must not mention %q", w, banned)
 					}
 				}
 			}
-			if !tc.gate {
-				if len(resp.CheckLines) != 0 {
-					t.Errorf("advisory run wrote check lines %q", resp.CheckLines)
-				}
+			if !tc.gate && resp.Gate != nil {
+				t.Errorf("advisory run composed a gate: %s", dimSummary(resp))
 			}
 		})
 	}
@@ -480,8 +458,8 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	if containsLine(progress.warnings, "live recheck skipped") {
 		t.Errorf("warning stream = %q, want no structural skip warning", progress.warnings)
 	}
-	if containsLine(resp.CheckLines, "live open thread(s)") {
-		t.Errorf("CheckLines = %q, want no live-thread verdict line", resp.CheckLines)
+	if detail := dimOf(t, resp, "live_threads").Detail; strings.Contains(detail, "live open thread(s)") {
+		t.Errorf("live detail = %q, want no live-thread verdict", detail)
 	}
 	if got := liveDimensionStatus(resp); got != "skip" {
 		t.Errorf("live dimension status = %q, want skip", got)
@@ -489,10 +467,10 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 }
 
 func liveDimensionStatus(resp *reportcore.Response) string {
-	if resp.Data.Gate == nil {
+	if resp.Gate == nil {
 		return ""
 	}
-	for _, d := range resp.Data.Gate.Dimensions {
+	for _, d := range resp.Gate.Dimensions {
 		if d.ID == "live_threads" {
 			return d.Status
 		}
@@ -596,11 +574,8 @@ func TestRunReportEnvelopeDefaults(t *testing.T) {
 	if len(resp.Data.Panel.Members) != 0 {
 		t.Errorf("data.panel.members = %v, want none", resp.Data.Panel.Members)
 	}
-	if resp.Data.Completeness != nil {
-		t.Error("data.completeness is set without --completeness")
-	}
-	if resp.CheckLines != nil {
-		t.Errorf("check lines = %q on an advisory run", resp.CheckLines)
+	if resp.Gate != nil || resp.GateFailed {
+		t.Errorf("an advisory run composed a gate: %s", dimSummary(resp))
 	}
 }
 
@@ -681,11 +656,9 @@ func TestRunReportLiveProviderRead(t *testing.T) {
 			t.Errorf("Warnings = %q, want no structural skip on a readable host", resp.Warnings)
 		}
 	}
-	if !containsLine(resp.CheckLines, "check: 1 live open thread(s) vs 1 local open finding(s) — live recheck passes") {
-		t.Errorf("CheckLines = %q, want the live-thread verdict line", resp.CheckLines)
-	}
-	if !containsLine(resp.CheckLines, "verdict fetch acme/app 5101 --provider gitlab") {
-		t.Errorf("CheckLines = %q, want the provider-aware re-fetch command", resp.CheckLines)
+	requireDims(t, resp, wantDim{"live_threads", "pass", "1 live open thread(s) vs 1 local open finding(s)"})
+	if detail := dimOf(t, resp, "head").Detail; !strings.Contains(detail, "verdict fetch acme/app 5101 --provider gitlab") {
+		t.Errorf("head detail = %q, want the provider-aware re-fetch command", detail)
 	}
 }
 
@@ -695,7 +668,7 @@ func TestRunReportLiveProviderRead(t *testing.T) {
 // --live strict, and a page walk that stopped early counts as an unread
 // surface rather than a clean one.
 //
-//nolint:gocognit,revive // the matrix asserts calls, lines, warns, and the exit inline
+//nolint:revive // the matrix asserts calls, dimensions, warns, and the exit inline
 func TestRunReportLiveOtherProviderGate(t *testing.T) {
 	failGitLab := map[string]core.Result{
 		gitlabProjectIDCall: {Stdout: "11\n"},
@@ -707,7 +680,7 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 		live      string
 		script    map[string]core.Result
 		wantCalls []string
-		wantLine  string
+		wantDim   wantDim
 		wantWarn  string
 		wantFail  bool
 	}{
@@ -718,8 +691,7 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 				gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", false) + "]"},
 			},
 			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: true,
-			wantLine: "check: 1 live open thread(s) vs 0 local open finding(s) — gate fails " +
-				"(fetch + triage them, then re-check)",
+			wantDim: wantDim{"live_threads", "fail", "1 live open thread(s) vs 0 local open finding(s)"},
 		},
 		{
 			name: "resolved-discussion-passes", provider: "gitlab", live: "strict",
@@ -728,14 +700,13 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 				gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", true) + "]"},
 			},
 			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: false,
-			wantLine: "check: 0 live open thread(s) vs 0 local open finding(s) — live recheck passes",
+			wantDim: wantDim{"live_threads", "pass", "0 live open thread(s) vs 0 local open finding(s)"},
 		},
 		{
 			name: "read-failure-strict-fails-closed", provider: "gitlab", live: "strict",
 			script:    failGitLab,
 			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: true,
-			wantLine: "check: live thread recheck unreachable (glab: 500 down — " +
-				"gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)",
+			wantDim: wantDim{"live_threads", "unknown", "live thread recheck unreachable (glab: 500 down) — offline posture is strict"},
 		},
 		{
 			name: "read-failure-auto-warns", provider: "gitlab",
@@ -743,7 +714,7 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 			wantCalls: []string{gitlabProjectIDCall, gitlabDiscussions}, wantFail: false,
 			wantWarn: "live thread recheck unreachable (glab: 500 down — " +
 				"gating on local dimensions only)",
-			wantLine: "check: no open findings at-or-above critical — gate passes",
+			wantDim: wantDim{"live_threads", "skip", "live thread recheck unreachable — gating on local dimensions only"},
 		},
 		{
 			name: "partial-page-walk-strict-fails-closed", provider: "gitcafe", live: "strict",
@@ -754,8 +725,7 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 				gitcafeComments:    {Stdout: `{"data":{"items":[]}}`},
 			},
 			wantCalls: []string{gitcafeReviews, gitcafeReviewsNext, gitcafeComments}, wantFail: true,
-			wantLine: "check: live thread recheck unreachable (gitcafe thread read incomplete — " +
-				"gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)",
+			wantDim: wantDim{"live_threads", "unknown", "live thread recheck unreachable (gitcafe thread read incomplete) — offline posture is strict"},
 		},
 	}
 	for _, tc := range tests {
@@ -775,11 +745,9 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 				t.Errorf("commander calls = %q, want %q", got, want)
 			}
 			if resp.GateFailed != tc.wantFail {
-				t.Errorf("GateFailed = %v, want %v (lines %q)", resp.GateFailed, tc.wantFail, resp.CheckLines)
+				t.Errorf("GateFailed = %v, want %v\n%s", resp.GateFailed, tc.wantFail, dimSummary(resp))
 			}
-			if !containsLine(resp.CheckLines, tc.wantLine) {
-				t.Errorf("CheckLines = %q, want it to contain %q", resp.CheckLines, tc.wantLine)
-			}
+			requireDims(t, resp, tc.wantDim)
 			if tc.wantWarn != "" && !containsLine(resp.Warnings, tc.wantWarn) {
 				t.Errorf("Warnings = %q, want it to contain %q", resp.Warnings, tc.wantWarn)
 			}
@@ -863,7 +831,7 @@ func TestRunReportGateData(t *testing.T) {
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
-			gate := resp.Data.Gate
+			gate := resp.Gate
 			if gate == nil {
 				t.Fatal("data.gate is nil on a gate run")
 			}
@@ -897,8 +865,8 @@ func TestRunReportGateData(t *testing.T) {
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
-		if resp.Data.Gate != nil {
-			t.Errorf("data.gate = %+v on an advisory run, want none", resp.Data.Gate)
+		if resp.Gate != nil {
+			t.Errorf("data.gate = %+v on an advisory run, want none", resp.Gate)
 		}
 	})
 }
@@ -921,7 +889,7 @@ func TestRunReportBadTierRefusal(t *testing.T) {
 	if ref.Code != "bad-flags" {
 		t.Errorf("refusal code = %q, want bad-flags", ref.Code)
 	}
-	want := "report: unknown gate tier 'bogus' (want critical|important|informational)"
+	want := "gate: unknown gate tier 'bogus' (want critical|important|informational)"
 	if ref.Message != want {
 		t.Errorf("refusal message = %q, want %q", ref.Message, want)
 	}

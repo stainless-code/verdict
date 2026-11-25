@@ -193,7 +193,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	}
 	// Gate is always populated here: the guard above rejects the request that
 	// sets no dimension, and every gating flag fills the block.
-	gate := resp.Data.Gate
+	gate := resp.Gate
 	dims := make([]GateDimension, 0, len(gate.Dimensions))
 	for _, dim := range gate.Dimensions {
 		dims = append(dims, GateDimension{ID: dim.ID, Status: dim.Status, Detail: dim.Detail, Count: dim.Count})

@@ -74,7 +74,7 @@ func TestDetailParity(t *testing.T) {
 		t.Fatalf("Detail: %v", err)
 	}
 	data := wire(t, view.Data)
-	sameJSON(t, "data.report", withoutServedGate(t, cli["data"]), withoutServedGate(t, data["report"]))
+	sameJSON(t, "data.report", withoutServedTier(t, cli["data"]), withoutServedTier(t, data["report"]))
 }
 
 // TestShowParity proves the show route's data is byte-identical to
@@ -121,15 +121,15 @@ func TestGateParity(t *testing.T) {
 		withoutCoverage(t, serveGate["dimensions"]))
 }
 
-// withoutServedGate drops what the served detail composes beyond the report
-// verb: the gate block, and the approval's tier, which follows the dashboard's
-// gate tier — a tier `report` no longer takes, since gate is the only gating
-// verb (TestGateParity pins the gate block against the gate verb).
-func withoutServedGate(t *testing.T, raw any) map[string]any {
+// withoutServedTier drops what the served detail composes beyond the report
+// verb: the approval's tier, which follows the dashboard's gate tier — a tier
+// `report` no longer takes, since gate is the only gating verb (the served
+// gate block rides beside data.report, and TestGateParity pins it against the
+// gate verb).
+func withoutServedTier(t *testing.T, raw any) map[string]any {
 	t.Helper()
 	data := asMap(t, raw)
 	out := maps.Clone(data)
-	delete(out, "gate")
 	approval := maps.Clone(asMap(t, out["approval"]))
 	delete(approval, "tier")
 	out["approval"] = approval

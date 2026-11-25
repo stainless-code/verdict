@@ -274,8 +274,8 @@ type Provenance = core.Provenance
 
 // ReportData is the report verb's --json data profile.
 type ReportData struct { //nolint:govet // field order is the published property order
-	Verification *core.PanelSummary `anyOf:"null"        json:"verification,omitempty" optional:"true"`
-	GeneratedAt  string             `format:"date-time"  json:"generated_at"`
+	Verification *core.PanelSummary `anyOf:"null"       json:"verification,omitempty" optional:"true"`
+	GeneratedAt  string             `format:"date-time" json:"generated_at"`
 	Dir          string             `json:"dir"`
 	Head         ReportHead         `json:"head"`
 	Verdict      ReportVerdict      `json:"verdict"`
@@ -285,15 +285,13 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Output       *string            `json:"output"`
 	Filters      ReportFilters      `json:"filters"`
 	Items        []FindingItem      `json:"items"`
-	OrgPack      *OrgPackInfo       `anyOf:"null"        json:"org_pack,omitempty"     optional:"true"`
-	Cost         ReportCost         `json:"cost"         optional:"true"`
-	Compare      *ReportCompare     `anyOf:"null"        json:"compare"                optional:"true"`
-	Completeness ReportCompleteness `json:"completeness" optional:"true"`
-	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
-	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
-	Validation   *ValidationData    `anyOf:"null"        json:"validation"             optional:"true"`
-	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
-	Replay       *ReportReplay      `anyOf:"null"        json:"replay"                 optional:"true"`
+	OrgPack      *OrgPackInfo       `anyOf:"null"       json:"org_pack,omitempty"     optional:"true"`
+	Cost         ReportCost         `json:"cost"        optional:"true"`
+	Compare      *ReportCompare     `anyOf:"null"       json:"compare"                optional:"true"`
+	Compliance   *ReportCompliance  `anyOf:"null"       json:"compliance"             optional:"true"`
+	Risk         *ReportRisk        `anyOf:"null"       json:"risk"                   optional:"true"`
+	Validation   *ValidationData    `anyOf:"null"       json:"validation"             optional:"true"`
+	Replay       *ReportReplay      `anyOf:"null"       json:"replay"                 optional:"true"`
 }
 
 // OrgPackInfo is the governing central pack version on a report.
@@ -366,9 +364,6 @@ type CompareFinding struct {
 	Changes  []string `json:"changes,omitempty" optional:"true"`
 }
 
-// ReportCompleteness is core's head comparison.
-type ReportCompleteness = core.ReportCompleteness
-
 // ReportCompliance is the captured-policy compliance view. It mirrors
 // core.ReportCompliance with the count bounds the parser enforces; the
 // field-set test keeps the mirror identical to the source DTO.
@@ -382,7 +377,7 @@ type ReportCompliance struct { //nolint:govet // field order is the published pr
 	Satisfied  bool `json:"satisfied"`
 }
 
-// ReportGate is core's composed gate result on a gating report run.
+// ReportGate is core's composed gate result: the gate verb's data profile.
 type ReportGate = core.ReportGate
 
 // GateDimension is core's one gate dimension verdict.

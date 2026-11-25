@@ -47,16 +47,7 @@ func runReportExitCode(t *testing.T, args ...string) int {
 
 func findEvidenceDim(t *testing.T, resp *reportcore.Response) core.GateDimension {
 	t.Helper()
-	if resp.Data.Gate == nil {
-		t.Fatal("data.gate is nil on a gated run")
-	}
-	for _, dim := range resp.Data.Gate.Dimensions {
-		if dim.ID == "evidence" {
-			return dim
-		}
-	}
-	t.Fatalf("evidence dimension missing from %+v", resp.Data.Gate.Dimensions)
-	return core.GateDimension{}
+	return dimOf(t, resp, "evidence")
 }
 
 func TestEvidenceGatePass(t *testing.T) {
@@ -80,15 +71,15 @@ func TestEvidenceGatePass(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	if resp.GateFailed {
-		t.Fatalf("GateFailed = true, want false (lines %q)", resp.CheckLines)
+		t.Fatalf("GateFailed = true, want false\n%s", dimSummary(resp))
 	}
 	dim := findEvidenceDim(t, resp)
 	if dim.Status != "pass" {
 		t.Fatalf("evidence status = %q, want %q", dim.Status, "pass")
 	}
-	const wantLine = "check: evidence checks satisfied (2 quotes verified, 4/4 hunks receipted, 8/10 spec items checked) — gate passes"
-	if !containsLine(resp.CheckLines, wantLine) {
-		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
+	const wantDetail = "evidence checks satisfied (2 quotes verified, 4/4 hunks receipted, 8/10 spec items checked)"
+	if dim.Detail != wantDetail {
+		t.Fatalf("evidence detail = %q, want %q", dim.Detail, wantDetail)
 	}
 	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitOK {
 		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitOK)
@@ -124,9 +115,9 @@ func TestEvidenceGateFailInsufficient(t *testing.T) {
 	if dim.Status != "fail" {
 		t.Fatalf("evidence status = %q, want %q", dim.Status, "fail")
 	}
-	const wantLine = "check: evidence checks insufficient (2 quote gap(s), 1 hunk without receipt) [review-insufficient] — gate fails"
-	if !containsLine(resp.CheckLines, wantLine) {
-		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
+	const wantDetail = "evidence checks insufficient (2 quote gap(s), 1 hunk without receipt) [review-insufficient]"
+	if dim.Detail != wantDetail {
+		t.Fatalf("evidence detail = %q, want %q", dim.Detail, wantDetail)
 	}
 	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
 		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
@@ -152,9 +143,9 @@ func TestEvidenceGateMissingIsUnknown(t *testing.T) {
 	if dim.Status != "unknown" {
 		t.Fatalf("evidence status = %q, want %q", dim.Status, "unknown")
 	}
-	const wantLine = "check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate fails"
-	if !containsLine(resp.CheckLines, wantLine) {
-		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
+	const wantDetail = "evidence receipt missing for head aaaaaaa [review-insufficient]"
+	if dim.Detail != wantDetail {
+		t.Fatalf("evidence detail = %q, want %q", dim.Detail, wantDetail)
 	}
 	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
 		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
@@ -187,9 +178,9 @@ func TestEvidenceGateStaleIsUnknown(t *testing.T) {
 	if dim.Status != "unknown" {
 		t.Fatalf("evidence status = %q, want %q", dim.Status, "unknown")
 	}
-	const wantLine = "check: evidence receipt stale for head aaaaaaa (recorded ccccccc) [review-insufficient] — gate fails"
-	if !containsLine(resp.CheckLines, wantLine) {
-		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
+	const wantDetail = "evidence receipt stale for head aaaaaaa (recorded ccccccc) [review-insufficient]"
+	if dim.Detail != wantDetail {
+		t.Fatalf("evidence detail = %q, want %q", dim.Detail, wantDetail)
 	}
 	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
 		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
@@ -215,9 +206,9 @@ func TestEvidenceGateUnreadableIsUnknown(t *testing.T) {
 	if dim.Status != "unknown" {
 		t.Fatalf("evidence status = %q, want %q", dim.Status, "unknown")
 	}
-	const wantLine = "check: evidence receipt unreadable for head aaaaaaa [review-insufficient] — gate fails"
-	if !containsLine(resp.CheckLines, wantLine) {
-		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
+	const wantDetail = "evidence receipt unreadable for head aaaaaaa [review-insufficient]"
+	if dim.Detail != wantDetail {
+		t.Fatalf("evidence detail = %q, want %q", dim.Detail, wantDetail)
 	}
 }
 

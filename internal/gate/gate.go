@@ -106,7 +106,7 @@ func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcor
 
 // emit writes the per-dimension lines, then the envelope or the verdict.
 func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
-	gate := resp.Data.Gate
+	gate := resp.Gate
 	for _, line := range gateLines(gate) {
 		fmt.Fprintln(r.Human, line)
 	}

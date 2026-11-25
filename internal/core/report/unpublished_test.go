@@ -16,8 +16,17 @@ const (
 	sigUntagged = "d444444444444444444444444444444444444444"
 )
 
-// liveSkipLine is the neutral live dimension every leg here asks for.
-const liveSkipLine = "check: live recheck skipped (--live skip) — gating on local dimensions only"
+// liveSkipDim, specPassDim and evidencePassDim are the dimensions every leg
+// here composes besides the tier: the neutral live skip it asks for, and the
+// two always-on dimensions in wire order.
+var (
+	liveSkipDim     = wantDim{"live_threads", "skip", "live recheck skipped (--live skip)"}
+	specPassDim     = wantDim{"spec", "pass", "no violated spec check"}
+	evidencePassDim = wantDim{
+		"evidence", "pass",
+		"evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked)",
+	}
+)
 
 // unpublishedFinding renders one open anchored inline logic finding carrying
 // raw severity and rigor JSON, so a null or unpublished value survives into
@@ -44,23 +53,26 @@ func unpublishedRun(t *testing.T, store string, flags *reportcore.Flags) *report
 	return resp
 }
 
-// assertCheckLines proves the exact check lines and the gate verdict.
-func assertCheckLines(t *testing.T, resp *reportcore.Response, wantFail bool, want []string) {
+// assertDimensions proves the exact dimensions, in wire order, and the gate
+// verdict.
+func assertDimensions(t *testing.T, resp *reportcore.Response, wantFail bool, want []wantDim) {
 	t.Helper()
-	if got := strings.Join(resp.CheckLines, "\n"); got != strings.Join(want, "\n") {
-		t.Errorf("CheckLines = %q, want %q", resp.CheckLines, want)
+	if resp.Gate == nil {
+		t.Fatal("run composed no gate")
+	}
+	if len(resp.Gate.Dimensions) != len(want) {
+		t.Fatalf("dimensions = %s, want %+v", dimSummary(resp), want)
+	}
+	for i, w := range want {
+		got := resp.Gate.Dimensions[i]
+		if got.ID != w.id || got.Status != w.status || got.Detail != w.detail {
+			t.Errorf("dimension %d = %+v, want %+v", i, got, w)
+		}
 	}
 	if resp.GateFailed != wantFail {
 		t.Errorf("GateFailed = %v, want %v", resp.GateFailed, wantFail)
 	}
 }
-
-// specPassLine and evidencePassLine are the two always-on dimensions' pass
-// lines, in wire order.
-const (
-	specPassLine     = "check: no violated spec check — gate passes"
-	evidencePassLine = "check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes"
-)
 
 // TestReportUnpublishedTierNeverGates proves an open anchored inline finding
 // whose severity is null is untagged, not critical: the severity gate counts
@@ -68,8 +80,8 @@ const (
 func TestReportUnpublishedTierNeverGates(t *testing.T) {
 	store := "[" + unpublishedFinding(sigUntagged, "null", `"walked"`, "2") + "]"
 	resp := unpublishedRun(t, store, &reportcore.Flags{Check: "critical"})
-	want := []string{"check: no open findings at-or-above critical — gate passes", liveSkipLine, specPassLine, evidencePassLine}
-	assertCheckLines(t, resp, false, want)
+	want := []wantDim{{"findings", "pass", "no open findings at-or-above critical"}, liveSkipDim, specPassDim, evidencePassDim}
+	assertDimensions(t, resp, false, want)
 	if len(resp.Data.Items) != 1 || resp.Data.Items[0].Sig != sigUntagged {
 		t.Errorf("items = %+v, want the untagged finding still ranked", resp.Data.Items)
 	}
@@ -84,27 +96,27 @@ func TestReportUnpublishedRungNeverGates(t *testing.T) {
 		name     string
 		rigor    string
 		category string
-		wantLine string
+		want     wantDim
 		wantFail bool
 	}{
 		{
 			name: "unknown-rung-in-category", rigor: `"traced"`, category: "logic",
-			wantLine: "check: no open findings at-or-above critical in logic — gate passes",
+			want: wantDim{"findings", "pass", "no open findings at-or-above critical in logic"},
 		},
 		{
 			name: "null-rigor-in-category", rigor: "null", category: "logic",
-			wantLine: "check: no open findings at-or-above critical in logic — gate passes",
+			want: wantDim{"findings", "pass", "no open findings at-or-above critical in logic"},
 		},
 		{
 			name: "null-rigor-baseline-still-gates", rigor: "null", wantFail: true,
-			wantLine: "check: 1 open finding(s) at-or-above critical — gate fails",
+			want: wantDim{"findings", "fail", "1 open finding(s) at-or-above critical"},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			store := "[" + unpublishedFinding(sigTraced, `"critical"`, tc.rigor, "2") + "]"
 			resp := unpublishedRun(t, store, &reportcore.Flags{Check: "critical", Category: tc.category})
-			assertCheckLines(t, resp, tc.wantFail, []string{tc.wantLine, liveSkipLine, specPassLine, evidencePassLine})
+			assertDimensions(t, resp, tc.wantFail, []wantDim{tc.want, liveSkipDim, specPassDim, evidencePassDim})
 		})
 	}
 }

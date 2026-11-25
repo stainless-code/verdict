@@ -174,18 +174,6 @@ type CostTier struct {
 	Runs         int  `json:"runs"          min:"0"`
 }
 
-// ReportCompleteness compares fetched, posted and reviewed heads, plus the
-// patch identities both sides stamped: same_patch is true when the reviewed
-// bundle identity and the posted post.json patch id share id and kind.
-type ReportCompleteness struct { //nolint:govet // field order is the published property order
-	Reviewed        bool    `json:"reviewed"`
-	FetchedHead     *string `json:"fetched_head"`
-	PostedHead      *string `json:"posted_head"`
-	SamePatch       *bool   `json:"same_patch,omitempty"`
-	ReviewedPatchID *string `json:"reviewed_patch_id,omitempty"`
-	PostedPatchID   *string `json:"posted_patch_id,omitempty"`
-}
-
 // ReportCompliance is the captured-policy compliance view: the unfiltered
 // finding set evaluated against captured clauses, plus required checks still
 // pending for the saved head. Satisfied is true only when the capture states
@@ -339,12 +327,10 @@ type ReportData struct { //nolint:govet // field order is the published property
 	OrgPack             *OrgPackInfo             `json:"org_pack,omitempty"`
 	Cost                *ReportCost              `json:"cost,omitempty"`
 	Compare             *ReportCompare           `anyOf:"null"                     json:"compare,omitempty"      optional:"true"`
-	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
 	Compliance          *ReportCompliance        `json:"compliance,omitempty"`
 	Validation          *ValidationData          `json:"validation,omitempty"      optional:"true"`
 	Approval            *ApprovalReceipt         `anyOf:"null"                     json:"approval,omitempty"     optional:"true"`
 	Risk                *ReportRisk              `json:"risk,omitempty"`
-	Gate                *ReportGate              `json:"gate,omitempty"`
 	Replay              *ReportReplay            `anyOf:"null"                     json:"replay,omitempty"       optional:"true"`
 	CostRaw             *jq.Obj                  `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`

@@ -63,7 +63,7 @@ func TestCompareParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
-	sameJSON(t, "compare data", withoutServedGate(t, cli["data"]), withoutServedGate(t, wire(t, view.Data)))
+	sameJSON(t, "compare data", withoutServedTier(t, cli["data"]), withoutServedTier(t, wire(t, view.Data)))
 }
 
 // TestCompareRoute exercises the new endpoints' security cells and refusals.
@@ -195,7 +195,7 @@ func TestCompareNextCommandRuns(t *testing.T) {
 	}
 	cli := cliEnvelope(t, root, "report", "acme/app", "1234", "--compare", "local-1",
 		"--cost", "--json")
-	sameJSON(t, "compare data", withoutServedGate(t, cli["data"]), withoutServedGate(t, wire(t, view.Data)))
+	sameJSON(t, "compare data", withoutServedTier(t, cli["data"]), withoutServedTier(t, wire(t, view.Data)))
 }
 
 // TestCopyTriageCommandRuns proves the copied triage command is the one that

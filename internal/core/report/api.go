@@ -65,9 +65,9 @@ type Request struct { //nolint:govet // request grouping; the struct is one call
 
 // Response carries the report's typed data, warnings, and pure render
 // inputs. Human is the human-mode summary (one line per element, no
-// trailing newline), Next is the envelope's next field, CheckLines are the
-// gate diagnostics written after output, and the artifacts are returned for
-// the adapter to write.
+// trailing newline), Next is the envelope's next field, Gate is the composed
+// gate verdict (nil unless the run asked for a dimension), and the artifacts
+// are returned for the adapter to write.
 type Response struct { //nolint:govet // field grouping documents the response surface
 	Repo       string
 	Pr         string
@@ -76,7 +76,7 @@ type Response struct { //nolint:govet // field grouping documents the response s
 	Warnings   []string
 	Next       string
 	Human      []string
-	CheckLines []string
+	Gate       *core.ReportGate
 	GateFailed bool
 	Output     *core.FileArtifact
 	Sarif      *core.FileArtifact

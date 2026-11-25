@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/hunks"
 )
@@ -102,7 +103,7 @@ func TestRunNextCoverageIncrementalFailsClosedWithoutPrior(t *testing.T) {
 // credit it carries. No incremental.diff or prior-coverage.json is written:
 // the gate never re-reads them, and writing them would pretend the verdict
 // drives off files the gate ignores.
-func gatedIncremental(t *testing.T, coverage string) (bool, string) {
+func gatedIncremental(t *testing.T, coverage string) (bool, core.GateDimension) {
 	t.Helper()
 	req := fixture(t, "[]")
 	writeFile(t, ".verdict/state/5101/record.json",
@@ -118,13 +119,7 @@ func gatedIncremental(t *testing.T, coverage string) (bool, string) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	var line string
-	for _, l := range resp.CheckLines {
-		if strings.Contains(l, "coverage") {
-			line = l
-		}
-	}
-	return resp.GateFailed, line
+	return resp.GateFailed, dimOf(t, resp, "coverage")
 }
 
 // TestRunNextCoverageIncrementalMarkerFlipsVerdict proves the incremental
@@ -208,12 +203,12 @@ func TestRunNextCoverageIncrementalWithoutCarriedCreditHasNoSuffix(t *testing.T)
 // incremental-aware stored receipt: a 100% receipt whose prior ranges came
 // from the recorded round passes --coverage require.
 func TestRunGateCoverageIncrementalPassesWithPrior(t *testing.T) {
-	failed, line := gatedIncremental(t, `{"percent":100,"attested":6,"total":6,"files":2,"exempt":0,"gaps":0}`)
+	failed, dim := gatedIncremental(t, `{"percent":100,"attested":6,"total":6,"files":2,"exempt":0,"gaps":0}`)
 	if failed {
-		t.Fatalf("GateFailed = true, want false; line = %q", line)
+		t.Fatalf("GateFailed = true, want false; dimension = %+v", dim)
 	}
-	if !strings.Contains(line, "coverage passes") {
-		t.Errorf("coverage line = %q, want the passes line", line)
+	if dim.Status != "pass" {
+		t.Errorf("coverage dimension = %+v, want a pass", dim)
 	}
 }
 
@@ -222,11 +217,11 @@ func TestRunGateCoverageIncrementalPassesWithPrior(t *testing.T) {
 // delta-only attestation stored without prior credit reads 50% and the
 // gate refuses, never a pass.
 func TestRunGateCoverageIncrementalFailsOnUnattestedDelta(t *testing.T) {
-	failed, line := gatedIncremental(t, `{"percent":50,"attested":3,"total":6,"files":2,"exempt":0,"gaps":1}`)
+	failed, dim := gatedIncremental(t, `{"percent":50,"attested":3,"total":6,"files":2,"exempt":0,"gaps":1}`)
 	if !failed {
-		t.Fatalf("GateFailed = false, want true; line = %q", line)
+		t.Fatalf("GateFailed = false, want true; dimension = %+v", dim)
 	}
-	if !strings.Contains(line, "coverage fails") {
-		t.Errorf("coverage line = %q, want the fails line", line)
+	if dim.Status != "fail" {
+		t.Errorf("coverage dimension = %+v, want a fail", dim)
 	}
 }

@@ -5,7 +5,7 @@
 // Readers are read-only by contract, so each leg additionally proves NO file
 // is written or changed — except the explicitly requested artifacts
 // (--output/--sarif targets, calibrate's kb-grades.jsonl, ready's probe
-// err file), which the golden still pins byte-exact. Gate flags (--check
+// err file), which the golden still pins byte-exact. Gate flags (--max-severity
 // tiers, freshness, live-thread skip/unreachable), --json envelopes, and the
 // corrupt-store typed refusals all have legs. Every leg runs parallel with
 // per-case temp dirs. The backtest legs pin a mutating miner instead: its

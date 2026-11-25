@@ -158,7 +158,7 @@ func requireComplianceStatus(t *testing.T, resp *reportcore.Response, want strin
 	if !resp.GateFailed {
 		t.Fatal("gate passed while captured requirements were unmet")
 	}
-	for _, dim := range resp.Data.Gate.Dimensions {
+	for _, dim := range resp.Gate.Dimensions {
 		if dim.ID == "compliance" {
 			if dim.Status != want {
 				t.Fatalf("compliance dimension = %q, want %q", dim.Status, want)
@@ -166,7 +166,7 @@ func requireComplianceStatus(t *testing.T, resp *reportcore.Response, want strin
 			return
 		}
 	}
-	t.Fatalf("gate dimensions = %+v, want a compliance dimension", resp.Data.Gate.Dimensions)
+	t.Fatalf("gate dimensions = %+v, want a compliance dimension", resp.Gate.Dimensions)
 }
 
 // TestReportCompliancePendingCheckIsUnknownNotPass proves a required check
@@ -203,7 +203,7 @@ func TestReportLegacyBundleInventsNoCompliance(t *testing.T) {
 	if resp.Data.Compliance != nil {
 		t.Fatalf("legacy bundle invented compliance: %+v", resp.Data.Compliance)
 	}
-	for _, dim := range resp.Data.Gate.Dimensions {
+	for _, dim := range resp.Gate.Dimensions {
 		if dim.ID == "compliance" {
 			t.Fatalf("legacy bundle invented a compliance dimension: %+v", dim)
 		}

@@ -16,7 +16,7 @@ comp_mk_post() {
     printf 'not json{{{' > "$dir/post.json"
   else
     # The stored evidence receipt a completed post leaves beside the head: the
-    # always-on evidence dimension grades it under --check.
+    # always-on evidence dimension grades it under gate.
     jq -n --arg h "$head" --argjson e "$(eval_evidence_receipt "$dir" "$head")" \
       '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
       > "$dir/post.json"

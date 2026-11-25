@@ -126,44 +126,36 @@ func removeErrFile(path string) {
 	_ = os.Remove(path)
 }
 
-func completeness(ctx context.Context, cmdr core.Commander, dir, headSHA, baseSHA string) (*core.ReportCompleteness, bool, string) {
-	var posted string
+// completeness compares the stored post's head with the fetched one. It
+// returns the same-patch verdict (nil unless both sides carry a verified patch
+// id), whether the bundle's identity verified at all, whether the heads match,
+// and the posted head.
+func completeness(
+	ctx context.Context, cmdr core.Commander, dir, headSHA, baseSHA string,
+) (samePatch *bool, patchVerified, reviewed bool, posted string) {
 	if isRegular(dir + "/post.json") {
 		posted = readcommon.JSONStr(dir+"/post.json", "head")
 	}
-	reviewed := headSHA != "" && posted != "" && headSHA == posted
-	comp := &core.ReportCompleteness{Reviewed: reviewed}
-	if headSHA != "" {
-		fetched := headSHA
-		comp.FetchedHead = &fetched
-	}
-	if posted != "" {
-		comp.PostedHead = &posted
-	}
-	completePatchIdentity(ctx, cmdr, dir, headSHA, baseSHA, comp)
-	return comp, reviewed, posted
+	reviewed = headSHA != "" && posted != "" && headSHA == posted
+	samePatch, patchVerified = samePatchVerdict(ctx, cmdr, dir, headSHA, baseSHA)
+	return samePatch, patchVerified, reviewed, posted
 }
 
-// completePatchIdentity fills the same-patch comparison: the reviewed patch
-// id from the byte-bound bundle identity, the posted patch id from the
-// completed post receipt, and same_patch when both are present and agree.
-// Either side unverified leaves its field absent; a legacy bundle with no
-// verifiable identity keeps the SHA comparison and the caller warns.
-func completePatchIdentity(ctx context.Context, cmdr core.Commander, dir, head, base string, comp *core.ReportCompleteness) {
+// samePatchVerdict compares the reviewed patch id from the byte-bound bundle
+// identity with the one the completed post receipt carries: same is nil
+// unless both are present, and verified is false for a legacy bundle with no
+// verifiable identity, which keeps the SHA comparison (the caller warns).
+func samePatchVerdict(ctx context.Context, cmdr core.Commander, dir, head, base string) (same *bool, verified bool) {
 	reviewed, ok := identity.Verify(ctx, cmdr, dir, head, base)
 	if !ok {
-		return
-	}
-	if reviewed.PatchID != nil {
-		comp.ReviewedPatchID = reviewed.PatchID
+		return nil, false
 	}
 	patch, kind, ok := identity.CompletedPatch(readcommon.PostRecord(dir))
 	if !ok {
-		return
+		return nil, true
 	}
-	comp.PostedPatchID = &patch
-	same := identity.Match(reviewed, &identity.Identity{PatchID: &patch, PatchIDKind: kind})
-	comp.SamePatch = &same
+	match := identity.Match(reviewed, &identity.Identity{PatchID: &patch, PatchIDKind: kind})
+	return &match, true
 }
 
 // refetchIncremental marks the hosts whose fetch owns the --base-sha compare:

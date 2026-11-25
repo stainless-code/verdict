@@ -141,7 +141,7 @@ gate acme/app local-demo --max-severity critical --live skip --coverage warn
   next                none — every requested dimension passed
 ok: gate passes when the floor sits above every open finding
 gate acme/app local-demo
-  usage               gate needs at least one dimension (want --max-severity critical|important|informational or --require-head; --live only sets the offline posture)
+  usage               gate needs at least one dimension (want --max-severity critical|important|informational, --require-head, or --max-risk low|medium|high|critical; --live only sets the offline posture)
 ok: gate with no dimension is an exit-2 usage error, not an envelope
 ```
 
