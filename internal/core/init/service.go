@@ -174,6 +174,8 @@ type state struct { //nolint:govet // init service state is allocated once per i
 	next      string
 	data      *Data
 	exit      int
+	// share is the verify.share proposal the checkout's lockfiles imply.
+	share []string
 }
 
 // Run executes `init --preset <chill|standard|strict> [--yes]`.
@@ -328,7 +330,8 @@ func (st *state) unscopedRefusal() *core.RefusalError {
 // writeScaffold previews, confirms, writes the controls and the workflow, then
 // reports the tree check and the next step.
 func (st *state) writeScaffold(ctx context.Context, vals presetVals, workflow []byte) *core.RefusalError {
-	wants := presetFiles(vals)
+	st.share = proposedShares(st.req.RepoRootPath())
+	wants := presetFiles(vals, st.share...)
 	wfStatus, statuses, needOverwrite, ref := st.planWrites(wants, workflow)
 	if ref != nil {
 		return ref
@@ -791,6 +794,11 @@ func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfSta
 		st.humanf("--- .verdict/%s (%s) ---\n", t, st.targetStatus(t, wants[t]))
 		st.humanf("%s\n", wants[t])
 	}
+	if len(st.share) > 0 {
+		st.humanf("verify.share: %s (from the lockfile here) — verify reuses the installed directory instead of "+
+			"installing on every run; only --sandbox makes it read-only, and a stub planted there could pass, "+
+			"so drop the key for a clean CI-like snapshot\n", strings.Join(st.share, ", "))
+	}
 	if workflow != nil {
 		st.humanf("--- %s (%s) ---\n", st.ci.path(), wfStatus)
 		st.humanf(humanRaw, workflow)
@@ -929,9 +937,9 @@ func (st *state) workflowNext() string {
 // presetFiles renders the scaffolded shared files: the typed configuration
 // the preset describes, the knowledge-corpus starter, and the tracked-shape
 // ignore that keeps generated state local.
-func presetFiles(vals presetVals) map[string]string {
+func presetFiles(vals presetVals, share ...string) map[string]string {
 	return map[string]string{
-		configName:    presetConfig(vals),
+		configName:    presetConfig(vals, share),
 		"kb.jsonl":    kbStarter(),
 		gitignoreName: gitignoreBody,
 	}
@@ -939,8 +947,9 @@ func presetFiles(vals presetVals) map[string]string {
 
 // presetConfig renders one preset as the canonical typed configuration.
 // Key order follows the published contract; the values are the preset's
-// budget, panel, and retirement quorum.
-func presetConfig(vals presetVals) string {
+// budget, panel, and retirement quorum, plus the verify.share proposal when
+// the checkout's lockfiles imply one.
+func presetConfig(vals presetVals, share []string) string {
 	var sb strings.Builder
 	sb.WriteString("{\n  \"schema_version\": \"1\",\n  \"defaults\": {\n")
 	panel := presetPanel(vals.panel)
@@ -951,7 +960,15 @@ func presetConfig(vals presetVals) string {
 	sb.WriteString("    \"kb_policy\": {\n")
 	sb.WriteString("      \"min_judged\": " + vals.kbMin + ",\n")
 	sb.WriteString("      \"max_fp_rate\": " + vals.kbRate + "\n")
-	sb.WriteString("    }\n  }\n}")
+	sb.WriteString("    }\n  }")
+	if len(share) > 0 {
+		quoted := make([]string, 0, len(share))
+		for _, dir := range share {
+			quoted = append(quoted, strconv.Quote(dir))
+		}
+		sb.WriteString(",\n  \"verify\": {\n    \"share\": [" + strings.Join(quoted, ", ") + "]\n  }")
+	}
+	sb.WriteString("\n}")
 	return sb.String()
 }
 

@@ -111,6 +111,10 @@ type state struct {
 	req      *Request
 	warnings []string
 	env      []string
+	// share is the base configuration's verify.share list; shared is what
+	// this run resolved and exposed from it.
+	share  []string
+	shared []sharedDir
 }
 
 func (st *state) withWarnings(ref *core.RefusalError) *core.RefusalError {
@@ -183,7 +187,9 @@ func (st *state) execute(
 		st.releaseSandbox(sb)
 		return nil, st.withWarnings(ref)
 	}
-	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now}
+	receipt := &core.VerifyReceipt{
+		SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now, Shared: sharedRels(st.shared),
+	}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
 	st.releaseSandbox(sb)
@@ -250,7 +256,7 @@ func (st *state) sandboxInputs() sandboxInputs {
 	if account == "" {
 		account = sandboxAccountHome()
 	}
-	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account}
+	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account, shared: &st.shared}
 }
 
 // releaseSandbox removes the mechanism's private state as soon as the command
@@ -350,7 +356,7 @@ func (st *state) response(dir, now string, exit int, timedOut bool, tail string,
 	}
 	data := &core.VerifyData{
 		Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir,
-		Sandboxed: sb.full(), SandboxMechanism: sb.name(),
+		Sandboxed: sb.full(), SandboxMechanism: sb.name(), Shared: sharedRels(st.shared),
 	}
 	return &Response{
 		Repo:     st.req.Repo,

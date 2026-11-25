@@ -33,7 +33,8 @@
     "index": { "$ref": "#/$defs/configIndex" },
     "rigor_policy": { "$ref": "#/$defs/rigorPolicy" },
     "packs": { "$ref": "#/$defs/configPacks" },
-    "tests": { "$ref": "#/$defs/tests" }
+    "tests": { "$ref": "#/$defs/tests" },
+    "verify": { "$ref": "#/$defs/verify" }
   },
   "required": ["schema_version"],
   "additionalProperties": false,
@@ -221,6 +222,17 @@
       "type": "object",
       "properties": {
         "draft": { "enum": ["off", "on-reproduce"] }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "verify": {
+      "type": "object",
+      "properties": {
+        "share": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
       },
       "required": [],
       "additionalProperties": false

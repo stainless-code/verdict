@@ -1792,6 +1792,7 @@ export interface VerifyData {
   receipt?: string;
   sandboxed?: boolean;
   sandboxMechanism?: string;
+  shared?: Array<string>;
   [key: string]: unknown;
 }
 

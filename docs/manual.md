@@ -364,6 +364,24 @@ snapshot the same way, and it requires the snapshot's content to be the reviewed
 commit's tree before the command runs (`head-mismatch` otherwise), so a group receipt
 is written only into the bundle it validated, for the content it reviewed.
 
+**Sharing installed dependencies (`verify.share`).** Installing inside the command
+costs every run, and under `--sandbox` it cannot work at all (no network, no writes
+to HOME). `"verify": {"share": ["node_modules"]}` in `.verdict/config.json`, read at
+the PR base like every control, exposes each listed directory from your checkout in
+the snapshot at the same path. Each entry is a clean repository-relative path to a
+directory git ignores and tracks nothing in, resolving inside the checkout; a tracked,
+unignored, `..`, absolute, or link-escaping entry refuses `bad-config` with nothing
+run, and an absent directory warns and is skipped. Under `--sandbox` it is read-only
+(a bwrap read-only bind; on macOS Seatbelt denies writes to the real path behind a
+link); without it the share is a plain link and writes reach your checkout. The
+trade-off is speed against a guarantee: the clean snapshot proves the command passes
+on the reviewed content alone, while a shared directory is bytes outside the tree, so
+a stub planted there could make it pass. The receipt (and the envelope) lists every
+shared path in `shared`, sorted, so a strict gate can refuse a receipt that depended
+on one; an empty or absent list keeps the clean snapshot. `verdict init` proposes
+`node_modules` when it finds `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`,
+and `.venv` for `uv.lock` or `poetry.lock`.
+
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the
 head commit's tree for a PR bundle (read from the local repository — fetch the commit
@@ -1350,7 +1368,8 @@ defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
 `finders`, `budget` (review depth), `sensitive_paths`, the two severity floors,
 and `spec_coverage_min`), the local `index` caps (`files`, `file_bytes`,
 `tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
-clauses, path scopes, named profiles, and the bind requirement.
+clauses, path scopes, named profiles, the bind requirement, and
+`verify.share` (the dependency directories `verify` shares into its snapshot).
 `defaults.spec_coverage_min` is an integer percent from 1 to 100 (built-in
 default 80), global-only like `kb_policy` — set it in root `defaults` or
 personal `review` settings, never inside a scope. It decides the

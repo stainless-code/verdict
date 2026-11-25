@@ -221,7 +221,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 		SchemaVersion: validationSchema, Run: run.rs.Name, InputsSHA256: run.rs.InputsSHA256,
 		Group: run.group.ID, ReviewedHead: run.reviewedHead, Tree: run.tree,
 		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox.full(),
-		SandboxMechanism: run.sandbox.name(),
+		SandboxMechanism: run.sandbox.name(), Shared: sharedRels(st.shared),
 	}
 	// Pin the bundle before the command can touch it, as the patch path does:
 	// the receipt is written only through this root, and a command that moves
@@ -528,7 +528,7 @@ func (st *state) groupResponse(dir, receiptPath string, receipt *core.Validation
 		Data: &core.VerifyData{
 			Exit: receipt.Exit, TimedOut: receipt.TimedOut, OutputTail: receipt.OutputTail,
 			Group: receipt.Group, Head: receipt.ReviewedHead, Tree: receipt.Tree, Receipt: receiptPath,
-			Sandboxed: receipt.Sandboxed, SandboxMechanism: receipt.SandboxMechanism,
+			Sandboxed: receipt.Sandboxed, SandboxMechanism: receipt.SandboxMechanism, Shared: receipt.Shared,
 		},
 		Warnings: st.warnings,
 		Next:     next,

@@ -225,11 +225,22 @@ const sandboxVarRunDir = "/var/run"
 // the environment the child runs with, the verdict process environment the
 // request snapshotted, and the account home from the passwd database. A
 // child HOME that differs from the account home still leaves the account's
-// real credential stores on disk, so both are hidden.
+// real credential stores on disk, so both are hidden. shared points at the
+// verify.share directories the mechanism exposes read-only (nil for none),
+// a pointer so the inputs stay small enough to pass by value.
 type sandboxInputs struct {
+	shared      *[]sharedDir
 	accountHome string
 	childEnv    []string
 	hostEnv     []string
+}
+
+// sharedDirs lists the directories the mechanism exposes read-only.
+func (in sandboxInputs) sharedDirs() []sharedDir {
+	if in.shared == nil {
+		return nil
+	}
+	return *in.shared
 }
 
 // homes lists every home the credential table resolves under, the child's
@@ -571,6 +582,7 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	for _, dir := range sandboxGitOutsideDirs(repo) {
 		argv = append(argv, bwrapROBind, dir, dir)
 	}
+	argv = append(argv, bwrapShareBinds(repo, in.sharedDirs())...)
 	for _, mount := range sandboxCredentialMounts(locations) {
 		argv = append(argv, mount.argv()...)
 	}
@@ -1609,7 +1621,7 @@ func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) 
 	}
 	return sandboxExecProfile(&sandboxProfileInputs{
 		credentials: locations, gitDirs: gitDirs, gitReads: sandboxGitOutsideDirs(repo),
-		root: repo, private: private, tmpBase: tmpBase,
+		shared: sharedReals(in.sharedDirs()), root: repo, private: private, tmpBase: tmpBase,
 	})
 }
 
@@ -1659,16 +1671,20 @@ func restoreOwnerDir(path string, d fs.DirEntry, walkErr error) error {
 //     write denied;
 //  2. reads and writes denied under the shared host temp roots;
 //  3. reads and writes re-allowed for the private tree and the reviewed root
-//     (each as written and as its realpath), plus metadata reads of their
-//     ancestor directories alone, so realpath and git's repository discovery
-//     work for a root under a denied temp root while listing it stays denied;
+//     (each as written and as its realpath), reads alone for the root's git
+//     directories outside it and the verify.share directories, plus metadata
+//     reads of their ancestor directories alone, so realpath and git's
+//     repository discovery work for a root under a denied temp root while
+//     listing it stays denied;
 //  4. the device writes a shell needs re-allowed;
 //  5. writes denied to every `.git` path component under the reviewed root
 //     (the root's own git directory, a nested repository, a `.git` file, in
 //     any letter case, existing or not) and to the git directories a `.git`
 //     file or a commondir points at — the only paths under the root the PR
 //     cannot already control, and the ones git executes from later;
-//  6. the credential locations denied last, so a reviewed root under HOME
+//  6. writes denied to the verify.share directories, which the snapshot
+//     reaches through a link into the checkout;
+//  7. the credential locations denied last, so a reviewed root under HOME
 //     cannot re-expose one.
 func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 	hostTemp := in.tmpBase
@@ -1678,7 +1694,6 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 	denyTemp := sandboxExpandRealpaths(append(slices.Clone(sandboxHostTempDirs), hostTemp))
 	roots := sandboxExpandRealpaths([]string{in.root})
 	allow := sandboxExpandRealpaths([]string{in.private, in.root})
-	denyCredential := sandboxExpandRealpaths(in.credentials)
 	var b strings.Builder
 	b.WriteString(seatbeltHeader)
 	if ref := sandboxWriteRules(&b, "deny", denyTemp); ref != nil {
@@ -1687,7 +1702,7 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 	if ref := sandboxWriteRules(&b, "allow", allow); ref != nil {
 		return "", ref
 	}
-	reads := sandboxExpandRealpaths(in.gitReads)
+	reads := sandboxExpandRealpaths(append(slices.Clone(in.gitReads), in.shared...))
 	if ref := sandboxReadRules(&b, reads); ref != nil {
 		return "", ref
 	}
@@ -1695,13 +1710,23 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 		return "", ref
 	}
 	b.WriteString(seatbeltDeviceWrites)
-	if ref := sandboxGitWriteDenials(&b, roots, sandboxNodePaths(in.gitDirs)); ref != nil {
-		return "", ref
-	}
-	if ref := sandboxWriteRules(&b, "deny", denyCredential); ref != nil {
+	if ref := sandboxProfileDenials(&b, roots, in); ref != nil {
 		return "", ref
 	}
 	return b.String(), nil
+}
+
+// sandboxProfileDenials renders the profile's last rules, each overriding the
+// allows before it: the git control denials, the write denials on the shared
+// directories, and the credential locations last of all.
+func sandboxProfileDenials(b *strings.Builder, roots []string, in *sandboxProfileInputs) *core.RefusalError {
+	if ref := sandboxGitWriteDenials(b, roots, sandboxNodePaths(in.gitDirs)); ref != nil {
+		return ref
+	}
+	if ref := sandboxWriteDenials(b, sandboxExpandRealpaths(in.shared)); ref != nil {
+		return ref
+	}
+	return sandboxWriteRules(b, "deny", sandboxExpandRealpaths(in.credentials))
 }
 
 // sandboxProfileInputs is what one Seatbelt profile is built from.
@@ -1714,6 +1739,9 @@ type sandboxProfileInputs struct {
 	// gitReads are the root's git directories outside it, re-allowed for
 	// reads only ([sandboxGitOutsideDirs]).
 	gitReads []string
+	// shared are the checkout directories verify.share exposes: re-allowed
+	// for reads, and denied for writes after every write allow.
+	shared []string
 }
 
 // sandboxGitWriteDenials renders the git control denials: one regex per root
@@ -1822,6 +1850,19 @@ func sandboxReadRules(b *strings.Builder, paths []string) *core.RefusalError {
 			return ref
 		}
 		fmt.Fprintf(b, "(allow file-read* (subpath %s))", literal)
+	}
+	return nil
+}
+
+// sandboxWriteDenials renders one write denial per path, leaving reads to
+// the rules before it.
+func sandboxWriteDenials(b *strings.Builder, paths []string) *core.RefusalError {
+	for _, path := range paths {
+		literal, ref := seatbeltLiteral(path)
+		if ref != nil {
+			return ref
+		}
+		fmt.Fprintf(b, "(deny file-write* (subpath %s))", literal)
 	}
 	return nil
 }

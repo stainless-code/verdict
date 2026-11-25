@@ -69,7 +69,7 @@ var publishedSemantics = map[string]string{
 	// additive monthly_budget_usd and packs.org_pack (optional
 	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
 	// pin). No existing property, required key, enum, or type changed.
-	"config.schema.json": "13ea823560ba7dcff37241b3eb28d5590693bcbfa81ef351cc07b38e1959a1a6",
+	"config.schema.json": "a7150a6f9fe6ab581501e92c4c37f828f9ffae51446c4356a29c0ed5e4a0e726",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -393,7 +393,7 @@ var publishedSemantics = map[string]string{
 	// reportData drops its optional completeness and gate properties and the
 	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
 	// data profile. gateDimension prose no longer names the removed flags.
-	"envelope.schema.json": "9a0e7c36be23648cc90f17cfa8d5d1b1d27cc79785bd5ff8649104f8e0e94db5",
+	"envelope.schema.json": "8b6bf80ddd9ae7a4b4a8b25503281038c028abc3491bfd507c5ee35f3030017c",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
