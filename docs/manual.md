@@ -3410,81 +3410,117 @@ the request bypasses the cache. Refusals are never cached.
 
 `verdict dashboard` draws the review portfolio in a terminal, from the same
 query layer `serve` renders as HTTP: the same rows, the same counts, the same
-refusals. It is one binary with no dependencies and no browser.
+refusals, live while the stores change. It is one binary with no
+dependencies and no browser.
 
 ```text
-verdict dashboard [--root <dir>] [--once] [--width <cols>] [--height <rows>]
+verdict dashboard [<owner/repo>] [--root <dir>] [--once] [--tab <name>]
+                  [--width <cols>] [--height <rows>] [--check <tier>]
+                  [--interval <duration>] [--sweep <duration>] [--no-watch]
 ```
 
 - Without `--root`, it reads the current repository, found by the same probe
   every verb uses: a directory that looks like a checkout git cannot read
   refuses `not-a-repo`, and a directory with no checkout at all is read as is
-  (an empty portfolio, as `serve` shows). With `--root`, it reads
-  every repository discovery finds below that directory, with `serve`'s
-  defaults (depth 6, 20000 directory visits, 500 repositories) and its 24-hour
+  (an empty portfolio, as `serve` shows). With `--root`, it reads every
+  repository discovery finds below that directory, with `serve`'s defaults
+  (depth 6, 20000 directory visits, 500 repositories) and its 24-hour
   registry cache.
-- **Overview** (`1`): the portfolio totals (bundles, open, deferred, addressed,
-  terminal), the served roots with their bundle counts, and every bundle the
-  layer refused, with its code. When any bundle refused or a listing was cut,
-  the layer withholds the totals and each shows `—`, never a smaller number.
-  A failure with no bundle — a root whose store could not be listed — is
-  named `store <root id>` and counted as a store error, not a refused bundle.
-- **Queue** (`2`): one row per bundle — bundle, repo, the four counts, model,
-  and the head SHA's first 8 characters. A refused bundle keeps its row,
-  marked `!`, with every count `—`. Rows that do not fit end in `… N more`.
-- The header names the root (or how many roots) and says `read-only`; the
-  status row says `complete` or `partial: totals withheld`, how many bundles
-  refused, how many store errors and warnings the layer raised, and the
-  compose time.
+- `<owner/repo>` narrows the Overview, the Queue, and the default bundle to
+  that repository's bundles. The totals are summed over them, and withheld
+  (`—`) when one of them refused, when a listing was cut, or when a refused
+  bundle's repository is unknown (it might be this one).
+- `--check <tier>` is the gate tier the Detail and Compare tabs grade
+  against (default `critical`), as for `report --check`.
 
-**The live view.** It needs a terminal on both stdin and stdout. It switches to
-the alternate screen, puts the terminal in raw mode, draws a `composing…`
-frame, composes once, and then redraws only the cells that change (an idle
-frame writes nothing). Keys: `1` Overview, `2` Queue, `q` quits with exit 0,
-and so does `Esc` one read tick (0.1 s) later, so an arrow key a terminal
-splits after its ESC never quits; Ctrl-C cancels with exit 3. On macOS and
-Linux, Ctrl-Z suspends as usual: the shell gets its screen and cooked mode
-back while the job is stopped, and `fg` redraws the frame. Every handled exit
-— `q`, Ctrl-C, SIGTERM, a terminal error, a crash — restores the screen and
-the terminal mode. A SIGKILL (or a power cut) runs no cleanup at all; if a
-killed dashboard leaves the terminal blank or not echoing, run `reset` (or
-`stty sane`). A terminal smaller than 80×24 shows one resize notice instead
-of a squeezed frame; one that reports no size at all is drawn at 80×24 until
-it reports one. The view composes once per session: re-run it to read reviews
-recorded since. `--width` and `--height` (80–1000 columns, 24–500 rows) can
-only narrow the live frame: a frame larger than the terminal would wrap.
+**Tabs.** Each tab is one read from the layer; a tab whose read refuses shows
+the refusal in its body (`77: bundle-unreadable: …`) and the rest of the
+dashboard keeps working.
+
+| Key | Tab       | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1` | Overview  | The portfolio totals (bundles, open, deferred, addressed, terminal), the served roots, and every bundle the layer refused. Totals the layer withholds show `—`, never a smaller number; a failure with no bundle is named `store <root id>` and counted as a store error.                                                                                                                                                                                  |
+| `2` | Queue     | One row per bundle: bundle, repo, the four counts, model, and the head SHA's first 8 characters. A refused bundle keeps its row, marked `!`, with every count `—`.                                                                                                                                                                                                                                                                                         |
+| `3` | Detail    | One bundle (Enter on a Queue row, else the first readable one): repo, head, the gate's verdict and dimensions, the verdict counts, and every finding with its severity (`!!!` critical, `!!` important, `!` informational, `-` untagged), status, and two evidence axes: the rigor rung as a five-cell bar (`said` to `reproduced`) and the quote check (`✓` verified, `?` unverified, blank unchecked). The selected finding's body shows under the list. |
+| `4` | Diff      | The bundle's diff: lanes in risk order with file counts and `+add/-del`, then every file and hunk with old and new line numbers and a `▸` on each line a finding is anchored to. Unified by default; `u` switches to side by side from 100 columns (narrower frames say so instead).                                                                                                                                                                       |
+| `5` | Compare   | The bundle against a baseline you pick with `b` from the bundles under the same root: the new, persisting, resolved, and not-reviewed buckets with their findings.                                                                                                                                                                                                                                                                                         |
+| `6` | Cost      | Spend by repo, week, or model (`Tab` cycles); an `unattributed` row is a real bucket.                                                                                                                                                                                                                                                                                                                                                                      |
+| `7` | Precision | Outcomes by category or tier (`Tab` cycles): open, resolved-unfixed, unknown; fixed is `—` until `calibrate` measures it.                                                                                                                                                                                                                                                                                                                                  |
+
+**Keys.** `j`/`k` or the arrows move; `g`/`G` or Home/End jump to the first
+and last row; Ctrl-D/Ctrl-U or PgDn/PgUp move half a page. `Enter` opens
+(a Queue row's Detail, the Detail's Diff). `/` filters the current list as
+you type (`Enter` keeps the filter, `Esc` clears it). `Tab` jumps to the next
+file on the Diff and cycles the grouping on Cost and Precision. `u` toggles
+the split diff, `b` opens the Compare baseline picker, `r` drops the layer's
+cache and composes again, `y` copies the selected finding's fix prompt (or,
+when the bundle has none, its `verdict triage` command), `?` shows every key.
+`Esc` closes help, the picker, or a search, steps back from a bundle tab to
+the Queue, and quits from the Overview or Queue one read tick (0.1 s) later,
+so an arrow key a terminal splits after its ESC never quits. `q` quits with
+exit 0; Ctrl-C cancels with exit 3.
+
+**The live view.** It needs a terminal on both stdin and stdout. It switches
+to the alternate screen, puts the terminal in raw mode, and redraws only the
+cells that change: an idle frame writes nothing. Composition runs beside the
+loop, one view at a time, so keys never wait on a slow compose (a
+`composing…` marker shows while one runs), and a key that changes the view
+while a compose runs drops that compose's result. The layer watches every
+served bundle (`--interval`, default `2s`; `--sweep`, default `60s`, never
+shorter than the interval; both at least `100ms`) and the dashboard
+recomposes the visible view when one changes; a burst of changes costs one
+compose. `--no-watch` turns the watcher off: the view then changes only on
+`r` or a key. On macOS and Linux, Ctrl-Z suspends as usual: the shell gets
+its screen and cooked mode back while the job is stopped, and `fg` redraws
+the frame. Every handled exit — `q`, Ctrl-C, SIGTERM, a terminal error, a
+crash in the loop or in a compose — restores the screen and the terminal
+mode. A SIGKILL (or a power cut) runs no cleanup at all; if a killed
+dashboard leaves the terminal blank or not echoing, run `reset` (or
+`stty sane`). A terminal smaller than 80×24 shows one resize notice instead of
+a squeezed frame; one that reports no size at all is drawn at 80×24 until it
+reports one. `--width` and `--height` (80–1000 columns, 24–500 rows) can only
+narrow the live frame: a frame larger than the terminal would wrap.
 
 Without a terminal it refuses `dashboard-no-tty` (exit 1; an envelope under
-`--json`) rather than waiting for keys that never come; in a terminal, `--json`
-is a usage error (exit 2), since the live view has no JSON form. A Windows
-console that refuses virtual-terminal sequences refuses `dashboard-no-vt`; a
-console mode that cannot be put back on exit is reported as an error naming
-`reset`.
+`--json`) rather than waiting for keys that never come; in a terminal,
+`--json` is a usage error (exit 2), since the live view has no JSON form. A
+Windows console that refuses virtual-terminal sequences refuses
+`dashboard-no-vt`; a console mode that cannot be put back on exit is reported
+as an error naming `reset`.
 
-**`--once`.** One plain-text Overview frame to stdout, then exit 0 — even when
-bundles refused or totals were withheld, because those are rows and markers in
-the frame, not failures. The frame is the terminal's size when stdout is a
-terminal, and 80×24 otherwise; `--width`/`--height` override both. It never
-carries an escape sequence, color or otherwise, and the layer's warnings go to
+**`--once`.** One plain-text frame of `--tab` (`overview`, `queue`, `detail`,
+`diff`, `compare`, `cost`, `precision`; default `overview`) to stdout, then
+exit 0 — even when bundles refused, totals were withheld, or the tab's read
+refused, because those are rows and messages in the frame, not failures. The
+frame is the terminal's size when stdout is a terminal, and 80×24 otherwise;
+`--width`/`--height` override both. It never carries an escape sequence,
+color or otherwise, never starts the watcher, and the layer's warnings go to
 stderr as `warn:` lines. `--once` has no `--json` form (usage error, exit 2):
 read the same views as JSON through `verdict serve` or the MCP query tools.
 
 **Look.** Color uses the 16 ANSI colors only, so the terminal's own theme
 decides how they read. `NO_COLOR` or `--color never` keeps attributes (bold,
-dim, reverse) and drops color; `TERM=dumb` also switches the box and ellipsis
-glyphs to ASCII. Every state has a text shape as well — the active tab is
-bracketed, a refused row is `!`, an unknown count is `—` — so nothing depends
-on color. Text a stranger wrote (a repository name, a refusal message) has
-every control character folded to a space before it reaches the screen, so it
-cannot move the cursor, clear the screen, or write the clipboard. The same
-holds for every verb's `warn:` and `error:` lines on stderr. Combining marks
-stay on their letter (`e` + U+0301 is `é`), and wide characters follow the
-Unicode 17.0 East Asian Width table.
+dim, reverse) and drops color; `TERM=dumb` also switches the box, rung,
+quote, and marker glyphs to ASCII. Every state has a text shape as well — the
+active tab is bracketed, the cursor row is marked `▸`, a refused row is `!`,
+an unknown count is `—`, a diff line is `+` or `-` — so nothing depends on
+color. Text a stranger wrote (a repository name, a finding body, a diff line,
+a refusal message) has every control character folded to a space before it
+reaches the screen, so it cannot move the cursor, clear the screen, or write
+the clipboard. The same holds for every verb's `warn:` and `error:` lines on
+stderr. Combining marks stay on their letter (`e` + U+0301 is `é`), and wide
+characters follow the Unicode 17.0 East Asian Width table.
 
 **Read-only.** The dashboard never writes a review store, posts, fetches, or
-runs a model or any command a bundle names. Its one write is `--root`'s
-discovery registry cache (`projects.json` beside the settings file), the same
-cache `serve --root` keeps. It writes no journal line.
+runs a model or any command a bundle names. `y` writes the prompt to the
+terminal as an OSC 52 clipboard sequence (base64, so the text cannot inject
+a sequence of its own) and never starts a subprocess such as `pbcopy`; a
+terminal with OSC 52 disabled simply copies nothing. Text over 100 KiB is not
+sent at all: terminals cap OSC 52 and drop a longer one silently, so the
+status row says it is too large instead of claiming a copy. The status row
+names what was copied: the fix prompt, or the triage command. Its one write is
+`--root`'s discovery registry cache (`projects.json` beside the settings
+file), the same cache `serve --root` keeps. It writes no journal line.
 
 ## Your agent, launched (`run --agent`)
 

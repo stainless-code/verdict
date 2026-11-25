@@ -2,7 +2,10 @@ package untrusted
 
 import (
 	"bytes"
+	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // TestInertFoldsControlsKeepsLayout pins the stream fold: every C0, DEL, C1,
@@ -58,5 +61,27 @@ func TestInertWriterKeepsASplitRune(t *testing.T) {
 	}
 	if got := buf.String(); got != "🦀" {
 		t.Fatalf("split rune came out as %q", got)
+	}
+}
+
+// FuzzFlatten holds the sanitizer's one promise for any input: no control or
+// line-separator rune survives except the newline, and Inert keeps only the
+// newline and tab. A stranger's text can then never start a terminal sequence.
+func FuzzFlatten(f *testing.F) {
+	for _, seed := range []string{"plain", "a\x1b]52;c;eA==\x07b", "\u009b2J \r\n\t", "\xc2", "\xe2\x80"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		checkNoControls(t, Flatten(s), "\n")
+		checkNoControls(t, Inert(s), "\n\t")
+	})
+}
+
+func checkNoControls(t *testing.T, got, kept string) {
+	t.Helper()
+	for _, r := range got {
+		if core.IsLineBreak(r) && !strings.ContainsRune(kept, r) {
+			t.Fatalf("%q kept control %U", got, r)
+		}
 	}
 }

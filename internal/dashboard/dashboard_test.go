@@ -78,7 +78,7 @@ func TestRunOnceDrawsOnePlainFrame(t *testing.T) {
 	}
 	checkLines(t, out.String(), map[int]string{
 		0: " verdict dashboard · 0 roots                                         read-only",
-		1: " [1 Overview]  2 Queue",
+		1: " [1 Overview]  2 Queue   3 Detail   4 Diff   5 Compare   6 Cost   7 Precision",
 		4: "   bundles 0   open 0   deferred 0   addressed 0   terminal 0",
 		7: "   no repositories found",
 	})
@@ -126,7 +126,8 @@ func TestRunFlagRefusals(t *testing.T) {
 	}{
 		{
 			name: "unknown flag", args: []string{"--watch"}, code: cli.ExitUsage,
-			stderr: "unknown flag '--watch' for dashboard (want --root, --once, --width, --height, --json)\n",
+			stderr: "unknown flag '--watch' for dashboard (want --root, --once, --tab, --width, --height, " +
+				"--check, --interval, --sweep, --no-watch, --json)\n",
 		},
 		{
 			name: "narrow width", args: []string{"--once", "--width", "79"}, code: cli.ExitUsage,
@@ -149,6 +150,26 @@ func TestRunFlagRefusals(t *testing.T) {
 			name: "missing root", args: []string{"--once", "--root", missing}, code: cli.ExitRefused,
 			stderr: "error: dashboard: --root " + missing + " is not an existing directory\n" +
 				"try: pass --root <existing-directory>, or run serve inside a checkout\n",
+		},
+		{
+			name: "two repos", args: []string{"acme/app", "acme/web", "--once"}, code: cli.ExitUsage,
+			stderr: "dashboard: takes one optional <owner/repo>; got 'acme/app' and 'acme/web'\n",
+		},
+		{
+			name: "unknown tab", args: []string{"--once", "--tab", "inbox"}, code: cli.ExitUsage,
+			stderr: "dashboard: unknown --tab 'inbox' (want overview|queue|detail|diff|compare|cost|precision)\n",
+		},
+		{
+			name: "short interval", args: []string{"--interval", "50ms"}, code: cli.ExitUsage,
+			stderr: "dashboard: --interval wants a duration of at least 100ms\n",
+		},
+		{
+			name: "sweep under interval", args: []string{"--interval", "5s", "--sweep", "1s"}, code: cli.ExitUsage,
+			stderr: "dashboard: --sweep must be at least --interval\n",
+		},
+		{
+			name: "unknown tier", args: []string{"--check", "advisory"}, code: cli.ExitUsage,
+			stderr: "dashboard: unknown --check tier 'advisory' (want critical|important|informational)\n",
 		},
 	}
 	for _, c := range cases {
@@ -213,9 +234,9 @@ func TestPreflightRefusesJSONWithATerminal(t *testing.T) {
 // cancelingSource cancels the request inside Bundles, the way Ctrl-C lands
 // mid-compose, and counts what is read after it.
 type cancelingSource struct {
-	fixtureSource
 	cancel context.CancelFunc
-	roots  int
+	fixtureSource
+	roots int
 }
 
 func (c *cancelingSource) Bundles(ctx context.Context, p string) (*query.View, error) {
@@ -237,5 +258,37 @@ func TestLoadStopsAfterACancel(t *testing.T) {
 	snap, err := load(ctx, src)
 	if !errors.Is(err, context.Canceled) || snap != nil || src.roots != 0 {
 		t.Fatalf("load = %v, %v with %d Roots read; want context.Canceled, nil, 0", snap, err, src.roots)
+	}
+}
+
+// TestParseFlagsDefaults pins the watch and gate defaults the dashboard
+// documents, and that [repo] and --tab land where the loop reads them.
+func TestParseFlagsDefaults(t *testing.T) {
+	t.Parallel()
+	r, _, _ := runner(false)
+	opts, code, done := parseFlags(r, []string{"acme/app", "--tab", "diff", "--no-watch"})
+	want := options{
+		repo: "acme/app", check: "critical", interval: 2 * time.Second, sweep: 60 * time.Second,
+		tab: tabDiff, noWatch: true,
+	}
+	if done || code != 0 || opts != want {
+		t.Fatalf("parseFlags = %+v (%d, %v), want %+v", opts, code, done, want)
+	}
+}
+
+// TestRunOnceDrawsTheRequestedTab runs --once --tab cost over an empty
+// --root: the Cost frame draws (empty table, totals row), exit 0.
+func TestRunOnceDrawsTheRequestedTab(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	r, out, diag := runner(false)
+	if code := Run(t.Context(), r, []string{"--once", "--tab", "cost", "--root", t.TempDir()}, Request{}); code != cli.ExitOK {
+		t.Fatalf("exit = %d, want 0; stderr: %s", code, diag.String())
+	}
+	lines := strings.Split(out.String(), "\n")
+	if !strings.Contains(lines[1], "[6 Cost]") || !strings.HasPrefix(lines[3], " by repo") {
+		t.Fatalf("frame is not the Cost tab:\n%s", out.String())
 	}
 }

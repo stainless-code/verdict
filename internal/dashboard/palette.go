@@ -16,6 +16,9 @@ const (
 	roleOK
 	roleWarn
 	roleBad
+	roleSel // the row under the cursor
+	roleAdd // an added diff line
+	roleDel // a deleted diff line
 	roleCount
 )
 
@@ -24,6 +27,8 @@ const (
 	sgrReset = "\x1b[0m"
 	sgrBold  = "\x1b[0;1m"
 	sgrTab   = "\x1b[0;1;7m"
+	// sgrReverse marks the cursor row; mono diffs keep their +/- gutter.
+	sgrReverse = "\x1b[0;7m"
 )
 
 // palette maps every role to the SGR sequence that selects it. Each sequence
@@ -41,6 +46,9 @@ var paletteANSI = palette{
 	roleOK:     "\x1b[0;32m",
 	roleWarn:   "\x1b[0;33m",
 	roleBad:    "\x1b[0;1;31m",
+	roleSel:    sgrReverse,
+	roleAdd:    "\x1b[0;32m",
+	roleDel:    "\x1b[0;31m",
 }
 
 // paletteMono carries attributes only, for NO_COLOR and --color never. Every
@@ -55,19 +63,34 @@ var paletteMono = palette{
 	roleOK:     sgrReset,
 	roleWarn:   sgrBold,
 	roleBad:    "\x1b[0;1;4m",
+	roleSel:    sgrReverse,
+	roleAdd:    sgrReset,
+	roleDel:    sgrReset,
 }
 
-// charset is the handful of non-ASCII glyphs a frame draws.
+// charset is the handful of non-ASCII glyphs a frame draws. The glyphs
+// added for PR B are East Asian Width N, so a CJK-locale terminal still draws
+// them one cell wide.
 type charset struct {
 	rule     rune // horizontal rule
 	ellipsis rune // a truncated value's last cell
 	unknown  rune // a count the layer could not trust
 	sep      rune // between header fields
+	rungOn   rune // a reached rigor rung
+	rungOff  rune // a rung not reached
+	verified rune // a finding whose quote matched the diff
+	mark     rune // the cursor row; a diff line with an anchored finding
 }
 
 var (
-	charsetUnicode = charset{rule: '─', ellipsis: '…', unknown: '—', sep: '·'}
-	charsetASCII   = charset{rule: '-', ellipsis: '~', unknown: '-', sep: '|'}
+	charsetUnicode = charset{
+		rule: '─', ellipsis: '…', unknown: '—', sep: '·',
+		rungOn: '▮', rungOff: '▯', verified: '✓', mark: '▸',
+	}
+	charsetASCII = charset{
+		rule: '-', ellipsis: '~', unknown: '-', sep: '|',
+		rungOn: '#', rungOff: '.', verified: '+', mark: '>',
+	}
 )
 
 // look is one resolved presentation: the palette and the glyphs.
