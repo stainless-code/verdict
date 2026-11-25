@@ -100,6 +100,8 @@ cost-panel-unresolved	try: pass the panel that ran, in order: --cost-names=<lead
 cost-unreadable	try: fix or delete the cost record named above, then re-run
 coverage-incomplete	try: stamp review.json "coverage": [{"file": "...", "ranges": "1-240"}] for every changed file, or re-run next --coverage to see the gaps, then post again
 coverage-stale	try: re-run fetch-local, review the new bundle, then record again
+dashboard-no-tty	try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame
+dashboard-no-vt	try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame
 diff-failed	try: address the cause above, then re-run the same command
 diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 download-failed	try: address the cause above, then re-run the same command

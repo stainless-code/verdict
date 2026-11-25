@@ -14,7 +14,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/adopt"
 	backtestverb "github.com/stainless-code/verdict/internal/backtest"
@@ -25,6 +24,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
+	"github.com/stainless-code/verdict/internal/dashboard"
 	demo "github.com/stainless-code/verdict/internal/demo"
 	"github.com/stainless-code/verdict/internal/doctor"
 	drainverb "github.com/stainless-code/verdict/internal/drain"
@@ -67,11 +67,13 @@ const (
 	verbDoctor = "doctor"
 	verbACP    = "acp"
 	verbLSP    = "lsp"
+	// verbDashboard is the terminal dashboard transport.
+	verbDashboard = "dashboard"
 )
 
 const verbsHint = "demo|fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
-	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp|lsp"
+	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -235,6 +237,10 @@ func dispatch(
 		return runUninstall(ctx, r, rest, env)
 	case "serve":
 		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile), Env: env, InstallRoot: root})
+	case verbDashboard:
+		return dashboard.Run(ctx, r, rest, dashboard.Request{
+			In: os.Stdin, Term: os.Getenv("TERM"), Version: cliVersion(root, readFile),
+		})
 	case verbACP:
 		return runACP(ctx, r, rest, cliVersion(root, readFile))
 	case verbLSP:
@@ -433,13 +439,7 @@ func splitPositionals(args []string) (repo, pr string, rest []string) {
 }
 
 func newRunner(cmd, repo, pr string, stdout, stderr *os.File, getenv func(string) string) *cli.Runner {
-	return &cli.Runner{
-		Cmd: cmd, Repo: repo, Pr: pr,
-		Out: stdout, Diag: stderr, Human: stdout,
-		Now:                time.Now,
-		EnvNoColor:         getenv("NO_COLOR") != "",
-		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
-	}
+	return cli.NewRunner(cmd, repo, pr, stdout, stderr, getenv)
 }
 
 func resolveRunnerPrefs(r *cli.Runner, env map[string]string, readFile func(string) ([]byte, error)) (int, bool) {

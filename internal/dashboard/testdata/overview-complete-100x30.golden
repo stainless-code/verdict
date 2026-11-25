@@ -1,0 +1,30 @@
+ verdict dashboard · 2 roots                                                             read-only
+ [1 Overview]  2 Queue
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ Portfolio
+   bundles 2   open 3   deferred 1   addressed 6   terminal 0
+
+ Roots                                                                                     bundles
+   a1b2c3d4e5f6  /work/acme/api                                                                  1
+   0f1e2d3c4b5a  /work/acme/日本語-web                                                           1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+ complete                                                                  at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

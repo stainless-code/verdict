@@ -127,3 +127,13 @@ func TestBlockFoldsControlsAndSeparators(t *testing.T) {
 		t.Errorf("block kept a separator or control rune: %q", got)
 	}
 }
+
+// TestFlattenKeepsNewlinesAndFoldsTheRest pins the exported sanitizer the
+// terminal dashboard shares: a newline survives, every other control or
+// separator becomes one space, and printable text is untouched.
+func TestFlattenKeepsNewlinesAndFoldsTheRest(t *testing.T) {
+	got := Flatten("a\nb\x1b]52;c;eA==\x07c d\u0085e 日本")
+	if want := "a\nb ]52;c;eA== c d e 日本"; got != want {
+		t.Errorf("Flatten = %q, want %q", got, want)
+	}
+}

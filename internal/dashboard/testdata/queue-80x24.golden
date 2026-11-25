@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview  [2 Queue]
+────────────────────────────────────────────────────────────────────────────────
+   BUNDLE          REPO            OPEN DEFER  ADDR  TERM  MODEL       HEAD
+   4232            acme/api           3     1     2     0  claude-opu… 9f8e7d6c
+ ! 77              —                  —     —     —     —  —           —
+   local-feature-… acme/api [2J…      0     0     5     1  gpt-5       01234567
+   4301            acme/api          12     0     0     0  —           —
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

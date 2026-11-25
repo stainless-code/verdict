@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // scriptCommander is a hermetic Commander: canned stdout/stderr per exact
@@ -459,6 +460,42 @@ func TestRunDiffTooLarge(t *testing.T) {
 	}
 	if got := diag.String(); !strings.Contains(got, "candidates (suggested scopes") {
 		t.Errorf("diag missing candidates block:\n%s", got)
+	}
+}
+
+// TestRunDiffTooLargeCandidatesAreInert gives the over-cap diff a path a
+// stranger named with an OSC 52 clipboard write and a C1 CSI. The split
+// candidates quote that path on the diagnostic stream; written through the
+// writer the production runner installs (untrusted.InertWriter), it arrives
+// as plain text.
+func TestRunDiffTooLargeCandidatesAreInert(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmdr := fetchHappyCommander(t)
+	const evil = "evil\x1b]52;c;cGF5bG9hZA==\x07\u009b2J.txt"
+	big := "diff --git a/" + evil + " b/" + evil + "\n--- a/" + evil + "\n+++ b/" + evil + "\n@@ -1 +1 @@\n" +
+		strings.Repeat(" context line padding the diff past the cap\n", 20000)
+	view := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
+		"files,additions,deletions,isDraft,reviewDecision,state"
+	pr := strings.Replace(fetchTestPR(), `"files":[{"path":"a.txt","additions":1,"deletions":1}]`,
+		`"files":[{"path":"evil.txt","additions":1,"deletions":1},{"path":"b.txt","additions":1,"deletions":1}]`, 1)
+	cmdr.out["gh\x00"+view] = scriptResult{stdout: pr}
+	cmdr.out["gh\x00pr\x00diff\x007\x00--repo\x00o/r"] = scriptResult{
+		stdout: big + "diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-a\n+b\n",
+	}
+	var human, diag bytes.Buffer
+	var streamed []string
+	req := fetchTestReq(cmdr, &human, &diag, &streamed)
+	req.Diag = untrusted.NewInertWriter(&diag)
+	_, err := Run(context.Background(), req)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "diff-too-large" {
+		t.Fatalf("err = %v, want diff-too-large", err)
+	}
+	got := diag.String()
+	if !strings.Contains(got, "evil ]52;c;cGF5bG9hZA==  2J.txt") || strings.ContainsAny(got, "\x1b\x07\u009b") {
+		t.Fatalf("candidates on stderr = %q, want the path folded to plain text", got)
 	}
 }
 

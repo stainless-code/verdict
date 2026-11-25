@@ -356,7 +356,7 @@ Fix: pass `--require-rigor critical=walked` (repeatable, one tier per flag), or 
 
 ## `bad-root`
 
-Cause: `serve --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
+Cause: `serve --root`, `dashboard --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
 
 Fix: pass `--root <existing-directory>`, or start `verdict serve` inside a checkout with no `--root`.
 
@@ -625,6 +625,18 @@ has no verifiable tracked-tree fingerprint.
 Fix: re-run `fetch-local` to refresh `.verdict/state/local-<name>/`, review the
 new bundle, then record again. Coverage from the previous snapshot cannot
 certify the current tree.
+
+## `dashboard-no-tty`
+
+Cause: `verdict dashboard` was started without a terminal on both stdin and stdout (a pipe, a redirect, CI, or an agent's shell), or the terminal refused raw mode. The live view waits for keystrokes, so it refuses instead of hanging.
+
+Fix: run it in a terminal, or pass `--once` for one plain-text frame on stdout (exit 0). For data rather than a picture, read the same views through `verdict serve` or the MCP query tools.
+
+## `dashboard-no-vt`
+
+Cause: a Windows console refused virtual-terminal processing (`SetConsoleMode` rejected `ENABLE_VIRTUAL_TERMINAL_PROCESSING` or `ENABLE_VIRTUAL_TERMINAL_INPUT`): a console older than Windows 10, or a legacy conhost.
+
+Fix: run `verdict dashboard` in Windows Terminal or a Windows 10+ console, or pass `--once` for one plain-text frame.
 
 ## `diff-failed`
 
