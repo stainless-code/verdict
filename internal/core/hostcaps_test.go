@@ -14,11 +14,11 @@ func TestCapabilityTable(t *testing.T) {
 		"github": {
 			Provider: "github", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
-			ThreadResolution: true, ThreadReply: true,
+			ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
 		},
 		"gitlab": {
 			Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-			Approve: true, ThreadResolution: true, ThreadReply: true,
+			Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
 		},
 		"gitcafe": {Provider: "gitcafe", Fetch: true},
 		"forgejo": {
@@ -157,5 +157,17 @@ func capabilityFlags(caps HostCapabilities) []struct {
 		{name: CapabilityApprove, on: caps.Approve},
 		{name: CapabilityRequestChanges, on: caps.RequestChanges},
 		{name: CapabilityThreadResolution, on: caps.ThreadResolution},
+	}
+}
+
+// TestLiveReadProviders pins the advertised provider lists as literals: a host
+// joins `ready` or `pr-wait` only by flipping its row, and forgejo stays out
+// of both until its live reads exist.
+func TestLiveReadProviders(t *testing.T) {
+	t.Parallel()
+	for name, got := range map[string][]string{"ready": ReadyProviders(), "pr-wait": PRWaitProviders()} {
+		if !slices.Equal(got, []string{"github", "gitlab"}) {
+			t.Errorf("%s providers = %v, want [github gitlab]", name, got)
+		}
 	}
 }
