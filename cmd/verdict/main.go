@@ -444,9 +444,7 @@ func dispatchMutating(
 	case "run":
 		// The verb name matches main's own run() entry point, so the adapter import
 		// is aliased rather than renaming either one.
-		return runverb.Run(ctx, r, rest, runverb.Request{
-			Env: env, Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot,
-		}), true
+		return runverb.Run(ctx, r, rest, req), true
 	case cmdLoop:
 		return loop.Run(ctx, r, rest, loop.Request{
 			Env: env, Forces: forces, Repo: repo, Root: root, RepoRoot: repoRoot,

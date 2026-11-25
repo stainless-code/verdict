@@ -225,9 +225,9 @@ func runVerb(t *testing.T, f *fixture, args ...string) (int, string, string) {
 		r.Human = diag
 	}
 	local = append([]string{"--finders", "1"}, local...)
-	code := Run(context.Background(), r, local, Request{
-		Env:  map[string]string{"HOME": os.Getenv("HOME"), "XDG_CONFIG_HOME": os.Getenv("XDG_CONFIG_HOME")},
-		Repo: "acme/app", Pr: f.slug, Root: f.root, RepoRoot: f.root,
+	code := Run(context.Background(), r, local, readcommon.Request{
+		Runtime: &core.Runtime{Env: map[string]string{"HOME": os.Getenv("HOME"), "XDG_CONFIG_HOME": os.Getenv("XDG_CONFIG_HOME")}},
+		Repo:    "acme/app", Pr: f.slug, Root: &f.root, RepoRoot: f.root,
 	})
 	return code, out.String(), diag.String()
 }
