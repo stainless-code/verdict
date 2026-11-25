@@ -24,8 +24,9 @@ trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
-# post pins its calls to the bundle's host (github.com here); match the rest.
+# post pins its calls to the bundle's host: github.com here, and only it.
 if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
 fi
@@ -51,6 +52,14 @@ echo "evals-stub-gh: network disabled ($*)" >&2
 exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
+# The stub answers a call pinned to github.com only: a review write pinned to
+# any other host, in either --hostname spelling or twice, must fail.
+for wrong in "api --hostname other.example" "api --hostname=other.example" "api --hostname github.com --hostname other.example"; do
+  status=0
+  # shellcheck disable=SC2086 # the leading words are a deliberate argv prefix
+  "$EVAL_STUBBIN/gh" $wrong repos/acme/app/pulls/4422/reviews --method POST --input - </dev/null >/dev/null 2>&1 || status=$?
+  assert_eq "a review write pinned elsewhere fails ($wrong)" 64 "$status"
+done
 
 reviews_posts_since() {
   local n

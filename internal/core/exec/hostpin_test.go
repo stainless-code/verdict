@@ -1,24 +1,47 @@
+//go:build !windows
+
+// Platform note: the stub glab is a POSIX shell script; the pin and the
+// environment check are OS-independent and covered on every OS by the core
+// package's tests.
+
 package exec_test
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 )
 
+// stubGlab puts a network-dead glab first on this process's PATH (the runner
+// resolves the binary through it, not through the child's env) and returns
+// the file it appends each call's argv to.
+func stubGlab(t *testing.T) string {
+	t.Helper()
+	bin, log := t.TempDir(), filepath.Join(t.TempDir(), "glab.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(bin, "glab"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
 // TestPinnedGlabWriteRefusesAnotherAPIHost proves the runner checks the
 // environment glab will inherit: a pinned review POST whose GITLAB_API_HOST
-// names another server refuses host-mismatch naming both, before any spawn,
-// because glab would send it (with the pinned host's token) to that server.
+// (or CI auto-login server) names another server refuses host-mismatch before
+// any spawn, because glab would send it, with the pinned host's token, there.
+// With the variable unset or naming the target, the call runs, pinned.
 func TestPinnedGlabWriteRefusesAnotherAPIHost(t *testing.T) {
-	t.Parallel()
+	log := stubGlab(t)
 	post := []string{
 		"glab", "api", "projects/acme%2Fapp/merge_requests/7/notes",
 		"--method", "POST", "--header", "Content-Type: application/json", "--input", "-",
 	}
-	ctx := core.WithHost(t.Context(), "gitlab.com")
 	for _, tc := range []struct {
 		name    string
 		env     []string
@@ -31,11 +54,46 @@ func TestPinnedGlabWriteRefusesAnotherAPIHost(t *testing.T) {
 		{"API host is the target", []string{"GITLAB_API_HOST=https://gitlab.com"}, false},
 		{"no API host", nil, false},
 	} {
-		_, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: post, Env: append([]string{"PATH="}, tc.env...)})
-		var ref *core.RefusalError
-		refused := errors.As(err, &ref) && ref.Code == core.CodeHostMismatch
-		if refused != tc.refuses {
-			t.Errorf("%s: err = %v, want refusal %v", tc.name, err, tc.refuses)
-		}
+		checkPinnedGlab(t, post, log, tc.env, tc.refuses, tc.name)
 	}
+}
+
+// checkPinnedGlab runs one pinned glab POST under extra env against the stub
+// and checks it either refused before any spawn or reached the stub pinned.
+func checkPinnedGlab(t *testing.T, post []string, log string, extra []string, refuses bool, name string) {
+	t.Helper()
+	resetLog(t, log)
+	// An explicit env, so the developer's own GITLAB_API_HOST cannot decide a case.
+	env := append([]string{"HOME=" + t.TempDir()}, extra...)
+	ctx := core.WithHost(t.Context(), "gitlab.com")
+	res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: post, Env: env, Stdin: strings.NewReader("{}")})
+	calls := readLog(t, log)
+	if refuses {
+		var ref *core.RefusalError
+		if !errors.As(err, &ref) || ref.Code != core.CodeHostMismatch || calls != "" {
+			t.Errorf("%s: err = %v, glab calls %q; want a host-mismatch refusal and no spawn", name, err, calls)
+		}
+		return
+	}
+	want := "api --hostname gitlab.com projects/acme%2Fapp/merge_requests/7/notes"
+	if err != nil || res.ExitCode != 0 || !strings.HasPrefix(calls, want) {
+		t.Errorf("%s: err = %v exit %d, glab calls %q; want one pinned call starting %q", name, err, res.ExitCode, calls, want)
+	}
+}
+
+func resetLog(t *testing.T, log string) {
+	t.Helper()
+	if err := os.Remove(log); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+}
+
+// readLog is the stub's call log, "" when it was never called.
+func readLog(t *testing.T, log string) string {
+	t.Helper()
+	raw, err := os.ReadFile(log)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return string(raw)
 }
