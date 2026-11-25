@@ -378,17 +378,71 @@ func assertReceiptChangeRefused(t *testing.T, tamper func(t *testing.T, dir stri
 	}
 }
 
-// writeStoredFinders records the finder summary a stored receipt states, the
-// capture that outlives the execution it summarized.
-func writeStoredFinders(t *testing.T, dir string, completed int) {
+// writeStoredFinders records the finder summary a stored receipt for the
+// fixture's head ("head") states, the capture that outlives the execution it
+// summarized.
+func writeStoredFinders(t *testing.T, dir, name string, completed int) {
+	t.Helper()
+	writeStoredSummary(t, dir, name, "head", completed)
+}
+
+func writeStoredSummary(t *testing.T, dir, name, head string, completed int) {
 	t.Helper()
 	raw, err := json.Marshal(map[string]any{
-		"verification": map[string]any{"finders": map[string]any{"completed": completed}},
+		"head": head,
+		"verification": map[string]any{"finders": map[string]any{
+			"completed": completed, "confirmed": 0, "contested": 0, "pending": 1,
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeExecutionFile(t, dir, "record.json", raw)
+	writeExecutionFile(t, dir, name, raw)
+}
+
+// withStoredCross gives the fixture entry the confirmed stamp a prior
+// execution left in the store.
+func withStoredCross(t *testing.T) *jq.Obj {
+	t.Helper()
+	entry := executionEntry()
+	verification, _ := entry.Get("verification")
+	stamp, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatal("fixture verification is not an object")
+	}
+	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed",
+		"expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
+	return entry
+}
+
+// requirePendingCross requires the capture to be cross-required and to stamp
+// the stored entry pending and ineligible, whatever stamp it carried.
+func requirePendingCross(t *testing.T, dir string) {
+	t.Helper()
+	state := CheckExecution(dir, nil)
+	if !state.CrossRequired {
+		t.Fatalf("CrossRequired = false; want the two-finder capture kept (state=%+v)", state)
+	}
+	entry := withStoredCross(t)
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); readcommon.FieldOf(cross, "status") != "pending" || EligibleCross(cross) {
+		t.Fatalf("cross = %v; want a two-finder pending, ineligible capture", cross)
+	}
+}
+
+// requireManualCapture requires the capture to read manual and to drop the
+// stored automatic stamp.
+func requireManualCapture(t *testing.T, dir string) {
+	t.Helper()
+	state := CheckExecution(dir, nil)
+	if state.Active || state.CrossRequired || state.Gap != "" {
+		t.Fatalf("state = %+v, want a manual capture", state)
+	}
+	entry := withStoredCross(t)
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); cross != nil {
+		t.Fatalf("manual capture kept cross = %v", cross)
+	}
 }
 
 // retireBoundArtifacts leaves the shape a finished execution can reach: the
@@ -408,7 +462,7 @@ func retireBoundArtifacts(t *testing.T, dir string) {
 func TestExecutionReceiptKeepsCaptureWithoutArtifacts(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
-	writeStoredFinders(t, dir, 2)
+	writeStoredFinders(t, dir, "record.json", 2)
 	state := CheckExecution(dir, nil)
 	if state.Active || !state.CrossRequired {
 		t.Fatalf("state = %+v, want a captured execution with no live artifacts", state)
@@ -429,21 +483,30 @@ func TestExecutionReceiptKeepsCaptureWithoutArtifacts(t *testing.T) {
 	}
 }
 
-func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
+// TestExecutionPartialTwoFinderReceiptKeepsCapture proves a two-finder run
+// one finder failed still requires cross checks: only a two-finder summary
+// writes verification.finders, so its presence states the capture whatever
+// the completed count says.
+func TestExecutionPartialTwoFinderReceiptKeepsCapture(t *testing.T) {
+	for _, name := range []string{"record.json", "post.json"} {
+		t.Run(name, func(t *testing.T) {
+			dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+			retireBoundArtifacts(t, dir)
+			writeStoredFinders(t, dir, name, 1)
+			requirePendingCross(t, dir)
+		})
+	}
+}
+
+// TestExecutionIgnoresReceiptForAnotherHead proves a receipt bound to an
+// earlier head says nothing about this one: a manual review of the current
+// head does not inherit a cross requirement from a two-finder review before it.
+func TestExecutionIgnoresReceiptForAnotherHead(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
-	writeStoredFinders(t, dir, 1)
-	writeExecutionFile(t, dir, "post.json", []byte(`{"verification":{"finders":{"completed":2}}}`))
-
-	state := CheckExecution(dir, nil)
-	if !state.CrossRequired {
-		t.Fatalf("CrossRequired = false; want the post receipt's two-finder capture (state=%+v)", state)
-	}
-	entry := executionEntry()
-	state.Stamp([]any{entry})
-	if cross := readCross(entry); readcommon.FieldOf(cross, "status") != "pending" || EligibleCross(cross) {
-		t.Fatalf("cross = %v; want a two-finder pending, ineligible capture", cross)
-	}
+	writeStoredSummary(t, dir, "post.json", "earlier-head", 2)
+	writeStoredSummary(t, dir, "record.json", "earlier-head", 2)
+	requireManualCapture(t, dir)
 }
 
 func TestExecutionStaleReviewReferenceKeepsOneFinderPolicyManual(t *testing.T) {
@@ -461,7 +524,7 @@ func TestExecutionStaleReviewReferenceKeepsOneFinderPolicyManual(t *testing.T) {
 func TestExecutionFailsClosedOnOutOfRangeFinderCount(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
-	writeStoredFinders(t, dir, 3)
+	writeStoredFinders(t, dir, "record.json", 3)
 
 	state := CheckExecution(dir, nil)
 	if !state.CrossRequired {
@@ -481,29 +544,51 @@ func TestExecutionStaleReceiptKeepsOneFinderPolicyManual(t *testing.T) {
 	}
 }
 
+const oneFinderDefault = `{"schema_version":"1","finders":0,"resolved":{"defaults":{"values":{"finders":1}}}}`
+
+// TestExecutionCurrentHeadReceiptOutranksConfigDefault proves a configured
+// one-finder default is policy for future runs, not evidence about a past one:
+// a receipt for this head that states a two-finder capture keeps the
+// requirement after the artifacts are gone and run.json was re-fetched.
+func TestExecutionCurrentHeadReceiptOutranksConfigDefault(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(oneFinderDefault))
+	writeStoredFinders(t, dir, "record.json", 2)
+	requirePendingCross(t, dir)
+}
+
+// TestExecutionHonorsCapturedOneFinderDefault proves the default still
+// decides when no receipt for this head states a capture.
 func TestExecutionHonorsCapturedOneFinderDefault(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
-	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":0,"resolved":{"defaults":{"values":{"finders":1}}}}`))
-	writeStoredFinders(t, dir, 2)
-	writeExecutionFile(t, dir, "post.json", []byte(`{"verification":{"finders":{"completed":2}}}`))
+	writeExecutionFile(t, dir, "run.json", []byte(oneFinderDefault))
+	writeStoredSummary(t, dir, "post.json", "earlier-head", 2)
+	requireManualCapture(t, dir)
+}
 
-	state := CheckExecution(dir, nil)
-	if state.CrossRequired {
-		t.Fatalf("CrossRequired = true; want the captured one-finder policy to remain manual (state=%+v)", state)
-	}
-	entry := executionEntry()
-	verification, _ := entry.Get("verification")
-	stamp, ok := verification.(*jq.Obj)
-	if !ok {
-		t.Fatal("fixture verification is not an object")
-	}
-	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed",
-		"expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
-	state.Stamp([]any{entry})
-	if cross := readCross(entry); cross != nil {
-		t.Fatalf("manual capture kept stale cross = %v", cross)
-	}
+// TestExecutionExplicitOneFinderOutranksReceipt proves `run --finders 1`
+// re-reviewing the same head replaces the two-finder review before it: run.json
+// states the count at launch, so it is newer than the receipt it contradicts.
+func TestExecutionExplicitOneFinderOutranksReceipt(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1}`))
+	writeStoredFinders(t, dir, "record.json", 2)
+	requireManualCapture(t, dir)
+}
+
+// TestExecutionExplicitOneFinderDiscardsStaleReferences proves an explicit
+// one-finder count is a decision: the review.json and panel receipt execution
+// references a retired execution left cannot re-arm the capture.
+func TestExecutionExplicitOneFinderDiscardsStaleReferences(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[],"execution":{"id":"stale-execution","finders":2}}`))
+	writeExecutionFile(t, dir, filepath.Join(executionVerification, "verdicts.json"), []byte(`{"execution_id":"stale-execution"}`))
+	requireManualCapture(t, dir)
 }
 
 func TestExecutionManualCaptureClearsStoredCross(t *testing.T) {

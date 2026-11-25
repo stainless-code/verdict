@@ -73,13 +73,12 @@ type Execution struct {
 	// outlives the artifacts the capture bound: a receipt that still states
 	// the execution forbids reading its findings as a manual review.
 	CrossRequired bool
-	// oneFinder records that the resolved capture states a one-finder policy
-	// and no live marker stated a count. Such a capture is manual by
-	// declaration: a leftover receipt must not re-arm cross checks on it.
+	// oneFinder records that the capture settled on one finder (see
+	// readTopology). Such a capture is manual by declaration: a leftover
+	// execution reference must not re-arm cross checks on it.
 	oneFinder bool
-	// finders is the captured count, largest seen first, so a stale receipt
-	// can never downgrade a live two-finder capture, and a one-finder policy
-	// captured over a retired execution reads manual.
+	// finders is the captured count, largest seen first, so no later statement
+	// can downgrade a live two-finder capture.
 	finders int
 }
 
@@ -128,31 +127,32 @@ func executionState(dir string) *Execution {
 	return state
 }
 
-// storedFinders reads the finder count a stored record or post receipt states:
-// the receipt keeps a captured execution legible after its run capture and
-// bound artifacts are gone, so those findings never become manual again.
-func storedFinders(dir string) int {
-	largest := 0
+// storedTwoFinders reports whether a record.json or post.json receipt bound to
+// the bundle's current head carries verification.finders. Only a two-finder
+// capture's summary writes that object, so its presence states the capture
+// even when one finder failed; a receipt for another head says nothing about
+// this one.
+func storedTwoFinders(dir string) bool {
+	head := readcommon.OpenBundle(dir).Head()
+	if head == "" {
+		return false
+	}
 	for _, name := range []string{recordFile, postFile} {
 		doc, _ := readObject(dir, name)
-		finders := readcommon.FieldOf(readcommon.FieldOf(doc, "verification"), fieldFinders)
-		if count, _ := jq.IntOf(readcommon.FieldOf(finders, "completed")); count > largest {
-			largest = count
+		if jq.StrOf(readcommon.FieldOf(doc, "head")) != head {
+			continue
+		}
+		if readcommon.FieldOf(readcommon.FieldOf(doc, executionVerification), fieldFinders) != nil {
+			return true
 		}
 	}
-	return largest
+	return false
 }
 
 // captureFinders folds one capture statement into the recorded topology: the
-// largest count wins, so a receipt for a retired execution cannot override a
-// live one, and a capture that states nothing leaves the mode undecided.
+// largest count wins, and a capture that states nothing leaves the mode
+// undecided.
 func (s *Execution) captureFinders(count int) {
-	// A capture that declares one finder is manual by decision: every later
-	// statement is a leftover reference, so folding two into it would re-arm a
-	// cross check the policy never asked for.
-	if s.oneFinder && count > 1 {
-		return
-	}
 	s.finders = max(s.finders, count)
 	// At least two finders require a cross check. An out-of-range count fails
 	// closed: treating it as manual would clear the stamp and let a
@@ -160,14 +160,10 @@ func (s *Execution) captureFinders(count int) {
 	s.CrossRequired = s.finders >= twoFinders
 }
 
-// liveCapture settles the capture mode from the stored receipt when no live
-// marker stated one, and reports whether the bound files can be read. A
-// captured execution whose artifacts are gone keeps its gap: it may never be
-// read as a manual review.
+// liveCapture reports whether the bound files can be read. A captured
+// execution whose artifacts are gone keeps its gap: it may never be read as a
+// manual review.
 func (s *Execution) liveCapture() bool {
-	if s.finders == 0 {
-		s.captureFinders(storedFinders(s.dir))
-	}
 	if s.CrossRequired && !s.Active {
 		s.Gap = "captured execution artifacts missing"
 		return false
@@ -647,25 +643,45 @@ func clearCross(entries []any) {
 	}
 }
 
+// readTopology settles the capture mode from the strongest statement present:
+//
+//  1. a live marker: launcher.json's execution id, or run.json's two-finder
+//     count. Nothing below can downgrade it.
+//  2. run.json's explicit one-finder count. `run --finders 1` writes it at
+//     launch, so it is newer than any receipt it contradicts.
+//  3. a receipt bound to the current head that carries a finder summary
+//     (storedTwoFinders): evidence that two finders reviewed this head.
+//  4. the captured config default (resolved.defaults.values.finders): policy
+//     for future runs, never evidence about a past one.
+//
+// A one-finder decision at 2 or 4 also discards the review.json and panel
+// receipt execution references a retired or re-fetched execution leaves; with
+// no decision at all, those references arm the capture themselves.
 func (s *Execution) readTopology(captured any) {
 	count, _ := jq.IntOf(readcommon.FieldOf(captured, fieldFinders))
-	// A live manifest already stated the capture; a resolved policy beside it
-	// is configuration, not a statement about the execution that ran.
-	if count == 0 && !s.Active {
-		defaults := readcommon.FieldOf(readcommon.FieldOf(captured, "resolved"), "defaults")
-		values := readcommon.FieldOf(defaults, "values")
-		// Only an explicit one-finder policy lowers the count: the resolved
-		// default is two, so honoring it here would arm cross checks on a
-		// capture that never ran two finders.
-		if policy, _ := jq.IntOf(readcommon.FieldOf(values, fieldFinders)); policy == 1 {
-			count = policy
-			s.oneFinder = true
-		}
-	}
-	s.captureFinders(count)
-	if count == twoFinders {
+	switch {
+	case count == twoFinders:
 		s.Active = true
+		s.captureFinders(count)
+	case s.Active:
+	case count == 1:
+		s.oneFinder = true
+		s.captureFinders(count)
+	case storedTwoFinders(s.dir):
+		s.captureFinders(twoFinders)
+	case count == 0 && configuredFinders(captured) == 1:
+		s.oneFinder = true
+		s.captureFinders(1)
+	default:
+		s.captureFinders(count)
 	}
+}
+
+// configuredFinders is the finder count the captured config resolved.
+func configuredFinders(captured any) int {
+	defaults := readcommon.FieldOf(readcommon.FieldOf(captured, "resolved"), "defaults")
+	count, _ := jq.IntOf(readcommon.FieldOf(readcommon.FieldOf(defaults, "values"), fieldFinders))
+	return count
 }
 
 func (s *Execution) refreshCapture() {

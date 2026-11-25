@@ -50,7 +50,7 @@ func (st *state) maybeSupersede(args *launchArgs) *core.RefusalError {
 // active execution behind them at all (a partial run, or a re-fetch over one).
 func (st *state) supersede(dir string) *core.RefusalError {
 	if !panelcore.CheckExecution(dir, nil).Active {
-		return retireInactivePhases(dir)
+		return st.retireInactive(dir)
 	}
 	captured, ref := readFinderCapture(dir)
 	if ref != nil {
@@ -74,6 +74,40 @@ func (st *state) supersede(dir string) *core.RefusalError {
 	captured.Finders, captured.FinderSource, captured.Superseded = count, source, location
 	if err := config.WriteRunState(dir, captured); err != nil {
 		return retirementRefusal(location, err)
+	}
+	return nil
+}
+
+// retireInactive clears the phases no active execution accounts for, then
+// states a one-finder launch's count; a two-finder launch captures its own.
+func (st *state) retireInactive(dir string) *core.RefusalError {
+	if ref := retireInactivePhases(dir); ref != nil || st.twoFinders {
+		return ref
+	}
+	return st.captureOneFinder(dir)
+}
+
+// captureOneFinder states a fresh one-finder launch in run.json, as the
+// retirement paths below already do. The count is the newest statement about
+// the capture: it outranks an earlier two-finder receipt and the execution
+// references a retired run left behind. A capture that cannot be read keeps
+// the launch going unstated, which leaves the cross requirement to whatever
+// evidence remains rather than declaring it away.
+func (st *state) captureOneFinder(dir string) *core.RefusalError {
+	captured, unreadable := readFinderCapture(dir)
+	if unreadable != nil {
+		captured = nil
+	}
+	if captured == nil || captured.Finders == 1 {
+		return nil
+	}
+	_, source, ref := st.finderPolicy(captured)
+	if ref != nil {
+		return ref
+	}
+	captured.Finders, captured.FinderSource = 1, source
+	if err := config.WriteRunState(dir, captured); err != nil {
+		return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("capture finder count: %v", err)}
 	}
 	return nil
 }

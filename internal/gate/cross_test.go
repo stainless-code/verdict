@@ -1,12 +1,14 @@
 package gate
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // writeCapture writes the bundle's typed run capture and the controls a typed
@@ -42,7 +44,7 @@ const pendingCross = `,"cross":{"execution_id":"execution-A","status":"pending",
 // receipt for the head and the finder summary the panel attached.
 const twoFinderRecord = `{"schema_version":"1","status":"pr","head":"` + gateHead + `",` +
 	`"verification":{"finders":{"completed":2,"confirmed":0,"contested":0,"pending":1}},` +
-	`"evidence":{"head":"` + gateHead + `","diff_sha256":"0000000000000000000000000000000000000000000000000000000000000000",` +
+	`"evidence":{"head":"` + gateHead + `","diff_sha256":"` + zeroDigest + `",` +
 	`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
 	`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false}}`
 
@@ -96,13 +98,22 @@ func crossBundle(t *testing.T, cross, record string, run *config.RunState) Reque
 	return req
 }
 
+var tierArgs = []string{"--max-severity", "important", "--live", "skip", "--coverage", "warn"}
+
 // assertCrossGateFails runs the tier gate and requires exit 1 with every
 // wanted line on stdout.
 func assertCrossGateFails(t *testing.T, req Request, wants ...string) {
 	t.Helper()
-	code, out, diag := gateRun(t, []string{"--max-severity", "important", "--live", "skip", "--coverage", "warn"}, req, false)
-	if code != cli.ExitRefused {
-		t.Fatalf("exit = %d, want %d (gate passed an unconfirmed cross check)\nstdout:\n%s\nstderr:\n%s", code, cli.ExitRefused, out, diag)
+	assertGateExit(t, req, tierArgs, cli.ExitRefused, wants...)
+}
+
+// assertGateExit runs the gate with args and requires the exit code and every
+// wanted line on stdout.
+func assertGateExit(t *testing.T, req Request, args []string, want int, wants ...string) {
+	t.Helper()
+	code, out, diag := gateRun(t, args, req, false)
+	if code != want {
+		t.Fatalf("exit = %d, want %d\nstdout:\n%s\nstderr:\n%s", code, want, out, diag)
 	}
 	for _, want := range wants {
 		if !strings.Contains(out, want) {
@@ -124,4 +135,80 @@ func TestGateManualCaptureDropsStoredCross(t *testing.T) {
 				"gate: evidence     pass")
 		})
 	}
+}
+
+// unanchoredLogic is an open important logic finding with no inline anchor and
+// a pending cross stamp. Read as a manual finding, a category gate never counts
+// it (no anchor), so only the cross requirement can stop the gate on it.
+const unanchoredLogic = `{"kind":"general","path":"notes.txt","anchored":false,` +
+	`"body":"Gate fixture body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
+	`"category":"logic","severity":"important","sig":"` + gateSigImp + `","sig_version":"1",` +
+	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[],` +
+	`"verification":{"quote":"verified"` + pendingCross + `}}`
+
+// TestGateCategoryKeepsCapturedCrossRequirement pins the two ways a recorded
+// two-finder capture of this head was read as manual, which let a category
+// gate pass over a finding whose cross check never confirmed.
+func TestGateCategoryKeepsCapturedCrossRequirement(t *testing.T) {
+	const partialRecord = `{"schema_version":"1","status":"pr","head":"` + gateHead + `",` +
+		`"verification":{"finders":{"completed":1,"confirmed":0,"contested":0,"pending":1}},` +
+		`"evidence":{"head":"` + gateHead + `","diff_sha256":"` + zeroDigest + `",` +
+		`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
+		`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false}}`
+	oneFinderDefault := &config.RunState{Resolved: &config.Resolved{
+		Defaults: config.ResolvedDefaults{Values: config.EffectiveDefaults{Finders: 1}},
+	}}
+	tests := []struct {
+		run    *config.RunState
+		name   string
+		record string
+	}{
+		// A configured one-finder default is policy for future runs; the
+		// receipt for this head says two finders reviewed it.
+		{name: "config-default", record: twoFinderRecord, run: oneFinderDefault},
+		// One finder failed: the summary still states a two-finder capture.
+		{name: "partial-run", record: partialRecord},
+	}
+	args := []string{"--max-severity", "important", "--category", "logic", "--live", "skip", "--coverage", "warn"}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := gateBundle(t, "["+unanchoredLogic+"]")
+			writeGateFile(t, ".verdict/state/5101/record.json", tc.record)
+			if tc.run != nil {
+				writeCapture(t, tc.run)
+			}
+			assertGateExit(t, req, args, cli.ExitRefused,
+				"gate: evidence     fail  a finding within the requested tier lacks a confirmed cross check")
+		})
+	}
+}
+
+const zeroDigest = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// TestGatePassesCleanReviewOverStaleCaptures pins the false fails: a clean
+// review of this head passes although an earlier capture left evidence of two
+// finders behind, whether a receipt bound to an earlier head or the execution
+// references a retired run left beside an explicit one-finder capture.
+func TestGatePassesCleanReviewOverStaleCaptures(t *testing.T) {
+	t.Run("earlier-head-post", func(t *testing.T) {
+		req := gateBundle(t, "[]")
+		raw, err := json.Marshal(&core.Post{
+			SchemaVersion: "1", Review: map[string]any{}, PostedAt: "2026-11-02T12:00:00Z",
+			Head:         strings.Repeat("c", 40),
+			Verification: &core.PanelSummary{Finders: &core.FinderSummary{Completed: 2, Confirmed: 1}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeGateFile(t, ".verdict/state/5101/post.json", string(raw))
+		assertGateExit(t, req, tierArgs, cli.ExitOK, "gate: evidence     pass", "gate: PASS")
+	})
+	t.Run("one-finder-over-stale-references", func(t *testing.T) {
+		req := gateBundle(t, "[]")
+		writeCapture(t, &config.RunState{Finders: 1})
+		writeGateFile(t, ".verdict/state/5101/review.json",
+			`{"schema_version":"2","findings":[],"execution":{"id":"stale-execution","finders":2}}`)
+		writeGateFile(t, ".verdict/state/5101/verification/verdicts.json", `{"execution_id":"stale-execution"}`)
+		assertGateExit(t, req, tierArgs, cli.ExitOK, "gate: evidence     pass", "gate: PASS")
+	})
 }

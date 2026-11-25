@@ -3820,11 +3820,16 @@ finding with missing, refuted, or unverified cross evidence does not gate as
 confirmed, and approval is insufficient — after the execution finishes and after
 its artifacts are gone, not only while it is live. Refutations remain visible as
 bounded quoted evidence. `verification.cross` is derived output: removing or
-forging it cannot replace the bound receipts, and a stored `record.json` or
-`post.json` that states two completed finders keeps the requirement when
-`run.json` is re-fetched. A manual or `--finders 1` capture carries no stamp and
-keeps quote-only eligibility; it drops a stored automatic stamp instead of
-reading it as a confirmation. Finder ids identify processes, not providers.
+forging it cannot replace the bound receipts. When no live artifact states the
+capture, the strongest remaining statement decides it: an explicit `finders: 1`
+in `run.json` (which `run --finders 1` writes at launch), then a `record.json` or
+`post.json` receipt for the current head that carries a finder summary — only a
+two-finder capture writes one, even when a finder failed — then the configured
+`finders` default, which is policy for future runs and never outranks a receipt.
+A receipt for an earlier head says nothing about this one. A manual or
+`--finders 1` capture carries no stamp and keeps quote-only eligibility; it
+drops a stored automatic stamp instead of reading it as a confirmation. Finder
+ids identify processes, not providers.
 
 Cost handoffs identify each launch by execution, finder, phase, and launch id.
 The report sums those phases once, ignoring a root aggregate claim beside them.
