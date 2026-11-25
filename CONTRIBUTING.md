@@ -212,7 +212,16 @@ prints it without the changeset commit ids and `release.sh` passes it as
 `--release-notes`, then reads the published body back and rewrites it with
 `gh release edit` unless it already matches — so a release reads as the curated
 changeset entry, not a commit list, and an empty body fails the run instead of
-shipping. Then `scripts/publish-npm.mjs` publishes six
+shipping.
+
+Before merging the Version PR, write `docs/releases/<version>.md`: six to eight
+`- **Title.** what it does for you` highlight bullets, then a
+`### Breaking changes` list with one migration line per item. The body then
+opens with `**v<version>** · N changes`, those highlights, and
+`### Plus M more fixes and improvements.`, and folds the full section into a
+`Full changelog` `<details>` block. Without the file the body is the section
+alone and the render warns. It lives outside `.changeset/` because changesets
+parses every `.changeset/*.md` as a changeset. Then `scripts/publish-npm.mjs` publishes six
 `@stainless-code/verdict-<os>-<arch>` platform packages plus the wrapper (no
 postinstall, so `--ignore-scripts` installs work). The same run renders
 `dist/verdict.rb` for the `stainless-code/tap` Homebrew tap.
