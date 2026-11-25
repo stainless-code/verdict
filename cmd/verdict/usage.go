@@ -1,5 +1,11 @@
 package main
 
+import (
+	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
+)
+
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
@@ -346,7 +352,7 @@ func usageText() string {
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
 		"    over judged rows is the evidence number.\n" +
 		"  pr-wait <owner/repo> <N> --until merged|closed|checks-green|checks-done|review-changed --timeout D\n" +
-		"    [--once] [--interval D] [--json] [--provider github|gitlab|forgejo]\n" +
+		"    [--once] [--interval D] [--json] [--provider " + strings.Join(core.PRWaitProviders(), "|") + "]\n" +
 		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +

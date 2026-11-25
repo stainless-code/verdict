@@ -352,8 +352,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "49b464a5ec0abff6b8f2a76ef59b3b5d9ea86e1a7e5a43f13fc6e67f3ffdce0a",
-  "prompts_hash": "bbfc51b8019ca777d418029df5c95f6f0065a8b91132ddf13c19dc14e54a67c9",
+  "run_id": "4b072725edefc62ca800eecf88f0197e024b694d329bb4ed7c10c948ac960f0d",
+  "prompts_hash": "e1cab43f4162405f642a948c6801751966860feaf677026d60621b2c4bca7bd5",
   "panel": [
     "api-base-panel"
   ],
@@ -495,8 +495,8 @@ api-base-panel
       "kind": "prompt",
       "name": "references/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "7acbb48740f4c6191d045994be9ed3d0384e57676c975935c9d0ecba05cbf14b",
+      "bytes": 7699
     },
     {
       "kind": "prompt",
@@ -595,8 +595,8 @@ api-base-panel
       "kind": "bundle",
       "name": "refs/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "7acbb48740f4c6191d045994be9ed3d0384e57676c975935c9d0ecba05cbf14b",
+      "bytes": 7699
     },
     {
       "kind": "bundle",

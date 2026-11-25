@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
@@ -115,5 +116,14 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, ro) {
 		t.Errorf("help read-only list = %v, registry = %v", got, ro)
+	}
+}
+
+// TestUsageAdvertisesTablePRWaitProviders pins the help line to the provider
+// table, so a host cannot be listed before pr-wait can read it.
+func TestUsageAdvertisesTablePRWaitProviders(t *testing.T) {
+	want := "[--provider " + strings.Join(core.PRWaitProviders(), "|") + "]"
+	if !strings.Contains(usageText(), want) || strings.Contains(usageText(), "github|gitlab|forgejo]") {
+		t.Fatalf("usage lacks %q", want)
 	}
 }

@@ -1708,8 +1708,9 @@ bounded wait: it counts as an inconsistent observation, the wait sleeps one
 interval and reads again, because those reads stay inconsistent for a few
 seconds after a push. `--once`, and a wait still inconsistent when its timeout
 arrives, refuses `pr-read-failed` instead of claiming an unchanged or finished
-review. A hard failure refuses at once at any point: `gh` missing or failing to
-execute, an auth or 404 exit, or a non-GitHub provider. Incomplete review data
+review. A hard failure refuses at once at any point: the host CLI (`gh`, or
+`glab` for GitLab) missing or failing to execute, an auth or 404 exit, or a
+provider `pr-wait` has no live reads for. Incomplete GitHub review data
 is also hard: the GitHub view's 100-review window and thread comment pages are
 checked, and 100 or more reviews, truncated comments, or excessive/repeated
 thread pages refuse rather than silently dropping history.
@@ -1739,11 +1740,16 @@ read-only with mutation class `noLocalWrites` and is available in read-only
 mode. `ready` accepts `wait_for: "build"` and `timeout` through MCP with the
 same 50-second cap.
 
-| Host    | `pr-wait` and `ready --wait-for build`                                                                                                         |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub  | Supported through `gh`; PR REST reads send `If-None-Match` when an ETag is returned. GraphQL view/thread reads do not support conditional GET. |
-| GitLab  | Explicit `provider-unimplemented` refusal; ordinary `ready` remains supported.                                                                 |
-| Forgejo | Explicit `provider-unimplemented` refusal.                                                                                                     |
+| Host   | `pr-wait` and `ready --wait-for build`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub | Supported through `gh`; PR REST reads send `If-None-Match` when an ETag is returned. GraphQL view/thread reads do not support conditional GET.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| GitLab | Supported through `glab`, on the same reads `ready` uses. The check rollup is the merge request's head pipeline, counted only when it ran for the current source head: a branch or detached pipeline must be on that head, and a merged-results or merge-train pipeline (a synthetic merge commit) must list it as a parent, so one for an older push reads as no check yet. The parent test does not check the target side: after the target branch moves, a green merged-results pipeline for the same head still reads as current until GitLab publishes the next one (GitLab itself re-gates the merge on that new pipeline). A `locked` MR (merge in progress) reads as open, never closed. `review-changed` compares approvals and each discussion's resolution and note count, ignoring the API's order. A refusal carries the start of `glab`'s own error. Other hosts refuse. |
+
+One per-host capability table drives `ready` and `pr-wait` alike: it is the
+single source of the providers `--provider` accepts, the MCP `pr_wait` schema
+enum, and the refusal, so no host is advertised before its live reads exist. A
+host outside it — Forgejo, Bitbucket, Azure — refuses `provider-unimplemented`
+before any host command runs, listing the supported hosts.
 
 The saved bundle's provider is used when present; otherwise `pr-wait` defaults
 to GitHub. `--provider` selects a host explicitly. A build wait in `ready`
@@ -5751,7 +5757,7 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
 GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps; `ready` advises on GitHub
-and GitLab, plain
+and GitLab (the same capability table that gates `pr-wait`), plain
 `calibrate` joins live threads on both, and `adopt` merges into any bundle
 verdict can post to (its re-anchor reads the stored hunks and never shells a
 host CLI). `post` on `gitcafe`, and `ready` and plain

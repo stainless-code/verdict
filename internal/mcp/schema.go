@@ -171,6 +171,9 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 var fieldEnums = map[string][]string{
 	"index.Query":   indexcore.MCPQueries,
 	"query-cost.By": query.CostDimensions(),
+	// One list with the CLI help and pr-wait's own refusal, so the schema
+	// advertises only hosts the verb has live reads for.
+	"pr_wait.Provider": core.PRWaitProviders(),
 }
 
 // applyFieldEnum overrides a struct-tag enum with the tool's own list.
@@ -298,7 +301,7 @@ var fieldDocs = map[string]string{
 	"pr_wait.Timeout":  "Foreground wait duration, 1s–50s; defaults to 50s.",
 	"pr_wait.Interval": "Initial poll interval, at least 1s and at most timeout; defaults to 1s.",
 	"pr_wait.Once":     "Observe once without sleeping; an unmet condition returns condition-unmet data.",
-	"pr_wait.Provider": "Host override; defaults to saved provider or github. GitLab and Forgejo refuse explicitly.",
+	"pr_wait.Provider": "Host override; defaults to saved provider or github. A host outside the enum refuses explicitly.",
 	"ready.WaitFor":    "Wait for build completion before reporting readiness; timeout returns not-ready data.",
 	"ready.Timeout":    "Build wait duration, 1s–50s; defaults to 50s when wait_for is build.",
 
