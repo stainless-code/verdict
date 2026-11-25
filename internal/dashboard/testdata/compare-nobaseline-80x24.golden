@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview   2 Queue   3 Detail   4 Diff  [5 Compare]  6 Cost   7 Precision
+────────────────────────────────────────────────────────────────────────────────
+ compare 4232 needs a baseline, which only the live view picks
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

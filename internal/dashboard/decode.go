@@ -7,11 +7,21 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// source is the slice of the query layer the snapshot reads. *query.Layer
-// implements it; tests hand in composed views directly.
+// source is the slice of the query layer the dashboard reads: one method per
+// view, the change stream, and the cache reset `r` asks for. *query.Layer
+// implements it; tests hand in composed views directly. Every method is a
+// read: nothing here writes a store.
 type source interface {
 	Roots(ctx context.Context) *query.View
 	Bundles(ctx context.Context, pattern string) (*query.View, error)
+	Detail(ctx context.Context, rootID, bundle string) (*query.View, error)
+	Diff(ctx context.Context, rootID, bundle string) (*query.View, error)
+	Compare(ctx context.Context, rootID, bundle, baseline string) (*query.View, error)
+	Copy(ctx context.Context, rootID, bundle, sig string) (*query.View, error)
+	Cost(ctx context.Context, by string) (*query.View, error)
+	Precision(ctx context.Context, by string) (*query.View, error)
+	Changes(ctx context.Context) <-chan query.Change
+	Invalidate()
 }
 
 // snapshot is everything the Overview and Queue tabs draw, decoded once from
@@ -25,6 +35,8 @@ type snapshot struct {
 	refused  []refusedRow
 	warnings []string
 	partial  bool
+	// truncated says a listing hit a cap: no sum over the rows is complete.
+	truncated bool
 }
 
 type counts struct {
@@ -38,7 +50,7 @@ type rootRow struct {
 
 // bundleRow is one Queue row. A refused bundle keeps its row with no counts.
 type bundleRow struct {
-	bundle, repo, model, head           string
+	root, bundle, repo, model, head     string
 	open, deferred, addressed, terminal int
 	refused                             bool
 }
@@ -66,6 +78,7 @@ func decode(roots, bundles *query.View) *snapshot {
 	s := &snapshot{at: bundles.At, warnings: bundles.Warnings}
 	data := bundles.Data
 	s.partial = truthy(field(data, "partial"))
+	s.truncated = truthy(field(data, "truncated"))
 	if c := asObj(field(data, "counts")); c != nil {
 		s.counts = &counts{
 			bundles: intField(c, "bundles"), open: intField(c, "open"), deferred: intField(c, "deferred"),
@@ -92,10 +105,10 @@ func decode(roots, bundles *query.View) *snapshot {
 func decodeRow(v any) bundleRow {
 	o := asObj(v)
 	row := bundleRow{
-		bundle: strField(o, "bundle"), repo: strField(o, "repo"),
+		root: strField(o, "root"), bundle: strField(o, "bundle"), repo: strField(o, "repo"),
 		model: strField(o, "model"), head: strField(o, "head"),
 	}
-	open, ok := jq.IntOf(field(o, "open"))
+	open, ok := intOf(field(o, "open"))
 	if !ok {
 		row.refused = true
 		return row
@@ -105,6 +118,20 @@ func decodeRow(v any) bundleRow {
 	row.addressed = intField(o, "addressed")
 	row.terminal = intField(o, "terminal")
 	return row
+}
+
+// intOf reads a wire number. Views built from typed structs (a report's
+// verdict, a gate count) carry int64 or uint64, the reflection wire's integer
+// kinds; views built by hand and decoded JSON carry what jq.IntOf reads.
+func intOf(v any) (int, bool) {
+	switch n := v.(type) {
+	case int64:
+		return int(n), true
+	case uint64:
+		return int(n), true //nolint:gosec // a count; never near the int range
+	default:
+		return jq.IntOf(v)
+	}
 }
 
 // field reads one key; a missing object or key reads as null.
@@ -132,7 +159,7 @@ func asObj(v any) *jq.Obj {
 }
 
 func intField(o *jq.Obj, key string) int {
-	n, _ := jq.IntOf(field(o, key))
+	n, _ := intOf(field(o, key))
 	return n
 }
 
