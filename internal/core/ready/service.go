@@ -23,6 +23,7 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Request carries the resolved ready invocation: the shared read runtime
@@ -163,9 +164,12 @@ func (st *state) warn(msg string) {
 	st.req.Warn(msg)
 }
 
+// human prints one line of the human surface. A blocker quotes a path, a
+// clause, or a check name a stranger chose, and the envelope keeps those raw,
+// so the fold lives here: a newline in a value cannot forge a second line.
 func (st *state) human(line string) {
 	if st.req.Runtime != nil {
-		st.req.Human(line)
+		st.req.Human(untrusted.Line(line))
 	}
 }
 

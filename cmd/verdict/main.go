@@ -121,6 +121,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
+	defer r.Flush()
 	peekJSONMode(r, args)
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
