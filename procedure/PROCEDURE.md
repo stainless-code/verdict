@@ -97,7 +97,7 @@ Never call `triage` — propose status changes via `triage[]` in `review.json`.
 The operator's own verbs between runs: `triage` (status changes), `report`
 (ranked read), `threads` (refresh the PR conversation feed), `drain` (plan and
 post replies to waiting threads), `calibrate` (predictions vs ground truth), and
-`fix` (one bounded verify-gated pass over a local bundle — prints the finding
+`fix` (one bounded verify-gated pass over a bundle — prints the finding
 plus land instructions).
 
 Delta re-review: `verdict fetch owner/repo 123 --base-sha <prior-reviewed-sha>`,

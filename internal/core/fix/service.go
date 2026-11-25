@@ -1,6 +1,6 @@
 // Package fixcore is the fix verb's domain service: the bounded, verify-gated
-// fix loop over a local bundle. It writes the ledger and the patch output and
-// never writes findings.json; internal/fix owns argv parsing, re-entry,
+// fix loop over a local or PR bundle. It writes the ledger and the patch output
+// and never writes findings.json; internal/fix owns argv parsing, re-entry,
 // envelope rendering, and exit mapping.
 package fixcore
 
@@ -375,13 +375,17 @@ func (st *state) runDispatch(
 		fixOpen, fixOpenInline, now)
 }
 
+// fixBundleDir resolves the bundle dir. Local and PR bundles both run: fix
+// only writes its ledger and patch beside the bundle and issues read-only git
+// commands, and the instructions name the landing verb each bundle owns. Corpus
+// bundles refuse: they are benchmark measurement inputs, not review worktrees.
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
-	if !readcommon.IsLocalBundleDir(dir) && !st.req.Selected {
-		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
+	if readcommon.IsCorpusBundleDir(dir) {
+		return "", st.refuse("not-local", "fix does not run on corpus bundles (benchmark inputs)")
 	}
 	return dir, nil
 }
@@ -390,7 +394,40 @@ func (st *state) bundleGates(ctx context.Context, dir string) *core.RefusalError
 	if ref := st.checkPrGate(dir); ref != nil {
 		return ref
 	}
-	return st.checkTreeGate(ctx)
+	if ref := st.checkTreeGate(ctx); ref != nil {
+		return ref
+	}
+	return st.checkHeadGate(ctx, dir)
+}
+
+// checkHeadGate binds a PR bundle's fix to its reviewed head. The anchors, the
+// patch diff, the ledger baseline, and `--test --commit` all act on the
+// operator's checkout, so a checkout on another commit (main, a stale branch)
+// would diff, record, and commit against the wrong tree. Local bundles review
+// the working tree itself and the loop may commit between passes, so they skip.
+func (st *state) checkHeadGate(ctx context.Context, dir string) *core.RefusalError {
+	if !st.providerBundle() {
+		return nil
+	}
+	reviewed := readcommon.OpenBundle(dir).Head()
+	if reviewed == "" {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"bundle %s carries no reviewed head to bind fix to (re-fetch it)", dir))
+	}
+	if st.req.Commander == nil {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	head, exit, err := readcommon.CheckoutHead(ctx, st.req.Commander, st.req.RepoRootPath())
+	if err != nil || exit != 0 {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	if head != reviewed {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"checked-out head %s is not the head %s this bundle reviewed — fix patches the "+
+				"checkout, so check out the PR head (git checkout %s) and re-run",
+			readcommon.ShortSHA(head), readcommon.ShortSHA(reviewed), reviewed))
+	}
+	return nil
 }
 
 func (st *state) checkPrGate(dir string) *core.RefusalError {
@@ -420,7 +457,7 @@ func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(dir + suffixFindings) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
-			"missing %s/findings.json (run record first, then fix)", dir))
+			"missing %s/findings.json (run %s first, then fix)", dir, st.landVerb()))
 	}
 	raw, err := noblock.ReadFile(dir + suffixFindings)
 	if err != nil {
@@ -488,13 +525,13 @@ func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.R
 	if full == "" {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline count disagrees with the store "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	rec, ok := picked.(*jq.Obj)
 	if !ok || rec == nil {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline pick is not a finding object "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	return full, rec, nil
 }
@@ -543,8 +580,8 @@ func (st *state) runPass(
 func (st *state) corruptStore(dir string) *core.RefusalError {
 	return st.refuse("corrupt-store", fmt.Sprintf(
 		"findings store %s/findings.json is unreadable or not a "+
-			"findings array (re-run record to rebuild, or restore the file)",
-		dir))
+			"findings array (re-run %s to rebuild, or restore the file)",
+		dir, st.landVerb()))
 }
 
 func decodeEntries(raw []byte) ([]any, error) {
@@ -1056,6 +1093,9 @@ func (st *state) passOutput(
 	st.printKB(dir)
 	st.printInstructions(dir, anchor)
 	st.next = nextPass
+	if st.providerBundle() {
+		st.next = nextPassPR
+	}
 	st.data = &Data{
 		Dir:        dir,
 		Ledger:     ledgerPath,
@@ -1150,10 +1190,20 @@ func (st *state) printKB(dir string) {
 }
 
 func (st *state) printInstructions(dir, anchor string) {
-	st.humanf(instructionsFmt,
-		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	if st.providerBundle() {
+		st.humanf(instructionsPRFmt, anchor, st.req.Repo, st.req.Pr, dir,
+			st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	} else {
+		st.humanf(instructionsFmt,
+			anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	}
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
+	if st.providerBundle() {
+		st.humanf("next: patch %s, push the fix, re-fetch, run verdict verify, write verification.json, "+
+			"run post to land it, then re-run fix\n", anchor)
+		return
+	}
 	st.humanf("next: patch %s, run verdict verify, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
 }
@@ -1193,10 +1243,10 @@ func (st *state) completeRun(
 	if fixOpen > 0 {
 		next = fmt.Sprintf(
 			"next: %d open finding(s) left are non-inline or "+
-				"dispositioned — triage or record to settle them", fixOpen)
+				"dispositioned — triage or %s to settle them", fixOpen, st.landVerb())
 	}
 	st.humanf("%s\n", next)
-	st.next = nextTriage
+	st.next = strings.ReplaceAll(nextTriage, "record", st.landVerb())
 	if fixOpen == 0 {
 		st.next = nextDoneShort
 	}
@@ -1334,6 +1384,9 @@ const (
 	// nextPass is the envelope next hint for passes.
 	nextPass = "patch the anchor file, run verdict verify, write verification.json, " +
 		"run record to land it, then re-run fix"
+	// nextPassPR is nextPass for a PR bundle, which lands through post.
+	nextPassPR = "patch the anchor file, push the fix, re-fetch, run verdict verify, " +
+		"write verification.json, and run post to land it, then re-run fix"
 	// nextDone is the human next hint when done.
 	nextDone = "next: done — no open findings"
 	// nextTriage is the envelope next hint when open remains.
@@ -1361,6 +1414,16 @@ const (
 		"resultHead matching HEAD (fix itself runs nothing — a claim flips " +
 		"only on the receipt verify writes into patch.json: exit 0 at this " +
 		"HEAD); land it with record %s %s; re-run fix %s %s for the next pass\n"
+	// instructionsPRFmt is instructionsFmt for a PR bundle, whose landing path
+	// is a push and a re-fetch followed by post — record refuses a PR bundle.
+	// verify runs after the re-fetch, so its receipt covers the head post grades.
+	instructionsPRFmt = "instructions: patch the anchor file (%s), push the fix, " +
+		"re-fetch with fetch %s %s, then run its verify command (verifyCmd in " +
+		"%s/patch.json) through verdict verify %s %s and write verification.json " +
+		"beside it [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED " +
+		"and resultHead matching HEAD (fix itself runs nothing — a claim flips " +
+		"only on the receipt verify writes into patch.json: exit 0 at this " +
+		"HEAD); land it with post %s %s; re-run fix %s %s for the next pass\n"
 	// gateMsg constrains verify commands to safe shapes.
 	gateMsg = "gate: keep the verify command repo-scoped, non-destructive, " +
 		"and offline — the verify verb refuses " +

@@ -4,16 +4,16 @@ exit: 1
   "schema_version": "1",
   "verb": "fix",
   "repo": "acme/app",
-  "pr": 4291,
+  "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "",
   "warnings": [],
   "data": null,
   "error": {
     "code": "not-local",
-    "message": "fix works on local bundles; fetch-local first\ntry: run the fetch/record step named above first, then re-run"
+    "message": "fix does not run on corpus bundles (benchmark inputs)\ntry: run the fetch/record step named above first, then re-run"
   }
 }
 --- stderr ---
-re-enter: verdict fix acme/app 4291 --json
+re-enter: verdict fix acme/app corpus-x --json
 --- files ---

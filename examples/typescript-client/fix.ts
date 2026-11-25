@@ -1,4 +1,4 @@
-// fix: one bounded pass over a local bundle. A single pass prints the top
+// fix: one bounded pass over a bundle. A single pass prints the top
 // open inline finding with its KB context and writes the pass ledger; --all
 // hands out one ready row per open finding but refuses without the command
 // that proves the passes. Nothing is applied or pushed; the worktree diff it

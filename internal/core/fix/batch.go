@@ -550,7 +550,10 @@ func (st *state) batchMsg(msg string) string {
 
 func (st *state) batchNext(next string) string {
 	out := st.batchMsg(next)
-	return strings.ReplaceAll(out, "land with record", "land with "+st.landVerb())
+	if st.providerBundle() {
+		return strings.ReplaceAll(out, "land with record", "push the fix, re-fetch, and land with post")
+	}
+	return out
 }
 
 func batchEmptyMsg(floor string, paths []string) string {

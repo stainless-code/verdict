@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -69,7 +70,7 @@ func prepare(req readcommon.Request) (*planned, error) {
 			Message: "missing pinned bundle panel roster; configure defaults.panel and re-fetch",
 		}
 	}
-	prompt, err := readPrompt(req.RootPath())
+	prompt, err := readPrompt()
 	if err != nil {
 		return nil, panelError(err)
 	}
@@ -94,14 +95,13 @@ func completePlan(dir, head string, plan *jq.Obj, dispatch string, warnings []st
 	return &planned{dir: dir, plan: plan, dispatch: dispatch, warnings: append(warnings, more...), second: second}, nil
 }
 
-func readPrompt(root string) ([]byte, error) {
-	raw, err := os.ReadFile(filepath.Join(root, "prompts/verifier.md"))
-	if err == nil {
-		return raw, nil
-	}
-	raw, err = os.ReadFile(filepath.Join(root, "procedure/prompts/verifier.md"))
+// readPrompt serves the verifier prompt from the embedded Procedure, the one
+// source of truth every other verb reads. A checkout-relative read breaks on
+// an installed binary, where no procedure/ folder exists beside it.
+func readPrompt() ([]byte, error) {
+	raw, err := skillfs.Read("prompts/verifier.md")
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeFailed, Message: fmt.Sprintf("could not read verifier prompt under %s: %v", root, err)}
+		return nil, &core.RefusalError{Code: codeFailed, Message: fmt.Sprintf("could not read verifier prompt: %v", err)}
 	}
 	return raw, nil
 }
