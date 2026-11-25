@@ -2,7 +2,6 @@ package learncore
 
 import (
 	"crypto/sha256"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -131,7 +130,7 @@ func (st *state) writeProposal(rel string, candidate *proposal) *core.RefusalErr
 	if err := root.MkdirAll(path.Join(rel, "rules"), proposalDirMode); err != nil {
 		return st.refuse(codeLearnFailed, err.Error())
 	}
-	raw, err := json.MarshalIndent(candidate.Manifest, "", "  ")
+	raw, err := jq.MarshalIndent(candidate.Manifest, "", "  ")
 	if err != nil {
 		return st.refuse(codeLearnFailed, err.Error())
 	}

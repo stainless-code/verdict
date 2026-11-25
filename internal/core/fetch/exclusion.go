@@ -145,7 +145,7 @@ func exclusionTOC(fc *fetchRunCtx) string {
 func writeExcludedReceipt(dir string, receipt *ExcludedFile) error {
 	receipt.RawDiffSHA256 = sha256Hex(dir + suffixRawDiff)
 	receipt.DiffSHA256 = sha256Hex(dir + suffixFullDiff)
-	data, err := json.MarshalIndent(receipt, "", "  ")
+	data, err := jq.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return jq.Sealed("encode excluded receipt", err)
 	}

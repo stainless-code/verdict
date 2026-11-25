@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
@@ -87,7 +88,7 @@ func wrapErr(op string, err error) error { return opError{err: err, op: op} }
 var errSymlinkJournal = errors.New("refusing symlinked journal path")
 
 func marshalLine(v any) ([]byte, error) {
-	raw, err := json.Marshal(v)
+	raw, err := jq.Marshal(v)
 	if err != nil {
 		return nil, wrapErr("encode journal line", err)
 	}

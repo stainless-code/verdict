@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -35,7 +36,7 @@ func writeExportManifest(root *os.Root) error {
 		}
 		manifest.Files[name] = digest
 	}
-	body, err := json.MarshalIndent(manifest, "", "  ")
+	body, err := jq.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return exportFailure(err)
 	}

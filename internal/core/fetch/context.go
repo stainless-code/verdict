@@ -3,7 +3,6 @@ package fetchcore
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/fence"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -380,7 +380,7 @@ func saveContext(root *os.Root, files []contextFile, at string) error {
 			return contextWriteFailure("context copy: %s", err.Error())
 		}
 	}
-	raw, err := json.MarshalIndent(entries, "", "  ")
+	raw, err := jq.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return contextWriteFailure("context manifest: %s", err.Error())
 	}

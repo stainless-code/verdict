@@ -197,7 +197,7 @@ func WriteReceipt(dir string, receipt *core.ProvenanceReceipt) error {
 	if receipt == nil {
 		return nil
 	}
-	raw, err := json.MarshalIndent(receipt, "", "  ")
+	raw, err := jq.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return wrapReceiptErr("encode "+ReceiptFile, err)
 	}

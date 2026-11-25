@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
@@ -76,7 +77,7 @@ func WriteRunState(dir string, rs *RunState) *stateError {
 	rs.Name = filepath.Base(dir)
 	rs.RequiresEvidence = true
 	rs.InputsSHA256 = inputsDigest(rs)
-	raw, err := json.MarshalIndent(rs, "", "  ")
+	raw, err := jq.MarshalIndent(rs, "", "  ")
 	if err != nil {
 		return &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}
@@ -170,7 +171,7 @@ func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
 		return false, nil
 	}
 	rs.Outcomes = append(rs.Outcomes, *obs)
-	raw, err := json.MarshalIndent(rs, "", "  ")
+	raw, err := jq.MarshalIndent(rs, "", "  ")
 	if err != nil {
 		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}
@@ -214,7 +215,7 @@ func AppendTrigger(dir string, decision *TriggerDecision) (bool, error) {
 		return false, nil
 	}
 	rs.Trigger = decision
-	raw, err := json.MarshalIndent(rs, "", "  ")
+	raw, err := jq.MarshalIndent(rs, "", "  ")
 	if err != nil {
 		return false, &stateError{msg: "could not encode run state for " + rs.Name, cause: err}
 	}

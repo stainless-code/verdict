@@ -1926,17 +1926,20 @@ joined with U+200D still renders. Newline and
 tab survive, since a message lays itself out with them. This holds for every
 human line on stdout (`report`, `next`, `show`, `threads`, `drain`, `gate`) and
 every `warn:` and `error:` line on stderr. Under `--json` stdout is the
-envelope, written byte for byte: JSON escapes the C0 controls itself, so the
-fold applies to the human surface only; a consumer that prints envelope strings
-to a terminal escapes them first. A warning is also one line: a newline inside
+envelope, never folded: the fold applies to the human surface only, and a
+string decodes to the stored value. Every JSON verdict writes for a consumer
+(`--json` envelopes, MCP, ACP and LSP frames, `serve` responses, the artifact
+files) escapes C0, C1 (U+0080–U+009F) and the bidi controls (U+202A–U+202E,
+U+2066–U+2069) as lowercase `\uXXXX`, so a consumer that prints an envelope
+string to a terminal gets no live control. A warning is also one line: a newline inside
 an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
 space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
 Files verdict writes to disk are not folded, and neither is a field of the
 `--json` envelope: gate `detail` and error `message` carry the stored value
 verbatim, and the human renderers fold it. `show`'s human form and `pr-wait`'s
-human-mode snapshots are JSON-shaped, so the fold touches only the raw C1,
-separator, and bidi runes Go's encoder leaves unescaped, replacing each with a
-space; use `--json` when a machine consumes them.
+human-mode snapshots are JSON-shaped, so the fold touches only the bidi
+marks (U+061C, U+200E, U+200F) Go's encoder leaves unescaped, replacing each
+with a space; use `--json` when a machine consumes them.
 
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // codeBadParams is the registered refusal for executeCommand params this
@@ -71,7 +72,7 @@ func (s *Server) refuseParams(id json.RawMessage, message string) {
 }
 
 func quote(s string) string {
-	raw, err := json.Marshal(s)
+	raw, err := jq.Marshal(s)
 	if err != nil {
 		return `""`
 	}

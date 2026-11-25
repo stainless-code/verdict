@@ -198,7 +198,7 @@ func (s *Snapshot) write(bundleDir string, contents map[string][]byte) *core.Ref
 			return ref
 		}
 	}
-	doc, err := json.MarshalIndent(s.File, "", "  ")
+	doc, err := jq.MarshalIndent(s.File, "", "  ")
 	if err != nil {
 		return refuse(CodeUnavailable, fmt.Sprintf("could not encode %s: %v", FileName, err))
 	}

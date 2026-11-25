@@ -437,7 +437,7 @@ func writeLock(root string, lock *Lock) *core.RefusalError {
 // reject for size.
 func encodeLock(lock *Lock) ([]byte, *core.RefusalError) {
 	slices.SortFunc(lock.Packs, func(a, b LockEntry) int { return strings.Compare(a.Name, b.Name) })
-	raw, err := json.MarshalIndent(lock, "", "  ")
+	raw, err := jq.MarshalIndent(lock, "", "  ")
 	if err != nil {
 		return nil, badLock(fmt.Sprintf("encode %s: %v", LockFile, err))
 	}

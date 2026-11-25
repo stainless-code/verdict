@@ -507,7 +507,7 @@ func Compact(v any) string {
 	if err := enc.Encode(v); err != nil {
 		return nullLit
 	}
-	return strings.TrimSuffix(buf.String(), newline)
+	return strings.TrimSuffix(string(EscapeControls(buf.Bytes())), newline)
 }
 
 // compactIndent renders v with the given prefix/indent and no HTML escaping.
@@ -524,7 +524,7 @@ func compactIndent(v any, prefix, indent string) string {
 	if err := enc.Encode(v); err != nil {
 		return nullLit
 	}
-	return strings.TrimSuffix(buf.String(), newline)
+	return strings.TrimSuffix(string(EscapeControls(buf.Bytes())), newline)
 }
 
 // StrOf returns the string value or "" for anything else.

@@ -2,7 +2,6 @@ package verifycore
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -463,7 +462,7 @@ func (b *bundleHandle) writeValidationReceipt(name string, receipt *core.Validat
 	if ref := b.unchanged(); ref != nil {
 		return ref
 	}
-	raw, err := json.MarshalIndent(receipt, "", "  ")
+	raw, err := jq.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return failed(err)
 	}

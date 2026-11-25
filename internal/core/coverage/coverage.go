@@ -9,7 +9,6 @@
 package coverage
 
 import (
-	"encoding/json"
 	"fmt"
 	"maps"
 	"os"
@@ -573,7 +572,7 @@ func writePrior(dir string, gaps []Gap) error {
 	for _, g := range gaps {
 		entries = append(entries, priorClaim(g))
 	}
-	raw, err := json.MarshalIndent(entries, "", "  ")
+	raw, err := jq.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		//nolint:wrapcheck // locally constructed message; record seals it
 		return fmt.Errorf("could not encode prior coverage: %w", err)

@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"io"
 	"io/fs"
 	"os"
@@ -119,7 +118,7 @@ func persist(root *os.Root, name, scrubbed string, receipt *Receipt, write fileW
 	if err := noLinks(root, metadata, true); err != nil {
 		return err
 	}
-	raw, err := json.Marshal(receipt)
+	raw, err := jq.Marshal(receipt)
 	if err != nil {
 		return jq.Sealed("encode reproduction command", err)
 	}
@@ -286,7 +285,7 @@ func sidecarName(name string) string {
 }
 
 func validateDestinations(root *os.Root, name string, content []byte, receipt *Receipt) error {
-	raw, err := json.Marshal(receipt)
+	raw, err := jq.Marshal(receipt)
 	if err != nil {
 		return jq.Sealed("encode reproduction command", err)
 	}
