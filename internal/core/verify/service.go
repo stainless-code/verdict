@@ -2,7 +2,9 @@ package verifycore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +14,6 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -27,10 +28,6 @@ const (
 	noVerifyCmdMsg   = "patch.json carries no verifyCmd to execute"
 	msgVerifyFailed  = "verify failed: %v"
 )
-
-func patchPath(dir string) string {
-	return dir + "/" + patchFile
-}
 
 func missingPatchRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
@@ -86,11 +83,16 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if deepGroup(req) {
 		return RunGroup(ctx, req, dir, req.TimeUTC())
 	}
-	if !readcommon.IsFile(patchPath(dir)) {
-		return nil, st.withWarnings(missingPatchRefusal(dir))
+	// Pin the bundle before reading anything from it: patch.json is read
+	// through the root, so a symlink escaping the bundle refuses here, before
+	// any command runs, and every later write lands in this same directory.
+	bundle, ref := openPatchBundle(dir)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
+	defer bundle.close()
 	now := req.TimeUTC()
-	vcmd, ref := readVerifyCmd(dir)
+	vcmd, ref := readVerifyCmd(bundle)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -102,7 +104,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := Check(vcmd); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.execute(ctx, dir, now, vcmd, timeout)
+	return st.execute(ctx, bundle, now, vcmd, timeout)
 }
 
 type state struct {
@@ -133,7 +135,8 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+	dir := bundle.dir
 	commander := st.commander()
 	if commander == nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -154,16 +157,13 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	// The bundle is pinned before the command can touch it: every write goes
-	// through this handle, the finding sig is read now, and the previous
-	// receipt is gone before the command starts, so neither a swapped bundle
-	// directory, an edited patch.json, nor an aborted run can leave a pass.
-	bundle, ref := pinBundle(dir)
-	if ref != nil {
+	// The previous receipt goes before the command starts, so a run that
+	// fails, aborts, or cannot record never leaves an earlier pass; the sig
+	// was read when the bundle was pinned, before the command could edit it.
+	if ref := bundle.dropReceipt(); ref != nil {
 		st.releaseSandbox(sb)
 		return nil, st.withWarnings(ref)
 	}
-	defer bundle.close()
 	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, At: now}
 	before := probeTree(ctx, commander, root)
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
@@ -330,10 +330,15 @@ func (st *state) childEnv() []string {
 // missing or null verifyCmd reads empty (refusing no-verify-cmd, the
 // fallback a corrupt store gets); any other
 // non-string renders the way jq -r would print it.
-func readVerifyCmd(dir string) (string, *core.RefusalError) {
-	raw, err := noblock.ReadFile(patchPath(dir))
-	if err != nil {
-		return "", missingPatchRefusal(dir)
+func readVerifyCmd(bundle *bundleHandle) (string, *core.RefusalError) {
+	raw, err := bundle.read(patchFile)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", missingPatchRefusal(bundle.dir)
+	case err != nil:
+		// A patch.json the pinned root will not open (a symlink out of the
+		// bundle, a directory, a FIFO) is a damaged store, never a command.
+		return "", corruptStoreRefusal(bundle.dir)
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {

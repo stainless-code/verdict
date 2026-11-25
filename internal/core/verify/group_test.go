@@ -17,6 +17,8 @@ import (
 // fixed git head probe and the operator's bash -c command. Each result is
 // scripted per test so a nonzero exit and a moved head are distinguishable.
 type groupCommander struct {
+	// onRun acts for the operator's command while it "runs".
+	onRun   func()
 	head    string
 	out     string
 	runs    []*core.Command
@@ -32,6 +34,9 @@ func (c *groupCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 			return core.Result{Stderr: "fatal: not a git repository", ExitCode: 128}, nil
 		}
 		return core.Result{Stdout: c.head + "\n"}, nil
+	}
+	if c.onRun != nil {
+		c.onRun()
 	}
 	return core.Result{Stdout: c.out, ExitCode: c.exit, TimedOut: c.timed}, nil
 }

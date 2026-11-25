@@ -189,19 +189,38 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox.full(),
 		SandboxMechanism: run.sandbox.name(),
 	}
+	// Pin the bundle before the command can touch it, as the patch path does:
+	// the receipt is written only through this root, and a command that moves
+	// or replaces the bundle directory leaves no receipt anywhere.
+	bundle, ref := openBundle(dir)
+	if ref != nil {
+		st.releaseSandbox(run.sandbox)
+		return nil, st.withWarnings(ref)
+	}
+	defer bundle.close()
 	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, run.root, st.childEnv(), run.sandbox)
 	st.releaseSandbox(run.sandbox)
+	if ref := bundle.unchanged(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.applyExecution(ctx, req, &receipt, res, runRef)
 	after, headRef := gitHead(ctx, run.commander, run.root)
 	st.applyPostChecks(dir, run, &receipt, after, headRef)
-	if ref := writeReceipt(run.receiptPath, &receipt); ref != nil {
+	if ref := bundle.writeValidationReceipt(filepath.Base(run.receiptPath), &receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	st.human(fmt.Sprintf("» exit=%d timed_out=%t status=%s recorded into %s",
 		receipt.Exit, receipt.TimedOut, receipt.Status, run.receiptPath))
-	for _, outcome := range []*core.RefusalError{runRef, headRef} {
+	st.warnOutcomes(&receipt, runRef, headRef)
+	return st.groupResponse(dir, run.receiptPath, &receipt), nil
+}
+
+// warnOutcomes surfaces the run and head failures, then any non-passing
+// status with its reason, after the receipt that records them is written.
+func (st *state) warnOutcomes(receipt *core.ValidationReceipt, outcomes ...*core.RefusalError) {
+	for _, outcome := range outcomes {
 		if outcome != nil {
 			st.warn(outcome.Message)
 		}
@@ -209,7 +228,6 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	if receipt.Status != statusPassed && receipt.Failure != "" {
 		st.warn("group validation " + receipt.Status + ": " + receipt.Failure)
 	}
-	return st.groupResponse(dir, run.receiptPath, &receipt), nil
 }
 
 // applyExecution stamps the captured execution facts. A cancellation or a
@@ -218,7 +236,9 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 func (st *state) applyExecution(ctx context.Context, req *Request,
 	receipt *core.ValidationReceipt, res core.Result, runRef *core.RefusalError,
 ) {
-	receipt.OutputTail = redactSecrets(coreexec.TrimTail(lastBytes(res.Stdout+res.Stderr, tailCap)), req.Environ)
+	// Sanitize the whole capture before cutting, as the patch path does: a cut
+	// first could leave a credential's unrecognizable second half in the tail.
+	receipt.OutputTail = coreexec.TrimTail(lastBytes(sanitizeTail(res.Stdout+res.Stderr, req.Environ), tailCap))
 	receipt.Exit = res.ExitCode
 	receipt.TimedOut = res.TimedOut
 	switch {
@@ -402,15 +422,19 @@ func receiptPath(dir, groupID string) (string, bool) {
 	return filepath.Join(dir, receiptNamePrefix+groupID+receiptSuffix), true
 }
 
-// writeReceipt persists the receipt atomically: the evidence is the file
+// writeValidationReceipt persists a group receipt atomically through the
+// pinned bundle, after one last identity check: the evidence is the file
 // itself, so a failed or timed-out run is recorded, never dropped.
-func writeReceipt(path string, receipt *core.ValidationReceipt) *core.RefusalError {
+func (b *bundleHandle) writeValidationReceipt(name string, receipt *core.ValidationReceipt) *core.RefusalError {
+	if ref := b.unchanged(); ref != nil {
+		return ref
+	}
 	raw, err := json.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return failed(err)
 	}
-	if err := atomic.WriteFile(path, append(raw, '\n')); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s: %v", path, err)}
+	if err := atomic.WriteFileIn(b.root, name, append(raw, '\n')); err != nil {
+		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/%s: %v", b.dir, name, err)}
 	}
 	return nil
 }

@@ -73,7 +73,7 @@ func TestSandboxArgvMasksAccountHomeAndRelocations(t *testing.T) {
 // full run overwrites the mechanism rather than keeping the older one.
 func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(patchPath(dir), []byte(`{"verifyCmd":"true","sandboxed":true,"sandboxMechanism":"bwrap"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, patchFile), []byte(`{"verifyCmd":"true","sandboxed":true,"sandboxMechanism":"bwrap"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	bundle, ref := openBundle(dir)
@@ -107,7 +107,7 @@ func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 
 func readPatchRecord(t *testing.T, dir string) string {
 	t.Helper()
-	raw, err := os.ReadFile(patchPath(dir))
+	raw, err := os.ReadFile(filepath.Join(dir, patchFile))
 	if err != nil {
 		t.Fatal(err)
 	}

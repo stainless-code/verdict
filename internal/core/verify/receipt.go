@@ -123,18 +123,17 @@ type bundleHandle struct {
 	sig string
 }
 
-// pinBundle opens dir, snapshots the finding sig, and drops the previous
-// receipt — everything the command must not get to change first.
-func pinBundle(dir string) (*bundleHandle, *core.RefusalError) {
+// openPatchBundle pins a patch-path bundle and snapshots its finding sig. A
+// bundle directory that does not exist reads as the missing patch it implies.
+func openPatchBundle(dir string) (*bundleHandle, *core.RefusalError) {
+	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+		return nil, missingPatchRefusal(dir)
+	}
 	bundle, ref := openBundle(dir)
 	if ref != nil {
 		return nil, ref
 	}
 	bundle.sig = bundle.patchSig()
-	if ref := bundle.dropReceipt(); ref != nil {
-		bundle.close()
-		return nil, ref
-	}
 	return bundle, nil
 }
 

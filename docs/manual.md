@@ -324,7 +324,9 @@ symlinked `.verdict/state/<pr>` refuses), pins the bundle directory before the
 command runs, reads the finding sig then, and deletes the previous receipt then,
 so a failed, aborted, or unrecordable run leaves no receipt at all. Every write
 goes through that pinned directory, and a command that moves or replaces the
-bundle directory makes verify refuse with nothing recorded. `record`/`post`
+bundle directory makes verify refuse with nothing recorded. `verify --group`
+pins the bundle the same way before its command runs, so a group receipt is
+written only into the bundle it validated. `record`/`post`
 read only that file. They flip a `VERIFIED` claim only when it shows exit 0, no
 timeout, the claim's exact `verifyCmd`, the claim's finding when it names one, and a
 `head` equal to the HEAD they grade. Anything else does not flip: no receipt (a pass
