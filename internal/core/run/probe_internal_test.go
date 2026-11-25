@@ -6,6 +6,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -247,5 +248,40 @@ func TestProbeSkippedUnderPrint(t *testing.T) {
 	}
 	if len(cdr.calls) != 0 || !resp.Data.Printed {
 		t.Errorf("calls = %d, printed = %v; want a render with no process", len(cdr.calls), resp.Data.Printed)
+	}
+}
+
+// failingProbe fails every identity probe and counts real launches. The two
+// finders probe at once, so unlike probeCdr it is safe to call concurrently.
+type failingProbe struct{ launched atomic.Int32 }
+
+// Run implements core.Commander.
+func (f *failingProbe) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if slices.Contains(cmd.Argv, "exec") {
+		f.launched.Add(1)
+	}
+	return core.Result{ExitCode: 3, Stderr: "other tool"}, nil
+}
+
+// TestProbeRefusesBothFindersAsAgentMismatch pins the default two-finder
+// launch against a binary that is not the agent: both finders fail their
+// identity probe before spawning, and the run says so, not an evidence gap.
+func TestProbeRefusesBothFindersAsAgentMismatch(t *testing.T) {
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	writeUnder(t, dir, "run.json", `{"schema_version":"1"}`)
+	writeUnder(t, dir, "PR.json", `{"headRefOid":"head"}`)
+	writeUnder(t, dir, "procedure.md", "authoritative procedure")
+	cdr := &failingProbe{}
+	req := request(root, cdr)
+	req.Agent = "local"
+	req.LookPath = func(string) (string, error) { return "/opt/agents/local-agent", nil }
+	req.FindersRaw = "2"
+	_, ref := WithAgents(t.Context(), req, []config.PersonalAgent{probeDef()})
+	if ref == nil || ref.Code != "agent-mismatch" {
+		t.Fatalf("refusal = %+v, want agent-mismatch", ref)
+	}
+	if n := cdr.launched.Load(); n != 0 {
+		t.Errorf("launches = %d, want zero", n)
 	}
 }

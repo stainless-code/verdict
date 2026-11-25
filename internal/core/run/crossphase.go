@@ -102,6 +102,7 @@ type crossOutcome struct {
 	response *core.RunResponse
 	worker   *state
 	failure  string
+	cause    *core.RefusalError
 	rows     []any
 	fatal    bool
 }
@@ -160,7 +161,7 @@ func (c *coordinator) crossStopped(out *crossOutcome, plan *crossPlan, ref *core
 	if ref.Code == recordcore.CodeBadReviewInput {
 		return false
 	}
-	out.failure = ref.Code
+	out.failure, out.cause = ref.Code, ref
 	c.bindCrossOutcome(out, plan)
 	return true
 }
@@ -399,7 +400,7 @@ func (c *coordinator) recordCross(outcomes []crossOutcome) *core.RefusalError {
 	for i := range outcomes {
 		fatal = mergeFatal(fatal, outcomes[i].ref)
 		c.appendResults(outcomes[i].rows)
-		c.resolveFailure(crossPhase(i), outcomes[i].failure)
+		c.resolveFailure(crossPhase(i), outcomes[i].failure, outcomes[i].cause)
 		if outcomes[i].response != nil {
 			c.response = outcomes[i].response
 		}
