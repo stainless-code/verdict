@@ -1772,6 +1772,21 @@ producer receipt). A miss in `next` or `show` under truncation emits a success
 envelope with null item/fix and a partial-results `next` hint rather than
 claiming absence. Complete results omit the receipt.
 
+**Terminal output is inert.** Text a stranger wrote — a finding's path or
+heading, a spec item, a host message, a directory name — reaches a terminal
+with every control character folded to a space: C0 (ESC, BEL, CR, and the
+rest), DEL, C1 (U+0080–U+009F), and the U+2028/U+2029 separators, so it cannot
+write the clipboard (OSC 52), move the cursor, or clear the screen. Newline and
+tab survive, since a message lays itself out with them. This holds for every
+human line on stdout (`report`, `next`, `show`, `threads`, `drain`, `gate`) and
+every `warn:` and `error:` line on stderr. Under `--json` stdout is the
+envelope, written byte for byte: JSON escapes the C0 controls itself, so the
+fold applies to the human surface only; a consumer that prints envelope strings
+to a terminal escapes them first. A warning is also one line: a newline inside
+an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
+space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
+Files verdict writes to disk are not folded.
+
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,

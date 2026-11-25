@@ -37,6 +37,10 @@ func Inert(s string) string {
 // line a future caller adds.
 type InertWriter struct {
 	w io.Writer
+	// passThrough, when set and true, sends a write unfolded: the stream
+	// carries a machine document (a JSON envelope) instead of text a person
+	// reads, and JSON already escapes every control rune it holds.
+	passThrough func() bool
 }
 
 // NewInertWriter wraps w. Wrapping an InertWriter returns it unchanged.
@@ -47,9 +51,22 @@ func NewInertWriter(w io.Writer) *InertWriter {
 	return &InertWriter{w: w}
 }
 
+// NewInertWriterUnless wraps w like [NewInertWriter] but consults machine on
+// every write and passes the bytes through untouched while it reports true.
+// The runner's stdout uses it: the same stream carries human text, which
+// must be inert, and one JSON envelope under --json, which must stay
+// byte-identical. Asking at write time keeps the answer right however late
+// the output mode settles.
+func NewInertWriterUnless(w io.Writer, machine func() bool) *InertWriter {
+	return &InertWriter{w: w, passThrough: machine}
+}
+
 // Write folds p and writes it, reporting len(p) on success: a fold only
 // shortens a multi-byte control to one space, and the caller wrote p.
 func (iw *InertWriter) Write(p []byte) (int, error) {
+	if iw.passThrough != nil && iw.passThrough() {
+		return iw.w.Write(p) //nolint:wrapcheck // a pass-through writer reports the destination's error as is
+	}
 	out, changed := fold(p)
 	if !changed {
 		return iw.w.Write(p) //nolint:wrapcheck // a pass-through writer reports the destination's error as is

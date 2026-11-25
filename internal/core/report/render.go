@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // strZero renders a zero count so every cost line spells it identically.
@@ -334,7 +335,7 @@ func buildHuman(st *state) []string {
 		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
-			readcommon.Locator(item.Entry), sigHuman(item.Entry))+reproductionOutput(item.Entry))
+			untrusted.Line(readcommon.Locator(item.Entry)), sigHuman(item.Entry))+reproductionOutput(item.Entry))
 	}
 	lines = appendHumanTail(st, lines)
 	if st.flags.Provenance {
@@ -394,7 +395,8 @@ func complianceHuman(st *state) string {
 		return fmt.Sprintf("compliance: unmet — %d blocking finding(s)", len(st.compliance.Blockers))
 	case len(st.compliance.Conflicts) > 0:
 		first := st.compliance.Conflicts[0]
-		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)", first.Path, first.Rule)
+		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)",
+			untrusted.Line(first.Path), untrusted.Line(first.Rule))
 	case st.compliance.Unverified:
 		return "compliance: unknown — captured provenance unavailable"
 	case len(st.compliance.Pending) > 0:
@@ -692,7 +694,7 @@ func gateSpecCheck(st *state) gateCheck {
 	if len(failures) > 1 {
 		detail = fmt.Sprintf("%d failed spec checks: %s", len(failures), detail)
 		if allViolatedSpecFailures(failures) {
-			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), failures[0].Item)
+			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), untrusted.Line(failures[0].Item))
 		}
 	}
 	return gateCheck{
@@ -706,9 +708,9 @@ func gateSpecCheck(st *state) gateCheck {
 // implements the requirement.
 func specFailureDetail(failure core.SpecFailure) string {
 	if failure.Status == "unmet" {
-		return "unmet spec check: " + failure.Item
+		return "unmet spec check: " + untrusted.Line(failure.Item)
 	}
-	return "violated spec check: " + failure.Item
+	return "violated spec check: " + untrusted.Line(failure.Item)
 }
 
 // allViolatedSpecFailures reports whether every failure is a violated row, so
@@ -768,16 +770,16 @@ func complianceVerdict(comp *config.ReadCompliance, gaps []string, head string) 
 	switch {
 	case len(comp.Blockers) > 0:
 		first := comp.Blockers[0]
-		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), first.Clause)
+		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), untrusted.Line(first.Clause))
 		if first.GroupKnown {
-			detail += " for group " + first.Group
+			detail += " for group " + untrusted.Line(first.Group)
 		}
 		return dimFail, detail, len(comp.Blockers)
 	case len(comp.Conflicts) > 0:
 		first := comp.Conflicts[0]
-		detail := fmt.Sprintf("required review withholds %s (rule %s)", first.Path, first.Rule)
+		detail := fmt.Sprintf("required review withholds %s (rule %s)", untrusted.Line(first.Path), untrusted.Line(first.Rule))
 		if first.Group != "" {
-			detail += " in group " + first.Group
+			detail += " in group " + untrusted.Line(first.Group)
 		}
 		return dimFail, detail + " — unmet, no disclosure", len(comp.Conflicts)
 	case comp.Unverified:

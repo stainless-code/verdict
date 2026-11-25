@@ -5,6 +5,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func hiddenFindings(entries []any) []any {
@@ -41,7 +42,9 @@ func quietLines(st *state) []string {
 		if id := jq.StrOf(readcommon.FieldOf(w, "exclusion_id")); id != "" {
 			source += " " + id
 		}
-		out = append(out, fmt.Sprintf("- %s — withheld:%s — %s", readcommon.Locator(e), source, jq.StrOf(readcommon.FieldOf(w, "reason"))))
+		reason := jq.StrOf(readcommon.FieldOf(w, "reason"))
+		out = append(out, fmt.Sprintf("- %s — withheld:%s — %s",
+			untrusted.Line(readcommon.Locator(e)), source, untrusted.Line(reason)))
 	}
 	return out
 }

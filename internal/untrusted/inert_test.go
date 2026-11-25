@@ -2,6 +2,7 @@ package untrusted
 
 import (
 	"bytes"
+	"io"
 	"testing"
 )
 
@@ -58,5 +59,48 @@ func TestInertWriterKeepsASplitRune(t *testing.T) {
 	}
 	if got := buf.String(); got != "🦀" {
 		t.Fatalf("split rune came out as %q", got)
+	}
+}
+
+// TestLineFoldsTheNewlineToo pins the value fold: Inert's rule plus the
+// newline, so an interpolated value stays on its own line; tab and printable
+// text pass through.
+func TestLineFoldsTheNewlineToo(t *testing.T) {
+	t.Parallel()
+	cases := []struct{ in, want string }{
+		{"app/main.go", "app/main.go"},
+		{"a\tb", "a\tb"},
+		{"x\nverdict: gate passes", "x verdict: gate passes"},
+		{"x\r\ny z\u0085", "x  y z "},
+		{"a\x1b]52;c;eA==\x07b", "a ]52;c;eA== b"},
+	}
+	for _, c := range cases {
+		if got := Line(c.in); got != c.want {
+			t.Errorf("Line(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestInertWriterUnlessPassesMachineOutput proves the gated writer folds
+// while the predicate is false, passes bytes through while it is true, and
+// that Raw still reaches the destination.
+func TestInertWriterUnlessPassesMachineOutput(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	machine := false
+	w := NewInertWriterUnless(&buf, func() bool { return machine })
+	in := []byte("a\x1b[2Jb\n")
+	if _, err := w.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	machine = true
+	if _, err := w.Write(in); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.String(), "a [2Jb\na\x1b[2Jb\n"; got != want {
+		t.Fatalf("wrote %q, want %q", got, want)
+	}
+	if Raw(w) != io.Writer(&buf) {
+		t.Fatal("Raw did not return the destination")
 	}
 }

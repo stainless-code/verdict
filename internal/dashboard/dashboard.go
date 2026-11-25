@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -64,7 +65,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	out := fileOf(r.Out)
+	out := fileOf(untrusted.Raw(r.Out))
 	if code, refused := preflight(r, &opts, isTerminal(req.In), isTerminal(out)); refused {
 		return code
 	}
