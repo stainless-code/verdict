@@ -40,6 +40,7 @@ var hostileRepoConfig = [][2]string{
 // operator's git setup: a hostile global file and a hostile repository config
 // yield the same mine.json bytes as a clean run.
 func TestMineIgnoresHostileGitConfig(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	clean, cleanBytes := mineRun(t, b.r, b.base, nil)
 	if len(clean.Mine.Candidates) != 1 || clean.Mine.Candidates[0].Head != "1d1518cf4adca036e1325e9666d54094dccacfa5" {

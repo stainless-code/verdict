@@ -57,6 +57,7 @@ func embeddedDrainProcedure(t *testing.T) []byte {
 // TestDrainDirectiveNamesBundleProcedureFile applies the same F1-class check
 // to the drain prompt, whose Procedure is written by the drain plan.
 func TestDrainDirectiveNamesBundleProcedureFile(t *testing.T) {
+	t.Parallel()
 	root, dir := drainBundle(t)
 	writeDrainFile(t, filepath.Join(dir, reviewFile))
 	if err := draincore.WriteProcedure(dir); err != nil {

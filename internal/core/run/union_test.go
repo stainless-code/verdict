@@ -29,6 +29,7 @@ func unionInput(t *testing.T, raw string) *jq.Obj {
 }
 
 func TestDiscoveryUnionSelectsWholeVerifiedTupleAndSeverity(t *testing.T) {
+	t.Parallel()
 	first := unionInput(t, `{"findings":[{"path":"a.go","line":9,"side":"RIGHT","severity":"critical","claim":"Changed value breaks the caller.","quote":"imaginary","confidence":"low"}]}`)
 	second := unionInput(t, coordinatorReview)
 	review, plan, err := discoveryUnion("test", []byte(fixtureDiff), []*jq.Obj{first, second})
@@ -51,6 +52,7 @@ func compactRows(rows []any) string {
 }
 
 func TestDiscoveryUnionOrdersBySeverityThenSignature(t *testing.T) {
+	t.Parallel()
 	review := unionInput(t, `{"findings":[{"path":"a.go","claim":"Changed value breaks the caller.","severity":"important"},{"path":"a.go","claim":"Other defect breaks cleanup.","severity":"critical"}]}`)
 	for range 20 {
 		got, _, err := discoveryUnion("test", nil, []*jq.Obj{review, nil})
@@ -66,6 +68,7 @@ func TestDiscoveryUnionOrdersBySeverityThenSignature(t *testing.T) {
 }
 
 func TestFinderProceduresShareS4ContractAndDistinctMethods(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	first, ref := finderProcedure(dir, filepath.Join(dir, "x-finder-1"), 0)
@@ -99,6 +102,7 @@ func assertFinderContract(t *testing.T, raw []byte, outputPath string) {
 }
 
 func TestDiscoveryUnionUsesSignatureTieBreak(t *testing.T) {
+	t.Parallel()
 	review := unionInput(t, `{"findings":[{"path":"a.go","claim":"Changed value breaks the caller.","severity":"important"},{"path":"a.go","claim":"Other defect breaks cleanup.","severity":"important"}]}`)
 	for range 20 {
 		got, _, err := discoveryUnion("test", nil, []*jq.Obj{review, nil})
@@ -114,6 +118,7 @@ func TestDiscoveryUnionUsesSignatureTieBreak(t *testing.T) {
 }
 
 func TestDiscoveryUnionDeduplicatesReceiptTuples(t *testing.T) {
+	t.Parallel()
 	first := unionInput(t, `{"receipts":[{"hunk":"literal-hunk","quote":"literal-quote"}]}`)
 	second := unionInput(t, `{"receipts":[{"quote":"literal-quote","hunk":"literal-hunk"}]}`)
 	review, _, err := discoveryUnion("test", nil, []*jq.Obj{first, second})
@@ -127,6 +132,7 @@ func TestDiscoveryUnionDeduplicatesReceiptTuples(t *testing.T) {
 }
 
 func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
+	t.Parallel()
 	twice := unionInput(t, `{"findings":[`+
 		`{"path":"a.go","line":1,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high"},`+
 		`{"path":"a.go","line":3,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"old line 3","confidence":"high"}]}`)
@@ -156,6 +162,7 @@ func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
 }
 
 func TestDiscoveryUnionCarriesReadAttestations(t *testing.T) {
+	t.Parallel()
 	first := unionInput(t, `{"coverage":[{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-1"],"receipts":[]}`)
 	second := unionInput(t, `{"coverage":[{"file":"old.go","ranges":"all"},{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-2","chunk-1"]}`)
 	review, _, err := discoveryUnion("test", nil, []*jq.Obj{first, second})
@@ -171,6 +178,7 @@ func TestDiscoveryUnionCarriesReadAttestations(t *testing.T) {
 }
 
 func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
+	t.Parallel()
 	review, _, err := discoveryUnion("test", nil, []*jq.Obj{unionInput(t, coordinatorReview)})
 	if err != nil {
 		t.Fatal(err)
@@ -187,6 +195,7 @@ func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
 // record captures, so a merge that keeps the tuple but drops the payload stores
 // a "reproduced" finding with nothing to run.
 func TestDiscoveryUnionKeepsReproductionFromTheDuplicate(t *testing.T) {
+	t.Parallel()
 	payload := `{"path":"","command":"false"}`
 	first := unionInput(t, `{"findings":[{"path":"a.go","line":1,"side":"RIGHT","severity":"important",`+
 		`"claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high",`+
