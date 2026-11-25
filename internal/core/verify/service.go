@@ -422,7 +422,10 @@ func redactSecrets(tail string, environ []string) string {
 }
 
 // secretValues collects the environment values the redactor hides: the value
-// of every secret-shaped variable that is long enough to be a credential.
+// of every secret-shaped variable that is long enough to be a credential. The
+// tail is matched after its control characters are stripped, so a value that
+// itself carries one (a token read from a CRLF file keeps its \r) is listed in
+// its stripped form too.
 func secretValues(environ []string) []string {
 	var values []string
 	for _, kv := range environ {
@@ -430,9 +433,30 @@ func secretValues(environ []string) []string {
 		if !ok || len(value) < secretMinLen || !envsecret.IsSecret(name) {
 			continue
 		}
-		values = append(values, value)
+		values = withStripped(values, value)
 	}
 	return values
+}
+
+// withStripped appends value and, when stripping control characters changes
+// it and leaves a credential-length remainder, the stripped form as well.
+func withStripped(values []string, value string) []string {
+	values = append(values, value)
+	if clean := stripControlChars(value); clean != value && len(clean) >= secretMinLen {
+		values = append(values, clean)
+	}
+	return values
+}
+
+// StripControlledSecrets returns secrets plus the control-stripped form of
+// each one that a control character changes, for matching text that already
+// went through [SanitizeTail].
+func StripControlledSecrets(secrets []string) []string {
+	var out []string
+	for _, v := range secrets {
+		out = withStripped(out, v)
+	}
+	return out
 }
 
 const secretMinLen = 8

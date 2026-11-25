@@ -965,7 +965,8 @@ const messageTailCap = 600
 // the window's left edge lands in the tail.
 func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 	_, argSecrets := st.displayArgv(args)
-	clean := scrubSecrets(verifycore.SanitizeTail(res.Stdout+res.Stderr, st.req.Environ), st.req.Environ, argSecrets)
+	clean := scrubSecrets(verifycore.SanitizeTail(res.Stdout+res.Stderr, st.req.Environ),
+		st.req.Environ, verifycore.StripControlledSecrets(argSecrets))
 	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(clean, messageTailCap), ""))
 	if tail == "" {
 		return ""

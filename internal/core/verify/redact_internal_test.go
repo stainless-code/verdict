@@ -272,3 +272,27 @@ func requireNoLeak(t *testing.T, in, got string) {
 		}
 	}
 }
+
+// TestSanitizeTailRedactsASecretValueCarryingAControlChar: the tail is matched
+// after control characters are stripped, so a value that carries one (a token
+// read from a CRLF file) must still be found in its stripped form.
+func TestSanitizeTailRedactsASecretValueCarryingAControlChar(t *testing.T) {
+	environ := []string{"EVAL_PROBE_TOKEN=secretpart\rvaluerest123"}
+	got := sanitizeTail("boom secretpart\rvaluerest123 done", environ)
+	if strings.Contains(got, "valuerest123") {
+		t.Fatalf("sanitizeTail leaks the CR-carrying secret: %q", got)
+	}
+	if got := StripControlledSecrets([]string{"argsecret\r12345"}); len(got) != 2 || got[1] != "argsecret12345" {
+		t.Fatalf("StripControlledSecrets = %q, want the raw and stripped forms", got)
+	}
+}
+
+// TestStripControlCharsEndsAnOpenOSCAtTheLineBreak: one stray OSC introducer
+// must not blank the rest of a capture that is sanitized whole.
+func TestStripControlCharsEndsAnOpenOSCAtTheLineBreak(t *testing.T) {
+	in := "\x1b]0;no terminator here\n" + strings.Repeat("y", 50) + "\nlast-line\n"
+	got := stripControlChars(in)
+	if !strings.HasSuffix(got, "last-line\n") || strings.Contains(got, "no terminator") {
+		t.Fatalf("stripControlChars = %q", got)
+	}
+}

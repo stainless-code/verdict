@@ -136,7 +136,8 @@ func skipCSI(s string, from int) int {
 }
 
 // skipOSC returns the index of the byte closing an OSC string (BEL or the
-// two-byte ST), or the last byte of s when it never closes.
+// two-byte ST), the byte before a line break when it never closes on its line,
+// or the last byte of s.
 func skipOSC(s string, from int) int {
 	for j := from; j < len(s); j++ {
 		switch {
@@ -144,6 +145,10 @@ func skipOSC(s string, from int) int {
 			return j
 		case strings.HasPrefix(s[j:], "\x1b\\"):
 			return j + 1
+		case s[j] == '\n':
+			// An OSC that never closes ends at the line break, so one
+			// stray introducer cannot blank the rest of the capture.
+			return j - 1
 		}
 	}
 	return len(s) - 1
