@@ -63,6 +63,7 @@ var jsonEscapeInternalUses = map[string]int{
 // an allowlisted internal use, so a new output writer cannot put C1 or bidi
 // controls on the wire raw. It is a syntactic guard: an encoder reached
 // through another function value is out of its reach, and review covers that.
+// So is hand-built JSON (%q, [strconv.Quote], concatenation).
 func TestJSONWritersApplyTheControlEscape(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)

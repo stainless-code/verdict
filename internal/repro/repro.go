@@ -24,6 +24,7 @@ const (
 	hashPrefixLength   = 12
 	artifactMatchParts = 4
 	directory          = "tests"
+	sidecarSuffix      = ".command.json"
 	directoryMode      = 0o700
 	fileMode           = 0o600
 )
@@ -266,6 +267,12 @@ func compareExisting(root *os.Root, name string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	// A sidecar written before the encoder escaped C1 and bidi controls holds
+	// them raw: the same receipt, so only that spelling is forgiven. Artifact
+	// content stays byte-exact.
+	if strings.HasSuffix(name, sidecarSuffix) {
+		prior = jq.EscapeControls(prior)
+	}
 	if !bytes.Equal(prior, data) {
 		return invalid("reproduction name already contains different bytes")
 	}
@@ -281,7 +288,7 @@ func internalName(name string) (string, error) {
 }
 
 func sidecarName(name string) string {
-	return strings.TrimSuffix(name, filepath.Ext(name)) + ".command.json"
+	return strings.TrimSuffix(name, filepath.Ext(name)) + sidecarSuffix
 }
 
 func validateDestinations(root *os.Root, name string, content []byte, receipt *Receipt) error {

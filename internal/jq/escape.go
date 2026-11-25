@@ -1,6 +1,7 @@
 package jq
 
 import (
+	"bytes"
 	"encoding/json"
 	"strconv"
 )
@@ -106,8 +107,17 @@ func Marshal(v any) ([]byte, error) {
 	return EscapeControls(raw), err
 }
 
-// MarshalIndent is [json.MarshalIndent] with [EscapeControls] applied.
+// MarshalIndent is [json.MarshalIndent] with [EscapeControls] applied to the
+// encoded value only: prefix and indent sit outside strings, so they reach the
+// output as given, as encoding/json writes them.
 func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
-	raw, err := json.MarshalIndent(v, prefix, indent)
-	return EscapeControls(raw), err
+	raw, err := Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, raw, prefix, indent); err != nil {
+		return nil, Sealed("indent JSON", err)
+	}
+	return out.Bytes(), nil
 }

@@ -94,6 +94,25 @@ func TestEscapeControlsAllocatesNothingWhenThereIsNothingToRewrite(t *testing.T)
 	}
 }
 
+// TestMarshalIndentEscapesOnlyTheValue pins that prefix and indent, which sit
+// outside strings, reach the output as given (as encoding/json writes them),
+// while the encoded value is still escaped.
+func TestMarshalIndentEscapesOnlyTheValue(t *testing.T) {
+	t.Parallel()
+	prefix, indent := string(rune(0x85)), string(rune(0x202E))
+	got, err := jq.MarshalIndent(map[string]string{"k": "v" + string(rune(0x9B))}, prefix, indent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n" + prefix + indent + `"k": "v` + esc(0x9B) + "\"\n" + prefix + "}"
+	if string(got) != want {
+		t.Errorf("MarshalIndent = %q; want %q", got, want)
+	}
+	if _, err := jq.MarshalIndent(func() {}, "", "  "); err == nil {
+		t.Error("MarshalIndent swallowed the encoder error")
+	}
+}
+
 // renderedControls renders one string carrying a C1 and a bidi control
 // through every jq renderer and encoder wrapper.
 func renderedControls(t *testing.T) map[string]string {
