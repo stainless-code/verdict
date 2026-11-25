@@ -203,23 +203,21 @@ func hermeticEnv(t *testing.T) {
 	}
 }
 
-// TestUsageWinsOverCorruptSettings pins the F11 compound-fault rule: a
-// missing positional prints the full usage block with exit 2 without
-// reading the (corrupt) settings file first, while a complete invocation
-// still fails typed bad-settings.
+// TestUsageWinsOverCorruptSettings pins the F11 compound-fault rule: a missing
+// target is refused as a usage-class failure (exit 2, the target refusal plus
+// the verb's usage line) without a corrupt settings file replacing it, while a
+// complete invocation still fails typed bad-settings.
 func TestUsageWinsOverCorruptSettings(t *testing.T) {
 	hermeticEnv(t)
-	// Outside a checkout target inference has nothing to read, so a missing
-	// positional is still the usage error; inside one it is a typed refusal
-	// (TestMissingTargetInCheckoutRefuses).
 	t.Chdir(t.TempDir())
 	writeCorruptSettings(t)
 	code, out, derr := runCapture(t, []string{"report"})
-	if code != cli.ExitUsage {
+	if code != cli.ExitUsage || out != "" {
 		t.Fatalf("missing pr exit = %d, want %d\nstdout: %s\nstderr: %s", code, cli.ExitUsage, out, derr)
 	}
-	if derr != usageText() {
-		t.Fatalf("missing pr stderr is not the usage block:\n%s", derr)
+	assertTargetRefusal(t, derr, "report")
+	if strings.Contains(derr, "settings") {
+		t.Fatalf("a corrupt settings file replaced the target refusal:\n%s", derr)
 	}
 	code, _, derr = runCapture(t, nil)
 	if code != cli.ExitUsage || derr != usageText() {
@@ -260,9 +258,10 @@ func TestNextCoverageMissingPositionals(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
 	code, out, derr := runCapture(t, []string{"next", "--coverage"})
-	if code != 2 || out != "" || !strings.HasPrefix(derr, "error: next requires <owner/repo> and <pr|local-name>\n") {
+	if code != 2 || out != "" {
 		t.Fatalf("next missing positionals: exit %d stdout %q stderr %q", code, out, derr)
 	}
+	assertTargetRefusal(t, derr, "next")
 }
 
 func TestHermeticEnvClearsHostInstallPaths(t *testing.T) {

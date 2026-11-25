@@ -17,7 +17,10 @@ import (
 type fakeGit struct {
 	origin string
 	branch string
-	calls  [][]string
+	// hostOut and hostExit script the host CLI (gh, glab) a lookup shells.
+	hostOut  string
+	calls    [][]string
+	hostExit int
 	// noRepo and noOrigin script the two ways git cannot answer.
 	noOrigin bool
 	noRepo   bool
@@ -25,6 +28,9 @@ type fakeGit struct {
 
 func (f *fakeGit) Run(_ context.Context, c *core.Command) (core.Result, error) {
 	f.calls = append(f.calls, c.Argv)
+	if c.Argv[0] == "gh" || c.Argv[0] == "glab" {
+		return core.Result{Stdout: f.hostOut, ExitCode: f.hostExit}, nil
+	}
 	if f.noRepo {
 		return core.Result{ExitCode: 128}, nil
 	}
@@ -244,16 +250,29 @@ func checkRefusalCase(t *testing.T, tc *refusalCase) {
 	}
 }
 
-func TestResolveNoLocalStateStaysUsage(t *testing.T) {
+func TestResolveNoLocalStateRefuses(t *testing.T) {
 	for _, g := range []fakeGit{{noRepo: true}, {noOrigin: true}} {
 		got := resolve(t, &g, Deps{}, &Request{Verb: "fetch"})
-		if got.Refusal != nil || got.Repo != "" || got.Pr != "" || got.Note != "" {
-			t.Fatalf("git cannot answer, so the arity gate owns the error: %+v", got)
+		if got.Refusal == nil || got.Refusal.Code != core.CodeTargetUnresolved ||
+			!strings.Contains(got.Refusal.Message, "verdict fetch <owner/repo> <pr>, or a pull request URL") ||
+			got.Repo != "" || got.Pr != "" {
+			t.Fatalf("git cannot answer, so the refusal names the args: %+v", got)
 		}
 	}
-	got := resolve(t, &fakeGit{noRepo: true}, Deps{}, &Request{Verb: "fetch", Repo: "acme/app"})
-	if got.Refusal != nil || got.Repo != "acme/app" || got.Pr != "" {
-		t.Fatalf("repo only outside a checkout: %+v", got)
+}
+
+func TestResolveIncompleteExplicitTargetRefuses(t *testing.T) {
+	for _, tc := range []struct {
+		want string
+		q    Request
+	}{
+		{"verdict fetch acme/app <pr>", Request{Verb: "fetch", Repo: "acme/app"}},
+		{"verdict trend <owner/repo>", Request{Verb: "trend", RepoOnly: true}},
+	} {
+		got := resolve(t, &fakeGit{noRepo: true}, Deps{}, &tc.q)
+		if got.Refusal == nil || !strings.Contains(got.Refusal.Message, tc.want) {
+			t.Fatalf("%+v: refusal %+v, want %q", tc.q, got.Refusal, tc.want)
+		}
 	}
 }
 

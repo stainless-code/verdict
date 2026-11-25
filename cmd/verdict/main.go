@@ -1,13 +1,13 @@
 // Command verdict is the only front door: it owns every verb, every usage
 // error, and the arity matrix. A missing verb fails with the full usage block
-// on stderr and exit 2 before any settings, store, or network read. A missing
-// repo/pr pair first goes through target resolution (internal/target), which
-// reads only local git state and the recorded bundles: a pasted URL or an
-// inferable branch fills it in, a checkout that cannot name one refuses
-// target-unresolved, and only an invocation with nothing to read (no checkout,
-// no origin) prints the usage block, still before any settings read. main is
-// thin: it parses, builds the runner, delegates to run(), and exits once —
-// only main calls [os.Exit].
+// on stderr and exit 2 before any settings, store, or network read. A pair
+// verb with a missing repo/pr pair first goes through target resolution
+// (internal/target): a pasted URL, the origin remote and a recorded bundle, or
+// (for a verb that already talks to the host) the host's own answer fill it
+// in; when nothing can, the typed target-unresolved refusal exits 2 with the
+// verb's usage line, ahead of any settings read. main is thin: it parses,
+// builds the runner, delegates to run(), and exits once — only main calls
+// [os.Exit].
 package main
 
 import (
@@ -113,6 +113,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	cmd, repo, pr, rest := splitCommand(stripped)
 	env := envMap(getenv)
 	var tgt target.Resolved
+	uverb := usageVerbFor(cmd, repo)
 	if failed {
 		cmd, repo, pr = envelopeTarget(args)
 	} else {
@@ -124,25 +125,39 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if code, done := gateInvocation(r, cmd, &tgt, forces, env, readFile, stderr); done {
+	if code, done := gateInvocation(r, uverb, &tgt, forces, env, readFile, stderr); done {
 		return code
 	}
 	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
 }
 
 // gateInvocation runs the checks that stop an invocation before its verb: the
-// arity gate (skipped when target resolution already refused with a typed
-// reason), the preference read, the global forces (so --no-json and --color
-// shape every message below), that refusal, and the echo of a derived target.
-// done reports that code is the exit status.
+// target refusal of a pair verb that names no resolvable target (a usage-class
+// failure, rendered ahead of the settings read like the usage block it
+// replaces), the arity gate for every other verb, the preference read, the
+// global forces (so --no-json and --color shape every message below), any
+// other target refusal, and the echo of a derived target. verb is the name the
+// usage line is looked up under. done reports that code is the exit status.
 func gateInvocation(
-	r *cli.Runner, cmd string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
+	r *cli.Runner, verb string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
 	readFile func(string) ([]byte, error), stderr *os.File,
 ) (code int, done bool) {
-	if tgt.Refusal == nil && invocationArityUsage(cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
-		fmt.Fprint(stderr, arityText(cmd))
+	if tgt.Refusal != nil && tgt.Refusal.Code == core.CodeTargetUnresolved {
+		return refuseUnresolved(r, verb, tgt.Refusal, forces, env, readFile, stderr), true
+	}
+	if tgt.Refusal == nil && invocationArityUsage(r.Cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
+		fmt.Fprint(stderr, usageText())
 		return cli.ExitUsage, true
 	}
+	return settleInvocation(r, tgt, forces, env, readFile, stderr)
+}
+
+// settleInvocation reads the preferences, applies the global forces, then
+// renders any other target refusal or echoes a derived target.
+func settleInvocation(
+	r *cli.Runner, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
+	readFile func(string) ([]byte, error), stderr *os.File,
+) (code int, done bool) {
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code, true
 	}
@@ -158,6 +173,52 @@ func gateInvocation(
 		fmt.Fprintln(stderr, tgt.Note)
 	}
 	return 0, false
+}
+
+// refuseUnresolved renders the target-unresolved refusal as the usage-class
+// failure it is: exit 2, the typed envelope under --json, and in human mode
+// the refusal followed by the verb's usage line. Unreadable settings never
+// replace it (defaults apply), so the missing argument is always what a
+// corrupt settings file cannot hide.
+func refuseUnresolved(
+	r *cli.Runner, verb string, ref *core.RefusalError, forces *cli.GlobalForces,
+	env map[string]string, readFile func(string) ([]byte, error), stderr *os.File,
+) int {
+	r.Effective = cli.Defaults()
+	if prefs, perr := cli.ResolvePrefs(r, env, readFile); perr == nil {
+		r.Effective = prefs.Effective
+	}
+	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
+		r.RouteHuman()
+		return r.Refuse(err)
+	}
+	r.RouteHuman()
+	code := r.RefuseExit(ref, cli.ExitUsage)
+	if !r.JSONMode {
+		fmt.Fprintln(stderr, usageLine(verb))
+	}
+	return code
+}
+
+// usageVerbFor names the usage entry a verb's invocation is documented under:
+// the threads subverb has its own line.
+func usageVerbFor(cmd, repo string) string {
+	if cmd == cmdThreads && repo == subverbResolve {
+		return cmdThreads + " " + subverbResolve
+	}
+	return cmd
+}
+
+// usageLine is the first line of the verb's usage entry that takes the target
+// (a verb may document a flag-only form first, as report --html does), as one
+// `usage:` line.
+func usageLine(verb string) string {
+	for line := range strings.SplitSeq(verbUsage(verb), "\n") {
+		if strings.Contains(line, "<owner/repo>") {
+			return "usage: verdict " + strings.Join(strings.Fields(line), " ")
+		}
+	}
+	return "usage: verdict " + verb + " <owner/repo> <pr> [opts]"
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -654,14 +715,10 @@ func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, g
 // first in rest). Threads resolve takes no --provider, so the verb name carries
 // the subverb to keep the flag from being injected.
 func resolveSubverb(first string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
-	same := target.Resolved{Repo: subverbResolve, Pr: first, Rest: rest}
 	repo, pr, tail := splitPositionals(append(nonEmpty(first), rest...))
 	got := runResolver(cmdThreads+" "+subverbResolve, repo, pr, tail, env, getenv)
-	switch {
-	case got.Refusal != nil:
+	if got.Refusal != nil {
 		return got
-	case got.Repo == "":
-		return same // nothing to infer from: the verb's own usage error stands
 	}
 	got.Repo, got.Pr, got.Rest = subverbResolve, got.Repo, append([]string{got.Pr}, got.Rest...)
 	return got
@@ -679,6 +736,7 @@ func runResolver(verb, repo, pr string, rest []string, env map[string]string, ge
 	defer stop()
 	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
 		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
+		HostLookup: talksToHost(verb, rest),
 	})
 }
 
@@ -687,6 +745,25 @@ func nonEmpty(s string) []string {
 		return nil
 	}
 	return []string{s}
+}
+
+// hostVerbs always read the host as part of their work, so asking it which
+// pull request a branch heads costs them nothing new. Every other pair verb
+// is offline, and drain only reaches the host with --post.
+var hostVerbs = map[string]bool{
+	"fetch": true, "pr-wait": true, "ready": true, cmdThreads: true, cmdThreads + " " + subverbResolve: true,
+}
+
+// talksToHost reports whether verb, with these flags, reads the host anyway.
+func talksToHost(verb string, rest []string) bool {
+	if verb == "drain" {
+		at := slices.Index(rest, flagSeparator)
+		if at < 0 {
+			at = len(rest)
+		}
+		return slices.Contains(rest[:at], "--post")
+	}
+	return hostVerbs[verb]
 }
 
 // takesTarget reports the known verbs whose positionals are `<owner/repo> <pr>`

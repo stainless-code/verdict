@@ -46,6 +46,10 @@ type Request struct {
 	Rest     []string
 	// RepoOnly marks the verbs that take `<owner/repo>` and no number.
 	RepoOnly bool
+	// HostLookup lets inference ask the host CLI for the branch's open pull
+	// request when no recorded bundle names it. Only a verb that already talks
+	// to the host sets it; an offline verb never reaches the host.
+	HostLookup bool
 }
 
 // Deps carries the two seams inference reads through, so tests script git and
@@ -84,7 +88,31 @@ func Resolve(ctx context.Context, d Deps, q *Request) Resolved {
 	case q.Pr == "":
 		inferPr(ctx, d, q, out, &found{repo: q.Repo})
 	}
+	if out.Refusal == nil && incomplete(q, out) {
+		out.Refusal = missingTarget(q, out)
+	}
 	return *out
+}
+
+// incomplete reports a pair verb still short of its target once every source
+// has been tried.
+func incomplete(q *Request, out *Resolved) bool {
+	return out.Repo == "" || (!q.RepoOnly && out.Pr == "")
+}
+
+// missingTarget is the refusal for a target nothing could supply: no
+// positionals and nothing local to read them from.
+func missingTarget(q *Request, out *Resolved) *core.RefusalError {
+	switch {
+	case q.RepoOnly:
+		return core.TargetUnresolved("no <owner/repo> given and none could be read from a git checkout's origin remote; "+
+			"pass the target: verdict %s <owner/repo>", q.Verb)
+	case out.Repo != "":
+		return core.TargetUnresolved("no pull request number given for %s and none could be inferred without a checkout on a branch; "+
+			"pass the target: verdict %s %s <pr>", out.Repo, q.Verb, out.Repo)
+	}
+	return core.TargetUnresolved("no target given and none could be inferred (that needs a git checkout with an origin remote); "+
+		"pass the target: verdict %s <owner/repo> <pr>, or a pull request URL", q.Verb)
 }
 
 func fromURL(q *Request, out *Resolved) {
@@ -211,6 +239,8 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 	case more:
 		out.Refusal = core.TargetUnresolved(
 			"too many bundles under .verdict/state to match branch %q to one pull request; pass the target: %s", branch, hint)
+	case len(hits) == 0 && q.HostLookup && f.host != "":
+		inferFromHost(ctx, d, q, out, f, branch, hint)
 	case len(hits) == 0:
 		out.Refusal = core.TargetUnresolved("no bundle under .verdict/state records branch %q as the head of a pull request "+
 			"for %s; fetch it first, or pass the target: %s", branch, f.repo, hint)
@@ -222,6 +252,18 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 		out.Note = describe(f.repo, hits[0].num, f.provider,
 			fmt.Sprintf("inferred from branch %q recorded in .verdict/state/%s", branch, hits[0].num))
 	}
+}
+
+// inferFromHost settles the pair from the host's own answer, echoing where it
+// came from.
+func inferFromHost(ctx context.Context, d Deps, q *Request, out *Resolved, f *found, branch, hint string) {
+	pr, ref := hostPr(ctx, d, q, f, branch, hint)
+	if ref != nil {
+		out.Refusal = ref
+		return
+	}
+	out.Repo, out.Pr = f.repo, pr
+	out.Note = describe(f.repo, pr, f.provider, fmt.Sprintf("from %s for branch %q", f.host, branch))
 }
 
 type branchHit struct {

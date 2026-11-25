@@ -46,6 +46,8 @@ cat >"$EVAL_SANDBOX/fakebin/gh" <<'STUB'
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
   *--jq*) echo "a/save.go (+1/-1)" ;;
+  "pr list --repo acme/app --head="*" --state open --json number,headRefName,url --limit 2")
+    cat "$EVAL_SANDBOX/lookup-out.json"; exit "$(cat "$EVAL_SANDBOX/lookup-exit")" ;;
   "pr view 4701 "*) cat "$EVAL_SANDBOX/canned-PR.json" ;;
   "pr diff 4701 "*) cat "$EVAL_SANDBOX/canned.diff" ;;
   "api graphql"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}' ;;
@@ -77,14 +79,56 @@ run_review fetch
 assert_file_grep "T2 the inference is echoed, never silent" "$EVAL_ERR" \
   '^target: acme/app#4701 \(github, inferred from branch "harden-retry" recorded in .verdict/state/4701\)$' "-E"
 
-# T3 a branch no bundle records refuses with the exact args to pass.
-git -C "$EVAL_SANDBOX" checkout -q -b unrelated
-calls_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+# T3 a branch no bundle records: a verb that already talks to the host asks it
+# which open PR has the branch as head; anything but one validated match
+# refuses (exit 2, usage class) naming the exact args.
+git -C "$EVAL_SANDBOX" checkout -q -b from-host
+printf '0' >"$EVAL_SANDBOX/lookup-exit"
+lookups() { grep -c 'stub-gh pr list ' "$EVAL_STUBLOG" || true; }
+printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
-assert_exit "T3 an unrecorded branch refuses" 1
+assert_exit "T3 one open PR for the branch is fetched" 0
+assert_json_field "T3 the host's answer is the target" 4701 '.pr'
+run_review fetch
+assert_file_grep "T3 the host lookup is echoed" "$EVAL_ERR" \
+  '^target: acme/app#4701 \(github, from github.com for branch "from-host"\)$' "-E"
+assert_file_grep "T3 the lookup asked for open PRs of that head only" "$EVAL_STUBLOG" \
+  'stub-gh pr list --repo acme/app --head=from-host --state open --json number,headRefName,url --limit 2'
+
+printf '[]' >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 no open PR refuses as usage class" 2
 assert_json_field "T3 typed refusal" target-unresolved '.error.code'
 assert_file_grep "T3 the refusal names the args to pass" "$EVAL_OUT" 'verdict fetch acme/app <pr>'
-assert_eq "T3 inference made no host call" "$calls_before" "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+
+printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"},{"number":4702,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4702"}]' >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 two open PRs refuse" 2
+assert_file_grep "T3 the refusal lists both" "$EVAL_OUT" 'more than one open pull request for it (4701, 4702)'
+
+printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/evil/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 an answer for another repo is not trusted" 2
+assert_file_grep "T3 the distrust is stated" "$EVAL_OUT" 'does not trust'
+
+printf 'not json' >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 malformed JSON refuses" 2
+printf '1' >"$EVAL_SANDBOX/lookup-exit"
+run_review fetch --json
+assert_exit "T3 a host error refuses" 2
+assert_file_grep "T3 the failure is stated" "$EVAL_OUT" 'could not be asked (gh failed)'
+printf '0' >"$EVAL_SANDBOX/lookup-exit"
+
+# An offline verb never reaches the host, however the answer is scripted.
+printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
+git -C "$EVAL_SANDBOX" checkout -q -b offline-only
+lookups_before="$(lookups)"
+run_review report --json
+assert_exit "T3 an offline verb refuses without the host" 2
+assert_json_field "T3 typed refusal for the offline verb" target-unresolved '.error.code'
+assert_eq "T3 the offline verb made no host call" "$lookups_before" "$(lookups)"
+calls_before="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 
 # T4 a URL's provider conflicting with --provider refuses before any host call.
 run_review fetch "https://github.com/acme/app/pull/4701" --provider gitlab --json

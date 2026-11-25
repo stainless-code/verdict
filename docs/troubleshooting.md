@@ -1486,7 +1486,7 @@ Fix: re-run the write once the other one finishes; a holder that crashed or was 
 
 ## `target-unresolved`
 
-Cause: the verb was given no `<owner/repo> <pr>` and verdict could not infer one offline: `origin` names a host or path verdict cannot map, HEAD is detached, no bundle under `.verdict/state` records the current branch as a pull request head, or more than one does.
+Cause: the verb was given no `<owner/repo> <pr>` and verdict could not settle one: no git checkout or `origin` to read, `origin` names a host or path verdict cannot map, HEAD is detached, no bundle under `.verdict/state` records the current branch as a pull request head, or more than one does. A verb that already reads the host also asks it for the branch's open pull request, and this code covers that lookup finding none, finding several, failing, or answering something that does not validate. It exits 2, the usage-error class.
 
 Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL. See `docs/manual.md` § Targets.
 

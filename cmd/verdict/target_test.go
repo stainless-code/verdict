@@ -71,18 +71,63 @@ func runEnvelope(t *testing.T, args ...string) (int, targetEnvelope) {
 	return code, env
 }
 
-// TestMissingTargetInCheckoutRefuses pins the refusal that replaces the usage
-// block when a checkout can be read but names no pull request.
-func TestMissingTargetInCheckoutRefuses(t *testing.T) {
+// assertTargetRefusal checks the human shape of the usage-class refusal: the
+// typed error naming the verb's args, then the verb's own usage line.
+func assertTargetRefusal(t *testing.T, derr, verb string) {
+	t.Helper()
+	if !strings.Contains(derr, "error: ") || !strings.Contains(derr, "verdict "+verb+" ") ||
+		!strings.Contains(derr, "\nusage: verdict "+verb+" <owner/repo> <pr> ") {
+		t.Fatalf("stderr is not the %s target refusal plus its usage line:\n%s", verb, derr)
+	}
+}
+
+func checkoutWithoutBundle(t *testing.T) {
+	t.Helper()
 	targetCheckout(t, false)
+}
+
+func outsideACheckout(t *testing.T) {
+	t.Helper()
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+}
+
+// TestMissingTargetRefusesAsUsageClass pins the one behavior of every pair
+// verb that names no resolvable target, inside a checkout that records no
+// bundle for its branch and outside any checkout alike: exit 2, the typed
+// refusal plus the verb's usage line, and under --json the envelope.
+func TestMissingTargetRefusesAsUsageClass(t *testing.T) {
+	for name, setup := range map[string]func(*testing.T){
+		"checkout without a recorded bundle": checkoutWithoutBundle,
+		"outside a checkout":                 outsideACheckout,
+	} {
+		t.Run(name, func(t *testing.T) {
+			setup(t)
+			checkMissingTarget(t)
+		})
+	}
+}
+
+func checkMissingTarget(t *testing.T) {
+	t.Helper()
 	code, out, derr := runCapture(t, []string{"report"})
-	if code != cli.ExitRefused || out != "" ||
-		!strings.Contains(derr, `branch "fix-x"`) || !strings.Contains(derr, "verdict report acme/app <pr>") {
+	if code != cli.ExitUsage || out != "" {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
+	assertTargetRefusal(t, derr, "report")
 	code, env := runEnvelope(t, "report", "--json")
-	if code != cli.ExitRefused || env.Error == nil || env.Error.Code != "target-unresolved" {
+	if code != cli.ExitUsage || env.Error == nil || env.Error.Code != "target-unresolved" {
 		t.Fatalf("json refusal: exit %d %+v", code, env)
+	}
+}
+
+// TestCheckoutRefusalNamesTheBranch keeps the branch and the exact args in the
+// message a checkout produces.
+func TestCheckoutRefusalNamesTheBranch(t *testing.T) {
+	targetCheckout(t, false)
+	_, _, derr := runCapture(t, []string{"report"})
+	if !strings.Contains(derr, `branch "fix-x"`) || !strings.Contains(derr, "verdict report acme/app <pr>") {
+		t.Fatalf("stderr:\n%s", derr)
 	}
 }
 
@@ -193,12 +238,25 @@ func TestThreadsResolveKeepsItsSubverb(t *testing.T) {
 	}
 }
 
-func TestThreadsResolveOutsideACheckoutIsUsage(t *testing.T) {
+func TestThreadsResolveOutsideACheckoutRefuses(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
 	got := resolveTarget("threads", "resolve", "", nil, nil, os.Getenv)
-	if got.Refusal != nil || got.Repo != "resolve" || got.Pr != "" {
-		t.Fatalf("nothing to read must leave the verb's own usage error: %+v", got)
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "verdict threads resolve <owner/repo> <pr>") {
+		t.Fatalf("nothing to read must refuse naming the subverb's args: %+v", got)
+	}
+}
+
+func TestUsageLineNamesTheVerbsOwnEntry(t *testing.T) {
+	t.Parallel()
+	for verb, want := range map[string]string{
+		"fetch":           "usage: verdict fetch <owner/repo> <pr> ",
+		"threads resolve": "usage: verdict threads resolve <owner/repo> <pr> ",
+		"nosuchverb":      "usage: verdict nosuchverb <owner/repo> <pr> [opts]",
+	} {
+		if got := usageLine(verb); !strings.HasPrefix(got, want) || strings.Contains(got, "\n") {
+			t.Errorf("usageLine(%q) = %q, want one line starting %q", verb, got, want)
+		}
 	}
 }
 
@@ -209,7 +267,7 @@ func TestNoJSONShapesTheTargetRefusal(t *testing.T) {
 	targetCheckout(t, false)
 	t.Setenv("REVIEW_OUTPUT_FORMAT", "json")
 	code, out, derr := runCapture(t, []string{"report", "--no-json"})
-	if code != cli.ExitRefused || out != "" || !strings.Contains(derr, "error: ") {
+	if code != cli.ExitUsage || out != "" || !strings.Contains(derr, "error: ") {
 		t.Fatalf("exit %d\nstdout: %q\nstderr: %s", code, out, derr)
 	}
 }
@@ -221,5 +279,39 @@ func TestNoJSONKeepsTheTargetEcho(t *testing.T) {
 	_, _, derr := runCapture(t, []string{"report", "--no-json"})
 	if !strings.Contains(derr, "target: acme/app#12") {
 		t.Fatalf("the echo was suppressed by the env's JSON default:\n%s", derr)
+	}
+}
+
+// TestTalksToHost pins which verbs may ask the host for a branch's pull
+// request: only those that already read it, and drain only with --post.
+func TestTalksToHost(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		verb string
+		rest []string
+		want bool
+	}{
+		{"fetch", nil, true},
+		{"pr-wait", nil, true},
+		{"ready", nil, true},
+		{"threads", nil, true},
+		{"threads resolve", []string{"--dry-run"}, true},
+		{"drain", nil, false},
+		{"drain", []string{"--agent", "claude"}, false},
+		{"drain", []string{"--post"}, true},
+		{"drain", []string{"--", "--post"}, false},
+		{"report", nil, false},
+		{"show", nil, false},
+		{"next", nil, false},
+		{"risk", nil, false},
+		{"trend", nil, false},
+		{"gate", nil, false},
+		{"handoff", nil, false},
+		{"journal", nil, false},
+		{"calibrate", nil, false},
+	} {
+		if got := talksToHost(tc.verb, tc.rest); got != tc.want {
+			t.Errorf("talksToHost(%q, %v) = %v, want %v", tc.verb, tc.rest, got, tc.want)
+		}
 	}
 }
