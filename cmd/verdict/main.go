@@ -474,7 +474,7 @@ func dispatchStoreVerbs(
 	case "fix":
 		return fix.Run(ctx, r, rest, req), true
 	case "learn":
-		return learn.Run(ctx, r, rest, repoRoot), true
+		return learn.Run(ctx, r, rest, req), true
 	case "verify":
 		return verify.Run(ctx, r, rest, req), true
 	default:
