@@ -49,15 +49,6 @@ const GATE_PATHS = [
     call: (bin, env) => run("gate", [], { bin, stderr: "pipe", env }),
   },
   {
-    label: "report(... --check)",
-    verb: "report",
-    call: (bin, env) =>
-      createClient({ bin, stderr: "pipe" }).report(
-        ["acme/app", "4243", "--check"],
-        { env },
-      ),
-  },
-  {
     label: "gate(...)",
     verb: "gate",
     call: (bin, env) =>
@@ -1184,26 +1175,28 @@ describe("integration: real binary", () => {
   );
 
   it(
-    "report --check gate failure carries the success-shaped envelope",
+    "gate failure carries the success-shaped envelope",
     { skip: !haveBinary },
     async () => {
       const dir = mkBundle(4243);
       writeFindings(dir, 4243);
       const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
       await assert.rejects(
-        client.report([
+        client.gate([
           "acme/app",
           "4243",
-          "--check",
+          "--max-severity",
           "informational",
           "--live",
           "skip",
+          "--coverage",
+          "warn",
         ]),
         (error) => {
           assert.ok(error instanceof VerdictGateError, error.name);
-          assert.equal(error.envelope.verb, "report");
+          assert.equal(error.envelope.verb, "gate");
           assert.equal(error.envelope.error, null);
-          assert.equal(error.data.gate?.passed, false);
+          assert.equal(error.data.passed, false);
           assert.equal(typeof error.next, "string");
           assert.ok(Array.isArray(error.warnings));
           return true;

@@ -117,10 +117,10 @@ if [ "$(jq -r '.data.items | length' <"$EVAL_OUT")" = "1" ] \
 else
   bad "report --category security items: $(jq -c '.data.items | map(.sig)' <"$EVAL_OUT")"
 fi
-run_review report acme/app "$PR" --check critical --category security --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --category security --coverage warn --live skip --json
 assert_exit "gate on the security critical exits 1" 1
 assert_file_grep "gate failure names the category" "$EVAL_ERR" "in security"
-run_review report acme/app "$PR" --check critical --category style --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --category style --coverage warn --live skip --json
 assert_exit "gate on style passes (no critical style finding)" 0
 run_review report acme/app "$PR" --category nope --json
 assert_exit "report --category nope exits 2" 2

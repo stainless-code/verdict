@@ -242,8 +242,8 @@ run_review risk acme/app --limit 201
 assert_exit "out-of-range --limit returns exit 2" 2
 run_review risk acme/app 13
 assert_exit "a second positional returns exit 2" 2
-assert_file_grep "the second positional points at report --max-risk" "$EVAL_ERR" \
-  'gating one bundle is verdict report acme/app 13 --max-risk <band>'
+assert_file_grep "the second positional points at gate --max-risk" "$EVAL_ERR" \
+  'gating one bundle is verdict gate acme/app 13 --max-risk <band>'
 run_review risk
 assert_exit "a bare risk returns exit 2" 2
 assert_file_grep "the usage lists the queue's flags" "$EVAL_ERR" \

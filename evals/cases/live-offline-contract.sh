@@ -55,15 +55,19 @@ live_mk_post "$PR" "$HEAD_A"
 set_mode unreachable
 before_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 m="$(mark)"
-run_review report acme/app "$PR" --check critical --completeness --live strict
+run_review gate acme/app "$PR" --max-severity critical --require-head --live strict --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "strict unreachable on a clean bundle exits 1 (never 3)"
 else
   bad "strict unreachable clean exits $EVAL_STATUS, want 1"
 fi
-assert_file_grep "fail-closed line is typed" "$EVAL_ERR" "^check: live thread recheck unreachable"
+assert_file_grep "fail-closed line is typed" "$EVAL_ERR" "^gate: live_threads *unknown"
 assert_file_grep "fail-closed line names the posture" "$EVAL_ERR" "offline posture is strict"
-assert_file_grep "fail-closed line names the recovery" "$EVAL_ERR" "\-\-live skip"
+if jq -e '.next | contains("--live skip")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "fail-closed next action names the recovery"
+else
+  bad "fail-closed next: $(jq -c '.next' <"$EVAL_OUT" 2>/dev/null)"
+fi
 assert_stream_nogrep "fail-closed line carries no live verdict" "$EVAL_ERR" "live open"
 if grep -q "live thread recheck unreachable" "$EVAL_ERR"; then
   good "strict unreachable still warns on stderr"
@@ -81,7 +85,7 @@ if [ "$before_hash" = "$after_hash" ]; then
 else
   bad "fail-closed gate moved store bytes"
 fi
-run_review report acme/app "$PR" --check critical --completeness --live strict --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --live strict --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && jq -e '.error == null' <"$EVAL_OUT" >/dev/null 2>&1 \
   && jq -e '.warnings | join(" ") | contains("offline posture is strict")' <"$EVAL_OUT" >/dev/null 2>&1; then
@@ -94,14 +98,14 @@ PR=4372
 eval_mk_bundle "$PR"
 printf '%s' "$CRIT_FINDING" | eval_write_findings "$PR"
 set_mode unreachable
-run_review report acme/app "$PR" --check critical --live strict
+run_review gate acme/app "$PR" --max-severity critical --live strict --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "strict unreachable on a tier-dirty bundle exits 1"
 else
   bad "strict unreachable dirty exits $EVAL_STATUS, want 1"
 fi
-if grep -q "at-or-above critical — gate fails" "$EVAL_ERR" \
-  && grep -q "^check: live thread recheck unreachable" "$EVAL_ERR"; then
+if grep -qE "^gate: findings +fail" "$EVAL_ERR" \
+  && grep -qE "^gate: live_threads +unknown" "$EVAL_ERR"; then
   good "tier fail line and live fail-closed line coexist"
 else
   bad "strict dirty stderr: $(head -c 300 "$EVAL_ERR")"
@@ -112,13 +116,13 @@ eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode clear
-run_review report acme/app "$PR" --check critical --completeness --live strict
+run_review gate acme/app "$PR" --max-severity critical --require-head --live strict --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "strict with a reachable clear lookup exits 0"
 else
   bad "strict reachable exits $EVAL_STATUS, want 0"
 fi
-if grep -q "0 live open" "$EVAL_ERR" && grep -q "live recheck passes" "$EVAL_ERR"; then
+if grep -q "0 live open" "$EVAL_ERR" && grep -qE "^gate: live_threads +pass" "$EVAL_ERR"; then
   good "strict prints the same live pass line as auto"
 else
   bad "strict reachable stderr: $(head -c 300 "$EVAL_ERR")"
@@ -135,14 +139,14 @@ jq -n --arg h "$HEAD_D" --argjson e "$(eval_evidence_receipt "$EVAL_SANDBOX/.ver
   > "$EVAL_SANDBOX/.verdict/state/local-offlinec/post.json"
 set_mode unreachable
 m="$(mark)"
-run_review report acme/app offlinec --check critical --completeness --live strict
+run_review gate acme/app offlinec --max-severity critical --require-head --live strict --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "strict on a local bundle stays neutral (exit 0)"
 else
   bad "strict local exits $EVAL_STATUS, want 0"
 fi
-assert_file_grep "local skip notes the structural skip on the human stream" "$EVAL_OUT" "info: live recheck skipped"
-assert_stream_nogrep "local skip adds no structural warning" "$EVAL_ERR" "live recheck skipped"
+assert_file_grep "local skip notes the structural skip on the human stream" "$EVAL_ERR" "^gate: live_threads *skip"
+assert_stream_nogrep "local skip adds no structural warning" "$EVAL_ERR" "warn: live recheck skipped"
 assert_stream_nogrep "local skip prints no fail-closed line" "$EVAL_ERR" "offline posture is strict"
 assert_eq "local skip pays zero graphql calls" "0" "$(graphql_since "$m")"
 
@@ -152,17 +156,17 @@ printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode open
 m="$(mark)"
-run_review report acme/app "$PR" --check critical --completeness --live skip
+run_review gate acme/app "$PR" --max-severity critical --require-head --live skip --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "--live skip exits 0 where auto would fail on the extra live open"
 else
   bad "--live skip exits $EVAL_STATUS, want 0"
 fi
 assert_file_grep "skip warns loudly" "$EVAL_ERR" "live recheck skipped (--live skip"
-assert_file_grep "skip prints a neutral skipped check: line" "$EVAL_ERR" "^check: live recheck skipped (--live skip)"
+assert_file_grep "skip prints a neutral skipped dimension line" "$EVAL_ERR" "^gate: live_threads *skip"
 assert_stream_nogrep "skip prints no live verdict" "$EVAL_ERR" "live open"
 assert_eq "skip pays zero graphql calls" "0" "$(graphql_since "$m")"
-run_review report acme/app "$PR" --check critical --completeness
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "same bundle without --live skip still fails (the skip is opt-in only)"
 else
@@ -170,9 +174,9 @@ else
 fi
 
 set_mode open
-run_review report acme/app "$PR" --check critical --completeness --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --live skip --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.error == null and .warnings == ["patch identity unavailable — completeness compares heads","live recheck skipped (--live skip requested — gating on local dimensions only)"]' <"$EVAL_OUT" >/dev/null 2>&1; then
+  && jq -e '.error == null and (.warnings | map(select(startswith("coverage: ") | not))) == ["patch identity unavailable — completeness compares heads","live recheck skipped (--live skip requested — gating on local dimensions only)"]' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "skip --json keeps the success shape with the skip in warnings[]"
 else
   bad "skip --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"
@@ -183,7 +187,7 @@ eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode unreachable
-run_review report acme/app "$PR" --check critical --completeness --live auto
+run_review gate acme/app "$PR" --max-severity critical --require-head --live auto --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "explicit --live auto exits 0 on unreachable (fail-open, like default)"
 else
@@ -192,7 +196,7 @@ fi
 assert_file_grep "explicit auto warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
 assert_stream_nogrep "explicit auto prints no live verdict" "$EVAL_ERR" "live open"
 
-run_review report acme/app "$PR" --check critical --live bogus
+run_review gate acme/app "$PR" --max-severity critical --live bogus --coverage warn --json
 if [ "$EVAL_STATUS" -eq 2 ] && grep -q "unknown --live posture 'bogus'" "$EVAL_ERR"; then
   good "unknown --live value refuses typed with exit 2"
 else
@@ -205,12 +209,16 @@ printf '[]' | eval_write_findings "$PR"
 set_mode clear
 m="$(mark)"
 run_review report acme/app "$PR" --live strict
-if [ "$EVAL_STATUS" -eq 0 ]; then
-  good "advisory run with --live exits 0"
+if [ "$EVAL_STATUS" -eq 2 ]; then
+  good "--live is a gate posture, so report refuses it (usage exit 2)"
 else
-  bad "advisory --live exits $EVAL_STATUS, want 0"
+  bad "report --live exits $EVAL_STATUS, want 2"
 fi
-assert_stream_nogrep "advisory --live prints no check: line" "$EVAL_ERR" "check:"
-assert_eq "advisory --live makes zero calls" "0" "$(graphql_since "$m")"
+assert_file_grep "report --live is an unknown flag" "$EVAL_ERR" "unknown flag '--live' for report"
+assert_eq "the refusal makes zero calls" "0" "$(graphql_since "$m")"
+run_review gate acme/app "$PR" --live strict
+assert_exit "gate takes --live only beside a dimension" 2
+assert_file_grep "a bare --live is not a dimension" "$EVAL_ERR" "gate needs at least one dimension"
+assert_eq "the usage refusal makes zero calls" "0" "$(graphql_since "$m")"
 
 eval_end

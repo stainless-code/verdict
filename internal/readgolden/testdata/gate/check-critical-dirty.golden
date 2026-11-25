@@ -1,0 +1,15 @@
+exit: 1
+--- stdout ---
+gate: findings     fail  1 open finding(s) at-or-above critical
+gate: coverage     skip  stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)
+gate: live_threads skip  live thread recheck unreachable — gating on local dimensions only
+gate: spec         pass  no violated spec check
+gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]
+gate: FAIL (1 fail, 1 unknown, 1 pass, 2 skip)
+gate: skipped coverage, live_threads
+try: address or triage the open findings, then record an evidence receipt for the fetched HEAD (verdict record), then re-run gate
+--- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
+warn: coverage: stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)
+--- files ---

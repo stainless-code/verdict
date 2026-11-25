@@ -353,14 +353,18 @@ export async function typeChecks(): Promise<void> {
 
   // A gate failure carries the success-shaped envelope: the profile stays
   // typed, so the failing dimensions are readable without a cast.
-  function onGateError(error: VerdictGateError<ReportData>): string {
+  function onGateError(error: VerdictGateError<DataFor["gate"]>): string {
     const verb: string = error.envelope.verb;
     const next: string = error.next;
     const warnings: string[] = error.warnings;
-    const open: number = error.data.verdict.open;
+    const passed: boolean = error.data.passed;
+    const failing: string[] = error.data.dimensions
+      .filter((dim) => dim.status === "fail")
+      .map((dim) => dim.id);
     void next;
     void warnings;
-    void open;
+    void passed;
+    void failing;
     return verb;
   }
   void onGateError;

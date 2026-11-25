@@ -122,7 +122,7 @@ func parseStatus(r *cli.Runner, args []string, i int) (string, int, int, bool) {
 func operandUsage(repo, arg string) *cli.UsageError {
 	if !strings.HasPrefix(arg, "-") {
 		return &cli.UsageError{Message: fmt.Sprintf(
-			"risk takes one <owner/repo>; gating one bundle is verdict report %s %s --max-risk <band>",
+			"risk takes one <owner/repo>; gating one bundle is verdict gate %s %s --max-risk <band>",
 			repo, arg)}
 	}
 	return &cli.UsageError{Message: fmt.Sprintf(

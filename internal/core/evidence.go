@@ -20,7 +20,7 @@ const (
 
 // EvidenceReceipt is the deterministic evidence verification summary stored
 // on record.json and record --json data. Head and DiffSHA256 pin the bundle
-// bytes the check read so report --check can detect stale receipts.
+// bytes the check read so gate can detect stale receipts.
 type EvidenceReceipt struct { //nolint:govet // field order is the published property order
 	Head         string           `json:"head"`
 	DiffSHA256   string           `json:"diff_sha256"`

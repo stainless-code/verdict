@@ -311,9 +311,9 @@ mk_posted 4428 "$HEADA" "$(real_patch 4428)"
 # The reviewed head moved with the patch, so the bundle needs the receipt for
 # the head it holds: a gate mode grades the receipt, not the patch alone.
 eval_write_record_evidence 4428
-run_review report acme/app 4428 --completeness
+run_review gate acme/app 4428 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "same patch reviewed at ${HEADB:0:7} (posted ${HEADA:0:7})" "$EVAL_ERR"; then
-  good "report --completeness passes a rebase with the same patch"
+  good "gate --require-head passes a rebase with the same patch"
 else
   bad "same-patch completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
@@ -324,9 +324,9 @@ printf '[]' | eval_write_findings 4429
 mk_variant 4429
 mk_identity 4429 "$HEADB"
 mk_posted 4429 "$HEADA" "$(real_patch 4428)"
-run_review report acme/app 4429 --completeness
+run_review gate acme/app 4429 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
-  good "report --completeness still fails for a different patch"
+  good "gate --require-head still fails for a different patch"
 else
   bad "different-patch completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
@@ -338,7 +338,7 @@ printf '[]' | eval_write_findings 4433
 mk_identity 4433 "$HEADB"
 mk_posted 4433 "$HEADA" "$(real_patch 4433)"
 printf 'stale bytes\n' > "$EVAL_SANDBOX/.verdict/state/4433/full.diff"
-run_review report acme/app 4433 --completeness
+run_review gate acme/app 4433 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
   good "stale bundle bytes never relax completeness"
 else
@@ -353,7 +353,7 @@ mk_identity 4434 "$HEADB"
 jq --arg p "not-a-patch-id" '.patch_id = $p' "$EVAL_SANDBOX/.verdict/state/4434/identity.json" > "$EVAL_SANDBOX/.verdict/state/4434/identity.json.new"
 mv "$EVAL_SANDBOX/.verdict/state/4434/identity.json.new" "$EVAL_SANDBOX/.verdict/state/4434/identity.json"
 mk_posted 4434 "$HEADA" "not-a-patch-id"
-run_review report acme/app 4434 --completeness
+run_review gate acme/app 4434 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
   good "an invalid patch id warns and falls back to heads"
 else
@@ -367,8 +367,8 @@ printf '[]' | eval_write_findings 4435
 mk_identity 4435 "$HEADB"
 jq -n --arg p "$(real_patch 4435)" '{patch_id:$p,patch_id_kind:"git-patch-id"}' \
   > "$EVAL_SANDBOX/.verdict/state/4435/post.json"
-run_review report acme/app 4435 --completeness
-if [ "$EVAL_STATUS" -ne 0 ] && grep -q "incomplete" "$EVAL_ERR"; then
+run_review gate acme/app 4435 --require-head --coverage warn --json
+if [ "$EVAL_STATUS" -ne 0 ] && grep -qE "gate: head +(fail|unknown)" "$EVAL_ERR"; then
   good "a two-field post stub proves no publication"
 else
   bad "stub-receipt completeness gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
@@ -382,7 +382,7 @@ mk_identity 4436 "$HEADB"
 mk_posted 4436 "$HEADA" "$(real_patch 4436)"
 rm "$EVAL_SANDBOX/.verdict/state/4436/full.raw.diff"
 mkdir "$EVAL_SANDBOX/.verdict/state/4436/full.raw.diff"
-run_review report acme/app 4436 --completeness
+run_review gate acme/app 4436 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
   good "an unreadable raw diff invalidates verification"
 else
@@ -401,7 +401,7 @@ mv "$EVAL_SANDBOX/.verdict/state/4437/identity.json.new" "$EVAL_SANDBOX/.verdict
 jq --arg p "1111111111111111111111111111111111111111" '.patch_id = $p' \
   "$EVAL_SANDBOX/.verdict/state/4437/post.json" > "$EVAL_SANDBOX/.verdict/state/4437/post.json.new"
 mv "$EVAL_SANDBOX/.verdict/state/4437/post.json.new" "$EVAL_SANDBOX/.verdict/state/4437/post.json"
-run_review report acme/app 4437 --completeness
+run_review gate acme/app 4437 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "patch identity unavailable" "$EVAL_ERR"; then
   good "a tampered valid-hex claim never relaxes completeness"
 else
@@ -416,7 +416,7 @@ mk_identity 4438 "$HEADB"
 jq -n --arg h "$HEADA" --arg p "$(real_patch 4438)" \
   '{schema_version:"1",review:{},head:$h,posted_at:"2026-01-01T00:00:00Z",patch_id:$p,patch_id_kind:"git-patch-id"}' \
   > "$EVAL_SANDBOX/.verdict/state/4438/post.json"
-run_review report acme/app 4438 --completeness
+run_review gate acme/app 4438 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
   good "an empty review object proves no publication"
 else
@@ -431,7 +431,7 @@ mk_identity 4439 "$HEADB"
 jq -n --arg p "$(real_patch 4439)" \
   '{schema_version:"1",review:{},head:"not-a-head",posted_at:"not-a-time",patch_id:$p,patch_id_kind:"git-patch-id"}' \
   > "$EVAL_SANDBOX/.verdict/state/4439/post.json"
-run_review report acme/app 4439 --completeness
+run_review gate acme/app 4439 --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && grep -q "stale-head" "$EVAL_ERR"; then
   good "invalid head/time metadata proves no publication"
 else

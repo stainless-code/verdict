@@ -5,7 +5,7 @@ import Inline from "./Inline.astro";
  * A terminal frame around output the binary actually printed. Lines hold
  * plain text, so the block reads the same without colour, and they wrap
  * instead of scrolling sideways. Each word is its own box, so a wrap lands
- * between words, never inside `--check` or `local-work`. An elided stretch
+ * between words, never inside `--max-severity` or `local-work`. An elided stretch
  * is a `gap` line, which renders as `⋯`; nothing else in here is edited.
  *
  * The run behind the homepage sample is recorded in `docs/landing-claims.md`.

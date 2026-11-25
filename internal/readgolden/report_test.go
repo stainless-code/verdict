@@ -121,8 +121,7 @@ func TestReportGolden(t *testing.T) {
 		kitchenSink(t, dir, "5101")
 	}
 	goArgs = splitRepo("report", "5101",
-		"--cost", "--completeness", "--check", "important",
-		"--output", "out.md", "--sarif", "out.sarif", "--json")
+		"--cost", "--output", "out.md", "--sarif", "out.sarif", "--json")
 	goldenRead(t, "report/kitchen-sink", chunked, nil,
 		allowKeys("C/out.md", "C/out.sarif"), goArgs...)
 
@@ -153,10 +152,10 @@ func TestReportGolden(t *testing.T) {
 				finding(sigCrit, "open", "critical", "walked", "inline")),
 		})
 	}
-	goArgs = splitRepo("report", "5101", "--check", "critical")
-	goldenRead(t, "report/check-critical-dirty", dirty, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5101", "--max-severity", "critical", "--coverage", "warn")
+	goldenRead(t, "gate/check-critical-dirty", dirty, nil, nil, goArgs...)
 
-	// A lone below-tier open finding still passes --check critical (the
+	// A lone below-tier open finding still passes --max-severity critical (the
 	// comparison key is the whole-store open count, and the tier gate is
 	// quiet).
 	infoOnly := func(t *testing.T, dir, _ string) {
@@ -169,9 +168,9 @@ func TestReportGolden(t *testing.T) {
 			".verdict/state/5102/record.json": evidenceRecordDoc(),
 		})
 	}
-	goArgs = splitRepo("report", "5102",
-		"--check", "critical", "--completeness")
-	goldenRead(t, "report/check-critical-pass", infoOnly, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102",
+		"--max-severity", "critical", "--require-head", "--coverage", "warn")
+	goldenRead(t, "gate/check-critical-pass", infoOnly, nil, nil, goArgs...)
 
 	stale := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -182,8 +181,8 @@ func TestReportGolden(t *testing.T) {
 			".verdict/state/5102/post.json": postDoc(headC, 7),
 		})
 	}
-	goArgs = splitRepo("report", "5102", "--completeness")
-	goldenRead(t, "report/completeness-stale", stale, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102", "--require-head", "--coverage", "warn")
+	goldenRead(t, "gate/completeness-stale", stale, nil, nil, goArgs...)
 
 	noPost := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -193,22 +192,22 @@ func TestReportGolden(t *testing.T) {
 				finding(sigInfo, "open", "informational", "said", "inline")),
 		})
 	}
-	goArgs = splitRepo("report", "5102",
-		"--completeness", "--json")
-	goldenRead(t, "report/completeness-missing", noPost, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102",
+		"--require-head", "--coverage", "warn", "--json")
+	goldenRead(t, "gate/completeness-missing", noPost, nil, nil, goArgs...)
 
 	// Live-thread legs run against the network-dead harness stub: skip
 	// warns neutral, strict fails closed, auto stays neutral.
-	goArgs = splitRepo("report", "5102",
-		"--check", "critical", "--live", "skip")
-	goldenRead(t, "report/live-skip", infoOnly, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102",
+		"--max-severity", "critical", "--coverage", "warn", "--live", "skip")
+	goldenRead(t, "gate/live-skip", infoOnly, nil, nil, goArgs...)
 
-	goArgs = splitRepo("report", "5102",
-		"--check", "critical", "--live", "strict")
-	goldenRead(t, "report/live-strict-unreachable", infoOnly, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102",
+		"--max-severity", "critical", "--coverage", "warn", "--live", "strict")
+	goldenRead(t, "gate/live-strict-unreachable", infoOnly, nil, nil, goArgs...)
 
-	goArgs = splitRepo("report", "5102", "--check", "critical")
-	goldenRead(t, "report/live-auto-unreachable", infoOnly, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "5102", "--max-severity", "critical", "--coverage", "warn")
+	goldenRead(t, "gate/live-auto-unreachable", infoOnly, nil, nil, goArgs...)
 
 	local := func(t *testing.T, dir, _ string) {
 		t.Helper()
@@ -221,9 +220,9 @@ func TestReportGolden(t *testing.T) {
 	goArgs = splitRepo("report", "local-work")
 	goldenRead(t, "report/local-human", local, nil, nil, goArgs...)
 
-	goArgs = splitRepo("report", "local-work",
-		"--check", "critical", "--json")
-	goldenRead(t, "report/local-check-json", local, nil, nil, goArgs...)
+	goArgs = splitRepo("gate", "local-work",
+		"--max-severity", "critical", "--coverage", "warn", "--json")
+	goldenRead(t, "gate/local-check-json", local, nil, nil, goArgs...)
 }
 
 // corruptDocs maps refusal-leg names to findings.json payloads (the empty

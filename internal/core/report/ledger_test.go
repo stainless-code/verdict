@@ -60,9 +60,7 @@ func TestReportNeverRecordsCheckOutcomes(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	if resp.Data.Completeness == nil || !resp.Data.Completeness.Reviewed {
-		t.Fatalf("completeness = %+v, want the completed-post dimension to pass", resp.Data.Completeness)
-	}
+	requireDims(t, resp, wantDim{id: "head", status: "pass"})
 	rs, found, serr := config.ReadRunState(".verdict/state/5101")
 	if serr != nil || !found {
 		t.Fatalf("ReadRunState: found=%v err=%v", found, serr)

@@ -87,8 +87,8 @@ travels; `said`-only findings ship labeled `unproven` or die in triage. Nothing
 posts as fact that was never shown.
 
 **Severity tier.** A finding's next-action rank — `critical`, `important`, or
-`informational` — stored at write time, never parsed from prose. `report
---check <tier>` gates on open findings at or above that tier; untagged findings
+`informational` — stored at write time, never parsed from prose. `gate
+--max-severity <tier>` gates on open findings at or above that tier; untagged findings
 never meet a tier.
 
 **Stored precision.** The `serve` view that joins findings to `threads.json`.

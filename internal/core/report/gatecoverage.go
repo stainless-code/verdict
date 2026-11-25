@@ -27,8 +27,6 @@ const (
 	fieldTotal      = "total"
 	fieldExempt     = "exempt"
 	fieldGaps       = "gaps"
-	coverageOK      = " — coverage passes"
-	coverageFail    = " — coverage fails"
 	coverageAdvise  = " — coverage is advisory (--coverage warn)"
 	// fullPercent is a fully attested measurement; the evaluator shares the
 	// denominator.
@@ -151,35 +149,26 @@ func coverageIdentity(st *state) string {
 // gated head, complete or not. The posture decides what a shortfall costs —
 // `require` (the default) fails the gate, `warn` prints one warning and leaves
 // the dimension neutral so it can never fail the gate.
-func gateCoverageCheck(st *state) gateCheck {
+func gateCoverageCheck(st *state) core.GateDimension {
 	status, detail, count := coverageVerdict(st, readStoredCoverage(st.dir, coverageIdentity(st)))
 	if status == dimFail || status == dimUnknown {
 		return coveragePosture(st, status, detail, count)
 	}
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimCoverage, Status: status, Count: count, Detail: detail},
-		line: checkPrefix + detail + coverageOK,
-	}
+	return core.GateDimension{ID: dimCoverage, Status: status, Count: count, Detail: detail}
 }
 
 // coveragePosture applies --coverage to a shortfall: require keeps the failing
 // verdict, warn downgrades it to a neutral skip with one warning line naming
 // the same detail, so an advisory posture never reads as a clean pass.
-func coveragePosture(st *state, status, detail string, count *int) gateCheck {
+func coveragePosture(st *state, status, detail string, count *int) core.GateDimension {
 	if st.flags.Coverage == coverageWarn {
 		st.warn("coverage: " + detail + coverageAdvise)
-		return gateCheck{
-			dim: core.GateDimension{
-				ID: dimCoverage, Status: dimSkip, Count: count,
-				Detail: detail + coverageAdvise,
-			},
-			line: checkPrefix + detail + coverageAdvise,
+		return core.GateDimension{
+			ID: dimCoverage, Status: dimSkip, Count: count,
+			Detail: detail + coverageAdvise,
 		}
 	}
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimCoverage, Status: status, Count: count, Detail: detail},
-		line: checkPrefix + detail + coverageFail,
-	}
+	return core.GateDimension{ID: dimCoverage, Status: status, Count: count, Detail: detail}
 }
 
 // coverageVerdict maps the stored receipt to one verdict, its human detail,

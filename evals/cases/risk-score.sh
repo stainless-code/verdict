@@ -26,9 +26,10 @@ assert_exit "report --risk succeeds on unassessed bundle" 0
 assert_json_field "unassessed claimed is unknown" "unknown" '.data.risk.claimed'
 assert_json_field "unassessed floor is low" "low" '.data.risk.floor'
 assert_json_field "unassessed reported stays unknown" "unknown" '.data.risk.reported'
-run_review report acme/app local-unassessed --max-risk critical --json
-assert_exit "--max-risk fails closed on unknown risk" 1
-assert_json_field "unknown risk gate reason" "risk-unknown" '.data.risk.gate_reason'
+run_review gate acme/app local-unassessed --max-risk critical --coverage warn --live skip --json
+assert_exit "gate --max-risk fails closed on unknown risk" 1
+assert_json_field "unknown risk dimension" "unknown" '.data.dimensions[] | select(.id == "risk") | .status'
+assert_file_grep "unknown risk gate reason" "$EVAL_OUT" 'risk-unknown'
 
 # 2) Valid low-risk claim + complete coverage passes --max-risk low.
 eval_mk_bundle local-low
@@ -54,9 +55,9 @@ assert_exit "report --risk succeeds on low bundle" 0
 assert_json_field "low claimed" "low" '.data.risk.claimed'
 assert_json_field "low floor" "low" '.data.risk.floor'
 assert_json_field "low reported" "low" '.data.risk.reported'
-run_review report acme/app local-low --max-risk low --json
-assert_exit "--max-risk low passes when reported=low" 0
-assert_json_field "low max-risk exceeded is false" "false" '.data.risk.exceeded'
+run_review gate acme/app local-low --max-risk low --coverage warn --live skip --json
+assert_exit "gate --max-risk low passes when reported=low" 0
+assert_json_field "low risk dimension passes" "pass" '.data.dimensions[] | select(.id == "risk") | .status'
 
 # 3) Optimistic low claim overridden by open critical finding -> critical, exits 1 under --max-risk high.
 eval_mk_bundle local-overridden
@@ -91,15 +92,19 @@ assert_json_field "overridden keeps claimed low" "low" '.data.risk.claimed'
 assert_json_field "overridden raises floor to critical" "critical" '.data.risk.floor'
 assert_json_field "overridden reports critical" "critical" '.data.risk.reported'
 assert_json_field "overridden counts open_critical=1" "1" '.data.risk.inputs.open_critical'
-run_review report acme/app local-overridden --max-risk high --json
-assert_exit "--max-risk high fails on critical floor" 1
-assert_json_field "exceeded gate reason" "risk-exceeded" '.data.risk.gate_reason'
+run_review gate acme/app local-overridden --max-risk high --coverage warn --live skip --json
+assert_exit "gate --max-risk high fails on critical floor" 1
+assert_json_field "exceeded risk dimension" "fail" '.data.dimensions[] | select(.id == "risk") | .status'
+assert_file_grep "exceeded gate reason" "$EVAL_OUT" 'risk-exceeded'
 
 # 4) Usage error (exit 2) for invalid --max-risk and tool error (exit 3) for missing store.
-run_review report acme/app local-low --max-risk extreme
+run_review gate acme/app local-low --max-risk extreme
 assert_exit "invalid --max-risk returns exit 2" 2
-run_review report acme/app local-does-not-exist --max-risk low
+run_review gate acme/app local-does-not-exist --max-risk low --coverage warn --live skip
 assert_exit "missing bundle with --max-risk returns exit 3" 3
+run_review report acme/app local-low --max-risk low
+assert_exit "report --max-risk is not a report flag: usage exit 2" 2
+assert_file_grep "report --max-risk is an unknown flag" "$EVAL_ERR" "unknown flag '--max-risk' for report"
 
 # 5) Trend groups all three bundles into their recomputed risk bands.
 run_review trend acme/app --json
@@ -182,9 +187,9 @@ assert_file_grep "human mode prints the score after the floor inputs" "$EVAL_OUT
 run_review report acme/app local-impact-scored --json
 assert_exit "report without --risk exits 0" 0
 assert_json_field "report without --risk carries no risk block" "false" '.data | has("risk")'
-run_review report acme/app local-impact-scored --max-risk critical --json
-assert_exit "--max-risk still gates on the reported band" 0
-assert_json_field "--max-risk publishes no score" "false" '.data.risk | has("score")'
+run_review gate acme/app local-impact-scored --max-risk critical --coverage warn --live skip --json
+assert_exit "gate --max-risk still gates on the reported band" 0
+assert_json_field "gate publishes no score" "false" '.data | has("risk")'
 
 # 7) No impact.json: reach reads unmeasured at 0 points and the other three
 # components stay measured, so an un-indexed bundle never looks like reach 0.

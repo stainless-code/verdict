@@ -546,7 +546,7 @@ func TestCompareNextIsTheMirroredCommand(t *testing.T) {
 	t.Parallel()
 	dir := compareFixture(t)
 	view := mustCompare(t, newLayer(dir), RootID(mustAbs(t, dir)))
-	want := "verdict report acme/app 1234 --compare local-prior --cost --check critical --live skip --json"
+	want := "verdict report acme/app 1234 --compare local-prior --cost --json"
 	if view.Next != want {
 		t.Errorf("next = %q, want %q", view.Next, want)
 	}

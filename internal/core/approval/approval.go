@@ -15,7 +15,7 @@ import (
 )
 
 // DefaultApprovalTier withholds approval from any open finding at important
-// or above when no stricter policy or --check tier is configured.
+// or above when no stricter policy or gate tier is configured.
 const DefaultApprovalTier = "important"
 
 // Evidence statuses the decision reads. Only an explicit verified stamp

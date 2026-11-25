@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, journalData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, and cost ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, journalData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -657,7 +657,7 @@
       "additionalProperties": true
     },
     "reportData": {
-      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses.",
+      "description": "report --json data: ranked read over the store. cost appears only with --cost and receipt keys only when budget.json parses. report is advisory and carries no gate verdict: gate publishes it.",
       "type": "object",
       "properties": {
         "verification": {
@@ -686,7 +686,6 @@
         "compare": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompare" }]
         },
-        "completeness": { "$ref": "#/$defs/reportCompleteness" },
         "compliance": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompliance" }]
         },
@@ -695,9 +694,6 @@
         },
         "validation": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/validationData" }]
-        },
-        "gate": {
-          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
         },
         "replay": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportReplay" }]
@@ -995,28 +991,6 @@
         "unknown_count": { "type": "integer" }
       },
       "required": ["month", "known_count", "unknown_count"],
-      "additionalProperties": true
-    },
-    "reportCompleteness": {
-      "type": "object",
-      "properties": {
-        "reviewed": { "type": "boolean" },
-        "fetched_head": { "type": ["string", "null"] },
-        "posted_head": { "type": ["string", "null"] },
-        "same_patch": {
-          "description": "True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id.",
-          "type": ["boolean", "null"]
-        },
-        "reviewed_patch_id": {
-          "description": "Patch id the bundle identity carried at review time; absent when the bundle had no identity.",
-          "type": ["string", "null"]
-        },
-        "posted_patch_id": {
-          "description": "Patch id the completed post receipt carried; absent when the post predates patch identity.",
-          "type": ["string", "null"]
-        }
-      },
-      "required": ["reviewed", "fetched_head", "posted_head"],
       "additionalProperties": true
     },
     "reportCompliance": {
@@ -1476,7 +1450,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check).",
+          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on).",
           "enum": [
             "findings",
             "head",

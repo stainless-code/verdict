@@ -25,7 +25,7 @@ import (
 // field.
 func TestRuntimeReportOutputValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
-	resp := runReportFixture(t)
+	resp := runReportFixture(t, &reportcore.Flags{Cost: true})
 	data := resp.Data.Wire()
 
 	validateWire(t, doc, "$defs.reportData", defOf(t, doc, "reportData"), decodeWire(t, data))
@@ -54,6 +54,58 @@ func TestRuntimeReportOutputValidates(t *testing.T) {
 	}
 }
 
+// TestRuntimeGateOutputValidates proves the gate verdict the service composes
+// validates against the reportGate definition and round-trips through the
+// modeled shape, with the head dimension (the comparison `report
+// --completeness` used to publish) in it. The report data carries neither.
+func TestRuntimeGateOutputValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	resp := runReportFixture(t, &reportcore.Flags{
+		Check: "informational", Completeness: true, Coverage: "warn", Live: "skip",
+	})
+	if resp.Gate == nil {
+		t.Fatal("a gated run carried no gate verdict")
+	}
+	data := resp.Gate.Wire()
+	validateWire(t, doc, "$defs.reportGate", defOf(t, doc, "reportGate"), decodeWire(t, data))
+
+	var modeled ReportGate
+	unmarshalWire(t, data, &modeled)
+	if !reflect.DeepEqual(modeled, *resp.Gate) {
+		t.Errorf("gate = %+v, want %+v", modeled, *resp.Gate)
+	}
+	if head := headDimension(modeled); head == nil || head.Status != "pass" {
+		t.Errorf("head dimension = %+v, want a pass for the matching post", head)
+	}
+	if reportKeys(t, []byte(resp.Data.Wire().MarshalCompact()))["gate"] {
+		t.Error("report data still carries a gate key")
+	}
+}
+
+// headDimension returns the head dimension of a modeled gate, or nil.
+func headDimension(gate ReportGate) *core.GateDimension {
+	for i := range gate.Dimensions {
+		if gate.Dimensions[i].ID == "head" {
+			return &gate.Dimensions[i]
+		}
+	}
+	return nil
+}
+
+// reportKeys lists the top-level keys of one wire object.
+func reportKeys(t *testing.T, wire []byte) map[string]bool {
+	t.Helper()
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(wire, &keys); err != nil {
+		t.Fatalf("decode wire: %v", err)
+	}
+	out := make(map[string]bool, len(keys))
+	for k := range keys {
+		out[k] = true
+	}
+	return out
+}
+
 // TestRuntimeRefusalOutputValidates proves a refusal envelope validates too.
 func TestRuntimeRefusalOutputValidates(t *testing.T) {
 	doc := loadSchemaDocument(t, "envelope.schema.json")
@@ -67,8 +119,9 @@ func TestRuntimeRefusalOutputValidates(t *testing.T) {
 	}
 }
 
-// runReportFixture builds a hermetic bundle and runs the report service.
-func runReportFixture(t *testing.T) *reportcore.Response {
+// runReportFixture builds a hermetic bundle and runs the report service under
+// flags.
+func runReportFixture(t *testing.T, flags *reportcore.Flags) *reportcore.Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -87,7 +140,7 @@ func runReportFixture(t *testing.T) *reportcore.Response {
 	read := core.ReadRequest{Runtime: runtime, Repo: "acme/app", Pr: "5101"}
 	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: read,
-		Flags:       reportcore.Flags{Cost: true, Completeness: true},
+		Flags:       *flags,
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -383,9 +436,6 @@ func compareReportData(t *testing.T, got *core.ReportData, modeled *ReportData) 
 		!reflect.DeepEqual(modeled.Cost.TotalTokens, got.Cost.TotalTokens) ||
 		!reflect.DeepEqual(modeled.Cost.ByTier, got.Cost.ByTier) {
 		t.Errorf("cost = %+v, want %+v", modeled.Cost, got.Cost)
-	}
-	if got.Completeness == nil || !reflect.DeepEqual(modeled.Completeness, *got.Completeness) {
-		t.Errorf("completeness = %+v, want %+v", modeled.Completeness, got.Completeness)
 	}
 }
 
