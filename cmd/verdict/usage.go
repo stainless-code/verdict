@@ -234,37 +234,23 @@ func usageText() string {
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
 		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] [--risk] " +
-		"[--check <critical|important|informational>] [--compare <bundle-dir|pr|slug>] [--completeness] " +
-		"[--max-risk <low|medium|high|critical>] [--policy <path>] " +
-		"[--live auto|strict|skip] [--json]\n" +
-		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
-		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
+		"[--compare <bundle-dir|pr|slug>] [--policy <path>] [--json]\n" +
+		"    pure read over the store: ranked findings + verdict + counts. Advisory only — it touches no\n" +
+		"    network and always exits 0 on a readable store; `gate` is the only verb that gates an exit code.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
 		"    fingerprint) for scanners/CI.\n" +
 		"    --policy replays the store under an alternative policy file: the same findings, recorded\n" +
 		"    checks, and receipts, so only the policy differs. Prints the gate and approval under the\n" +
 		"    captured policy and under the candidate, plus every dimension the candidate added,\n" +
 		"    removed, or moved. Writes no artifact, contacts no host, and exits 0 whatever the\n" +
-		"    candidate decides — so the gate flags and --compare are refused rather than silently\n" +
-		"    swallowed.\n" +
+		"    candidate decides — so --compare is refused rather than silently swallowed.\n" +
 		"    --cost adds spend by effort tier. Captured two-finder runs sum bound phase usage;\n" +
 		"    missing phase tokens or USD stay null (unknown), never zero.\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +
 		"    --risk prints the advisory risk assessment (claimed risk or unknown, deterministic store floor\n" +
-		"    inputs, and reported = max(claimed, floor)).\n" +
-		"    --max-risk <level> gates on reported risk (exits 1 when exceeded or unknown; exit 0 pass,\n" +
-		"    exit 2 usage, exit 3 tool error).\n" +
-		"    Every gate run also carries the evidence dimension: pass needs the receipt\n" +
-		"    recorded for the fetched HEAD, an insufficient receipt fails, and a\n" +
-		"    missing or stale one reads unknown and fails the gate.\n" +
-		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
-		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
-		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
-		"    findings; `--check <tier> --category <cat>` gates only that class (an unknown\n" +
-		"    category is a usage error). Untagged findings never meet a tier; the\n" +
-		"    gate counts open findings only, whatever --status/--kind show. Without\n" +
-		"    --check the run stays advisory: exit 0 with findings listed (typed\n" +
-		"    errors exit 1, usage exits 2).\n" +
+		"    inputs, and reported = max(claimed, floor)). Gate on it with `gate --max-risk <level>`.\n" +
+		"    `--category <cat>` filters the ranked findings (an unknown category is a usage error);\n" +
+		"    the gate counts open findings only, whatever --status/--kind show.\n" +
 		"    --compare groups the same stable finding signatures against a prior bundle (a directory, or\n" +
 		"    a PR/local-<name> in the same state directory) into new, persisting, resolved, and not\n" +
 		"    reviewed. A missing finding reads resolved only when the current bundle proves the reviewer\n" +
@@ -274,23 +260,6 @@ func usageText() string {
 		"    A baseline that is missing, symlinked, corrupt, unrecorded, the same bundle, or from another\n" +
 		"    repository refuses typed (bad-compare, missing/unsafe/corrupt/unrecorded-compare-bundle).\n" +
 		"    Advisory only: it never changes the gate or the exit code.\n" +
-		"    --completeness opts into a second gate dimension answering \"is HEAD\n" +
-		"    reviewed?\" from the local completed-post record (local post-record\n" +
-		"    read): pass iff post.json exists, parses, and carries a non-empty\n" +
-		"    head equal to the bundle's fetched HEAD (PR.json head SHA, else\n" +
-		"    source.json head_sha for local bundles). Alone it gates on HEAD-reviewed\n" +
-		"    only; combined with --check the run fails if tier-hits OR stale/missing\n" +
-		"    post. Every gate run (--check and/or --completeness) ends with a third,\n" +
-		"    network-backed live-thread dimension: more live opens than local opens\n" +
-		"    fails the gate (unreachable lookups warn and stay neutral under auto;\n" +
-		"    local bundles warn-skip with zero network, and strict fails closed). --live selects the\n" +
-		"    offline posture for that dimension: auto (default) keeps today's\n" +
-		"    fail-open behavior; strict fails the gate when the lookup is\n" +
-		"    unreachable; skip pays zero network and gates on local dimensions\n" +
-		"    only, saying so loudly. Gate failure exits 1\n" +
-		"    with a check: line naming the re-fetch command; tool errors keep exit 3.\n" +
-		"    Without a gate flag output and exits are byte-identical to today\n" +
-		"    (--live is only consulted on gate runs).\n" +
 		"  next <owner/repo> <pr> [--status open|--coverage] [--json]\n" +
 		"    top-ranked actionable finding + the command to act on it. Pure read.\n" +
 		"  show <owner/repo> <pr> --sig <sig> [--json]\n" +
@@ -372,17 +341,19 @@ func usageText() string {
 		"    --filter applies the closed trigger in .verdict/config.json at the PR base\n" +
 		"    before any live read: a non-matching PR refuses filtered-out naming the\n" +
 		"    predicate; both outcomes are recorded in the bundle's run.json.\n" +
-		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
+		"  gate <owner/repo> <pr> [--max-severity critical|important|informational [--category <cat>]]\n" +
+		"        [--require-head] [--max-risk low|medium|high|critical]\n" +
 		"        [--live auto|strict|skip] [--coverage require|warn] [--json]\n" +
-		"    one composed local gate over the dimensions report already computes: open\n" +
-		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
+		"    the one gating verb: a composed local gate over the dimensions report computes. Open\n" +
+		"    findings at-or-above a tier (--max-severity, narrowed to one finding kind by --category),\n" +
+		"    a completed post for the fetched HEAD (--require-head), the reported change-risk band\n" +
+		"    (--max-risk), the stored diff-coverage receipt for that HEAD\n" +
 		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
 		"    the captured compliance verdict when the bundle carries a typed policy, the\n" +
 		"    spec checks the stored record graded (always on: a violated check withholds\n" +
 		"    the derived approval, so the gate fails on it), and\n" +
 		"    the evidence receipt for the gated HEAD (always on: no gate passes without it).\n" +
-		"    At least one dimension is required; --live and --coverage alone are not.\n" +
+		"    At least one dimension is required; --live, --coverage, and --category alone are not.\n" +
 		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
 		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
 		"    head, coverage, live_threads, compliance, risk, spec, evidence with id, status,\n" +
@@ -392,7 +363,7 @@ func usageText() string {
 		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +
 		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
-		"    artifacts.\n" +
+		"    artifacts; report never gates.\n" +
 		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
 		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
 		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
@@ -469,7 +440,7 @@ func usageText() string {
 		"    names the merged/closed ones it skipped, --status all keeps everything. A\n" +
 		"    bundle with no findings.json is queued, never dropped; a missing or unusable\n" +
 		"    impact.json reads reach unmeasured with a counted warning. Gating one bundle\n" +
-		"    stays report --max-risk.\n" +
+		"    stays gate --max-risk.\n" +
 		"  handoff <owner/repo> <pr> [--min-severity <s, default important>] [--paths <glob>]...\n" +
 		"        [--format md] [--json]\n" +
 		"    one markdown projection of the open inline findings fix would take (no host\n" +

@@ -152,9 +152,47 @@ func TestGateExitTable(t *testing.T) {
 			subs: []string{"unknown --live posture 'sometimes' for gate"},
 		},
 		{
-			name: "usage-unknown-flag", args: []string{"--max-risk", "high"}, store: "[]",
+			// report's spelling is not gate's: --check is --max-severity here.
+			name: "usage-unknown-flag", args: []string{"--check", "high"}, store: "[]",
 			want: cli.ExitUsage,
-			subs: []string{"unknown flag '--max-risk' for gate"},
+			subs: []string{"unknown flag '--check' for gate"},
+		},
+		{
+			name: "risk-pass", store: "[" + openFinding(gateSigInf, "informational") + "]",
+			args: []string{"--max-risk", "critical", "--live", "skip", "--coverage", "warn"},
+			want: cli.ExitOK,
+			subs: []string{"gate: risk         pass  reported risk medium <= max-risk critical", "gate: PASS"},
+		},
+		{
+			name: "risk-exceeded", store: "[" + openFinding(gateSigInf, "informational") + "]",
+			args: []string{"--max-risk", "low", "--live", "skip", "--coverage", "warn"},
+			want: cli.ExitRefused,
+			subs: []string{
+				"gate: risk         fail  reported risk medium exceeds max-risk low",
+				"try: resolve the open findings that raise the reported risk, or re-record a lower risk claim, then re-run gate",
+			},
+		},
+		{
+			name: "usage-bad-max-risk", args: []string{"--max-risk", "extreme"}, store: "[]",
+			want: cli.ExitUsage,
+			subs: []string{"unknown --max-risk level 'extreme' for gate"},
+		},
+		{
+			name:  "category-narrows-the-tier",
+			store: "[" + openFinding(gateSigImp, "important") + "]",
+			args:  []string{"--max-severity", "important", "--category", "security", "--live", "skip", "--coverage", "warn"},
+			want:  cli.ExitOK,
+			subs:  []string{"gate: PASS"},
+		},
+		{
+			name: "usage-category-alone", args: []string{"--require-head", "--category", "security"}, store: "[]",
+			want: cli.ExitUsage,
+			subs: []string{"--category narrows --max-severity"},
+		},
+		{
+			name: "usage-bad-category", args: []string{"--max-severity", "critical", "--category", "vibes"}, store: "[]",
+			want: cli.ExitUsage,
+			subs: []string{"unknown --category 'vibes' for gate"},
 		},
 		{
 			name: "usage-coverage-is-a-posture", args: []string{"--coverage", "warn"}, store: "[]",
@@ -722,4 +760,43 @@ func coverageDimension(t *testing.T, data map[string]any) map[string]any {
 	}
 	t.Fatalf("no coverage dimension in %v", data["dimensions"])
 	return nil
+}
+
+// TestGateLinesReachStderrInert runs the gate over a bundle whose record
+// carries a violated spec item spelled with an OSC 52 clipboard write, a C1
+// CSI, and a BEL. Under --json the dimension lines ride the production
+// runner's diagnostic stream, which must deliver the item as plain text.
+func TestGateLinesReachStderrInert(t *testing.T) {
+	req := gateBundle(t, "[]")
+	item := `evil\u001b]52;c;cGF5bG9hZA==\u0007item\u009b2J`
+	record := `{"schema_version":"1","status":"pr","head":"` + gateHead + `",` +
+		`"evidence":{"head":"` + gateHead + `","diff_sha256":"` + strings.Repeat("0", 64) + `",` +
+		`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
+		`"spec":{"total":1,"covered":1,"min":80,"met":true},"insufficient":false},` +
+		`"spec_checks":[{"item":"` + item + `","status":"violated",` +
+		`"evidence":{"path":"notes.txt","quote":"the quoted line","line":2}}]}`
+	writeGateFile(t, ".verdict/state/5101/record.json", record)
+	var out, diag bytes.Buffer
+	r := cli.NewRunner("gate", "acme/app", "5101", &out, &diag, func(string) string { return "" })
+	r.Effective = cli.Defaults()
+	r.JSONMode = true
+	code := Run(context.Background(), r, []string{"--max-severity", "critical", "--live", "skip", "--coverage", "warn"}, req)
+	got := diag.String()
+	if code != cli.ExitRefused || !strings.Contains(got, "evil ]52;c;cGF5bG9hZA== item 2J") {
+		t.Fatalf("exit %d, stderr %q; want the gate to fail on the folded spec item", code, got)
+	}
+	if strings.ContainsAny(got, "\x1b\x07\u009b") {
+		t.Fatalf("stderr carries a control byte: %q", got)
+	}
+}
+
+// TestGateMaxRiskMissingStoreIsAToolError proves a bundle with no store exits
+// 3, the tool-error code, rather than reading as a failed gate.
+func TestGateMaxRiskMissingStoreIsAToolError(t *testing.T) {
+	t.Chdir(t.TempDir())
+	code, stdout, stderr := gateRun(t, []string{"--max-risk", "low", "--live", "skip", "--coverage", "warn"},
+		Request{Repo: "acme/app", Pr: "missing-bundle"}, false)
+	if code != cli.ExitBroke {
+		t.Fatalf("exit = %d, want %d\nstdout: %s\nstderr: %s", code, cli.ExitBroke, stdout, stderr)
+	}
 }

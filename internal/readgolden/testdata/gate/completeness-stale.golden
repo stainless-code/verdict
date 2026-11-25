@@ -1,0 +1,17 @@
+exit: 1
+--- stdout ---
+gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head: re-run verdict fetch acme/app 5102 --base-sha ccccccc, then review + post)
+gate: coverage     skip  stored coverage is for HEAD ccccccc, not HEAD aaaaaaa — coverage is advisory (--coverage warn)
+gate: live_threads skip  live thread recheck unreachable — gating on local dimensions only
+gate: spec         pass  no violated spec check
+gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]
+gate: FAIL (1 fail, 1 unknown, 1 pass, 2 skip)
+gate: skipped coverage, live_threads
+try: post a review for the fetched HEAD, then record an evidence receipt for the fetched HEAD (verdict record), then re-run gate
+--- stderr ---
+warn: patch identity unavailable — completeness compares heads
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: evidence: evidence receipt missing for head aaaaaaa [review-insufficient]
+warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
+warn: coverage: stored coverage is for HEAD ccccccc, not HEAD aaaaaaa — coverage is advisory (--coverage warn)
+--- files ---

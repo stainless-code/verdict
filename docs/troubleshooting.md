@@ -1320,7 +1320,7 @@ stale, or unreadable evidence receipt for the decided head, a gating finding
 whose quote is unverified (including a block clause naming one), a missing or
 mismatched changed-hunk receipt, or an unknown, uncovered, or non-code
 specification check. `record` writes the receipt without approval; `run`
-refuses once its repair rounds finish; `report --check` and `gate` fail the
+refuses once its repair rounds finish; `gate` fails the
 `evidence` dimension; `report` withholds `data.approval`; and `post` refuses a
 binding approval with it, even under `--force`.
 

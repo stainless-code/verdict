@@ -40,7 +40,7 @@ _verdict_flags() { # $1 = verb
     fix) printf '%s\n' --sig --all --selected --recipe --min-severity --verify-cmd --paths --test --commit --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
     ready) printf '%s\n' --json --check --filter --wait-for --timeout;;
-    gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
+    gate) printf '%s\n' --max-severity --category --require-head --max-risk --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     acp) printf '%s\n' --root --check --max-bundles --json;;
     dashboard) printf '%s\n' --root --once --width --height --json;;

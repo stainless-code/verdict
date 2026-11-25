@@ -3,29 +3,30 @@ package reportcore
 import "github.com/stainless-code/verdict/internal/core"
 
 // Flags carries the resolved report options: the adapter parses argv
-// and the service receives values only.
+// and the service receives values only. The gating fields (Check, Live,
+// MaxRisk, Completeness, Coverage) are composed by the gate verb alone, so
+// they stay out of the MCP tool schema (`json:"-"`): `report` is the advisory
+// read and cannot fail an exit.
 type Flags struct {
 	// Coverage is the diff-coverage posture: `require` fails the gate on an
 	// absent or partial stored attestation, `warn` reports the same finding
 	// and never fails. Empty means the run does not compose the dimension at
-	// all, which is what keeps `report` advisory. It stays out of the MCP tool
-	// schema (`json:"-"`) for the same reason: gate composes the dimension,
-	// and the MCP report tool is the advisory read.
+	// all, which is what keeps `report` advisory.
 	Coverage string `enum:"require|warn"                                                            json:"-"`
 	Status   string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
 	Kind     string `enum:"all|inline|section"`
 	Category string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
 	Output   string
 	Sarif    string
-	Check    string `enum:"critical|important|informational"`
+	Check    string `enum:"critical|important|informational" json:"-"`
 	// Compare names a baseline bundle to compare the reported one against: a
 	// bundle directory, or a PR/local slug resolved in the same repository
 	// state directory. CompareSet records that a caller named the flag at all,
 	// so an explicit empty value refuses instead of silently disabling the
 	// comparison; it is transport bookkeeping and stays out of the tool schema.
 	Compare string
-	Live    string `enum:"auto|strict|skip"`
-	MaxRisk string `enum:"low|medium|high|critical"`
+	Live    string `enum:"auto|strict|skip"                    json:"-"`
+	MaxRisk string `enum:"low|medium|high|critical"            json:"-"`
 	// Policy names a candidate policy file to replay the store under: the
 	// report derives its gate and approval twice, once under the captured
 	// policy and once under this one, and writes nothing. It stays out of the
@@ -34,7 +35,7 @@ type Flags struct {
 	Policy          string `json:"-"`
 	IncludeWithheld bool
 	Cost            bool
-	Completeness    bool
+	Completeness    bool `json:"-"`
 	Provenance      bool
 	Risk            bool
 	CompareSet      bool `json:"-"`

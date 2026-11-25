@@ -158,7 +158,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	Coverage         *CoverageSummary `anyOf:"null"             json:"coverage,omitempty"       optional:"true"`
 	ChunkCoverage    *ChunkCoverage   `anyOf:"null"             json:"chunk_coverage,omitempty" optional:"true"`
 	// Evidence is the deterministic evidence receipt this post's merge
-	// computed, stored beside the head it was made at so report --check grades
+	// computed, stored beside the head it was made at so gate grades
 	// the same quote, receipt, and spec checks the publication did.
 	Evidence  *EvidenceReceipt `anyOf:"null" json:"evidence,omitempty" optional:"true"`
 	Summary   *PostSummary     `anyOf:"null" json:"summary,omitempty"  optional:"true"`

@@ -53,7 +53,7 @@ func TestCompareParity(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	cli := cliEnvelope(t, root, "report", "acme/app", "1234", "--json",
-		"--cost", "--check", "critical", "--live", "skip", "--compare", "local-1")
+		"--cost", "--compare", "local-1")
 	layer := query.New(query.Snapshot{
 		Version: "1.2.3",
 		Roots:   []query.Root{{Path: root}},
@@ -63,7 +63,7 @@ func TestCompareParity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
-	sameJSON(t, "compare data", cli["data"], wire(t, view.Data))
+	sameJSON(t, "compare data", withoutServedGate(t, cli["data"]), withoutServedGate(t, wire(t, view.Data)))
 }
 
 // TestCompareRoute exercises the new endpoints' security cells and refusals.
@@ -178,7 +178,7 @@ func assertCell(t *testing.T, ts *httptest.Server, method, path string, header m
 // nextCompareCommand is the literal invocation the compare view prints, and the
 // argv the runnability test below executes.
 const nextCompareCommand = "verdict report acme/app 1234 --compare local-1 " +
-	"--cost --check critical --live skip --json"
+	"--cost --json"
 
 // TestCompareNextCommandRuns proves the compare view's next hint is a command
 // that runs: the hint equals one literal line, and that line's argv, executed
@@ -194,8 +194,8 @@ func TestCompareNextCommandRuns(t *testing.T) {
 		t.Fatalf("next = %q, want %q", view.Next, nextCompareCommand)
 	}
 	cli := cliEnvelope(t, root, "report", "acme/app", "1234", "--compare", "local-1",
-		"--cost", "--check", "critical", "--live", "skip", "--json")
-	sameJSON(t, "compare data", cli["data"], wire(t, view.Data))
+		"--cost", "--json")
+	sameJSON(t, "compare data", withoutServedGate(t, cli["data"]), withoutServedGate(t, wire(t, view.Data)))
 }
 
 // TestCopyTriageCommandRuns proves the copied triage command is the one that

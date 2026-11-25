@@ -36,28 +36,28 @@ import (
 const (
 	coverageRequire = "require"
 	coverageWarn    = "warn"
+	codeBadFlags    = "bad-flags"
 )
 
 // ReportRequest carries the report options. Output/Sarif name files whose
-// bytes return in the response instead of being written.
+// bytes return in the response instead of being written. Report is the
+// advisory read: gating belongs to [Client.Gate], the only gating verb.
 type ReportRequest struct {
 	Invocation
-	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
+	Status, Kind, Output, Sarif string
 	// Compare names a baseline bundle (a directory, or a PR/local slug in the
 	// same state directory) to compare signature-matched findings against.
-	Compare                                   string
-	Cost, Completeness, IncludeWithheld, Risk bool
+	Compare                     string
+	Cost, IncludeWithheld, Risk bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
 // requested file bytes.
 type ReportResponse struct { //nolint:govet // field order is the public API surface
 	Result
-	Human      []string
-	CheckLines []string
-	GateFailed bool
-	Output     *Artifact
-	Sarif      *Artifact
+	Human  []string
+	Output *Artifact
+	Sarif  *Artifact
 }
 
 // Report renders the offline review report for the bundle.
@@ -70,10 +70,8 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		ReadRequest: rr,
 		Flags: reportcore.Flags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
-			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
 			Compare: req.Compare,
-			Cost:    req.Cost, Completeness: req.Completeness,
-			IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
+			Cost:    req.Cost, IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
 		},
 		Effective: core.Defaults(),
 	})
@@ -81,12 +79,10 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		return nil, refusalErr(ref)
 	}
 	return &ReportResponse{
-		Result:     resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
-		Human:      resp.Human,
-		CheckLines: resp.CheckLines,
-		GateFailed: resp.GateFailed,
-		Output:     artifactOf(resp.Output),
-		Sarif:      artifactOf(resp.Sarif),
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
+		Human:  resp.Human,
+		Output: artifactOf(resp.Output),
+		Sarif:  artifactOf(resp.Sarif),
 	}, nil
 }
 
@@ -139,6 +135,11 @@ func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigRespons
 type GateRequest struct {
 	Invocation
 	MaxSeverity string
+	// MaxRisk gates on the reported change-risk band (low|medium|high|critical).
+	MaxRisk string
+	// Category narrows the MaxSeverity dimension to one finding kind; it gates
+	// nothing alone, so it needs MaxSeverity.
+	Category    string
 	Live        string
 	Coverage    string
 	RequireHead bool
@@ -162,17 +163,14 @@ type GateResponse struct {
 
 // Gate runs the composed CI gate: findings at-or-above MaxSeverity, a
 // completed post for the fetched HEAD (RequireHead), the stored diff-coverage
-// receipt for that HEAD (Coverage, default require), and live unresolved
-// threads (Live, default auto). At least one dimension is required: Live and
+// receipt for that HEAD (Coverage, default require), the reported risk band
+// (MaxRisk), and live unresolved threads (Live, default auto). At least one
+// dimension is required: Live and
 // Coverage alone only set postures, so an empty request is a refusal. It never
 // posts, merges, or writes a store.
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error) {
-	if req.MaxSeverity == "" && !req.RequireHead {
-		return nil, refusalErr(&core.RefusalError{
-			Code: "bad-flags",
-			Message: "gate needs at least one dimension: set MaxSeverity or RequireHead " +
-				"(Live and Coverage alone only set postures)",
-		})
+	if err := gateDimensionRefusal(req); err != nil {
+		return nil, err
 	}
 	coverage, err := gateCoveragePosture(req.Coverage)
 	if err != nil {
@@ -186,6 +184,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 		ReadRequest: rr,
 		Flags: reportcore.Flags{
 			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live, Coverage: coverage,
+			MaxRisk: req.MaxRisk, Category: req.Category,
 		},
 		Effective: core.Defaults(),
 	})
@@ -206,6 +205,25 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	}, nil
 }
 
+// gateDimensionRefusal refuses a request that gates nothing: no dimension, or
+// a Category with no tier to narrow.
+func gateDimensionRefusal(req *GateRequest) error {
+	if req.MaxSeverity == "" && !req.RequireHead && req.MaxRisk == "" {
+		return refusalErr(&core.RefusalError{
+			Code: codeBadFlags,
+			Message: "gate needs at least one dimension: set MaxSeverity, RequireHead, or MaxRisk " +
+				"(Live and Coverage alone only set postures)",
+		})
+	}
+	if req.Category != "" && req.MaxSeverity == "" {
+		return refusalErr(&core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "gate Category narrows MaxSeverity: set a tier with it (a category alone gates nothing)",
+		})
+	}
+	return nil
+}
+
 // gateCoveragePosture resolves the coverage posture the way the CLI parser
 // does: unset reads require, and anything outside the published pair refuses
 // instead of silently leaving the dimension out.
@@ -217,7 +235,7 @@ func gateCoveragePosture(posture string) (string, error) {
 		return posture, nil
 	default:
 		return "", refusalErr(&core.RefusalError{
-			Code:    "bad-flags",
+			Code:    codeBadFlags,
 			Message: "unknown coverage posture '" + posture + "' for gate (want require|warn)",
 		})
 	}

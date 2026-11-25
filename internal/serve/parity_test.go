@@ -56,12 +56,13 @@ func sameJSON(t *testing.T, label string, want, got any) {
 	}
 }
 
-// TestDetailParity proves data.report and data.gate are byte-identical to the
-// report verb's --json data in the same fixture.
+// TestDetailParity proves data.report is byte-identical to the report verb's
+// --json data in the same fixture; data.gate is the gate verb's, pinned by
+// TestGateParity.
 func TestDetailParity(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
-	cli := cliEnvelope(t, root, "report", "acme/app", "1234", "--json", "--cost", "--check", "critical", "--live", "skip")
+	cli := cliEnvelope(t, root, "report", "acme/app", "1234", "--json", "--cost")
 	layer := query.New(query.Snapshot{
 		Version: "1.2.3",
 		Roots:   []query.Root{{Path: root}},
@@ -72,8 +73,7 @@ func TestDetailParity(t *testing.T) {
 		t.Fatalf("Detail: %v", err)
 	}
 	data := wire(t, view.Data)
-	sameJSON(t, "data.report", cli["data"], data["report"])
-	sameJSON(t, "data.gate", asMap(t, cli["data"])["gate"], data["gate"])
+	sameJSON(t, "data.report", withoutServedGate(t, cli["data"]), withoutServedGate(t, data["report"]))
 }
 
 // TestShowParity proves the show route's data is byte-identical to
@@ -118,6 +118,27 @@ func TestGateParity(t *testing.T) {
 	sameJSON(t, "gate dimensions",
 		withoutCoverage(t, cliGate["dimensions"]),
 		withoutCoverage(t, serveGate["dimensions"]))
+}
+
+// withoutServedGate drops what the served detail composes beyond the report
+// verb: the gate block, and the approval's tier, which follows the dashboard's
+// gate tier — a tier `report` no longer takes, since gate is the only gating
+// verb (TestGateParity pins the gate block against the gate verb).
+func withoutServedGate(t *testing.T, raw any) map[string]any {
+	t.Helper()
+	data := asMap(t, raw)
+	out := make(map[string]any, len(data))
+	for k, v := range data {
+		out[k] = v
+	}
+	delete(out, "gate")
+	approval := make(map[string]any)
+	for k, v := range asMap(t, out["approval"]) {
+		approval[k] = v
+	}
+	delete(approval, "tier")
+	out["approval"] = approval
+	return out
 }
 
 // withoutCoverage drops the coverage dimension from a gate dimension list.

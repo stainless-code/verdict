@@ -85,7 +85,7 @@ Building a client in another language? The [Build a client guide](https://stainl
 | Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                                                                         |
 | Wrong envelope      | `VerdictSchemaError`  | version drift fails loud, never misreads                                                                  |
 
-`VerdictGateError` covers the success-shaped exit 1 a gate or `--check` run
+`VerdictGateError` covers the success-shaped exit 1 a `gate` run
 returns when the verdict is no; read `error.envelope.data` for the failing
 dimensions. `VerdictRefusal` and `VerdictCrash` are aliases for
 `VerdictRefusalError` and `VerdictProcessError`. `RefusalCode` is the generated union of exact

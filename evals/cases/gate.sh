@@ -262,9 +262,14 @@ assert_exit "--live alone is not a dimension" 2
 run_review gate acme/app 7104 --max-severity severe
 assert_exit "unknown tier is a usage error" 2
 assert_file_grep "unknown tier is named" "$EVAL_ERR" "unknown --max-severity tier 'severe'"
-run_review gate acme/app 7104 --max-risk high
-assert_exit "unknown flag is a usage error" 2
-assert_file_grep "unknown flag is named" "$EVAL_ERR" "unknown flag '--max-risk'"
+run_review gate acme/app 7104 --check critical
+assert_exit "report's spelling is an unknown flag on gate" 2
+assert_file_grep "unknown flag is named" "$EVAL_ERR" "unknown flag '--check'"
+run_review gate acme/app 7104 --max-risk extreme
+assert_exit "unknown risk level is a usage error" 2
+assert_file_grep "unknown risk level is named" "$EVAL_ERR" "unknown --max-risk level 'extreme'"
+run_review gate acme/app 7104 --require-head --category security
+assert_exit "a category without a tier is a usage error" 2
 run_review gate acme/app 7104 --coverage warn
 assert_exit "--coverage alone is not a dimension" 2
 assert_file_grep "--coverage alone names the missing dimension" "$EVAL_ERR" "gate needs at least one dimension"

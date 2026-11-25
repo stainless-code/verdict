@@ -25,10 +25,16 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	got := diag.String()
 	for _, flag := range []string{
 		"--status", "--kind", "--category", "--output", "--sarif",
-		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json", "--policy",
+		"--include-withheld", "--cost", "--risk", "--compare", "--json", "--policy",
 	} {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
+		}
+	}
+	// gate is the only gating verb: the gating flags are not offered.
+	for _, flag := range []string{"--max-risk", "--check", "--completeness", "--live"} {
+		if strings.Contains(got, flag) {
+			t.Errorf("unknown-flag message %q still offers the removed %s", got, flag)
 		}
 	}
 }
@@ -66,9 +72,9 @@ func TestPolicyReplayRefusesCompare(t *testing.T) {
 	}
 }
 
-// TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
-// --policy: the replay exits 0 by contract, so accepting --check would swallow
-// the very exit code a caller gates CI on.
+// TestPolicyReplayRefusesGateFlags proves a removed gating flag cannot ride
+// along with --policy either: it is an unknown flag before the replay reads
+// anything.
 func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--policy", "p.json", "--check", "critical"},
@@ -76,8 +82,8 @@ func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 		{"--policy", "p.json", "--max-risk", "high"},
 	} {
 		t.Run(strings.Join(args[2:], ""), func(t *testing.T) {
-			if got := replayUsage(t, args...); !strings.Contains(got, "swallowed") {
-				t.Fatalf("usage text does not explain the refusal: %q", got)
+			if got := replayUsage(t, args...); !strings.Contains(got, "unknown flag") {
+				t.Fatalf("usage text does not name the unknown flag: %q", got)
 			}
 		})
 	}
@@ -234,58 +240,6 @@ func setupRiskCLIBundle(t *testing.T, postJSON string) {
 	}
 }
 
-func TestReportMaxRiskOK(t *testing.T) {
-	setupRiskCLIBundle(t, `{"head":"`+testRiskHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Isolated helper refactor with tests.","assessed_head":"`+testRiskHeadSHA+`"}}`)
-	var out, diag bytes.Buffer
-	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, JSONMode: true}
-	code := Run(context.Background(), r, []string{"--max-risk", "low"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
-	if code != cli.ExitOK {
-		t.Fatalf("exit = %d, want 0; out=%s diag=%s", code, out.String(), diag.String())
-	}
-}
-
-func TestReportMaxRiskExceeded(t *testing.T) {
-	setupRiskCLIBundle(t, `{"head":"`+testRiskHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"high","rationale":"Touches core state machine.","assessed_head":"`+testRiskHeadSHA+`"}}`)
-	var out, diag bytes.Buffer
-	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, JSONMode: true}
-	code := Run(context.Background(), r, []string{"--max-risk", "medium"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
-	if code != cli.ExitRefused {
-		t.Fatalf("exit = %d, want 1; out=%s diag=%s", code, out.String(), diag.String())
-	}
-}
-
-func TestReportMaxRiskUnknown(t *testing.T) {
-	setupRiskCLIBundle(t, `{"head":"`+testRiskHeadSHA+`","coverage":{"gaps":0}}`)
-	var out, diag bytes.Buffer
-	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, JSONMode: true}
-	code := Run(context.Background(), r, []string{"--max-risk", "critical"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
-	if code != cli.ExitRefused {
-		t.Fatalf("exit = %d, want 1; out=%s diag=%s", code, out.String(), diag.String())
-	}
-	if !strings.Contains(out.String(), `"risk-unknown"`) {
-		t.Errorf("json output missing risk-unknown: %s", out.String())
-	}
-}
-
-func TestReportMaxRiskInvalid(t *testing.T) {
-	var out, diag bytes.Buffer
-	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag}
-	code := Run(context.Background(), r, []string{"--max-risk", "bogus"}, Request{Repo: "acme/app", Pr: "1"})
-	if code != cli.ExitUsage {
-		t.Fatalf("exit = %d, want 2; diag=%s", code, diag.String())
-	}
-}
-
-func TestReportMaxRiskMissingStore(t *testing.T) {
-	t.Chdir(t.TempDir())
-	var out, diag bytes.Buffer
-	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag}
-	code := Run(context.Background(), r, []string{"--max-risk", "low"}, Request{Repo: "acme/app", Pr: "missing-bundle"})
-	if code != cli.ExitBroke {
-		t.Fatalf("exit = %d, want 3; out=%s diag=%s", code, out.String(), diag.String())
-	}
-}
-
 func TestJSONValidationUsesStoredReceiptWithoutTableWarning(t *testing.T) {
 	setupRiskCLIBundle(t, `{"validation_mode":"gate","validation_hash":"9f2b","validation_counts":{"confirmed":1}}`)
 	if err := os.WriteFile(".verdict/state/local-risk-cli/validation.json", []byte("{broken"), 0o600); err != nil {
@@ -293,7 +247,7 @@ func TestJSONValidationUsesStoredReceiptWithoutTableWarning(t *testing.T) {
 	}
 	var out, diag bytes.Buffer
 	r := &cli.Runner{Out: &out, Human: &diag, Diag: &diag, JSONMode: true, Effective: cli.Defaults()}
-	code := Run(t.Context(), r, []string{"--validation", "--live", "skip"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
+	code := Run(t.Context(), r, []string{"--validation"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
 	if code != 0 || !strings.Contains(out.String(), `"hash": "9f2b"`) {
 		t.Fatalf("exit=%d, out=%s, diag=%s; want recorded validation hash 9f2b", code, &out, &diag)
 	}
@@ -404,35 +358,5 @@ func TestReportCompareNeedsAValue(t *testing.T) {
 	}
 	if !strings.Contains(diag, "--compare") || !strings.Contains(diag, "<bundle-dir|pr|slug>") {
 		t.Errorf("usage error missing the operand name: %q", diag)
-	}
-}
-
-// TestCheckLinesReachStderrInert runs `report --check` over a bundle whose
-// record carries a violated spec item spelled with an OSC 52 clipboard write,
-// a C1 CSI, and a BEL. The gate prints that item on stderr through the
-// production runner, which must deliver it as plain text.
-func TestCheckLinesReachStderrInert(t *testing.T) {
-	setupRiskCLIBundle(t, "")
-	item := `evil\u001b]52;c;cGF5bG9hZA==\u0007item\u009b2J`
-	record := `{"schema_version":"1","status":"local","head":"` + testRiskHeadSHA + `",` +
-		`"evidence":{"head":"` + testRiskHeadSHA + `","diff_sha256":"` + strings.Repeat("0", 64) + `",` +
-		`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
-		`"spec":{"total":1,"covered":1,"min":80,"met":true},"insufficient":false},` +
-		`"spec_checks":[{"item":"` + item + `","status":"violated",` +
-		`"evidence":{"path":"notes.txt","quote":"the quoted line","line":2}}]}`
-	if err := os.WriteFile(".verdict/state/local-risk-cli/record.json", []byte(record), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	var out, diag bytes.Buffer
-	r := cli.NewRunner("report", "acme/app", "local-risk-cli", &out, &diag, func(string) string { return "" })
-	r.Effective = cli.Defaults()
-	r.RouteHuman()
-	code := Run(context.Background(), r, []string{"--check", "critical"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
-	got := diag.String()
-	if code != cli.ExitRefused || !strings.Contains(got, "evil ]52;c;cGF5bG9hZA== item 2J") {
-		t.Fatalf("exit %d, stderr %q; want the gate to fail on the folded spec item", code, got)
-	}
-	if strings.ContainsAny(got, "\x1b\x07\u009b") {
-		t.Fatalf("stderr carries a control byte: %q", got)
 	}
 }

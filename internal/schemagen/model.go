@@ -398,7 +398,7 @@ type ReportReplaySide = core.ReportReplaySide
 // ReportReplayMove is one gate dimension the candidate moved.
 type ReportReplayMove = core.ReportReplayMove
 
-// ReportRisk is core's advisory risk block on report --risk / --max-risk.
+// ReportRisk is core's advisory risk block on report --risk and the gate --max-risk dimension.
 type ReportRisk = core.ReportRisk
 
 // RiskInputs is core's deterministic store inputs for the risk floor.

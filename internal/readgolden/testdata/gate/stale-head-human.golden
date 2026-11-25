@@ -1,6 +1,6 @@
 exit: 1
 --- stdout ---
-gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa
+gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head: re-run verdict fetch acme/app 5202 --base-sha ccccccc, then review + post)
 gate: coverage     unknown  stored coverage is for HEAD ccccccc, not HEAD aaaaaaa
 gate: live_threads skip  live recheck skipped (--live skip)
 gate: spec         pass  no violated spec check

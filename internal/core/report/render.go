@@ -868,14 +868,19 @@ func completenessStatus(st *state) string {
 	return dimUnknown
 }
 
+// completenessDetail words the head dimension for the gate's line: the typed
+// cause and the re-fetch command that advances it, so the recovery survives
+// without the report check line that used to carry it.
 func completenessDetail(st *state, short string) string {
+	refetch := refetchCommand(st.dir, st.req.ReadRequest, st.compPosted)
 	switch {
 	case !isRegular(st.dir + "/post.json"):
-		return "no completed post record for HEAD " + short
+		return fmt.Sprintf("no completed post record for HEAD %s (missing-post: run %s, then review + post)", short, refetch)
 	case st.compPosted == "":
-		return "post record carries no head SHA (fetched HEAD " + short + ")"
+		return fmt.Sprintf("post record carries no head SHA (fetched HEAD %s; corrupt-post: re-run %s, then review + post)", short, refetch)
 	default:
-		return "posted HEAD " + readcommon.ShortSHA(st.compPosted) + " != fetched HEAD " + short
+		return fmt.Sprintf("posted HEAD %s != fetched HEAD %s (stale-head: re-run %s, then review + post)",
+			readcommon.ShortSHA(st.compPosted), short, refetch)
 	}
 }
 

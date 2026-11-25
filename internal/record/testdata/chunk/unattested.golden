@@ -28,7 +28,7 @@ c1.txt	NEW	1	2
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "937a465d454db3538788a18ff9148ee4115f23f31c39a4d26cc6fe9ced239d54",
+  "prompts_hash": "d90bc6b2583ee2ec9e08fd7ee36a6129b291adb7231e35551601de33e330e6a4",
   "model": null,
   "author": null,
   "review_models": [],

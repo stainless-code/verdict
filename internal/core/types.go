@@ -212,7 +212,7 @@ type RiskInputs struct { //nolint:govet // field order is the published property
 	MissingCoverage bool `json:"missing_coverage"`
 }
 
-// ReportRisk is the advisory risk block rendered by report --risk / --max-risk.
+// ReportRisk is the advisory risk block rendered by report --risk and the gate --max-risk dimension.
 type ReportRisk struct { //nolint:govet // field order is the published property order
 	Claimed        string     `enum:"unknown|low|medium|high|critical" json:"claimed"`
 	Floor          string     `enum:"low|medium|high|critical"         json:"floor"`

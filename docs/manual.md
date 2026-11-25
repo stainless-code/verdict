@@ -298,7 +298,7 @@ A push that lands after
 fetch never fails the run: `post` warns on stderr and appends the `> ⚠️`
 body note, both naming `verdict fetch owner/repo 123
 --base-sha <short-fetched-sha>` — copy-paste it, review the delta, post,
-then close the loop with `report --completeness` (stale-head on a bundle
+then close the loop with `gate --require-head` (stale-head on a bundle
 with a posted head names the `--base-sha` advance form; missing-post with
 no head names the plain `fetch`). A binding `APPROVE` requested against a
 known stale fetch is downgraded to `COMMENT` with the reason (the review
@@ -352,7 +352,7 @@ gate), `INCONCLUSIVE` only logs. `triage[]` claims the other states with rationa
 `open`, `wont-fix`, `false-positive`, `deferred` (unknown enum or unknown sig
 refused/ignored; short rationale keeps prior status). A `triage[]` claim for
 `addressed` is ignored with a warning: no rationale buys it. Every grade of a
-finding's status — `gate`, `report --check`/`--completeness`, `post --approve`, and
+finding's status — `gate`, `post --approve`, and
 the MCP and `serve` routes over them — reads the status this merge settled, so all
 of them agree. The operator mutates the store directly between runs with
 `verdict triage … --sig … --status … --rationale …` (human supremacy, every override
@@ -533,13 +533,13 @@ everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
 — one entry per finding quote, the hunk coverage, the spec coverage, the gap
 sentences, and a single `insufficient` flag.
 
-| Verb                      | What it does with the evidence verdict                                                                                                                                                                                                   |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                                     |
-| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                                          |
-| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                                 |
-| `report --check` / `gate` | fails the always-on `spec` dimension on a `violated` or `unmet` spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
-| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                                 |
+| Verb     | What it does with the evidence verdict                                                                                                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record` | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                                     |
+| `run`    | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                                          |
+| `report` | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                                 |
+| `gate`   | fails the always-on `spec` dimension on a `violated` or `unmet` spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
+| `post`   | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                                 |
 
 ### Sig contract (sig_version 1)
 
@@ -1299,8 +1299,8 @@ the behavior stays off until a layer above turns it on.
 
 `post` binds an approval only when `--bind` is passed or the captured policy
 sets `requirements.require_bind`; `gate` needs one dimension
-(`--max-severity` or `--require-head`), so `--live` and `--coverage` carry a
-posture and never gate alone.
+(`--max-severity`, `--require-head`, or `--max-risk`), so `--live` and
+`--coverage` carry a posture and never gate alone.
 
 ## Typed repository configuration
 
@@ -1926,37 +1926,38 @@ case $? in
 esac
 ```
 
-Compose it around the expensive step: gate `fetch`+review on `--check`
+Compose it around the expensive step: gate `fetch`+review on `ready --check`
 (pre), keep `post`'s preflight as the fail-closed backstop (post) — the gate
 saves tokens, never merges.
 
-`report --check <tier>` is the missing half of machine gates: `ready --check`
-gates on CI state, this gates on findings. Same output either way; machine
-exits mirror the ready gate — 0 no open findings at-or-above tier, 1 findings
-at-or-above tier, 2 usage, 3 tool error (missing/corrupt store). The tier is a
-severity name (`critical`/`important`/`informational`; untagged findings never
-meet a tier) and only `open` findings count — dispositioned states stay human.
+`gate --max-severity <tier>` is the missing half of machine gates: `ready --check`
+gates on CI state, this gates on findings. Machine exits mirror the ready
+gate — 0 no open findings at-or-above tier, 1 findings at-or-above tier,
+2 usage, 3 tool error (missing/corrupt store). The tier is a severity name
+(`critical`/`important`/`informational`; untagged findings never meet a tier)
+and only `open` findings count — dispositioned states stay human.
 
 ```bash
-verdict report owner/repo 123 --check important
+verdict gate owner/repo 123 --max-severity important
 case $? in
   0) echo "no open important+ findings — proceed to merge";;
   1) echo "open important+ findings — triage before merging";;
   2) echo "usage error — check the invocation";;
-  *) echo "report itself failed (missing/corrupt store?) — inspect, then retry";;
+  *) echo "gate itself failed (missing/corrupt store?) — inspect, then retry";;
 esac
 ```
 
-Compose it after the expensive step: gate the merge on `--check critical`,
+Compose it after the expensive step: gate the merge on `--max-severity critical`,
 keep `post`'s preflight as the fail-closed backstop — the gate advises,
 the human still merges. A passing gate names that merge in the envelope's
-`next` (`merge — gate passes`) and in the human footer, so open findings below
-the tier's floor never read as the next step.
+`next`, so open findings below the tier's floor never read as the next step.
+`report` no longer gates: its former `--check <tier>` is `gate --max-severity
+<tier>` ([migration table](#migrating-from-reports-removed-gating-flags)).
 
 `report --category <cat>` filters the ranked findings to one finding kind
 (`logic`, `edge-case`, `security`, `performance`, `accidental-commit`,
 `style`, `docs`, `other`; unknown values are a `bad-category` usage error),
-and `report --check <tier> --category <cat>` gates only that class — a
+and `gate --max-severity <tier> --category <cat>` gates only that class — a
 category narrows which findings count, never substitutes for severity,
 anchor, or rigor. The category is agent-supplied evidence on each inline
 comment (never inferred, never part of the finding's `sig`); absent and
@@ -2007,7 +2008,7 @@ The replay writes no bundle artifact and calls no host: it composes no live
 dimension and re-checks no threads, so a `--live` posture from the original run
 is not re-run here. It exits 0 whatever the candidate decides, because it
 reports a comparison rather than gating this run, and it therefore refuses the
-gate flags (`--check`, `--completeness`, `--max-risk`): accepting one would
+gate flags: `report` takes none, and accepting one would
 swallow the exit code a caller gates CI on. `--compare` is refused as well —
 the replay already prints two decisions, so a second baseline would be dropped
 silently. `--output` and `--sarif` are refused for the same reason — a replay
@@ -2092,24 +2093,22 @@ different repository or host, or passed as an explicitly empty
 `unrecorded-compare-bundle`, or `bad-compare` — instead of reading as an
 empty comparison.
 
-`report --completeness` answers a second question from the same read — "is
-HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
+`gate --require-head` answers a second
+question from the same read — "is HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
 completed-post record (`post.json`, written only by a real `post`):
 a match passes; a missing, unparsable, head-less, or mismatched record
 fails with a typed `missing-post`/`corrupt-post`/`stale-head` check line
 naming the re-fetch command — the `--base-sha <short-posted-head>` advance
 form when `post.json` carries a head, the plain `fetch` when there is
 nothing to advance from (local bundles keep the `fetch-local` form). Alone it gates on HEAD-reviewed only;
-combined (`--check critical --completeness`) it fails when tier-hits OR
-stale/missing post do. Pure local reads, no network; without the flag
-output and exits are exactly today's.
+combined (`--max-severity critical --require-head`) it fails when tier-hits OR
+stale/missing post do. The head check is a pure local read, no network.
 
-A third dimension runs last on every gate invocation (`--check`,
-`--completeness`, or both): the script re-lists live unresolved threads
+A live-thread dimension runs on every gate invocation that asks for a findings
+tier or the head (`--max-severity`, `--require-head`, or both): the script re-lists live unresolved threads
 and fails the gate when more are open live than the store holds open
-(`check: N live open thread(s) vs M local open finding(s) — gate fails
-(fetch + triage them, then re-check)` — fetch the PR, triage the new
-threads, re-run `report --check`. The probe reads the bundle's own host:
+(`gate: live_threads fail  N live open thread(s) vs M local open finding(s)`):
+fetch the PR, triage the new threads, re-run `gate`. The probe reads the bundle's own host:
 GitHub through `gh api graphql`, every other provider through the adapter
 the `threads` refresh already uses — so a GitLab, GitCafe, Forgejo,
 Bitbucket, or Azure bundle gates on its threads too. A read that fails, and
@@ -2118,31 +2117,30 @@ unread rather than clean: each warns (`live thread recheck unreachable`)
 and, under the default `--live auto` posture, leaves the dimension neutral:
 the gate reflects local dimensions only, and the run never exits 3 over the
 network. Only local bundles skip the lookup, paying zero network; they say
-so with an `info: live recheck skipped: ...` line on the human stream, never
-a warning or a `--json` `warnings[]` entry. Plain `report` without a gate
-flag never calls the network. There is no `--force` on report: fetch +
-triage + re-check is the recovery, and advisory `report` without `--check`
-is the escape hatch.
+so with a neutral `gate: live_threads skip` line, never a warning or a
+`--json` `warnings[]` entry. `report` never calls the network. There is no
+`--force`: fetch + triage + re-check is the recovery, and advisory `report` is
+the escape hatch.
 
-Offline posture (`--live auto|strict|skip`, gate runs only) is always an
+Offline posture (`--live auto|strict|skip`, `gate` only) is always an
 explicit operator choice — automation never inherits it silently. `auto`
 (the default) keeps the fail-open behavior above: a dead network reads as
 "unknown", not "clean", and the warn plus the envelope `warnings[]` entry
-say so. `strict` fails the gate closed on an unreachable lookup (`check:
-live thread recheck unreachable ... — gate fails: offline posture is
-strict; restore the network or re-run with --live skip, then re-check`,
-exit 1, still never 3 — the network is a gate condition, not a corrupt
+say so. `strict` fails the gate closed on an unreachable lookup (`gate:
+live_threads unknown  live thread recheck unreachable ... — offline posture is
+strict`, whose next action is to restore the network or re-run with `--live
+skip`; exit 1, still never 3 — the network is a gate condition, not a corrupt
 store). `skip` pays zero network and gates on the local dimensions only,
 saying so loudly: a `live recheck skipped (--live skip ...)` warn (also in
-`--json` `warnings[]`) plus a neutral skipped `check:` line in the gate
-tail. Structural skips stay neutral in every posture — a local bundle has
+`--json` `warnings[]`) plus a neutral skipped `gate: live_threads` line. Structural skips stay neutral in every posture — a local bundle has
 no live threads to verify, so there is no live dimension to pass or fail. A
 partial or failed live read is not a structural skip: `strict` fails it
 closed and `auto` reads it neutral, exactly like a dead network. Pick
 `strict` for merge gates that must never report ready while threads stand
 open live; pick `skip` for air-gapped runs where the operator accepts the
-local-dimensions-only verdict on the record. `--live` without a gate flag
-is inert: advisory runs never touch the network regardless.
+local-dimensions-only verdict on the record. `--live` without a dimension is a
+usage error on `gate`, and `report` has no `--live` at all: advisory runs never
+touch the network.
 
 `report --risk` adds an advisory, recomputable change-risk assessment
 (`data.risk`) combining the stored `review.json.risk` claim (`record.json` /
@@ -2183,18 +2181,20 @@ band and its score can never disagree. Human mode prints one line after
 risk score: 61/100 (reach 50w35 churn 25w25 category 100w25 rung 100w15, measured 3/4)
 ```
 
-`report --max-risk <low|medium|high|critical>` gates on `data.risk.reported`
-without calling the network unless paired with `--check` or `--completeness`:
+`gate --max-risk <low|medium|high|critical>` gates on `data.risk.reported`,
+and follows its `--live` posture (`--live skip` pays no network):
 exit `0` when `reported <= <level>`, exit `1` when `reported` exceeds `<level>`
 (`risk-exceeded`) or reads `unknown` (`risk-unknown`, fail closed), exit `2` for
 usage errors, and exit `3` for bundle/store tool errors.
 
 ### `gate`: one composed exit code for CI
 
-`report --check` and `ready --check` answer one question each. `gate` asks
-every gating question in one call and returns one CI exit code — the verb a
-pipeline step uses when it wants "is this PR shippable" without composing the
-checks and their error branches itself:
+`gate` is the only verb that gates on a bundle's findings: `ready --check`
+answers the CI-state question, and `gate` asks every other gating question in
+one call and returns one CI exit code — the verb a pipeline step uses when it
+wants "is this PR shippable" without composing the checks and their error
+branches itself. `report` is the advisory read; its former gating flags are
+[removed](#migrating-from-reports-removed-gating-flags) in favor of this verb.
 
 ```bash
 verdict gate owner/repo 123 --max-severity critical --require-head --live strict
@@ -2208,8 +2208,12 @@ esac
 
 At least one dimension is required: `--max-severity critical|important|
 informational` (open findings at-or-above the tier; untagged findings never
-meet a tier), `--require-head` (a completed post for the fetched HEAD, the
-same record `report --completeness` reads), and `--live auto|strict|skip`
+meet a tier; `--category <cat>` narrows it to one finding kind and gates
+nothing without a tier), `--require-head` (a completed post for the fetched
+HEAD, the record `post.json` stores), `--max-risk low|medium|high|critical`
+(the reported change-risk band: `risk` passes at or under the level, fails when
+it is higher, and reads `unknown` — failing closed — when no claim backs it;
+`report --risk` shows the inputs), and `--live auto|strict|skip`
 (unresolved threads on the PR; the dimension runs only when another dimension
 asked for it, and `--live` alone is a usage error rather than a silent pass).
 A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
@@ -2217,8 +2221,8 @@ A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 fail the gate, so a skip never turns a green run red. Two dimensions ride
 every gate mode, whichever dimension the operator asked for. `spec` fails on
 any spec check the stored record graded `violated` or `unmet`
-(`check: violated spec check: <item> — gate fails` or
-`check: unmet spec check: <item> — gate fails`, the count tallying every failed
+(`gate: spec fail  violated spec check: <item>` or
+`unmet spec check: <item>`, the count tallying every failed
 item and the detail naming the first) and passes on `met`, `n/a`, or no spec
 checks at all: the
 
@@ -2227,8 +2231,7 @@ certify a review the decision refuses. `evidence` `pass`
 needs the current head's evidence receipt with `insufficient: false`: an
 insufficient receipt fails, and a missing, stale, or unreadable one reads
 `unknown` — so no gate passes without a receipt for the head it certifies.
-Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
-error.
+Exit codes: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
 
 `--coverage require|warn` sets the posture of the coverage dimension, which
 runs on every gate and defaults to `require`. `require` reads the stored
@@ -2275,11 +2278,34 @@ submission — and it is not an MCP tool (the SDK and TS client reach it as a
 method): a local pass is not authority to merge, so the merge stays the
 human's call.
 
-Compose it where `report --check --completeness` used to go; the flag set is
+Compose it where `report --check --completeness` used to go (see the migration table below); the flag set is
 the same dimensions (plus the coverage receipt and the captured compliance
 verdict), and the flagless form remains advisory `report`.
 
-Runnable examples: [ExampleClient_Gate](../pkg/verdict/example_test.go) — and [gate.ts](../examples/typescript-client/gate.ts).
+#### Migrating from `report`'s removed gating flags
+
+`gate` is the sole gating verb. `report` is the advisory read and takes none of
+the flags that used to fail its exit: `--check`, `--completeness`, `--max-risk`,
+and the `--live` posture are unknown flags there (usage exit 2), and the MCP
+`report` tool no longer takes `check`, `completeness`, `maxRisk`, or `live`.
+`report --json` no longer carries `data.gate` or `data.completeness`; the verdict
+is `gate --json`'s `data.passed` and `data.dimensions[]`.
+
+| Before                                   | Now                                           |
+| ---------------------------------------- | --------------------------------------------- |
+| `report --check <tier>`                  | `gate --max-severity <tier>`                  |
+| `report --category <cat>` with `--check` | `gate --max-severity <tier> --category <cat>` |
+| `report --completeness`                  | `gate --require-head`                         |
+| `report --max-risk <lvl>`                | `gate --max-risk <lvl>`                       |
+| `report --live <posture>`                | `gate --live <posture>`, beside a dimension   |
+
+`gate` always grades the stored coverage receipt (`--coverage require`) and
+`report` never did, so an unattested review that passed `report --check` fails
+`gate --max-severity`; add `--coverage warn` to keep the shortfall advisory until
+the review attests coverage. A `report --max-risk` run made no live-thread read,
+so its `gate` spelling adds `--live skip`. `report` keeps the read-side flags
+(`--status`, `--kind`, `--category` as a filter, `--output`, `--sarif`, `--cost`,
+`--risk`, `--compare`, `--policy`).
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -2796,7 +2822,7 @@ verdict gate owner/repo 123 --max-severity critical --require-head --live auto |
 Recovery lives where fetch behavior lives: the `stale-head`/`missing-post`
 check line names the re-fetch command — the `--base-sha <short-posted-head>`
 advance form when `post.json` carries a head, the plain `fetch` when there is
-nothing to advance from (see the `report --completeness` paragraph above and
+nothing to advance from (see the `gate --require-head` paragraph above and
 the Finalizer loop under Findings store + triage authority). Local bundles
 keep the `fetch-local` form. The fail-open default is deliberate: the local
 dimensions (tier hits, HEAD-reviewed) are ground truth the operator already
@@ -2863,7 +2889,7 @@ withholds approval. A finding the evidence pass did not verify — `unverified`,
 stored `unchecked`, or no `verification` record at all — never gates,
 and a gating finding that carries no verified quote leaves an insufficient
 decision instead of a clean one, so a review is never approved on a quote
-nothing checked. `block_clauses` and `report --check` refine that default when
+nothing checked. `block_clauses` and `gate --max-severity` refine that default when
 configured, and a `violated` or `unmet` `spec_checks[]` entry also withholds
 approval. The
 approval decision reads the full stored finding set, so a block clause naming
@@ -5182,11 +5208,10 @@ unreadable-raw `identity.json` warns `patch identity unavailable — dedupe by S
 only` and the run falls back to the SHA-only dedupe; a bundle without identity
 warns and proceeds the same way.
 
-`report --completeness` passes a rebase or amend that keeps the patch: when the
+`gate --require-head` passes a rebase or amend that keeps the patch: when the
 posted and fetched heads differ but the verified bundle identity and the
-completed post receipt share the patch id, the gate passes with `check: same
-patch reviewed at <fetched> (posted <posted>) — completeness passes
-(rebase/amend)`. A different patch keeps today's stale-head failure, and a bundle
+completed post receipt share the patch id, the `head` dimension passes with `same
+patch reviewed at <fetched> (posted <posted>)`. A different patch keeps today's stale-head failure, and a bundle
 without verifiable identity warns `patch identity unavailable — completeness
 compares heads` and compares heads only.
 
@@ -6258,7 +6283,7 @@ reads as zeros, never an error. The bundle home itself is different: a
 `.verdict/state` that is not a directory, or will not list, refuses
 `corrupt-store` naming it rather than reporting an empty rollup. `closed` means no longer actionable
 (`wont-fix`/`false-positive`/`deferred`); null severity reads `untagged`,
-mirroring `report --check`; counts are per store, so adopted findings appear in
+mirroring `gate --max-severity`; counts are per store, so adopted findings appear in
 both the local and the PR bundle. Feed for the calibration narrative: per-bundle
 models plus per-tier outcomes is the raw material for per-model tier precision
 over time — run `calibrate` on recent bundles to settle what the trend only counts.
@@ -6356,7 +6381,7 @@ already name it. A missing `full.diff` leaves churn unmeasured at 0 points with
 no warning and no receipt reason — only the row's `churn=missing` cell says so.
 A rigor token no rung names scores as `said`, the conservative floor, while the
 row's `weakest` stays null: the store never carried that rung. No score is a
-gate: gating one bundle stays `report <owner/repo> <pr> --max-risk <level>`.
+gate: gating one bundle is `gate <owner/repo> <pr> --max-risk <level>`.
 
 Human mode prints one header line with the band tally, one line per row
 (`rank`, band, score, bundle, open findings, reach, churn, category, rung), then

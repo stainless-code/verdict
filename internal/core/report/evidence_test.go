@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	gatecli "github.com/stainless-code/verdict/internal/gate"
 	reportcli "github.com/stainless-code/verdict/internal/report"
 )
 
@@ -29,6 +30,14 @@ func writeRecordWithEvidence(t *testing.T, ev *core.EvidenceReceipt) {
 	writeFile(t, ".verdict/state/5101/record.json", string(raw))
 }
 
+// runGateExitCode runs the gate verb, the only verb that gates the exit.
+func runGateExitCode(t *testing.T, args ...string) int {
+	t.Helper()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, Now: fixedRuntime().Now}
+	return gatecli.Run(context.Background(), r, args, gatecli.Request{Repo: "acme/app", Pr: "5101"})
+}
+
 func runReportExitCode(t *testing.T, args ...string) int {
 	t.Helper()
 	var out, diag bytes.Buffer
@@ -39,7 +48,7 @@ func runReportExitCode(t *testing.T, args ...string) int {
 func findEvidenceDim(t *testing.T, resp *reportcore.Response) core.GateDimension {
 	t.Helper()
 	if resp.Data.Gate == nil {
-		t.Fatal("data.gate is nil on --check run")
+		t.Fatal("data.gate is nil on a gated run")
 	}
 	for _, dim := range resp.Data.Gate.Dimensions {
 		if dim.ID == "evidence" {
@@ -81,8 +90,8 @@ func TestEvidenceGatePass(t *testing.T) {
 	if !containsLine(resp.CheckLines, wantLine) {
 		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
 	}
-	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitOK {
-		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitOK)
+	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitOK {
+		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitOK)
 	}
 	requireApproval(t, resp, true, false, "no gating findings")
 }
@@ -119,8 +128,8 @@ func TestEvidenceGateFailInsufficient(t *testing.T) {
 	if !containsLine(resp.CheckLines, wantLine) {
 		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
 	}
-	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitRefused {
-		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitRefused)
+	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
+		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
 	}
 }
 
@@ -147,8 +156,8 @@ func TestEvidenceGateMissingIsUnknown(t *testing.T) {
 	if !containsLine(resp.CheckLines, wantLine) {
 		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
 	}
-	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitRefused {
-		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitRefused)
+	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
+		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
 	}
 	// R3: no legacy path. A bundle with no receipt may not read as approved
 	// beside the failing gate dimension.
@@ -182,8 +191,8 @@ func TestEvidenceGateStaleIsUnknown(t *testing.T) {
 	if !containsLine(resp.CheckLines, wantLine) {
 		t.Fatalf("CheckLines = %q, want %q", resp.CheckLines, wantLine)
 	}
-	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitRefused {
-		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitRefused)
+	if code := runGateExitCode(t, "--max-severity", "important", "--live", "skip", "--coverage", "warn"); code != cli.ExitRefused {
+		t.Fatalf("gate CLI exit = %d, want %d", code, cli.ExitRefused)
 	}
 	requireApproval(t, resp, false, true,
 		"review-insufficient: evidence receipt stale for head aaaaaaa (recorded ccccccc)")

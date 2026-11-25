@@ -366,7 +366,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "risk",
 			description: "Rank the bundles under .verdict/state into an advisory triage queue. " +
-				"Reads local bundles only and writes nothing. Follow with report --max-risk to gate one bundle.",
+				"Reads local bundles only and writes nothing. Follow with gate --max-risk to gate one bundle.",
 			omit:     map[string]bool{fieldPr: true},
 			required: []string{argRepo},
 			meta:     toolMeta{title: "Triage risk queue", mutates: noLocalWrites, readOnly: true, idempotent: true},

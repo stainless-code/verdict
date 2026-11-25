@@ -74,7 +74,7 @@ Anything that reviews code before it merges: the seven hosted reviewers, a long 
 
 CodeRabbit, Greptile, Cursor, Copilot, and Macroscope all review local changes now, each signed in and metered. Verdict's claim is narrower, and checkable: the review target is a plain bundle on disk. `fetch` writes `.verdict/state/<pr>/` with `PR.json`, and `fetch-local` writes
 `.verdict/state/local-<name>/` with `source.json`; both carry `full.diff`, `toc.txt` and
-`roles.txt`, and nothing stays running. The same files feed `report --check` in CI and `post` on GitHub, GitLab, or Forgejo.
+`roles.txt`, and nothing stays running. The same files feed `gate` in CI and `post` on GitHub, GitLab, or Forgejo.
 
 ## The long tail meters the same way
 

@@ -24,7 +24,7 @@ exit: 1
       {
         "id": "head",
         "status": "fail",
-        "detail": "posted HEAD ccccccc != fetched HEAD aaaaaaa",
+        "detail": "posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head: re-run verdict fetch acme/app 5202 --base-sha ccccccc, then review + post)",
         "count": null
       },
       {
@@ -60,7 +60,7 @@ warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 gate: findings     pass  no open findings at-or-above critical
-gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa
+gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head: re-run verdict fetch acme/app 5202 --base-sha ccccccc, then review + post)
 gate: coverage     unknown  stored coverage is for HEAD ccccccc, not HEAD aaaaaaa
 gate: live_threads skip  live recheck skipped (--live skip)
 gate: spec         pass  no violated spec check
