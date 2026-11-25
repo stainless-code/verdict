@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/target"
 )
 
 // TestSplitCommandPairEndsAtFlag pins that a flag before the pair means the
@@ -71,18 +73,63 @@ func runEnvelope(t *testing.T, args ...string) (int, targetEnvelope) {
 	return code, env
 }
 
-// TestMissingTargetInCheckoutRefuses pins the refusal that replaces the usage
-// block when a checkout can be read but names no pull request.
-func TestMissingTargetInCheckoutRefuses(t *testing.T) {
+// assertTargetRefusal checks the human shape of the usage-class refusal: the
+// typed error naming the verb's args, then the verb's own usage line.
+func assertTargetRefusal(t *testing.T, derr, verb string) {
+	t.Helper()
+	if !strings.Contains(derr, "error: ") || !strings.Contains(derr, "verdict "+verb+" ") ||
+		!strings.Contains(derr, "\nusage: verdict "+verb+" <owner/repo> <pr> ") {
+		t.Fatalf("stderr is not the %s target refusal plus its usage line:\n%s", verb, derr)
+	}
+}
+
+func checkoutWithoutBundle(t *testing.T) {
+	t.Helper()
 	targetCheckout(t, false)
+}
+
+func outsideACheckout(t *testing.T) {
+	t.Helper()
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+}
+
+// TestMissingTargetRefusesAsUsageClass pins the one behavior of every pair
+// verb that names no resolvable target, inside a checkout that records no
+// bundle for its branch and outside any checkout alike: exit 2, the typed
+// refusal plus the verb's usage line, and under --json the envelope.
+func TestMissingTargetRefusesAsUsageClass(t *testing.T) {
+	for name, setup := range map[string]func(*testing.T){
+		"checkout without a recorded bundle": checkoutWithoutBundle,
+		"outside a checkout":                 outsideACheckout,
+	} {
+		t.Run(name, func(t *testing.T) {
+			setup(t)
+			checkMissingTarget(t)
+		})
+	}
+}
+
+func checkMissingTarget(t *testing.T) {
+	t.Helper()
 	code, out, derr := runCapture(t, []string{"report"})
-	if code != cli.ExitRefused || out != "" ||
-		!strings.Contains(derr, `branch "fix-x"`) || !strings.Contains(derr, "verdict report acme/app <pr>") {
+	if code != cli.ExitUsage || out != "" {
 		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
+	assertTargetRefusal(t, derr, "report")
 	code, env := runEnvelope(t, "report", "--json")
-	if code != cli.ExitRefused || env.Error == nil || env.Error.Code != "target-unresolved" {
+	if code != cli.ExitUsage || env.Error == nil || env.Error.Code != "target-unresolved" {
 		t.Fatalf("json refusal: exit %d %+v", code, env)
+	}
+}
+
+// TestCheckoutRefusalNamesTheBranch keeps the branch and the exact args in the
+// message a checkout produces.
+func TestCheckoutRefusalNamesTheBranch(t *testing.T) {
+	targetCheckout(t, false)
+	_, _, derr := runCapture(t, []string{"report"})
+	if !strings.Contains(derr, `branch "fix-x"`) || !strings.Contains(derr, "verdict report acme/app <pr>") {
+		t.Fatalf("stderr:\n%s", derr)
 	}
 }
 
@@ -193,12 +240,25 @@ func TestThreadsResolveKeepsItsSubverb(t *testing.T) {
 	}
 }
 
-func TestThreadsResolveOutsideACheckoutIsUsage(t *testing.T) {
+func TestThreadsResolveOutsideACheckoutRefuses(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
 	got := resolveTarget("threads", "resolve", "", nil, nil, os.Getenv)
-	if got.Refusal != nil || got.Repo != "resolve" || got.Pr != "" {
-		t.Fatalf("nothing to read must leave the verb's own usage error: %+v", got)
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "verdict threads resolve <owner/repo> <pr>") {
+		t.Fatalf("nothing to read must refuse naming the subverb's args: %+v", got)
+	}
+}
+
+func TestUsageLineNamesTheVerbsOwnEntry(t *testing.T) {
+	t.Parallel()
+	for verb, want := range map[string]string{
+		"fetch":           "usage: verdict fetch <owner/repo> <pr> ",
+		"threads resolve": "usage: verdict threads resolve <owner/repo> <pr> ",
+		"nosuchverb":      "usage: verdict nosuchverb <owner/repo> <pr> [opts]",
+	} {
+		if got := usageLine(verb); !strings.HasPrefix(got, want) || strings.Contains(got, "\n") {
+			t.Errorf("usageLine(%q) = %q, want one line starting %q", verb, got, want)
+		}
 	}
 }
 
@@ -209,7 +269,7 @@ func TestNoJSONShapesTheTargetRefusal(t *testing.T) {
 	targetCheckout(t, false)
 	t.Setenv("REVIEW_OUTPUT_FORMAT", "json")
 	code, out, derr := runCapture(t, []string{"report", "--no-json"})
-	if code != cli.ExitRefused || out != "" || !strings.Contains(derr, "error: ") {
+	if code != cli.ExitUsage || out != "" || !strings.Contains(derr, "error: ") {
 		t.Fatalf("exit %d\nstdout: %q\nstderr: %s", code, out, derr)
 	}
 }
@@ -221,5 +281,138 @@ func TestNoJSONKeepsTheTargetEcho(t *testing.T) {
 	_, _, derr := runCapture(t, []string{"report", "--no-json"})
 	if !strings.Contains(derr, "target: acme/app#12") {
 		t.Fatalf("the echo was suppressed by the env's JSON default:\n%s", derr)
+	}
+}
+
+// TestTalksToHost pins which verbs may ask the host for a branch's pull
+// request: only those that already read it, and drain only with --post.
+func TestTalksToHost(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		verb string
+		rest []string
+		want bool
+	}{
+		{"fetch", nil, true},
+		{"pr-wait", nil, true},
+		{"ready", nil, true},
+		{"threads", nil, true},
+		{"threads resolve", []string{"--dry-run"}, true},
+		{"drain", nil, false},
+		{"drain", []string{"--agent", "claude"}, false},
+		{"drain", []string{"--post"}, true},
+		{"drain", []string{"--", "--post"}, false},
+		{"report", nil, false},
+		{"show", nil, false},
+		{"next", nil, false},
+		{"risk", nil, false},
+		{"trend", nil, false},
+		{"gate", nil, false},
+		{"handoff", nil, false},
+		{"journal", nil, false},
+		{"calibrate", nil, false},
+	} {
+		if got := talksToHost(tc.verb, tc.rest); got != tc.want {
+			t.Errorf("talksToHost(%q, %v) = %v, want %v", tc.verb, tc.rest, got, tc.want)
+		}
+	}
+}
+
+// TestHostFlagCheckersCoverEveryHostVerb pins the flag checkers to the verbs
+// that may ask the host, so none starts asking without a pre-lookup check.
+func TestHostFlagCheckersCoverEveryHostVerb(t *testing.T) {
+	t.Parallel()
+	want := []string{"drain"}
+	for verb := range hostVerbs {
+		want = append(want, verb)
+	}
+	got := make([]string, 0, len(hostFlagCheckers))
+	for verb := range hostFlagCheckers {
+		got = append(got, verb)
+	}
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("hostFlagCheckers verbs = %v, host-talking verbs = %v", got, want)
+	}
+}
+
+// TestPrArgFollowsTheVerbsUsageLine pins the number placeholder a refusal
+// names to the one the verb's own usage entry spells.
+func TestPrArgFollowsTheVerbsUsageLine(t *testing.T) {
+	t.Parallel()
+	for verb, want := range map[string]string{
+		"fetch":      "<pr>",
+		"run":        "<pr|local-name>",
+		"fix":        "<local-slug|pr>",
+		"journal":    "<pr|local-name>",
+		"nosuchverb": "<pr>",
+	} {
+		if got := prArgFor(verb); got != want {
+			t.Errorf("prArgFor(%q) = %q, want %q", verb, got, want)
+		}
+	}
+}
+
+func TestMissingTargetNamesTheVerbsOwnNumberArgument(t *testing.T) {
+	outsideACheckout(t)
+	for verb, want := range map[string]string{"run": "<pr|local-name>", "fix": "<local-slug|pr>", "report": "<pr>"} {
+		_, _, derr := runCapture(t, []string{verb})
+		if !strings.Contains(derr, "verdict "+verb+" <owner/repo> "+want) {
+			t.Errorf("%s: stderr lacks %q:\n%s", verb, want, derr)
+		}
+	}
+}
+
+// TestURLProviderEqualsFlagPassesTheFlagCheck pins the documented URL spelling
+// `--provider=<name>`: the verb's own flag check runs before the URL's
+// provider is resolved, so it must see the spaced form every verb accepts.
+func TestURLProviderEqualsFlagPassesTheFlagCheck(t *testing.T) {
+	hermeticEnv(t)
+	t.Setenv("PATH", t.TempDir())
+	t.Chdir(t.TempDir())
+	_, _, derr := runCapture(t, []string{"fetch", "https://github.com/acme/app/pull/12", "--provider=github"})
+	if strings.Contains(derr, "unknown flag") {
+		t.Fatalf("the documented --provider=github spelling was refused as a flag error:\n%s", derr)
+	}
+}
+
+// TestFlagRefusalFollowsTheFinalOutputMode pins that a host verb's flag
+// refusal renders after the global flags apply: the last of --json and
+// --no-json decides, so no envelope reaches stdout here.
+func TestFlagRefusalFollowsTheFinalOutputMode(t *testing.T) {
+	targetCheckout(t, false)
+	code, out, derr := runCapture(t, []string{"pr-wait", "acme/app", "12", "--json", "--no-json", "--frobnicate"})
+	if code == 0 || out != "" || !strings.Contains(derr, "frobnicate") {
+		t.Fatalf("exit %d\nstdout: %q\nstderr: %s", code, out, derr)
+	}
+	code, out, _ = runCapture(t, []string{"pr-wait", "acme/app", "12", "--no-json", "--json", "--frobnicate"})
+	if code == 0 || !strings.Contains(out, `"code": "bad-flags"`) {
+		t.Fatalf("a later --json wins and gets the envelope: exit %d stdout %q", code, out)
+	}
+}
+
+// TestCancelSurvivesUnreadableSettings pins that a canceled target resolution
+// exits 3 with the cancel refusal even when the settings file is corrupt.
+func TestCancelSurvivesUnreadableSettings(t *testing.T) {
+	hermeticEnv(t)
+	writeCorruptSettings(t)
+	outFile, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errFile, err := os.CreateTemp(t.TempDir(), "err")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRunner("fetch", "", "", outFile, errFile, os.Getenv)
+	tgt := &target.Resolved{Refusal: &core.RefusalError{Code: "canceled", Message: "canceled before target resolution completed"}}
+	code, done := gateInvocation(r, "fetch", tgt, &cli.GlobalForces{}, envMap(os.Getenv), os.ReadFile, errFile)
+	raw, rerr := os.ReadFile(errFile.Name())
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if !done || code != cli.ExitBroke || strings.Contains(string(raw), "settings") || !strings.Contains(string(raw), "canceled") {
+		t.Fatalf("code %d done %v stderr %q; want exit 3 naming the cancel, not the settings", code, done, raw)
 	}
 }

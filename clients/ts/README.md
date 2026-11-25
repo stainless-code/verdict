@@ -79,7 +79,8 @@ Building a client in another language? The [Build a client guide](https://stainl
 | Exit 0              | returns `Envelope<T>` | `schema_version` must be `"1"`                                                                            |
 | Exit 1 (refusal)    | `VerdictRefusalError` | `code`, `message`, `hint`, `warnings`, `body`, `problems`, `problems_truncated`, `candidates`, `retry_at` |
 | Exit 1 (gate/check) | `VerdictGateError`    | `envelope` carries the failing `data` and `warnings`                                                      |
-| Exit 2 (usage)      | `VerdictUsageError`   | no envelope; `stderr` carries usage                                                                       |
+| Exit 2 (usage)      | `VerdictUsageError`   | an argv mistake: no envelope; `stderr` carries usage                                                      |
+| Exit 2 (no target)  | `VerdictRefusalError` | `code` is `target-unresolved`: a pair verb with no resolvable target, carried as an envelope              |
 | Exit 3 / crash      | `VerdictProcessError` | `exitCode`, `signal`, `stdout`, `stderr`                                                                  |
 | Timeout             | `VerdictTimeoutError` | extends `VerdictProcessError`; the child is killed                                                        |
 | Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                                                                         |

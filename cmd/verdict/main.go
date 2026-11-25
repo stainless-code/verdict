@@ -1,19 +1,21 @@
 // Command verdict is the only front door: it owns every verb, every usage
 // error, and the arity matrix. A missing verb fails with the full usage block
-// on stderr and exit 2 before any settings, store, or network read. A missing
-// repo/pr pair first goes through target resolution (internal/target), which
-// reads only local git state and the recorded bundles: a pasted URL or an
-// inferable branch fills it in, a checkout that cannot name one refuses
-// target-unresolved, and only an invocation with nothing to read (no checkout,
-// no origin) prints the usage block, still before any settings read. main is
-// thin: it parses, builds the runner, delegates to run(), and exits once —
-// only main calls [os.Exit].
+// on stderr and exit 2 before any settings, store, or network read. A pair
+// verb with a missing repo/pr pair first goes through target resolution
+// (internal/target): a pasted URL, the origin remote and a recorded bundle, or
+// (for a verb that already talks to the host) the host's own answer fill it
+// in; when nothing can, the typed target-unresolved refusal exits 2 with the
+// verb's usage line. That refusal reads the settings file only to choose its
+// rendering (an unreadable file falls back to defaults), and it never costs a
+// host call for a verb with mistyped flags. main is thin: it parses, builds
+// the runner, delegates to run(), and exits once — only main calls [os.Exit].
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"os/signal"
@@ -112,12 +114,9 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	failed := uerr != nil || ref != nil
 	cmd, repo, pr, rest := splitCommand(stripped)
 	env := envMap(getenv)
-	var tgt target.Resolved
+	uverb := usageVerbFor(cmd, repo)
 	if failed {
 		cmd, repo, pr = envelopeTarget(args)
-	} else {
-		tgt = resolveTarget(cmd, repo, pr, rest, env, getenv)
-		repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	defer r.Flush()
@@ -125,25 +124,46 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if code, done := gateInvocation(r, cmd, &tgt, forces, env, readFile, stderr); done {
+	if code, bad := checkHostFlags(r, forces, env, readFile, cmd, repo, pr, rest); bad {
+		return code
+	}
+	tgt := resolveTarget(cmd, repo, pr, rest, env, getenv)
+	r.Repo, r.Pr = tgt.Repo, tgt.Pr
+	repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
+	if code, done := gateInvocation(r, uverb, &tgt, forces, env, readFile, stderr); done {
 		return code
 	}
 	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
 }
 
 // gateInvocation runs the checks that stop an invocation before its verb: the
-// arity gate (skipped when target resolution already refused with a typed
-// reason), the preference read, the global forces (so --no-json and --color
-// shape every message below), that refusal, and the echo of a derived target.
-// done reports that code is the exit status.
+// target refusal of a pair verb that names no resolvable target (a usage-class
+// failure, rendered with the settings applied when they read and the
+// defaults when they do not), the arity gate for every other verb, the
+// preference read, the global forces (so --no-json and --color shape every
+// message below), any other target refusal, and the echo of a derived target.
+// verb is the name the usage line is looked up under. done reports that code
+// is the exit status.
 func gateInvocation(
-	r *cli.Runner, cmd string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
+	r *cli.Runner, verb string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
 	readFile func(string) ([]byte, error), stderr *os.File,
 ) (code int, done bool) {
-	if tgt.Refusal == nil && invocationArityUsage(cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
-		fmt.Fprint(stderr, arityText(cmd))
+	if ref := tgt.Refusal; ref != nil && (ref.Code == core.CodeTargetUnresolved || ref.Code == cli.CodeCanceled) {
+		return refuseEarly(r, verb, ref, forces, env, readFile, stderr), true
+	}
+	if tgt.Refusal == nil && invocationArityUsage(r.Cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
+		fmt.Fprint(stderr, usageText())
 		return cli.ExitUsage, true
 	}
+	return settleInvocation(r, tgt, forces, env, readFile, stderr)
+}
+
+// settleInvocation reads the preferences, applies the global forces, then
+// renders any other target refusal or echoes a derived target.
+func settleInvocation(
+	r *cli.Runner, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
+	readFile func(string) ([]byte, error), stderr *os.File,
+) (code int, done bool) {
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {
 		return code, true
 	}
@@ -159,6 +179,46 @@ func gateInvocation(
 		fmt.Fprintln(stderr, tgt.Note)
 	}
 	return 0, false
+}
+
+// refuseEarly renders a target refusal that must not be replaced by a
+// settings failure: target-unresolved as the usage-class failure it is (exit
+// 2, the typed envelope under --json, the verb's usage line in human mode) and
+// a cancel as exit 3. Unreadable settings fall back to the defaults.
+func refuseEarly(
+	r *cli.Runner, verb string, ref *core.RefusalError, forces *cli.GlobalForces,
+	env map[string]string, readFile func(string) ([]byte, error), stderr *os.File,
+) int {
+	if code, failed := prepareRender(r, forces, env, readFile); failed {
+		return code
+	}
+	r.RouteHuman()
+	code := r.RefuseExit(ref, cli.ExitUsage)
+	if !r.JSONMode && ref.Code == core.CodeTargetUnresolved {
+		fmt.Fprintln(stderr, usageLine(verb))
+	}
+	return code
+}
+
+// usageVerbFor names the usage entry a verb's invocation is documented under:
+// the threads subverb has its own line.
+func usageVerbFor(cmd, repo string) string {
+	if cmd == cmdThreads && repo == subverbResolve {
+		return threadsResolve
+	}
+	return cmd
+}
+
+// usageLine is the first line of the verb's usage entry that takes the target
+// (a verb may document a flag-only form first, as report --html does), as one
+// `usage:` line.
+func usageLine(verb string) string {
+	for line := range strings.SplitSeq(verbUsage(verb), "\n") {
+		if strings.Contains(line, "<owner/repo>") {
+			return "usage: verdict " + strings.Join(strings.Fields(line), " ")
+		}
+	}
+	return "usage: verdict " + verb + " <owner/repo> <pr> [opts]"
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -215,9 +275,19 @@ const cmdTrend = "trend"
 
 const cmdFetchLocal = "fetch-local"
 
+// The host-talking verbs, named once for the tables and the target gate.
+const (
+	cmdFetch  = "fetch"
+	cmdReady  = "ready"
+	cmdPRWait = "pr-wait"
+	cmdDrain  = "drain"
+)
+
 const (
 	cmdThreads     = "threads"
 	subverbResolve = "resolve"
+	// threadsResolve names the subverb the way hosts tables and usage do.
+	threadsResolve = cmdThreads + " " + subverbResolve
 )
 
 // flagPrefix starts every flag token; a positional never does.
@@ -237,11 +307,11 @@ var readVerbs = map[string]readHandler{
 	"report":     report.Run,
 	"next":       report.RunNext,
 	cmdShow:      report.RunShow,
-	"ready":      ready.Run,
-	"pr-wait":    prwait.Run,
+	cmdReady:     ready.Run,
+	cmdPRWait:    prwait.Run,
 	"gate":       gate.Run,
 	"threads":    threads.Run,
-	"drain":      drainverb.Run,
+	cmdDrain:     drainverb.Run,
 	cmdTrend:     trend.Run,
 	cmdRisk:      risk.Run,
 	"calibrate":  calibrate.Run,
@@ -440,7 +510,7 @@ func dispatchFetch(
 ) (code int, ok bool) {
 	req := fetch.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}
 	switch cmd {
-	case "fetch":
+	case cmdFetch:
 		return fetch.Run(ctx, r, rest, req), true
 	case "fetch-local":
 		return fetch.RunLocal(ctx, r, rest, req), true
@@ -655,14 +725,10 @@ func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, g
 // first in rest). Threads resolve takes no --provider, so the verb name carries
 // the subverb to keep the flag from being injected.
 func resolveSubverb(first string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
-	same := target.Resolved{Repo: subverbResolve, Pr: first, Rest: rest}
-	repo, pr, tail := splitPositionals(append(nonEmpty(first), rest...))
-	got := runResolver(cmdThreads+" "+subverbResolve, repo, pr, tail, env, getenv)
-	switch {
-	case got.Refusal != nil:
+	repo, pr, tail := splitSubverb(first, rest)
+	got := runResolver(threadsResolve, repo, pr, tail, env, getenv)
+	if got.Refusal != nil {
 		return got
-	case got.Repo == "":
-		return same // nothing to infer from: the verb's own usage error stands
 	}
 	got.Repo, got.Pr, got.Rest = subverbResolve, got.Repo, append([]string{got.Pr}, got.Rest...)
 	return got
@@ -680,7 +746,99 @@ func runResolver(verb, repo, pr string, rest []string, env map[string]string, ge
 	defer stop()
 	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
 		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
+		HostLookup: talksToHost(verb, rest), PrArg: prArgFor(verb),
 	})
+}
+
+// prArgFor is how the verb's own usage line spells its number argument
+// (`<pr>`, `<pr|local-name>`, `<local-slug|pr>`), so a refusal names the
+// arguments the way the usage line does.
+func prArgFor(verb string) string {
+	fields := strings.Fields(usageLine(verb))
+	if at := slices.Index(fields, "<owner/repo>"); at >= 0 && at+1 < len(fields) && strings.HasPrefix(fields[at+1], "<") {
+		return fields[at+1]
+	}
+	return "<pr>"
+}
+
+// splitSubverb reads the pair and flags behind the threads subverb, which the
+// front door's own split saw as (subverb, first, rest).
+func splitSubverb(first string, rest []string) (repo, pr string, tail []string) {
+	return splitPositionals(append(nonEmpty(first), rest...))
+}
+
+// checkHostFlags validates the flags of a verb that may ask the host for its
+// target, before any git or host call, so a mistyped flag is a plain usage
+// error and never a lookup followed by one. The check first runs silently; only
+// a failure renders, through the same output mode the verb would have used (the
+// readable settings, else the defaults, then the global flags), and reports
+// the verb's own error exactly as the verb would.
+func checkHostFlags(
+	r *cli.Runner, forces *cli.GlobalForces, env map[string]string, readFile func(string) ([]byte, error),
+	cmd, repo, pr string, rest []string,
+) (code int, bad bool) {
+	check, args, ok := hostFlagCheck(cmd, repo, pr, rest)
+	if !ok {
+		return 0, false
+	}
+	silent := &cli.Runner{Out: io.Discard, Human: io.Discard, Diag: io.Discard, Now: r.Now}
+	if _, bad := check(silent, args); !bad {
+		return 0, false
+	}
+	if code, failed := prepareRender(r, forces, env, readFile); failed {
+		return code, true
+	}
+	return check(r, args)
+}
+
+// hostFlagCheck picks the flag checker and the flag arguments of a verb that
+// may ask the host; ok is false for any other invocation. A URL invocation's
+// "--provider=x" is spaced first, because the URL's provider is resolved only
+// after the check.
+func hostFlagCheck(cmd, repo, pr string, rest []string) (check func(*cli.Runner, []string) (int, bool), args []string, ok bool) {
+	if !takesTarget(cmd, rest) {
+		return nil, nil, false
+	}
+	verb, args := cmd, rest
+	if cmd == cmdThreads && repo == subverbResolve {
+		_, _, args = splitSubverb(pr, rest)
+		verb = threadsResolve
+	}
+	if core.IsTargetURL(repo) {
+		args = target.SpaceProviderFlag(args)
+	}
+	check, ok = hostFlagCheckers[verb]
+	return check, args, ok && talksToHost(verb, args)
+}
+
+// prepareRender settles how an early refusal renders: the readable settings,
+// else the defaults (a corrupt file never replaces the refusal), then the
+// global flags, so the last of --json and --no-json decides the output mode.
+// failed reports a global flag that itself refused, with its exit code.
+func prepareRender(
+	r *cli.Runner, forces *cli.GlobalForces, env map[string]string, readFile func(string) ([]byte, error),
+) (code int, failed bool) {
+	r.Effective = cli.Defaults()
+	if prefs, perr := cli.ResolvePrefs(r, env, readFile); perr == nil {
+		r.Effective = prefs.Effective
+	}
+	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
+		r.RouteHuman()
+		return r.Refuse(err), true
+	}
+	return 0, false
+}
+
+// hostFlagCheckers is each host-talking verb's own flag validation. A test
+// pins it to hostVerbs and drain, so a verb cannot start asking the host
+// without one.
+var hostFlagCheckers = map[string]func(*cli.Runner, []string) (int, bool){
+	cmdFetch:       fetch.CheckFlags,
+	cmdPRWait:      prwait.CheckFlags,
+	cmdReady:       ready.CheckFlags,
+	cmdThreads:     threads.CheckFlags,
+	threadsResolve: threads.CheckResolveFlags,
+	cmdDrain:       drainverb.CheckFlags,
 }
 
 func nonEmpty(s string) []string {
@@ -688,6 +846,25 @@ func nonEmpty(s string) []string {
 		return nil
 	}
 	return []string{s}
+}
+
+// hostVerbs always read the host as part of their work, so asking it which
+// pull request a branch heads costs them nothing new. Every other pair verb
+// is offline, and drain only reaches the host with --post.
+var hostVerbs = map[string]bool{
+	cmdFetch: true, cmdPRWait: true, cmdReady: true, cmdThreads: true, threadsResolve: true,
+}
+
+// talksToHost reports whether verb, with these flags, reads the host anyway.
+func talksToHost(verb string, rest []string) bool {
+	if verb == cmdDrain {
+		at := slices.Index(rest, flagSeparator)
+		if at < 0 {
+			at = len(rest)
+		}
+		return slices.Contains(rest[:at], "--post")
+	}
+	return hostVerbs[verb]
 }
 
 // takesTarget reports the known verbs whose positionals are `<owner/repo> <pr>`

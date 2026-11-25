@@ -200,6 +200,18 @@ function isGateEnvelope(value: unknown): value is Record<string, unknown> {
   );
 }
 
+/** The refusal envelope on stdout, or undefined when stdout holds none. */
+function tryRefusalEnvelope(stdout: string) {
+  if (stdout.trim() === "") return undefined;
+  try {
+    const parsed = parseSingleEnvelope(stdout);
+    assertRefusalEnvelope(parsed, stdout);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
 function throwForExit<T>(
   verb: string,
   result: ChildResult,
@@ -249,6 +261,18 @@ function throwForExit<T>(
     );
   }
   if (result.code === 2) {
+    // Exit 2 is the usage class. An argv mistake prints no envelope, but a
+    // pair verb with no resolvable target exits 2 with a typed refusal
+    // envelope (`target-unresolved`) under --json: surface that code.
+    const refusal = tryRefusalEnvelope(stdout);
+    if (refusal !== undefined) {
+      throw new VerdictRefusalError(
+        refusal.error.code,
+        refusal.error.message,
+        refusal.warnings,
+        refusal.error,
+      );
+    }
     throw new VerdictUsageError(
       result.stderr || `verdict ${verb}: usage error`,
     );

@@ -14,11 +14,11 @@ func TestCapabilityTable(t *testing.T) {
 		"github": {
 			Provider: "github", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
-			ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
+			ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 		},
 		"gitlab": {
 			Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-			Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
+			Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 		},
 		"gitcafe": {Provider: "gitcafe", Fetch: true},
 		"forgejo": {
@@ -157,6 +157,16 @@ func capabilityFlags(caps HostCapabilities) []struct {
 		{name: CapabilityApprove, on: caps.Approve},
 		{name: CapabilityRequestChanges, on: caps.RequestChanges},
 		{name: CapabilityThreadResolution, on: caps.ThreadResolution},
+	}
+}
+
+// TestBranchLookupProviders pins the hosts whose CLI can name a branch's open
+// pull request: a host joins only by flipping its row (and the target package
+// pins an argv to every listed host).
+func TestBranchLookupProviders(t *testing.T) {
+	t.Parallel()
+	if got := BranchLookupProviders(); !slices.Equal(got, []string{"github", "gitlab"}) {
+		t.Errorf("branch lookup providers = %v, want [github gitlab]", got)
 	}
 }
 
