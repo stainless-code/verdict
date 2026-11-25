@@ -37,12 +37,29 @@ func writeStoreBundle(t *testing.T, slug, review string) {
 	testkit.WriteFile(t, ".verdict/state/"+slug+"/review.json", review)
 }
 
-// writeVerifyReceipt writes the patch.json a passing `verdict verify` run
-// leaves at head: the receipt a VERIFIED claim needs before it flips.
+// toolReceipt renders the verify-receipt.json `verdict verify` writes: the
+// command it ran, the finding sig patch.json named ("" for none), and the
+// clean head it ran on ("" when it could not bind one).
+func toolReceipt(cmd, sig, head string, exit int, timedOut bool) string {
+	doc := map[string]any{"schema_version": "1", "command": cmd, "at": "2026-01-01T00:00:00Z", "exit": exit, "timed_out": timedOut}
+	if sig != "" {
+		doc["sig"] = sig
+	}
+	if head != "" {
+		doc["head"] = head
+	}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		panic(err)
+	}
+	return string(raw)
+}
+
+// writeVerifyReceipt writes the receipt a passing `verdict verify` run of
+// `go test ./...` leaves at head: what a VERIFIED claim needs before it flips.
 func writeVerifyReceipt(t *testing.T, dir, head string) {
 	t.Helper()
-	testkit.WriteFile(t, dir+"/patch.json", `{"verifyCmd":"go test ./...","verifyExit":0,`+
-		`"verifiedAt":"2026-01-01T00:00:00Z","timedOut":false,"verifiedTail":"ok","verifiedHead":"`+head+`"}`)
+	testkit.WriteFile(t, dir+"/verify-receipt.json", toolReceipt("go test ./...", "", head, 0, false))
 }
 
 func storeEntries(t *testing.T, slug string) []map[string]any {
@@ -765,6 +782,33 @@ func TestRunRecordTriageRationaleFloor(t *testing.T) {
 	}
 }
 
+// TestRunRecordTriageCannotAddress pins that a rationale cannot buy
+// addressed: a triage[] claim for it, however long its rationale, leaves the
+// finding open and warns, because addressed comes only from a VERIFIED claim
+// backed by a verify receipt. The other triage states still flip.
+func TestRunRecordTriageCannotAddress(t *testing.T) {
+	const (
+		// sha1("notes.txt Cited finding here with enough substance.")
+		sig       = "101d0761051f365731b9b857810c9b3603c50208"
+		rationale = "Fixed in the follow-up commit; the boundary check now covers it."
+	)
+	writeStoreBundle(t, "local-ta", `{"schema_version":"1","body":"`+storeBody+`","approved":false,`+
+		`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}],`+
+		`"triage":[{"sig":"`+sig+`","status":"addressed","rationale":"`+rationale+`"}]}`)
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-ta")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if got := bySig(t, storeEntries(t, "local-ta"))[sig]["status"]; got != "open" {
+		t.Errorf("status = %v, want open (a triage rationale never addresses)", got)
+	}
+	want := "triage claim 101d0761 ignored: addressed needs a VERIFIED claim in verification.json " +
+		"backed by a verdict verify receipt, never a triage rationale"
+	if !slices.Contains(c.Warnings, want) {
+		t.Errorf("warnings = %q, want %q", c.Warnings, want)
+	}
+}
+
 // TestRunRecordTriageClaimsCompose proves every triage claim in one run lands:
 // two claims on two findings both flip. A run that stops at the first success
 // silently drops the rest of the operator's triage.
@@ -806,58 +850,75 @@ func TestRunRecordVerifiedNeedsReceipt(t *testing.T) {
 		// sha1("notes.txt Cited finding here with enough substance.")
 		sig    = "101d0761051f365731b9b857810c9b3603c50208"
 		claims = `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`
-		head   = `"verifiedHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`
+		cmd    = "go test ./..."
+		head   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		tail   = " — run verdict verify on HEAD aaaaaaa, then land the claim again"
+		// forged is the outcome an agent can write into patch.json, the file
+		// it is told to write, without running anything.
+		forged = `{"verifyCmd":"go test ./...","verifyExit":0,"timedOut":false,"verifiedHead":"` + head + `"}`
 	)
 	tests := []struct {
-		name       string
-		patch      string // "" writes no patch.json
-		wantStatus string
-		wantWarn   string // full warning; "" wants no unbacked-claim warning
+		name, receipt, patch, wantStatus, wantWarn string // "" receipt/patch: none written; "" warn: none wanted
 	}{
-		{"receipt-at-head-flips", `{"verifyExit":0,"timedOut":false,` + head + `}`, "addressed", ""},
+		{name: "receipt-at-head-flips", receipt: toolReceipt(cmd, "", head, 0, false), wantStatus: "addressed"},
+		{name: "receipt-for-this-sig-flips", receipt: toolReceipt(cmd, sig[:8], head, 0, false), wantStatus: "addressed"},
 		{
-			"hand-written-only", "", "open",
-			"VERIFIED claim for 101d0761 not applied (no verify receipt: patch.json is missing or unreadable)" + tail,
+			name: "hand-written-only", wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (no verify receipt: verify-receipt.json is missing)" + tail,
 		},
 		{
-			"patch-without-receipt", `{"verifyCmd":"go test ./..."}`, "open",
-			"VERIFIED claim for 101d0761 not applied (no verify receipt in patch.json)" + tail,
+			name: "forged-patch-outcome", patch: forged, wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (no verify receipt: verify-receipt.json is missing)" + tail,
 		},
 		{
-			"nonzero-exit", `{"verifyExit":1,"timedOut":false,` + head + `}`, "open",
-			"VERIFIED claim for 101d0761 not applied (the verify receipt failed with exit=1)" + tail,
+			name: "nonzero-exit", receipt: toolReceipt(cmd, "", head, 1, false), wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt failed with exit=1)" + tail,
 		},
 		{
-			"timed-out", `{"verifyExit":0,"timedOut":true,` + head + `}`, "open",
-			"VERIFIED claim for 101d0761 not applied (the verify receipt timed out)" + tail,
+			name: "timed-out", receipt: toolReceipt(cmd, "", head, 0, true), wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt timed out)" + tail,
 		},
 		{
-			"stale-head", `{"verifyExit":0,"timedOut":false,"verifiedHead":"cccccccccccccccccccccccccccccccccccccccc"}`, "open",
-			"VERIFIED claim for 101d0761 not applied (the verify receipt covers HEAD ccccccc)" + tail,
+			name: "other-command", receipt: toolReceipt("true", "", head, 0, false), wantStatus: "open",
+			wantWarn: `VERIFIED claim for 101d0761 not applied (the verify receipt ran "true", not the claim's "go test ./...")` + tail,
 		},
 		{
-			"receipt-without-head", `{"verifyExit":0,"timedOut":false}`, "open",
-			"VERIFIED claim for 101d0761 not applied (the verify receipt records no HEAD)" + tail,
+			name: "other-finding", receipt: toolReceipt(cmd, "cec2c320fb7d", head, 0, false), wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt is for finding cec2c320)" + tail,
+		},
+		{
+			name: "stale-head", receipt: toolReceipt(cmd, "", "cccccccccccccccccccccccccccccccccccccccc", 0, false), wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt covers HEAD ccccccc)" + tail,
+		},
+		{
+			name: "no-clean-head", receipt: toolReceipt(cmd, "", "", 0, false), wantStatus: "open",
+			wantWarn: "VERIFIED claim for 101d0761 not applied (the verify receipt records no clean HEAD)" + tail,
+		},
+		{
+			name: "unreadable-receipt", receipt: `{"schema_version":"1","command":"go test ./...","exit":0,"extra":true}`, wantStatus: "open",
+			wantWarn: `VERIFIED claim for 101d0761 not applied (the verify receipt is unreadable: json: unknown field "extra")` + tail,
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			checkReceiptLeg(t, sig, claims, tc.patch, tc.wantStatus, tc.wantWarn)
+			checkReceiptLeg(t, sig, claims, tc.receipt, tc.patch, tc.wantStatus, tc.wantWarn)
 		})
 	}
 }
 
-// checkReceiptLeg records one VERIFIED claim over the given patch.json ("" for
-// none) and checks the status, the warning, and the logged claim.
-func checkReceiptLeg(t *testing.T, sig, claims, patch, wantStatus, wantWarn string) {
+// checkReceiptLeg records one VERIFIED claim beside the given tool receipt
+// and patch.json ("" writes neither) and checks the status, the warning, and
+// the logged claim.
+func checkReceiptLeg(t *testing.T, sig, claims, receipt, patch, wantStatus, wantWarn string) {
 	t.Helper()
 	slug := "local-vc"
 	writeStoreBundle(t, slug, `{"schema_version":"1","body":"`+storeBody+`","approved":false,`+
 		`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`)
 	testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", claims)
-	if patch != "" {
-		testkit.WriteFile(t, ".verdict/state/"+slug+"/patch.json", patch)
+	for name, body := range map[string]string{"verify-receipt.json": receipt, "patch.json": patch} {
+		if body != "" {
+			testkit.WriteFile(t, ".verdict/state/"+slug+"/"+name, body)
+		}
 	}
 	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {

@@ -33,6 +33,9 @@ func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Resul
 	if isHeadProbe(cmd) {
 		return core.Result{Stdout: patchHead + "\n"}, nil
 	}
+	if isStatusProbe(cmd) {
+		return core.Result{}, nil
+	}
 	c.calls = append(c.calls, cmd)
 	i := len(c.calls) - 1
 	if i < len(c.errs) && c.errs[i] != nil {
@@ -311,8 +314,10 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 	} else {
 		checkBwrapSpawn(t, cmdr, root, home, vcmd)
 	}
-	if cmdr.calls[0].Dir != "" || cmdr.calls[1].Dir != "" {
-		t.Errorf("patch-mode dirs = %q, %q, want inherited cwd", cmdr.calls[0].Dir, cmdr.calls[1].Dir)
+	// The probe and the command run in the repo root the tree probes read,
+	// as the deep-group path does, never the caller's inherited cwd.
+	if cmdr.calls[0].Dir != root || cmdr.calls[1].Dir != root {
+		t.Errorf("patch-mode dirs = %q, %q, want the repo root %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
 	}
 }
 

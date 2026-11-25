@@ -39,7 +39,7 @@ const (
 	nextBatchEmptyPaths     = "widen --paths, lower --min-severity, or fix one sig with --sig"
 	nextBatchRecipe         = "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig"
 	nextBatchRecipeNoLenses = "pick a recipe that declares lenses or a different batch scope"
-	nextBatchPasses         = "patch each anchor, run the verify command through verdict verify, write one " +
+	nextBatchPasses         = "patch each anchor, commit the fixes, run the verify command through verdict verify, write one " +
 		"verification.json claim per sig, land with record, then re-run fix --all"
 	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
@@ -50,22 +50,25 @@ const (
 const commaSpace = ", "
 
 const batchInstructionsFmt = "instructions: patch each anchor file (%s), record the " +
-	"verify command (%s) as verifyCmd in %s/patch.json and run it through verdict " +
-	"verify %s %s, then write verification.json beside it [{sig, verdict, resultHead, " +
-	"verifyCmd}] with one claim per sig, verdict VERIFIED and resultHead matching " +
-	"HEAD (a claim flips only on the receipt verify writes into patch.json — exit 0 " +
-	"at this HEAD); land it with record %s %s; re-run fix %s %s %s for the next pass\n"
+	"verify command (%s) as verifyCmd in %s/patch.json, commit the fixes and re-run " +
+	"fetch-local so the bundle's head is that commit, then run it through verdict " +
+	"verify %s %s and write verification.json beside it [{sig, verdict, resultHead, " +
+	"verifyCmd}] with one claim per sig, verdict VERIFIED, that verifyCmd, and " +
+	"resultHead matching HEAD (a claim flips only on the verify-receipt.json verify " +
+	"writes — exit 0 for that command on the clean, committed HEAD); land it with " +
+	"record %s %s; re-run fix %s %s %s for the next pass\n"
 
 // batchInstructionsPRFmt is the same block for a PR bundle, whose landing path
 // is a push and a re-fetch followed by post — record refuses a PR bundle. The
 // verify run follows the re-fetch, so its receipt covers the head post grades.
 const batchInstructionsPRFmt = "instructions: patch each anchor file (%s), record the " +
-	"verify command (%s) as verifyCmd in %s/patch.json, push the fix, re-fetch with " +
-	"fetch %s %s, then run it through verdict verify %s %s and write " +
+	"verify command (%s) as verifyCmd in %s/patch.json, commit and push the fix, " +
+	"re-fetch with fetch %s %s, then run it through verdict verify %s %s and write " +
 	"verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with one " +
-	"claim per sig, verdict VERIFIED and resultHead matching HEAD (a claim flips only on the " +
-	"receipt verify writes into patch.json — exit 0 at this HEAD); land it with " +
-	"post %s %s; re-run fix %s %s %s for the next pass\n"
+	"claim per sig, verdict VERIFIED, that verifyCmd, and resultHead matching HEAD " +
+	"(a claim flips only on the verify-receipt.json verify writes — exit 0 for that " +
+	"command on the clean, committed HEAD); land it with post %s %s; re-run fix " +
+	"%s %s %s for the next pass\n"
 
 type batchRow struct { //nolint:govet // the row reads in ledger order
 	pick     readcommon.Ranked
@@ -344,7 +347,7 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 	st.printBatchInstructions(dir, verify, joinAnchors(anchors))
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
-	st.humanf("next: patch %s, run verify %q through verdict verify, write verification.json, "+
+	st.humanf("next: patch %s, commit, run verify %q through verdict verify, write verification.json, "+
 		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), verify,
 		st.landVerb(), st.batchMode())
 	return ready

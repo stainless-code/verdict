@@ -215,7 +215,8 @@ func usageText() string {
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
 		"    verification.json evidence (VERIFIED + resultHead matching HEAD) backed by the\n" +
-		"    verify receipt in patch.json (exit 0, verifiedHead matching HEAD).\n" +
+		"    tool-only verify-receipt.json (exit 0 for that verifyCmd on the clean graded HEAD);\n" +
+		"    a triage[] claim for addressed is ignored.\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
@@ -297,8 +298,10 @@ func usageText() string {
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
 		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
-		"    record exit + tail + the checked-out head (verifiedHead) in the patch record — the\n" +
-		"    receipt record/post need before a VERIFIED claim flips a finding addressed.\n" +
+		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
+		"    the finding sig patch.json names, exit, timeout, and the checked-out head when the\n" +
+		"    tree is clean and unmoved — the receipt record/post need before a VERIFIED claim\n" +
+		"    flips a finding addressed. The command runs in the repo root.\n" +
 		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +

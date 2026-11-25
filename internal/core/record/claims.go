@@ -5,9 +5,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
-	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -81,7 +81,7 @@ func (st *state) applyVerdict(target *jq.Obj, full string, claim verifyClaim) {
 	switch {
 	case claim.verdict == "VERIFIED" && shaOK && claim.vcmd != "":
 		// The claim is attestation; only the receipt verify wrote is proof.
-		if gap := verifyReceiptGap(st.dir, st.headFull); gap != "" {
+		if gap := verifyReceiptGap(st.dir, st.headFull, full, claim.vcmd); gap != "" {
 			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap, readcommon.ShortSHA(st.headFull)))
 			st.recordRevalidation(target, claim)
 			return
@@ -179,6 +179,12 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 	if !isTriageStatus(claim.status) {
 		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
 	}
+	// addressed is the one status a rationale cannot buy: it comes only from a
+	// VERIFIED claim backed by the verify receipt (applyVerdict).
+	if claim.status == outcomeAddressed {
+		st.warn(fmt.Sprintf(msgTriageAddressed, readcommon.Prefix(claim.sig)))
+		return nil
+	}
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {
 	case sigNone:
@@ -215,11 +221,7 @@ func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim)
 		fieldAt, st.now, fieldEvent, "triaged", fieldActor, "agent",
 		fieldNote, claim.reason, fieldSHA, st.headShort,
 	)))
-	switch claim.status {
-	case outcomeAddressed, "false-positive":
-		if st.dryRun {
-			return
-		}
+	if claim.status == exampleFalsePositive && !st.dryRun {
 		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
@@ -255,60 +257,48 @@ func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-// verifyReceiptGap names why patch.json's verify receipt does not prove the
-// gated head, or returns "" when it does: an exit of 0, no timeout, and the
-// verifiedHead verify probed equal to head. The bundle owns patch.json, so a
-// receipt read here was written for this bundle and its root; the head is the
-// one binding a receipt can go stale on.
-func verifyReceiptGap(dir, head string) string {
-	receipt, gap := readVerifyReceipt(dir)
-	if gap != "" {
-		return gap
-	}
-	if gap := receiptOutcomeGap(receipt); gap != "" {
-		return gap
-	}
-	recorded, ok := getField(receipt, "verifiedHead").(string)
-	if !ok || recorded == "" {
-		return "the verify receipt records no HEAD"
-	}
-	if recorded != head {
-		return "the verify receipt covers HEAD " + readcommon.ShortSHA(recorded)
-	}
-	return ""
-}
-
-// readVerifyReceipt reads patch.json and proves verify wrote an outcome into
-// it; an agent-written patch.json without verifyExit is no receipt at all.
-func readVerifyReceipt(dir string) (*jq.Obj, string) {
-	raw, err := noblock.ReadFile(dir + "/patch.json")
-	if err != nil {
-		return nil, "no verify receipt: patch.json is missing or unreadable"
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	receipt, ok := doc.(*jq.Obj)
-	if err != nil || !ok {
-		return nil, "no verify receipt: patch.json is not a JSON object"
-	}
-	if getField(receipt, "verifyExit") == nil {
-		return nil, "no verify receipt in patch.json"
-	}
-	return receipt, ""
-}
-
-// receiptOutcomeGap rejects a receipt whose run failed or timed out.
-func receiptOutcomeGap(receipt *jq.Obj) string {
-	if exit := jq.R(getField(receipt, "verifyExit")); exit != "0" {
-		return "the verify receipt failed with exit=" + exit
-	}
-	if jq.R(jq.Alt(getField(receipt, "timedOut"), "")) == core.FlagOn {
+// verifyReceiptGap names why the bundle's verify receipt does not prove this
+// claim, or returns "" when it does. It reads only verify-receipt.json, which
+// verify alone writes — never patch.json, the agent's own proposal. The
+// receipt must show a passing run of the claim's exact command, for the
+// claim's finding when it names one, on the clean gated head. The bundle owns
+// the receipt, so it was written for this bundle and its root; the head is the
+// binding it can go stale on.
+func verifyReceiptGap(dir, head, full, vcmd string) string {
+	receipt, found, problem := verifycore.ReadVerifyReceipt(dir)
+	switch {
+	case problem != "":
+		return "the verify receipt is unreadable: " + problem
+	case !found:
+		return "no verify receipt: " + verifycore.ReceiptFile + " is missing"
+	case receipt.Exit != 0:
+		return fmt.Sprintf("the verify receipt failed with exit=%d", receipt.Exit)
+	case receipt.TimedOut:
 		return "the verify receipt timed out"
 	}
+	return receiptBindingGap(&receipt, head, full, vcmd)
+}
+
+// receiptBindingGap checks what the passing run was bound to: the command,
+// the finding, and the head.
+func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string) string {
+	switch {
+	case receipt.Command != vcmd:
+		return fmt.Sprintf("the verify receipt ran %q, not the claim's %q", receipt.Command, vcmd)
+	case receipt.Sig != "" && !sigCovers(receipt.Sig, full):
+		return "the verify receipt is for finding " + readcommon.Prefix(receipt.Sig)
+	case receipt.Head == "":
+		return "the verify receipt records no clean HEAD"
+	case receipt.Head != head:
+		return "the verify receipt covers HEAD " + readcommon.ShortSHA(receipt.Head)
+	}
 	return ""
 }
 
-// getField reads one key, nil when absent.
-func getField(m *jq.Obj, key string) any {
-	v, _ := m.Get(key)
-	return v
+// minSigPrefixLen is the shortest sig prefix a receipt may name a finding by.
+const minSigPrefixLen = 8
+
+// sigCovers reports whether a receipt's sig (full or an 8+ prefix) names full.
+func sigCovers(sig, full string) bool {
+	return sig == full || (len(sig) >= minSigPrefixLen && hasPrefix(full, sig))
 }

@@ -102,6 +102,16 @@ In scope (highest priority first):
   snapshot (`controls-unavailable`, `controls-stale`). Any path where
   head bytes steer a review without the recorded
   `--allow-head-controls` opt-out is a vulnerability.
+- The verification receipt: `record` and `post` flip a `VERIFIED` claim to
+  `addressed` only on the bundle's `verify-receipt.json`, which
+  `verdict verify` alone writes. It binds the command, the finding, and the
+  clean checked-out head. A path where a claim flips without a passing receipt
+  for its command, finding, and the graded head — a pass read from
+  `patch.json`, a `triage[]` rationale, a dirty or moving tree — is a
+  vulnerability. The receipt defends against claims nobody observed, not
+  against a process with the operator's own file access: such a process
+  can rewrite the receipt or `findings.json` directly, so forging the
+  receipt that way is out of scope.
 
 Out of scope: a `verifyCmd` spelling the string gate does not know (the
 documented tripwire ceiling above — send it, it gets armed and added to

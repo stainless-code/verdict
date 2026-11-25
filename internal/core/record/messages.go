@@ -27,6 +27,9 @@ const (
 		"missing %s — re-fetch with '%s', re-synthesize across all chunks, then re-run " +
 		"(partial coverage never posts as complete)"
 
+	msgTriageAddressed = "triage claim %s ignored: addressed needs a VERIFIED claim in verification.json " +
+		"backed by a verdict verify receipt, never a triage rationale"
+
 	msgClaimUnbacked = "VERIFIED claim for %s not applied (%s) — run verdict verify on HEAD %s, " +
 		"then land the claim again"
 

@@ -281,10 +281,23 @@ assert_exit "corrupt store is a tool error" 3
 assert_eq "corrupt store carries a typed refusal" "corrupt-store" "$(jq -r .error.code <"$EVAL_OUT")"
 assert_eq "refusal envelope carries no data" "null" "$(jq -r .data <"$EVAL_OUT")"
 
-# --- a VERIFIED claim reaches the gate only through the receipt verify writes:
-# exit 0 at the HEAD being graded. A hand-written claim, or a receipt for
-# another HEAD, leaves the finding open, so the findings dimension fails.
+# --- a VERIFIED claim reaches the gate only through the tool-only receipt
+# `verdict verify` writes (verify-receipt.json): a passing run of the claim's
+# own command on the clean HEAD being graded. A hand-written claim, a pass
+# forged into patch.json, a triage rationale, a dirty tree, a moved HEAD, or a
+# receipt for another command all leave the finding open, failing the
+# findings dimension.
 eval_seed_base
+# The harness's own scratch (stub logs, captured streams, XDG state) is not
+# part of the reviewed tree; exclude it so the clean-tree probe sees the repo.
+(
+  cd "$EVAL_SANDBOX" || exit 99
+  git ls-files --others --exclude-standard --directory >>.git/info/exclude
+  printf 'eval-*\ngate-mode\nstate/\n' >>.git/info/exclude
+  printf 'tracked\n' >tracked.txt
+  git add tracked.txt
+  eval_fixture_commit receipt-base
+)
 VH="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
 B=local-vreceipt
 BD="$EVAL_SANDBOX/.verdict/state/$B"
@@ -297,35 +310,76 @@ EOF
 run_review record acme/app "$B" --json
 assert_exit "receipt fixture records" 0
 VSIG="$(jq -r '.[0].sig' "$BD/findings.json")"
-jq -n --arg s "$VSIG" --arg h "$VH" '[{sig:$s,verdict:"VERIFIED",verifyCmd:"true",resultHead:$h}]' >"$BD/verification.json"
+claim() {
+  jq -n --arg s "$VSIG" --arg h "$VH" --arg c "$1" '[{sig:$s,verdict:"VERIFIED",verifyCmd:$c,resultHead:$h}]' >"$BD/verification.json"
+}
+claim true
 eval_mk_patch "$B" true
 findings_dim() {
   run_review gate acme/app "$B" --max-severity informational --live skip --coverage warn --json
   jq -r '.data.dimensions[] | select(.id == "findings") | .status' <"$EVAL_OUT"
 }
+status() { jq -r '.[0].status' "$BD/findings.json"; }
+unapplied() { printf 'VERIFIED claim for %s not applied (%s) — run verdict verify on HEAD %s' "${VSIG:0:8}" "$1" "${VH:0:7}"; }
 
+# A hand-written claim plus a triage rationale asking for addressed.
+eval_write_review_at "$BD/review.json" <<EOF
+{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding to settle.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Receipt-gated finding body.","rigor":"walked","severity":"important"}],"triage":[{"sig":"$VSIG","status":"addressed","rationale":"Fixed in the follow-up commit, trust me on this one."}]}
+EOF
 run_review record acme/app "$B" --json
-assert_eq "hand-written claim alone keeps the finding open" "open" "$(jq -r '.[0].status' "$BD/findings.json")"
+assert_eq "hand-written claim and triage rationale keep the finding open" "open" "$(status)"
 assert_file_grep "hand-written claim names the missing receipt" "$EVAL_ERR" \
-  "not applied (no verify receipt in patch.json) — run verdict verify on HEAD ${VH:0:7}"
+  "$(unapplied 'no verify receipt: verify-receipt.json is missing')"
+assert_file_grep "triage addressed is ignored with the reason" "$EVAL_ERR" \
+  "triage claim ${VSIG:0:8} ignored: addressed needs a VERIFIED claim"
 assert_eq "hand-written claim fails the findings dimension" "fail" "$(findings_dim)"
 
+# A pass forged into patch.json, the file the agent is told to write.
+jq --arg h "$VH" '. + {verifyExit:0,timedOut:false,verifiedHead:$h}' "$BD/patch.json" >"$BD/patch.json.tmp"
+mv "$BD/patch.json.tmp" "$BD/patch.json"
+run_review record acme/app "$B" --json
+assert_eq "a pass forged into patch.json keeps the finding open" "open" "$(status)"
+assert_file_grep "a forged patch.json is still no receipt" "$EVAL_ERR" \
+  "$(unapplied 'no verify receipt: verify-receipt.json is missing')"
+eval_mk_patch "$B" true
+
+# An uncommitted edit: HEAD says nothing about it, so the receipt binds no head.
+printf 'uncommitted\n' >>"$EVAL_SANDBOX/tracked.txt"
+run_review verify acme/app "$B" --json --timeout 30
+assert_eq "verify on a dirty tree binds no head" "null" "$(jq -r .data.head <"$EVAL_OUT")"
+assert_file_grep "verify on a dirty tree says to commit first" "$EVAL_ERR" \
+  "has uncommitted changes — commit the fix, then run verdict verify"
+run_review record acme/app "$B" --json
+assert_eq "a dirty-tree receipt keeps the finding open" "open" "$(status)"
+assert_file_grep "a dirty-tree receipt names the missing clean head" "$EVAL_ERR" \
+  "$(unapplied 'the verify receipt records no clean HEAD')"
+git -C "$EVAL_SANDBOX" checkout -q -- tracked.txt
+
+# A receipt for another HEAD.
 ( cd "$EVAL_SANDBOX" && eval_fixture_commit moved --allow-empty )
 MOVED="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
 run_review verify acme/app "$B" --json --timeout 30
-assert_exit "verify at a moved HEAD exits 0" 0
-assert_eq "verify reports the head it ran on" "$MOVED" "$(jq -r .data.head <"$EVAL_OUT")"
+assert_eq "verify reports the clean head it ran on" "$MOVED" "$(jq -r .data.head <"$EVAL_OUT")"
 run_review record acme/app "$B" --json
-assert_eq "stale receipt keeps the finding open" "open" "$(jq -r '.[0].status' "$BD/findings.json")"
+assert_eq "stale receipt keeps the finding open" "open" "$(status)"
 assert_file_grep "stale receipt names the HEAD it covered" "$EVAL_ERR" \
-  "not applied (the verify receipt covers HEAD ${MOVED:0:7}) — run verdict verify on HEAD ${VH:0:7}"
+  "$(unapplied "the verify receipt covers HEAD ${MOVED:0:7}")"
 assert_eq "stale receipt fails the findings dimension" "fail" "$(findings_dim)"
-
 git -C "$EVAL_SANDBOX" reset -q --soft "$VH"
+
+# A passing receipt for another command than the claim names.
 run_review verify acme/app "$B" --json --timeout 30
-assert_eq "verify binds the receipt to the graded HEAD" "$VH" "$(jq -r .verifiedHead "$BD/patch.json")"
+assert_eq "verify binds the receipt to the graded HEAD" "$VH" "$(jq -r .head "$BD/verify-receipt.json")"
+claim "go test ./..."
 run_review record acme/app "$B" --json
-assert_eq "receipt at the graded HEAD flips addressed" "addressed" "$(jq -r '.[0].status' "$BD/findings.json")"
+assert_eq "a receipt for another command keeps the finding open" "open" "$(status)"
+assert_file_grep "a command mismatch names both commands" "$EVAL_ERR" \
+  "$(unapplied 'the verify receipt ran "true", not the claim'"'"'s "go test ./..."')"
+
+# The receipt verify observed: the claim's command, clean, at the graded HEAD.
+claim true
+run_review record acme/app "$B" --json
+assert_eq "receipt at the graded HEAD flips addressed" "addressed" "$(status)"
 assert_eq "receipt at the graded HEAD passes the findings dimension" "pass" "$(findings_dim)"
 
 eval_end

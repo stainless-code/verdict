@@ -118,7 +118,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "e1cab43f4162405f642a948c6801751966860feaf677026d60621b2c4bca7bd5",
+  "prompts_hash": "937a465d454db3538788a18ff9148ee4115f23f31c39a4d26cc6fe9ced239d54",
   "model": null,
   "author": null,
   "review_models": [],

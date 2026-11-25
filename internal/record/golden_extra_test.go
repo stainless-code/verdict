@@ -25,16 +25,30 @@ func claimMutate(t *testing.T, dir string, claims string) {
 	writeFiles(t, dir, map[string]string{
 		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
 		".verdict/state/local-kb/verification.json": claims,
-		".verdict/state/local-kb/patch.json":        kbReceipt,
+		receiptPath: kbReceipt("make check"),
 	})
 }
 
 // kbHead is the head every local-kb fixture's source.json records.
 const kbHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-// kbReceipt is the patch.json a passing `verdict verify` run leaves at kbHead.
-const kbReceipt = `{"verifyCmd":"make check","verifyExit":0,"verifiedAt":"2026-01-01T00:00:00Z",` +
-	`"timedOut":false,"verifiedTail":"ok","verifiedHead":"` + kbHead + `"}`
+// receiptPath is where `verdict verify` writes its tool-only receipt.
+const receiptPath = ".verdict/state/local-kb/verify-receipt.json"
+
+// toolReceipt renders a verify-receipt.json fixture: what `verdict verify`
+// writes after running cmd at head ("" when it bound no clean head).
+func toolReceipt(cmd, head string, exit int, timedOut bool) string {
+	headField := ""
+	if head != "" {
+		headField = `"head":"` + head + `",`
+	}
+	return fmt.Sprintf(`{"schema_version":"1","command":%q,%s"at":"2026-01-01T00:00:00Z","exit":%d,"timed_out":%t}`,
+		cmd, headField, exit, timedOut)
+}
+
+// kbReceipt is the receipt a passing `verdict verify` run of cmd leaves at
+// kbHead.
+func kbReceipt(cmd string) string { return toolReceipt(cmd, kbHead, 0, false) }
 
 // claimsOf builds verification claims for every phase-1 sig.
 func claimsOf(t *testing.T, dir string, fn func(sig string) string) string {
@@ -120,27 +134,35 @@ func verifyLegs() []verifyLeg {
 		{claimsSetup, mutateClaims("VERIFIED", "bbbbbbb", "make check"), "verify/bad-head"},
 		{claimsSetup, mutateClaims("VERIFIED", "aaaaaaa", ""), "verify/empty-cmd"},
 		{claimsSetup, mutateClaims("INCONCLUSIVE", "aaaaaaa", "make check"), "verify/inconclusive"},
-		{claimsSetup, mutatePatchClaims(`{"verifyExit":1,"timedOut":false,"verifiedHead":"` + kbHead + `"}`), "verify/receipt-exit"},
-		{claimsSetup, mutatePatchClaims(`{"verifyExit":0,"timedOut":true,"verifiedHead":"` + kbHead + `"}`), "verify/receipt-timeout"},
-		{claimsSetup, mutatePatchClaims(`{"verifyExit":0,"timedOut":false,"verifiedHead":"cccccccccccccccccccccccccccccccccccccccc"}`), "verify/receipt-stale"},
-		{claimsSetup, mutatePatchClaims(`{"verifyCmd":"make check"}`), "verify/receipt-missing"},
+		{claimsSetup, mutateReceiptClaims(receiptPath, toolReceipt("make check", kbHead, 1, false)), "verify/receipt-exit"},
+		{claimsSetup, mutateReceiptClaims(receiptPath, toolReceipt("make check", kbHead, 0, true)), "verify/receipt-timeout"},
+		{claimsSetup, mutateReceiptClaims(receiptPath, toolReceipt("make check", "cccccccccccccccccccccccccccccccccccccccc", 0, false)), "verify/receipt-stale"},
+		{claimsSetup, mutateReceiptClaims(receiptPath, toolReceipt("true", kbHead, 0, false)), "verify/receipt-command"},
+		// The outcome an agent can write into patch.json, the file it is told
+		// to write, is no receipt: the forged pass must not flip.
+		{claimsSetup, mutateReceiptClaims(".verdict/state/local-kb/patch.json",
+			`{"verifyCmd":"make check","verifyExit":0,"timedOut":false,"verifiedHead":"`+kbHead+`"}`), "verify/receipt-forged-patch"},
 		{claimsSetup, mutateAddressed, "verify/on-addressed"},
 		{setupMany, mutateAmbiguous, "verify/ambiguous-prefix"},
 	}
 }
 
-// mutatePatchClaims applies VERIFIED-for-every-sig over the given patch.json
+// mutateReceiptClaims applies VERIFIED-for-every-sig and writes body at path
 // in place of the passing receipt.
-func mutatePatchClaims(patch string) func(t *testing.T, dir string) {
+func mutateReceiptClaims(path, body string) func(t *testing.T, dir string) {
 	return func(t *testing.T, dir string) {
 		t.Helper()
 		claimMutate(t, dir, claimAll(t, dir, "VERIFIED", "aaaaaaa", "make check"))
-		writeFiles(t, dir, map[string]string{".verdict/state/local-kb/patch.json": patch})
+		if err := os.Remove(filepath.Join(dir, receiptPath)); err != nil {
+			t.Fatal(err)
+		}
+		writeFiles(t, dir, map[string]string{path: body})
 	}
 }
 
-// mutateAddressed flips the first sig addressed by triage while VERIFIED
-// evidence covers it (flip stands, credit stays idempotent).
+// mutateAddressed claims the first sig addressed by triage beside a backed
+// VERIFIED claim: the triage claim is ignored with a warning (a rationale never
+// addresses) and the VERIFIED claim alone flips it.
 func mutateAddressed(t *testing.T, dir string) {
 	t.Helper()
 	sigs := sigsOf(t, dir)
@@ -153,7 +175,7 @@ func mutateAddressed(t *testing.T, dir string) {
 			sigs[0]),
 		".verdict/state/local-kb/verification.json": fmt.Sprintf(
 			`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, sigs[0]),
-		".verdict/state/local-kb/patch.json": kbReceipt,
+		receiptPath: kbReceipt("make check"),
 	})
 }
 
@@ -192,7 +214,7 @@ func mutateAmbiguous(t *testing.T, dir string) {
 	writeFiles(t, dir, map[string]string{
 		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
 		".verdict/state/local-kb/verification.json": fmt.Sprintf(`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, prefix),
-		".verdict/state/local-kb/patch.json":        kbReceipt,
+		receiptPath: kbReceipt("make check"),
 	})
 }
 
