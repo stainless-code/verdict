@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -183,12 +184,11 @@ func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	if cmdr == nil {
 		return "", false
 	}
-	argv := []string{"git"}
-	if root := st.req.RepoRootPath(); root != "" {
-		argv = append(argv, "-C", root)
-	}
-	argv = append(argv, "status", "--porcelain", "--untracked-files=all")
-	res, err := cmdr.Run(ctx, &core.Command{Argv: argv})
+	// Hook-free and fsmonitor-free; clean and process filters stay on, so a
+	// file reads as git itself sees it and an LFS-tracked file is not reported
+	// dirty.
+	argv := gitcmd.Argv(st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all")
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(nil)})
 	if err != nil || res.ExitCode != 0 {
 		return "", false
 	}

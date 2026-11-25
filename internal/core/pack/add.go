@@ -14,6 +14,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/gitsource"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -440,7 +441,7 @@ func cloneSource(
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := resolveClone(gctx, cmdr, env, clone, tmp, url, bound)
+	sha, ref := resolveClone(gctx, cmdr, env, clone, url, bound)
 	if ref != nil {
 		cleanup()
 		return nil, ref
@@ -453,9 +454,9 @@ func cloneSource(
 // resolveClone pins the clone to its resolved HEAD and checks the working tree
 // before the loader walks it.
 func resolveClone(
-	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, url, bound string,
+	ctx context.Context, cmdr core.Commander, env []string, clone, url, bound string,
 ) (string, *core.RefusalError) {
-	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
+	sha, ref := runGitPack(ctx, cmdr, env, clone, "rev-parse", "HEAD")
 	if ref != nil {
 		return "", ref
 	}
@@ -463,7 +464,7 @@ func resolveClone(
 		return "", badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
 			displaySource(url), sha))
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", sha); ref != nil {
+	if ref := runGitPackOK(ctx, cmdr, env, clone, checkoutSub, "--detach", sha); ref != nil {
 		return "", ref
 	}
 	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
@@ -475,7 +476,7 @@ func resolveClone(
 // prepareGitEnv creates the scrubbed HOME/XDG tree and the hooks directory a
 // Windows clone uses in place of /dev/null.
 func prepareGitEnv(tmp string) *core.RefusalError {
-	for _, dir := range []string{"home", "cache", "config", "data", "state", "hooks"} {
+	for _, dir := range []string{"home", "cache", "config", "data", "state"} {
 		if err := os.MkdirAll(filepath.Join(tmp, dir), packDirPerm); err != nil {
 			return badPack(fmt.Sprintf("could not create the pack work dir: %v", err))
 		}
@@ -483,7 +484,7 @@ func prepareGitEnv(tmp string) *core.RefusalError {
 	return nil
 }
 
-// gitClone runs the hermetic clone with the resolved hooks path. A pinned
+// gitClone runs the hermetic, hook-free clone. A pinned
 // source — an org pin's semver tag or SHA — and a 40-hex commit, which is not a
 // branch or tag name `--branch` could take, go through the fetch path.
 func gitClone(
@@ -491,14 +492,14 @@ func gitClone(
 ) *core.RefusalError {
 	clone := cloneDir(tmp)
 	if mode == refByGitRef || hex40(refName) {
-		return gitClonePinned(ctx, cmdr, env, tmp, url, refName, bound, clone)
+		return gitClonePinned(ctx, cmdr, env, url, refName, bound, clone)
 	}
 	args := []string{"--depth=1", "--no-tags", "--no-recurse-submodules"}
 	if refName != "" {
 		args = append(args, "--branch", refName)
 	}
 	args = append(args, url, clone)
-	_, ref := runGitPack(ctx, cmdr, env, "", tmp, "clone", args...)
+	_, ref := runGitPack(ctx, cmdr, env, "", "clone", args...)
 	return ref
 }
 
@@ -511,22 +512,22 @@ func gitClone(
 // before refs/tags/v1.2.3, so a branch named after the pin hijacks it. A tag
 // pin is fetched as refs/tags/<tag> and cannot.
 func gitClonePinned(
-	ctx context.Context, cmdr core.Commander, env []string, tmp, url, ref, bound, clone string,
+	ctx context.Context, cmdr core.Commander, env []string, url, ref, bound, clone string,
 ) *core.RefusalError {
-	if _, got := runGitPack(ctx, cmdr, env, "", tmp, "init", clone); got != nil {
+	if _, got := runGitPack(ctx, cmdr, env, "", "init", clone); got != nil {
 		return got
 	}
-	if got := runGitPackOK(ctx, cmdr, env, clone, tmp, "remote", "add", "origin", url); got != nil {
+	if got := runGitPackOK(ctx, cmdr, env, clone, "remote", "add", "origin", url); got != nil {
 		return got
 	}
-	if _, got := runGitPack(ctx, cmdr, env, clone, tmp, "fetch",
+	if _, got := runGitPack(ctx, cmdr, env, clone, "fetch",
 		"--depth=1", "--no-tags", "--no-recurse-submodules", "origin", pinRefspec(ref)); got != nil {
 		return got
 	}
-	if got := sparseCheckoutBound(ctx, cmdr, env, clone, tmp, bound); got != nil {
+	if got := sparseCheckoutBound(ctx, cmdr, env, clone, bound); got != nil {
 		return got
 	}
-	return runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", "FETCH_HEAD")
+	return runGitPackOK(ctx, cmdr, env, clone, checkoutSub, "--detach", "FETCH_HEAD")
 }
 
 // cloneDir is the one clone directory under the pack work dir.
@@ -550,25 +551,22 @@ func pinRefspec(ref string) string {
 // never land on disk. A root pin, and an ordinary `pack add`, check out the
 // whole tree. Cone mode needs git 2.26; every other step here needs less.
 func sparseCheckoutBound(
-	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, bound string,
+	ctx context.Context, cmdr core.Commander, env []string, clone, bound string,
 ) *core.RefusalError {
 	if bound == "" || bound == rootSelf {
 		return nil
 	}
-	if _, ref := runGitPack(ctx, cmdr, env, clone, tmp, "sparse-checkout", "init", "--cone"); ref != nil {
+	if _, ref := runGitPack(ctx, cmdr, env, clone, "sparse-checkout", "init", "--cone"); ref != nil {
 		return ref
 	}
-	return runGitPackOK(ctx, cmdr, env, clone, tmp, "sparse-checkout", "set", bound)
+	return runGitPackOK(ctx, cmdr, env, clone, "sparse-checkout", "set", bound)
 }
 
-// gitPrefix is the one argv prefix every pack-add git call carries, so no
-// inherited hook can run.
-func gitPrefix(tmp string) []string {
-	return []string{
-		"git", "-c", "core.hooksPath=" + hooksPath(tmp),
-		"-c", "protocol.file.allow=never",
-	}
-}
+// gitOptions are the options every pack-add git call carries ahead of the
+// shared hook-free settings ([gitcmd.Argv]): no transport over the file
+// protocol. The scrubbed environment ([gitEnv]) reads no user or system
+// config, so the fresh clone names no filter driver for a checkout to run.
+var gitOptions = []string{"-c", "protocol.file.allow=never"}
 
 // runtimeEnv renders the injected environment as the KEY=value pairs a clone
 // inherits before scrubbing; PATH must survive so git can reach ssh.
@@ -581,15 +579,6 @@ func runtimeEnv(req *AddRequest) []string {
 		out = append(out, key+"="+value)
 	}
 	return out
-}
-
-// hooksPath is /dev/null everywhere git reads one; on Windows an empty temp
-// directory is the equivalent.
-func hooksPath(tmp string) string {
-	if filepath.Separator == '\\' {
-		return filepath.Join(tmp, "hooks")
-	}
-	return "/dev/null"
 }
 
 // gitEnv builds the scrubbed clone environment: the caller's entries minus
@@ -617,27 +606,26 @@ func gitEnv(base []string, tmp string) []string {
 }
 
 // scrubGitEnv reports whether one environment key could redirect a clone away
-// from the temporary tree.
+// from the temporary tree: the variables every git call drops
+// ([gitcmd.Inherited]), the operator's transport helpers
+// ([gitcmd.TransportHelper]), the home and config locations, and the
+// template directory.
 func scrubGitEnv(key string) bool {
 	switch key {
 	case "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
-		"GIT_TERMINAL_PROMPT", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
-		"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_ASKPASS",
-		"GIT_TEMPLATE_DIR", "GIT_SSH_COMMAND", "GIT_EXEC_PATH", "GIT_PROXY_COMMAND",
-		"SSH_ASKPASS":
+		"GIT_TERMINAL_PROMPT", "GIT_TEMPLATE_DIR":
 		return true
 	}
-	return strings.HasPrefix(key, "GIT_CONFIG_")
+	return gitcmd.Inherited(key) || gitcmd.TransportHelper(key) || strings.HasPrefix(key, "GIT_CONFIG_")
 }
 
 // runGitPack runs one git command with the shared hermetic prefix and returns
 // its trimmed stdout.
 func runGitPack(
-	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, sub string, args ...string,
 ) (string, *core.RefusalError) {
-	argv := append(gitPrefix(tmp), sub)
-	argv = append(argv, args...)
-	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: env, Dir: dir, OutputCap: MaxPackBytes})
+	argv := gitcmd.Argv(dir, slices.Concat(gitOptions, []string{sub}, args)...)
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(env), OutputCap: MaxPackBytes})
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
@@ -660,9 +648,9 @@ func runGitPack(
 
 // runGitPackOK is runGitPack for a call whose stdout carries nothing.
 func runGitPackOK(
-	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, sub string, args ...string,
 ) *core.RefusalError {
-	_, ref := runGitPack(ctx, cmdr, env, dir, tmp, sub, args...)
+	_, ref := runGitPack(ctx, cmdr, env, dir, sub, args...)
 	return ref
 }
 

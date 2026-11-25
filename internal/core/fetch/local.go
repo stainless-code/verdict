@@ -374,7 +374,7 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 // working-tree bundle, else the mode's (or the isolated checkout's) refs.
 func readLocalDiff(ctx context.Context, r *session, mode *localMode, paths []string) (core.Result, error) {
 	if refs := mode.contentRefs(); refs != nil {
-		return r.run(ctx, slices.Concat([]string{gitCmdDiff}, treeDiffFlags, refs, paths)...)
+		return r.run(ctx, slices.Concat([]string{gitCmdDiff}, refs, paths)...)
 	}
 	diffArgs := append(mode.diffArgs(), paths...)
 	if r.iso != nil {
@@ -792,15 +792,15 @@ const (
 // replaces every mode's live-tree refs (a three-dot A...B list is its
 // merge-base-to-head pair, so the file sets match the classic refs exactly).
 func localFileStats(ctx context.Context, s *session, mode *localMode, paths []string) (string, string) {
-	read, flags, refs := s.git, []string(nil), statRefs(s, mode)
+	read, refs := s.git, statRefs(s, mode)
 	if named := mode.contentRefs(); named != nil {
-		read, flags, refs = s.run, treeDiffFlags, named
+		read, refs = s.run, named
 	}
 	if len(paths) > 0 {
 		refs = slices.Concat(refs, []string{pathspecSep}, paths)
 	}
 	diff := func(opts ...string) (string, bool) {
-		res, err := read(ctx, slices.Concat([]string{gitCmdDiff}, flags, opts, refs)...)
+		res, err := read(ctx, slices.Concat([]string{gitCmdDiff}, opts, refs)...)
 		return strings.TrimRight(res.Stdout, newline), err == nil
 	}
 	fileList, ok := diff(flagNoRenames, flagNameOnly)

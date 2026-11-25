@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
@@ -361,8 +363,9 @@ type exampleCommander struct {
 // Run implements verdict.Commander: the first rule matching every token
 // answers, and an unmatched spawn panics.
 func (e *exampleCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	e.got = append(e.got, cmd.Argv)
-	joined := strings.Join(cmd.Argv, " ")
+	argv := sdkArgv(cmd.Argv)
+	e.got = append(e.got, argv)
+	joined := strings.Join(argv, " ")
 	for _, rule := range e.rules {
 		if containsAll(joined, rule.tokens) {
 			return rule.result, nil
@@ -442,13 +445,13 @@ var (
 // checked-out head, the snapshot's content tree and commit, and the snapshot
 // checkout itself, so a test scripts only the command it cares about.
 func sdkGitAnswer(cmd *verdict.Command) (verdict.CommandResult, bool) {
-	a := cmd.Argv
-	if len(a) < 4 || a[0] != "git" || a[1] != "-C" {
+	_, a, ok := gitcmd.Split(cmd.Argv)
+	if !ok || len(a) == 0 {
 		return verdict.CommandResult{}, false
 	}
-	switch a[3] {
+	switch a[0] {
 	case "rev-parse":
-		if len(a) == 5 && a[4] == "HEAD" {
+		if len(a) == 2 && a[1] == "HEAD" {
 			return verdict.CommandResult{Stdout: scriptHead + "\n"}, true
 		}
 		return verdict.CommandResult{Stdout: scriptTree + "\n"}, true
@@ -465,14 +468,36 @@ func sdkGitAnswer(cmd *verdict.Command) (verdict.CommandResult, bool) {
 	return verdict.CommandResult{}, false
 }
 
-// fakeWorktreeAdd leaves what `git worktree add` would: a `gitdir:` file
-// naming an admin directory (kept inside the checkout, so removing the
-// snapshot removes it). verify checks for it, and the sandbox follows it.
-func fakeWorktreeAdd(argv []string) {
-	if len(argv) < 5 || argv[4] != "add" {
+// sdkArgv is the argv a scripted rule matches: a hook-free git call as its
+// caller wrote it ([gitcmd.Split]), with `-C <root>` kept only for a root
+// other than the working directory. Any other argv is returned as is.
+func sdkArgv(argv []string) []string {
+	root, args, ok := gitcmd.Split(argv)
+	switch {
+	case !ok:
+		return argv
+	case root == ".":
+		return append([]string{"git"}, args...)
+	}
+	return append([]string{"git", "-C", root}, args...)
+}
+
+// isContentRead reports one of the content tree's byte-exact reads, which
+// sdkGitAnswer plays so a fetch test scripts only fetch's own calls.
+func isContentRead(cmd *verdict.Command) bool {
+	_, _, ok := gitcmd.Split(cmd.Argv)
+	return ok && slices.ContainsFunc(cmd.Env, func(e string) bool { return strings.HasSuffix(e, "=core.safecrlf") })
+}
+
+// fakeWorktreeAdd leaves what `git worktree add` would, given the caller's
+// args: a `gitdir:` file naming an admin directory (kept inside the
+// checkout, so removing the snapshot removes it). verify checks for it, and
+// the sandbox follows it.
+func fakeWorktreeAdd(args []string) {
+	if len(args) < 2 || args[1] != "add" {
 		return
 	}
-	dest := argv[len(argv)-2]
+	dest := args[len(args)-2]
 	admin := filepath.Join(dest, ".gitadmin")
 	if err := os.MkdirAll(admin, 0o755); err != nil {
 		panic(err)

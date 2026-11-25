@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -284,7 +285,7 @@ func TestSnapshotReportsWhatItLeavesOut(t *testing.T) {
 type tamperingCommander struct{ dest, victim string }
 
 func (c tamperingCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) > 3 && cmd.Argv[2] == c.dest && cmd.Argv[3] == "read-tree" {
+	if root, args, ok := gitcmd.Split(cmd.Argv); ok && root == c.dest && args[0] == "read-tree" {
 		_ = os.Remove(filepath.Join(c.dest, c.victim))
 	}
 	return coreexec.Runner{}.Run(ctx, cmd)

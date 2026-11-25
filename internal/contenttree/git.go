@@ -3,12 +3,10 @@ package contenttree
 import (
 	"context"
 	"io"
-	"os"
-	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -28,22 +26,15 @@ const (
 	nul           = "\x00"
 )
 
-// subcommandAt is where the git subcommand sits in `git -C <root> <sub> …`.
-const subcommandAt = 3
-
 // off is the value that turns a boolean setting off.
 const off = "false"
 
-// safety is the configuration every git call here runs with: no fsmonitor
-// program, no hooks (the hooks path names a file, so no hook resolves, even
-// with core.hooksPath pointing at PR content such as .husky), and no
-// line-ending conversion. It rides GIT_CONFIG_COUNT, which outranks every
-// config file, so neither the repository nor the user's config can turn any
-// of it back on. No call here runs a filter at all: hashing is --no-filters
+// byteExact is the configuration every git call here adds to the shared
+// hook-free settings ([gitcmd.Env]): no line-ending conversion, so a hash
+// names the bytes on disk. It rides GIT_CONFIG_COUNT, which outranks every
+// config file. No call here runs a filter at all: hashing is --no-filters
 // and no call writes a working tree.
-var safety = []string{
-	"core.fsmonitor", off,
-	"core.hooksPath", os.DevNull,
+var byteExact = []string{
 	"core.autocrlf", off,
 	"core.eol", "lf",
 	"core.safecrlf", off,
@@ -75,7 +66,7 @@ func (g Git) runEnv(ctx context.Context, extra []string, args ...string) (core.R
 }
 
 func (g Git) check(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	sub := cmd.Argv[subcommandAt]
+	sub := gitcmd.Subcommand(cmd.Argv)
 	res, err := g.Cmdr.Run(ctx, cmd)
 	switch {
 	case err != nil:
@@ -97,57 +88,14 @@ func (g Git) exec(ctx context.Context, args ...string) (core.Result, error) {
 	return res, nil
 }
 
-// command builds `git -C <root> args...` with the safety configuration and,
-// when index is set, the throwaway index.
+// command builds the hook-free `git -C <root> args...` ([gitcmd.Argv]) with
+// the byte-exact configuration and, when index is set, the throwaway index.
+// The inherited location variables are gone ([gitcmd.Env]), so the index
+// set here is the only one any call reads or writes.
 func (g Git) command(index string, args ...string) *core.Command {
-	env := g.Env
-	if env == nil {
-		env = os.Environ()
-	}
-	env = slices.DeleteFunc(slices.Clone(env), inherited)
-	env = withConfig(env, safety...)
+	env := gitcmd.WithConfig(gitcmd.Env(g.Env), byteExact...)
 	if index != "" {
 		env = append(env, "GIT_INDEX_FILE="+index)
 	}
-	return &core.Command{Argv: append([]string{"git", "-C", g.Root}, args...), Env: env, OutputCap: outputCap}
-}
-
-// inheritedGit are the variables a parent git (a hook, `git -c`, a
-// worktree) exports that would retarget or reconfigure a content read:
-// another repository, work tree, or index — an inherited GIT_INDEX_FILE
-// would let the snapshot's read-tree rewrite the user's own index — and
-// GIT_CONFIG_PARAMETERS, which outranks GIT_CONFIG_COUNT and could turn
-// hooks back on. Every call here names its repository with -C and sets its
-// own index, so none of them is needed.
-var inheritedGit = []string{
-	"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
-	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_CONFIG_PARAMETERS",
-}
-
-func inherited(e string) bool {
-	name, _, _ := strings.Cut(e, "=")
-	return slices.Contains(inheritedGit, name)
-}
-
-// withConfig appends key/value pairs as command-line-scope configuration
-// after any GIT_CONFIG_COUNT entries env already carries, keeping them.
-func withConfig(env []string, kv ...string) []string {
-	count := configCount(env)
-	for i := 0; i+1 < len(kv); i += 2 {
-		n := strconv.Itoa(count + i/2)
-		env = append(env, "GIT_CONFIG_KEY_"+n+"="+kv[i], "GIT_CONFIG_VALUE_"+n+"="+kv[i+1])
-	}
-	return append(env, "GIT_CONFIG_COUNT="+strconv.Itoa(count+len(kv)/2))
-}
-
-// configCount is the GIT_CONFIG_COUNT env already sets (the last one wins).
-func configCount(env []string) int {
-	count := 0
-	for _, e := range env {
-		v, ok := strings.CutPrefix(e, "GIT_CONFIG_COUNT=")
-		if n, err := strconv.Atoi(v); ok && err == nil && n > 0 {
-			count = n
-		}
-	}
-	return count
+	return &core.Command{Argv: gitcmd.Argv(g.Root, args...), Env: env, OutputCap: outputCap}
 }

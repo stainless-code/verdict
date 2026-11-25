@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const samePatchHead = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -31,7 +32,7 @@ const samePatchDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..222222
 type samePatchStubCommander struct{}
 
 func (c *samePatchStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && slices.Equal(args, []string{"patch-id", "--stable"}) && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil && string(raw) == samePatchDiff {
 			return core.Result{Stdout: samePatchID + " 0000000000000000000000000000000000000000\n"}, nil

@@ -358,14 +358,17 @@ func refEndBoundary(cmd string, end int) bool {
 // unrelated dirty file stays untouched. An already-committed identical file
 // reports committed without a new commit. Each command names the repository
 // root with `-C`, so the repo-relative destination resolves the same from a
-// checkout subdirectory as from the root.
+// checkout subdirectory as from the root. No hook runs — not the checkout's
+// own .git/hooks, and not a core.hooksPath the reviewed tree points at its
+// own directory (husky, lefthook): the commit carries reviewed content, so a
+// pre-commit, commit-msg, or post-commit hook would be code the PR chose,
+// run outside any sandbox. An operator who wants their hooks runs them.
 func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool, *core.RefusalError) {
-	root := st.req.RepoRootPath()
-	if _, err := st.runGit(ctx, "git", "-C", root, "add", "--", destRel); err != nil {
+	if _, err := st.runGit(ctx, "add", "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not stage %s: %v", destRel, err))
 	}
-	cached, err := st.runGit(ctx, "git", "-C", root, "diff", "--cached", "--name-only", "--", destRel)
+	cached, err := st.runGit(ctx, "diff", "--cached", "--name-only", "--", destRel)
 	if err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not inspect staged %s: %v", destRel, err))
@@ -374,7 +377,7 @@ func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool
 		return true, nil
 	}
 	msg := "test: regression for " + full
-	if _, err := st.runGit(ctx, "git", "-C", root, "commit", "-m", msg, "--", destRel); err != nil {
+	if _, err := st.runGit(ctx, "commit", "-m", msg, "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not commit %s: %v", destRel, err))
 	}

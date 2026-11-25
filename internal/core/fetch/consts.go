@@ -73,7 +73,6 @@ const (
 	// Provider binaries and argv tokens.
 	binAz              = "az"
 	binCurl            = "curl"
-	binGit             = "git"
 	binGlab            = "glab"
 	ghCmdPR            = "pr"
 	flagH              = "-H"
@@ -106,7 +105,6 @@ const (
 	gitWorktreeAdd    = "add"
 	gitWorktreeRemove = "remove"
 	gitStashCreate    = "create"
-	gitDashC          = "-C"
 	gitEmptyTree      = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 	gitHeadRef        = "HEAD"
 	gitRange3         = "..."

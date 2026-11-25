@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const (
@@ -401,12 +402,8 @@ func productionPicker(r *cli.Runner, req Request) *Picker {
 // without an origin is simply no detection.
 func gitRemote(repoRoot string) func(context.Context) (string, error) {
 	return func(ctx context.Context) (string, error) {
-		dir := repoRoot
-		if dir == "" {
-			dir = "."
-		}
 		res, err := (coreexec.Runner{OutputCap: coreexec.FetchOutputCap}).Run(ctx, &core.Command{
-			Argv: []string{"git", "-C", dir, "remote", "get-url", "origin"},
+			Argv: gitcmd.Argv(repoRoot, "remote", "get-url", "origin"), Env: gitcmd.Env(nil),
 		})
 		if err != nil {
 			return "", fmt.Errorf("read the origin remote: %w", err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // pruneCommander records git calls and answers them all with success.
@@ -19,6 +21,12 @@ type pruneCommander struct{ calls [][]string }
 func (c *pruneCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.calls = append(c.calls, cmd.Argv)
 	return core.Result{}, nil
+}
+
+// isPrune reports a hook-free `git worktree prune`.
+func isPrune(argv []string) bool {
+	_, args, ok := gitcmd.Split(argv)
+	return ok && slices.Equal(args, []string{"worktree", "prune"})
 }
 
 // snapshotDir is the snapshot directory name a run with this deadline makes.
@@ -73,7 +81,7 @@ func TestSweepRemovesOnlySnapshotsPastTheirDeadline(t *testing.T) {
 	if _, err := os.Stat(live); err != nil {
 		t.Errorf("the sweep removed a live snapshot: %v", err)
 	}
-	if len(cmdr.calls) != 1 || cmdr.calls[0][3] != "worktree" || cmdr.calls[0][4] != "prune" {
+	if len(cmdr.calls) != 1 || !isPrune(cmdr.calls[0]) {
 		t.Errorf("git calls = %q, want one worktree prune", cmdr.calls)
 	}
 }

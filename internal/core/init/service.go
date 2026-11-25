@@ -28,6 +28,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -1067,13 +1068,16 @@ func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest st
 	return "check-tree: dirty worktree — commit or stash first:", false, strings.Join(restLines, newlineStr)
 }
 
-// gitStatus runs `git status --porcelain` through the commander seam.
+// gitStatus runs a hook-free, fsmonitor-free `git status --porcelain`
+// through the commander seam. Clean and process filters stay on, so a file
+// reads as git itself sees it.
 func (st *state) gitStatus(ctx context.Context) (string, error) {
 	if st.req.Commander == nil {
 		return "", errNoCommander
 	}
 	res, err := st.req.Commander.Run(ctx, &core.Command{
-		Argv: []string{"git", "-C", st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all"},
+		Argv: gitcmd.Argv(st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all"),
+		Env:  gitcmd.Env(nil),
 	})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; check-tree reads "not a git repo"
