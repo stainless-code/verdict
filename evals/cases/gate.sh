@@ -281,8 +281,9 @@ assert_exit "corrupt store is a tool error" 3
 assert_eq "corrupt store carries a typed refusal" "corrupt-store" "$(jq -r .error.code <"$EVAL_OUT")"
 assert_eq "refusal envelope carries no data" "null" "$(jq -r .data <"$EVAL_OUT")"
 
-# --- a VERIFIED claim reaches the gate only through the tool-only receipt
-# `verdict verify` writes (verify-receipt.json): a passing run of the claim's
+# --- a VERIFIED claim reaches the gate only when verify-receipt.json (which
+# `verdict verify` writes; the gate validates its contents, not its author)
+# records a passing run of the claim's
 # own command on the clean HEAD being graded. A hand-written claim, a pass
 # forged into patch.json, a triage rationale, a dirty tree, a moved HEAD, or a
 # receipt for another command all leave the finding open, failing the
