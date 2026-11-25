@@ -303,8 +303,10 @@ func usageText() string {
 		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
 		"    the finding sig patch.json names, exit, timeout, and the tree id of the content it\n" +
 		"    ran on — the receipt record/post need before a VERIFIED claim flips a finding\n" +
-		"    addressed. The command runs in a snapshot checkout of that content (uncommitted\n" +
-		"    edits included), never in the user's checkout.\n" +
+		"    addressed. The content is the index paths' working-tree bytes (uncommitted edits\n" +
+		"    included; untracked and ignored files are not). The command runs in a clean snapshot\n" +
+		"    of it outside the user's checkout, made with no git hook, filter, or fsmonitor; a\n" +
+		"    checkout verify cannot snapshot refuses verify-failed and nothing runs.\n" +
 		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
@@ -316,8 +318,7 @@ func usageText() string {
 		"    empty ~/.aws and ~/.ssh, a writable snapshot root, a private /tmp), and\n" +
 		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
 		"    only to the snapshot and a private TMPDIR; credential paths and host /tmp\n" +
-		"    denied; no mount or PID namespace). Your checkout is read-only unless git cannot\n" +
-		"    snapshot it, and then the command runs in it.\n" +
+		"    denied; no mount or PID namespace). Your checkout is read-only.\n" +
 		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
 		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
 		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +

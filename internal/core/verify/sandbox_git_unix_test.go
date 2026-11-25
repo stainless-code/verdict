@@ -3,6 +3,7 @@
 package verifycore
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -12,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/contenttree"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -550,28 +553,66 @@ func requireSubmoduleObjectsHardlinked(t *testing.T, gitdir string) {
 	}
 }
 
-// TestSandboxReexposesALinkedWorktreesGitDir pins both shapes for a real
-// linked worktree — the snapshot verify runs the command in — whose git
-// directory sits in the source checkout: bwrap binds the worktree's git
-// directory and the common directory read-only after the private /tmp, and
-// the Seatbelt profile re-allows reads of them and nothing else.
+// TestSandboxReexposesALinkedWorktreesGitDir pins both shapes on the layout
+// verify really builds: a snapshot made by contenttree in a directory outside
+// the checkout, whose `.git` file names an admin directory in the source
+// checkout's git directory. bwrap binds the root writable, pins its `.git`
+// pointer read-only, and binds the common and admin directories read-only
+// after the private /tmp, parent first; the Seatbelt profile re-allows reads
+// of them and nothing else.
 func TestSandboxReexposesALinkedWorktreesGitDir(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "repo")
 	gitCommittedRepo(t, repo)
-	wt := filepath.Join(repo, "state", "snap")
-	runGit(t, repo, "worktree", "add", "--detach", "-q", wt)
+	// verify names the snapshot by its physical path; so does this test.
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	snap := filepath.Join(base, "snap")
+	g := contenttree.Git{Cmdr: coreexec.Runner{}, Root: repo, Env: testenv.Base(nil)}
+	if _, err := g.Snapshot(t.Context(), snap); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := g.RemoveCheckout(context.Background(), snap); err != nil {
+			t.Errorf("RemoveCheckout: %v", err)
+		}
+	})
 	// The pointer walk resolves links, so the dirs carry their physical
 	// spelling (/var is a link on macOS).
 	common, err := filepath.EvalSymlinks(filepath.Join(repo, ".git"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	dirs := []string{filepath.Join(common, "worktrees", "snap"), common}
-	if got := sandboxGitOutsideDirs(wt); !slices.Equal(got, dirs) {
+	dirs := []string{common, filepath.Join(common, "worktrees", "snap")}
+	if got := sandboxGitOutsideDirs(snap); !slices.Equal(got, dirs) {
 		t.Fatalf("outside git dirs = %v, want %v", got, dirs)
 	}
-	requireReadOnlyBindsAfterTmp(t, wt, dirs)
-	requireReadOnlyProfileRules(t, wt, dirs)
+	requireSnapshotBinds(t, snap, dirs)
+	requireReadOnlyBindsAfterTmp(t, snap, dirs)
+	requireReadOnlyProfileRules(t, snap, dirs)
+}
+
+// requireSnapshotBinds checks the bwrap mounts after the private ones: the
+// snapshot writable, its `.git` pointer pinned, and the outside git dirs
+// read-only, parent first.
+func requireSnapshotBinds(t *testing.T, snap string, dirs []string) {
+	t.Helper()
+	argv, ref := bwrapArgv(snap, homeInputs(t.TempDir()))
+	if ref != nil {
+		t.Fatalf("bwrapArgv: %v", ref)
+	}
+	want := []string{
+		"--bind", snap, snap,
+		"--ro-bind", filepath.Join(snap, ".git"), filepath.Join(snap, ".git"),
+		"--ro-bind", dirs[0], dirs[0],
+		"--ro-bind", dirs[1], dirs[1],
+		"--unshare-net",
+	}
+	start := slices.Index(argv, "--bind")
+	if start < 0 || len(argv) < start+len(want) || !slices.Equal(argv[start:start+len(want)], want) {
+		t.Errorf("argv = %v, want %v after the private mounts", argv, want)
+	}
 }
 
 // requireReadOnlyBindsAfterTmp checks each dir is bound read-only after the

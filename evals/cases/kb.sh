@@ -338,14 +338,14 @@ eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<EOF
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":"$sigB","status":"false-positive","rationale":"agent triage with a long enough rationale here for sure"}]}
 EOF
 cat > "$EVAL_SANDBOX/.verdict/state/local-k6/verification.json" <<EOF
-[{"sig":"$sigA","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"}]
+[{"sig":"$sigA","verdict":"VERIFIED","verifyCmd":"true"}]
 EOF
 # FIXTURE: the tool-only receipt `verdict verify` writes after a clean pass of
 # `true` on the content the bundle captured (its source.json content_tree). The
 # fixture bundle was produced in another checkout, so a real verify here could
 # not name that content; gate.sh drives the real verify -> record path.
 jq -n --arg t "$(jq -r .content_tree "$EVAL_SANDBOX/.verdict/state/local-k6/source.json")" \
-  '{schema_version:"1",command:"true",tree:$t,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
+  '{schema_version:"2",command:"true",tree:$t,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
   > "$EVAL_SANDBOX/.verdict/state/local-k6/verify-receipt.json"
 run_review record acme/local-k6 local-k6 --json
 if [ "$EVAL_STATUS" -eq 0 ]; then

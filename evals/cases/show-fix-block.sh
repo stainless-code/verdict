@@ -95,7 +95,7 @@ cat > "$EVAL_SANDBOX/.verdict/state/5203/findings.json" <<'EOF'
 [{"kind":"inline","path":"src/a.go","side":"RIGHT","line":10,"anchored":true,"body":"Check the error path.","suggestion":null,"inBounds":true,"rigor":"ran","severity":"informational","sig":"e333333333333333333333333333333333333333","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 cat > "$EVAL_SANDBOX/.verdict/state/5203/verification.json" <<'EOF'
-[{"sig":"e3333333","verdict":"VERIFIED","verifyCmd":"go test ./internal/a","resultHead":"eeeeeee"}]
+[{"sig":"e3333333","verdict":"VERIFIED","verifyCmd":"go test ./internal/a"}]
 EOF
 cat > "$EVAL_SANDBOX/.verdict/state/5203/patch.json" <<'EOF'
 {"sig":"ffffffff","verifyCmd":"go test ./different","resultHead":"fffffff"}
@@ -103,7 +103,7 @@ EOF
 run_review show acme/app 5203 --sig e3333333 --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.data.fix.verify_hint.verifyCmd' <"$EVAL_OUT" 2>/dev/null)" = "go test ./internal/a" ] \
-  && [ "$(jq -r '.data.fix.verify_hint.resultHead' <"$EVAL_OUT" 2>/dev/null)" = "eeeeeee" ]; then
+  && [ "$(jq -c '.data.fix.verify_hint | keys' <"$EVAL_OUT" 2>/dev/null)" = '["verifyCmd"]' ]; then
   good "verification.json for the sig supplies the exact rerun hint, not a stale patch"
 else
   bad "verify hint: $(jq -c '.data.fix.verify_hint // "absent"' <"$EVAL_OUT" 2>/dev/null)"

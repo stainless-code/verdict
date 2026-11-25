@@ -4,9 +4,24 @@
 
 **Breaking:** verify receipts now bind the content a command ran on, not HEAD plus a clean working tree.
 
-- **What verify records.** Before the command runs, `verdict verify` names the checkout's content as a git tree id. That covers HEAD plus every modified, deleted, and untracked file `git add -A` sees, and leaves out verdict's own state. The id is computed through a throwaway index, so your index and refs are never touched. `verify` records it as `tree` in `verify-receipt.json` and in `data.tree`.
-- **Where the command runs.** The command runs in a snapshot checkout of that tree, never in your checkout. Uncommitted edits are verified as they are, and nothing done to your checkout while the command runs can change what it tested. Under `--sandbox` the snapshot is the writable root. Your checkout is read-only, and its git directory is re-exposed read-only so git works in the snapshot even when the checkout sits under `/tmp`. When git cannot snapshot the content (no repository, or an untracked nested repository with no commit), the command runs in place with a warning, and its receipt names no tree, so it cannot back a `VERIFIED` claim.
-- **What `record` and `post` compare.** They compare the receipt's tree with the content they grade. For a local bundle that is the tree `fetch-local` now records as `source.json` `content_tree`. When git cannot name that content, `fetch-local` still bundles, warns, and records no tree. For a PR bundle it is the head commit's tree.
-- **The local fix loop.** The loop needs no commit: patch, re-run `fetch-local`, then `verdict verify`, then `record`.
-- **Removed.** The clean-tree and HEAD binding is gone. Receipts carry `tree` instead of `head`. `validation-<group>.json` replaces `execution_head` with `tree`. `verify --group` now requires the checkout's content to equal the reviewed commit's tree, and it also runs in a snapshot. A `verification.json` claim is now `{sig, verdict, verifyCmd}`, and `resultHead` no longer gates anything.
+- **What the content is.** It is the paths in your index, which is what a working-tree bundle's diff covers: tracked and intent-to-add (`git add -N`) files. Each one counts with its working-tree bytes exactly as on disk, so uncommitted edits are included. Untracked and ignored files are outside the content, as they are outside the bundle. Verdict's own state keeps its index version.
+- **Where the command runs.** `verdict verify` copies that content into a snapshot, a private directory under the host temp root outside your checkout. It names exactly the bytes it copied as a git tree, then re-reads the snapshot to prove it still holds that tree. The command runs there, never in your checkout, so nothing done to your checkout during the run can change what it tested.
+  - The snapshot is a clean, CI-like checkout. Ignored dependencies and local config are not in it, and submodules are empty, so install dependencies in the command itself. `verify` warns naming the untracked files, ignored entries and submodules it left out.
+  - The receipt records the tree as `tree` in `verify-receipt.json` and `data.tree`.
+  - The snapshot is removed afterwards, and a later run sweeps any snapshot a killed run stranded.
+- **No checkout code runs.** Every git call runs with hooks off, even when `core.hooksPath` names `.husky/` or other tree content. Fsmonitor is off too, and no filter runs. Blobs are hashed with `--no-filters` and files are copied byte for byte, so no clean or smudge filter (git-lfs included), line-ending conversion or ident expansion runs or changes a byte. A checkout whose conversions change bytes names a different tree than its commit.
+- **No in-place fallback.** A checkout `verify` cannot snapshot, such as a non-repository, refuses `verify-failed` and nothing runs. Before, it fell back to running in your checkout.
+- **Under `--sandbox`.** The snapshot is the writable root and your checkout is read-only. The snapshot's git directory lives in your checkout and is re-exposed read-only.
+- **What `record` and `post` compare.** They compare the receipt's tree with the content they grade:
+  - **Local bundle:** the tree `fetch-local` now records as `source.json` `content_tree`. `fetch-local` names the content before and after it reads the diff, and records no tree when the two differ.
+  - **`--staged` bundle:** records no tree, because `verify` never runs the index.
+  - **PR bundle:** the head commit's tree.
+- **The local fix loop.** It needs no commit: patch, re-run `fetch-local`, then `verdict verify`, then `record`.
+- **Removed.**
+  - The clean-tree and HEAD binding is gone.
+  - Receipts carry `tree` instead of `head`, and both receipts now have `schema_version` `"2"`.
+  - `validation-<group>.json` replaces `execution_head` with `tree`.
+  - `verify --group` requires the snapshot's content to equal the reviewed commit's tree.
+  - A receipt that says `passed` but fails its own evidence reads as `deep validation contradictory`.
+  - A `verification.json` claim is `{sig, verdict, verifyCmd}`. `resultHead` is no longer read, and `verify_hint` drops it.
 - **Triage.** A `triage[]` claim for `addressed` now refuses the review (`bad-review-input` from `record`, `bad-triage-status` from `post`) instead of being ignored with a warning.

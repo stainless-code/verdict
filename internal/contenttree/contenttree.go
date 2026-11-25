@@ -2,8 +2,22 @@
 // elsewhere. A verify receipt is bound to the tree the command ran on, and
 // record and post compare that tree with the tree they grade, so "verified"
 // means this exact content, whatever HEAD, the index, or the working tree
-// say later. Every read goes through a throwaway index file: the user's
-// index, refs, and working tree are never written.
+// say later.
+//
+// The content is the paths in the index — what a working-tree bundle's diff
+// covers: tracked files and intent-to-add (`git add -N`) entries — each with
+// its working-tree bytes exactly as on disk. Untracked and ignored files are
+// outside it, as they are outside the bundle. Every blob is hashed with
+// `hash-object --no-filters` and every file is copied as-is, so no
+// line-ending conversion, ident expansion, clean/smudge filter (git-lfs
+// included), fsmonitor, or hook program runs or changes a byte, and the
+// command sees no dependency or config the checkout keeps in ignored files.
+//
+// Naming writes the blobs and the tree into the repository's object store —
+// only the indexed files', never an untracked or ignored file's — and a
+// snapshot adds one unreferenced commit, which git's normal gc collects.
+// Every index write goes through a throwaway index: the user's index, refs,
+// and working tree are never written.
 package contenttree
 
 import (
@@ -11,7 +25,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -19,13 +32,10 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// outputCap bounds a git read; a tree id or an error line is all it carries.
-const outputCap = 64 << 10
-
 // excluded is verdict's own runtime state, never reviewed content: bundle
-// state, `verdict loop` round receipts, and the generated .gitignore. The tree
-// keeps HEAD's version of these paths and ignores their working-tree changes,
-// so a committed .verdict/.gitignore still matches the commit's tree.
+// state, `verdict loop` round receipts, and the generated .gitignore. The
+// tree keeps their index version and ignores working-tree changes, so a
+// committed .verdict/.gitignore still matches the commit's tree.
 var excluded = []string{
 	config.VerdictDir + "/" + config.StateDirName,
 	config.VerdictDir + "/loop",
@@ -36,63 +46,169 @@ var excluded = []string{
 var ErrUnresolved = jq.NewErr("revision not in the local repository")
 
 // Git runs the reads against one checkout root through an injected commander.
-// Env is the base child environment (nil inherits); the throwaway index is
-// added to it.
+// Env is the base child environment (nil inherits the process environment).
 type Git struct {
 	Cmdr core.Commander
 	Root string
 	Env  []string
 }
 
-// Worktree returns the tree id of the checkout's content: HEAD's tree (none
-// on an unborn branch) updated with every change `git add -A` sees — modified,
-// deleted, and untracked files, .gitignore respected — minus verdict's state.
-func (g Git) Worktree(ctx context.Context) (string, error) {
-	index, cleanup, err := tempIndex()
-	if err != nil {
-		return "", err
-	}
-	defer cleanup()
-	steps, err := g.stageSteps(ctx)
-	if err != nil {
-		return "", err
-	}
-	for _, args := range steps {
-		if _, err := g.run(ctx, index, args...); err != nil {
-			return "", err
-		}
-	}
-	return g.line(ctx, index, "write-tree")
+// Content is what a snapshot holds and what it left out.
+type Content struct {
+	// Tree is the tree id of exactly the snapshot's bytes.
+	Tree string
+	// Untracked are untracked, unignored paths: outside the bundle's diff
+	// and outside the tree (`git add -N` brings one in).
+	Untracked []string
+	// Ignored are the top-level entries .gitignore excludes that exist in
+	// the checkout: dependencies, build output, local config.
+	Ignored []string
+	// Gitlinks are submodules: recorded by their commit, left empty.
+	Gitlinks []string
 }
 
-// stageSteps are the index writes that stage the checkout's content: start
-// from HEAD's tree, add every change, then put verdict's paths back to
-// HEAD's version (an exclude pathspec would fail on an ignored path such as
-// .verdict/state). An unborn branch starts empty and drops verdict's paths.
-func (g Git) stageSteps(ctx context.Context) ([][]string, error) {
-	add := []string{"add", "-A", "--", "."}
-	_, err := g.Commit(ctx, "HEAD")
-	switch {
-	case errors.Is(err, ErrUnresolved):
-		return [][]string{add, append([]string{"rm", "-r", "-q", "--cached", "--ignore-unmatch", "--"}, excluded...)}, nil
-	case err != nil:
-		return nil, err
+// Worktree returns the tree id of the checkout's content: every index path's
+// working-tree bytes, a path deleted from disk left out, and verdict's
+// state at its index version.
+func (g Git) Worktree(ctx context.Context) (string, error) {
+	g, err := g.absolute()
+	if err != nil {
+		return "", err
 	}
-	return [][]string{{"read-tree", "HEAD"}, add, append([]string{"reset", "-q", "HEAD", "--"}, excluded...)}, nil
+	entries, kept, err := g.list(ctx)
+	if err != nil {
+		return "", err
+	}
+	return g.name(ctx, entries, kept, "")
+}
+
+// Snapshot copies the checkout's content into dest (an absent or empty
+// directory) and names exactly the bytes it copied, so the name and the copy
+// cannot disagree however the checkout changes meanwhile. dest becomes a
+// detached linked worktree of an unreferenced commit of that tree, with its
+// index read from the tree, so git works inside it; before returning, dest
+// is named again and must still be that tree. No branch or ref is created;
+// RemoveCheckout undoes it.
+func (g Git) Snapshot(ctx context.Context, dest string) (content Content, err error) {
+	g, err = g.absolute()
+	if err != nil {
+		return Content{}, err
+	}
+	// The staging directory is named after dest, so whatever sweeps a
+	// stranded dest sweeps its staging directory too.
+	staging, err := os.MkdirTemp(filepath.Dir(dest), filepath.Base(dest)+".staging-")
+	if err != nil {
+		return Content{}, jq.Sealed("create the staging directory", err)
+	}
+	defer func() { err = errors.Join(err, RemoveTree(staging)) }()
+	entries, kept, err := g.list(ctx)
+	if err != nil {
+		return Content{}, err
+	}
+	content.Gitlinks = gitlinks(entries)
+	if content.Tree, err = g.name(ctx, entries, kept, staging); err != nil {
+		return Content{}, err
+	}
+	if err := g.materialize(ctx, content.Tree, staging, dest); err != nil {
+		return Content{}, err
+	}
+	content.Untracked, content.Ignored = g.leftOut(ctx)
+	return content, nil
+}
+
+// materialize makes dest a linked worktree at a commit of tree holding the
+// staged bytes, then re-names it: what the command will see must be the tree.
+func (g Git) materialize(ctx context.Context, tree, staging, dest string) error {
+	commit, err := g.commitTree(ctx, tree)
+	if err != nil {
+		return err
+	}
+	// --no-checkout: git writes no file, so no smudge filter or checkout
+	// hook could run; the staged bytes move in instead.
+	if _, err := g.runEnv(ctx, nil, cmdWorktree, "add", "--no-checkout", "--detach", "--quiet", dest, commit); err != nil {
+		return err
+	}
+	in := Git{Cmdr: g.Cmdr, Root: dest, Env: g.Env}
+	if err := in.fill(ctx, staging); err != nil {
+		return err
+	}
+	got, err := in.Worktree(ctx)
+	if err != nil {
+		return err
+	}
+	if got != tree {
+		return jq.NewErrf("the snapshot at %s holds tree %s, not the %s it was made from", dest, got, tree)
+	}
+	return nil
+}
+
+// commitTree makes the unreferenced commit a snapshot checks out.
+func (g Git) commitTree(ctx context.Context, tree string) (string, error) {
+	res, err := g.runEnv(ctx, identity, "commit-tree", tree, "-m", "verdict verify snapshot")
+	if err != nil {
+		return "", err
+	}
+	return objectID("commit-tree", res.Stdout)
+}
+
+// fill moves the staged bytes into a fresh linked worktree at g.Root and reads
+// its index from HEAD (no working-tree write, so no filter or hook).
+func (g Git) fill(ctx context.Context, staging string) error {
+	if err := linkedCheckout(g.Root); err != nil {
+		return err
+	}
+	if err := moveEntries(staging, g.Root); err != nil {
+		return err
+	}
+	_, err := g.runEnv(ctx, nil, "read-tree", "HEAD")
+	return err
+}
+
+func (g Git) absolute() (Git, error) {
+	root, err := filepath.Abs(g.Root)
+	if err != nil {
+		return g, jq.Sealed("resolve "+g.Root, err)
+	}
+	g.Root = root
+	return g, nil
 }
 
 // Commit returns the tree id of rev, or ErrUnresolved when the repository
 // does not hold it.
 func (g Git) Commit(ctx context.Context, rev string) (string, error) {
-	res, err := g.exec(ctx, nil, "rev-parse", "--verify", "-q", rev+"^{tree}")
+	res, err := g.exec(ctx, "rev-parse", "--verify", "-q", rev+"^{tree}")
 	if err != nil {
 		return "", err
 	}
 	if res.ExitCode != 0 {
 		return "", ErrUnresolved
 	}
-	return strings.TrimSpace(res.Stdout), nil
+	return objectID("rev-parse", res.Stdout)
 }
+
+// objectID returns git's output as an object id (SHA-1 or SHA-256 hex), or
+// an error when it is anything else: a receipt names content only by an id
+// git produced, never by whatever a commander printed.
+func objectID(op, out string) (string, error) {
+	id := strings.TrimSpace(out)
+	if (len(id) == sha1Hex || len(id) == sha256Hex) && strings.Trim(id, "0123456789abcdef") == "" {
+		return id, nil
+	}
+	return "", jq.NewErrf("git %s printed %q, not an object id", op, truncate(id))
+}
+
+func truncate(s string) string {
+	if len(s) > sha256Hex {
+		return s[:sha256Hex] + "…"
+	}
+	return s
+}
+
+// sha1Hex and sha256Hex are the hex lengths of git's two object formats.
+const (
+	sha1Hex   = 40
+	sha256Hex = 64
+)
 
 // identity is the fixed author of a snapshot commit, so making one never
 // depends on (or prompts for) the user's git identity.
@@ -101,81 +217,42 @@ var identity = []string{
 	"GIT_COMMITTER_NAME=verdict", "GIT_COMMITTER_EMAIL=verdict@localhost",
 }
 
-// Checkout materializes tree at dest (absent or empty) as a detached linked
-// worktree of an unreferenced snapshot commit: a real checkout git commands
-// work in, holding exactly that content while the user's checkout moves. No
-// branch or ref is created; RemoveCheckout undoes it.
-func (g Git) Checkout(ctx context.Context, tree, dest string) error {
-	res, err := g.runEnv(ctx, identity, "commit-tree", tree, "-m", "verdict verify snapshot")
-	if err != nil {
-		return err
+// linkedCheckout checks dest holds the `.git` file of a linked worktree: a
+// `gitdir:` file naming its admin directory. Anything else is not the
+// checkout git makes, and not one the sandbox can protect, since it pins the
+// root's git pointer.
+func linkedCheckout(dest string) error {
+	dotgit := filepath.Join(dest, ".git")
+	info, err := os.Lstat(dotgit)
+	if err != nil || !info.Mode().IsRegular() {
+		return jq.NewErrf("git worktree add left no .git file at %s", dest)
 	}
-	commit := strings.TrimSpace(res.Stdout)
-	_, err = g.runEnv(ctx, nil, "worktree", "add", "--detach", "--quiet", dest, commit)
-	return err
+	raw, err := os.ReadFile(dotgit)
+	if err != nil {
+		return jq.Sealed("read "+dotgit, err)
+	}
+	if !strings.HasPrefix(string(raw), "gitdir: ") {
+		return jq.NewErrf("%s is not a linked worktree's gitdir: file", dotgit)
+	}
+	return nil
 }
 
-// RemoveCheckout removes a Checkout's worktree and its registration, even
-// when the command left files in it.
+// RemoveCheckout removes a Snapshot's worktree and its registration, even
+// when the command left files in it or made them read-only.
 func (g Git) RemoveCheckout(ctx context.Context, dest string) error {
-	_, err := g.runEnv(ctx, nil, "worktree", "remove", "--force", dest)
-	if rerr := os.RemoveAll(dest); err == nil && rerr != nil {
-		err = jq.Sealed("remove "+dest, rerr)
+	_, err := g.runEnv(ctx, nil, cmdWorktree, "remove", "--force", dest)
+	if rerr := RemoveTree(dest); err == nil && rerr != nil {
+		err = rerr
 	}
-	if _, perr := g.runEnv(ctx, nil, "worktree", "prune"); err == nil {
+	if perr := g.Prune(ctx); err == nil {
 		err = perr
 	}
 	return err
 }
 
-// tempIndex is a fresh index path in a private directory, and its cleanup.
-func tempIndex() (string, func(), error) {
-	dir, err := os.MkdirTemp("", "verdict-index-")
-	if err != nil {
-		return "", nil, jq.Sealed("create a throwaway index", err)
-	}
-	return filepath.Join(dir, "index"), func() { _ = os.RemoveAll(dir) }, nil
-}
-
-func (g Git) line(ctx context.Context, index string, args ...string) (string, error) {
-	res, err := g.run(ctx, index, args...)
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(res.Stdout), nil
-}
-
-// run is exec that turns a nonzero exit into an error naming git's reason.
-func (g Git) run(ctx context.Context, index string, args ...string) (core.Result, error) {
-	var extra []string
-	if index != "" {
-		extra = []string{"GIT_INDEX_FILE=" + index}
-	}
-	return g.runEnv(ctx, extra, args...)
-}
-
-// runEnv runs git with extra added to the base environment and turns a
-// nonzero exit into an error naming git's reason.
-func (g Git) runEnv(ctx context.Context, extra []string, args ...string) (core.Result, error) {
-	res, err := g.exec(ctx, extra, args...)
-	if err != nil {
-		return res, err
-	}
-	if res.ExitCode != 0 {
-		reason, _, _ := strings.Cut(strings.TrimSpace(res.Stderr), "\n")
-		return res, jq.NewErrf("git %s exited %d: %s", args[0], res.ExitCode, reason)
-	}
-	return res, nil
-}
-
-func (g Git) exec(ctx context.Context, extra []string, args ...string) (core.Result, error) {
-	cmd := &core.Command{Argv: append([]string{"git", "-C", g.Root}, args...), Env: g.Env, OutputCap: outputCap}
-	if len(extra) > 0 {
-		cmd.Env = append(slices.Clone(g.Env), extra...)
-	}
-	res, err := g.Cmdr.Run(ctx, cmd)
-	if err != nil {
-		return res, jq.Sealed("git "+args[0], err)
-	}
-	return res, nil
+// Prune drops the registration of every linked worktree whose directory is
+// gone — a snapshot stranded by a killed run.
+func (g Git) Prune(ctx context.Context) error {
+	_, err := g.runEnv(ctx, nil, cmdWorktree, "prune")
+	return err
 }

@@ -22,7 +22,7 @@ const (
 	verifyTimeoutName = ".verify.timeout"
 	// ReceiptFile is the tool-only patch-path receipt beside patch.json.
 	ReceiptFile   = "verify-receipt.json"
-	receiptSchema = "1"
+	receiptSchema = "2"
 	// bundleReadCap bounds a bundle file read through the pinned root.
 	bundleReadCap = 1 << 20
 )

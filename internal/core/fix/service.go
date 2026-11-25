@@ -1407,9 +1407,9 @@ const (
 
 const (
 	// instructionsFmt guides the next manual pass.
-	instructionsFmt = "instructions: patch the anchor file (%s) and re-run " +
-		"fetch-local so the bundle captures the patched content (no commit " +
-		"needed), then run its verify command (verifyCmd in %s/patch.json) " +
+	instructionsFmt = "instructions: patch the anchor file (%s) — git add -N " +
+		"any file the fix creates — and re-run fetch-local so the bundle " +
+		"captures the patched content (no commit needed), then run its verify command (verifyCmd in %s/patch.json) " +
 		"through verdict verify %s %s and write verification.json beside it " +
 		"[{sig, verdict, verifyCmd}] with verdict VERIFIED and that verifyCmd " +
 		"(fix itself runs nothing — a claim flips only on the verify-receipt.json " +

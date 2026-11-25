@@ -300,14 +300,15 @@ eval_seed_base
 )
 VH="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
 # content_tree names the checkout's content with plain git, independently of
-# verdict: HEAD plus `git add -A`, verdict's own state left at HEAD's.
+# verdict: the index paths with their working-tree bytes (`add -u` on a copy
+# of the index), verdict's own state left at HEAD's. Untracked files are
+# outside it, as they are outside the bundle.
 content_tree() {
   local idx="$EVAL_SANDBOX/.git/eval-content-index"
-  rm -f "$idx"
+  cp "$EVAL_SANDBOX/.git/index" "$idx"
   (
     cd "$EVAL_SANDBOX" || exit 99
-    GIT_INDEX_FILE="$idx" git read-tree HEAD &&
-      GIT_INDEX_FILE="$idx" git add -A -- . &&
+    GIT_INDEX_FILE="$idx" git add -u -- . &&
       GIT_INDEX_FILE="$idx" git reset -q HEAD -- .verdict/state .verdict/loop .verdict/.gitignore &&
       GIT_INDEX_FILE="$idx" git write-tree
   )

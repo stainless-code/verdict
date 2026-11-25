@@ -221,7 +221,7 @@ func TestGoldenClaimsSequence(t *testing.T) {
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/local-kb/review.json": marshalJSON(t, doc),
 			".verdict/state/local-kb/verification.json": fmt.Sprintf(
-				`[{"sig":"%s","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`,
+				`[{"sig":"%s","verdict":"VERIFIED","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","verifyCmd":"make check"}]`,
 				sigs[0], sigs[0]),
 			receiptPath: kbReceipt("true"),
 		})

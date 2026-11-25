@@ -129,43 +129,58 @@ func TestRunLocalWorktreeSkipClean(t *testing.T) {
 }
 
 // TestRunLocalUnnameableContentStillBundles proves naming the reviewed
-// content is best effort: when git cannot index the checkout, fetch-local
-// still bundles, warns why, and records no content_tree, so only the
-// bundle's VERIFIED claims are lost, never the review.
+// content is best effort and never names content the diff may not cover:
+// when git cannot list the checkout, or the working tree changes between
+// the namings that bracket the diff read, fetch-local still bundles, warns
+// why, and records no content_tree, so only the bundle's VERIFIED claims are
+// lost, never the review.
 func TestRunLocalUnnameableContentStillBundles(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	cmdr := &scriptCommander{
-		t:          t,
-		untreeable: true,
-		out: map[string]scriptResult{
-			"git\x00rev-parse\x00--is-inside-work-tree":          {stdout: "true\n"},
-			"git\x00branch\x00--show-current":                    {stdout: "main\n"},
-			"git\x00rev-parse\x00HEAD":                           {stdout: worktreeTestHead + "\n"},
-			"git\x00stash\x00create":                             {stdout: ""},
-			"git\x00diff\x00HEAD":                                {stdout: ""},
-			"git\x00diff\x00--no-renames\x00--name-only\x00HEAD": {stdout: ""},
-			"git\x00diff\x00--numstat\x00HEAD":                   {stdout: ""},
-			"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
-		},
+	for _, tc := range []struct {
+		name string
+		want string
+		cmdr scriptCommander
+	}{
+		{"unreadable", "could not name the reviewed content (git ls-files exited 128: fatal: unable to read nested/data", scriptCommander{untreeable: true}},
+		{"moved during capture", "the working tree changed while the bundle was captured", scriptCommander{moving: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			cmdr := tc.cmdr
+			cmdr.t = t
+			cmdr.out = map[string]scriptResult{
+				"git\x00rev-parse\x00--is-inside-work-tree":          {stdout: "true\n"},
+				"git\x00branch\x00--show-current":                    {stdout: "main\n"},
+				"git\x00rev-parse\x00HEAD":                           {stdout: worktreeTestHead + "\n"},
+				"git\x00stash\x00create":                             {stdout: ""},
+				"git\x00diff\x00HEAD":                                {stdout: ""},
+				"git\x00diff\x00--no-renames\x00--name-only\x00HEAD": {stdout: ""},
+				"git\x00diff\x00--numstat\x00HEAD":                   {stdout: ""},
+				"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
+			}
+			scriptEmptyBasePolicy(&cmdr, worktreeTestHead)
+			requireNoContentTree(t, &cmdr, tc.want)
+		})
 	}
-	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
+}
+
+// requireNoContentTree runs a worktree fetch-local and checks it bundles,
+// warns with want, and records a null content_tree.
+func requireNoContentTree(t *testing.T, cmdr *scriptCommander, want string) {
+	t.Helper()
 	var human, diag bytes.Buffer
 	var streamed []string
 	if _, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed)); err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
-	if !slices.ContainsFunc(streamed, func(w string) bool {
-		return strings.Contains(w, "could not name the reviewed content") && strings.Contains(w, "nested/")
-	}) {
-		t.Errorf("warnings = %q, want the content-tree warning naming git's reason", streamed)
+	if !slices.ContainsFunc(streamed, func(w string) bool { return strings.Contains(w, want) }) {
+		t.Errorf("warnings = %q, want one containing %q", streamed, want)
 	}
 	raw, err := os.ReadFile(".verdict/state/local-mine/source.json")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(raw), `"content_tree": null`) {
-		t.Errorf("source.json records a content tree it could not name:\n%s", raw)
+		t.Errorf("source.json records a content tree it cannot vouch for:\n%s", raw)
 	}
 }
 

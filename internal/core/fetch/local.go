@@ -28,6 +28,9 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest) (*c
 	if ref != nil {
 		return nil, "", ref
 	}
+	// Named before the diff source is read (and before an isolated checkout
+	// snapshots the tree), so the capture can prove the content held still.
+	contentBefore(ctx, r, &mode)
 	if !f.Worktree {
 		return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 	}
@@ -527,6 +530,9 @@ func slugKeep(c byte) bool {
 
 // localMode is one resolved fetch-local diff source.
 type localMode struct {
+	// treeErr is why the working tree could not be named before its diff
+	// was read (see contentTree below).
+	treeErr         error
 	kind            string
 	baseSHA         string
 	headSHA         string
@@ -535,7 +541,9 @@ type localMode struct {
 	worktreeDiffSHA string
 	// contentTree is the reviewed content's git tree id (source.json
 	// content_tree), what a local bundle's VERIFIED claims are graded on.
+	// treeBefore names a working tree before its diff is read.
 	contentTree string
+	treeBefore  string
 	dirty       bool
 }
 
@@ -680,7 +688,7 @@ func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMo
 	if headRef == "" {
 		headRef = "worktree"
 	}
-	return localMode{kind: "worktree", baseSHA: base, headRef: headRef, rangeVal: "HEAD:worktree", dirty: true}
+	return localMode{kind: modeWorktree, baseSHA: base, headRef: headRef, rangeVal: "HEAD:worktree", dirty: true}
 }
 
 // resolveRangeMode owns the range split: three-dot wins when present,

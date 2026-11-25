@@ -15,6 +15,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
+# verify runs a command only in a snapshot of a git checkout's content, so
+# the sandbox is one (an unborn branch is enough).
+(cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
 
 DIR="$EVAL_SANDBOX/.verdict/state/5201"
 HITS="$EVAL_SANDBOX/netonly-hits.log"

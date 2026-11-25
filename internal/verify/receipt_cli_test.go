@@ -22,42 +22,109 @@ import (
 )
 
 // TestVerifyPatchReceiptNamesContent pins what the receipt's tree covers:
-// verdict's own state (bundle, loop receipts, the generated .gitignore)
-// leaves it at HEAD's tree, while reviewed input under .verdict/ — a
-// regression test, the KB — is content and changes it.
+// the index paths, as the bundle's diff does. verdict's own state (bundle,
+// loop receipts, the generated .gitignore) leaves it at HEAD's tree, and so
+// does an untracked file — a regression test or the KB under .verdict/ —
+// until `git add -N` makes it content.
 func TestVerifyPatchReceiptNamesContent(t *testing.T) {
 	for _, tc := range []struct {
 		name, extra string // extra is a .verdict-relative file written untracked
+		intent      bool   // git add -N the extra file
 		isHeadTree  bool
 	}{
 		{name: "state-and-generated-gitignore", extra: ".gitignore", isHeadTree: true},
 		{name: "loop-round-receipts", extra: "loop/20261125T000000Z/round-1.json", isHeadTree: true},
-		{name: "untracked-regression-test", extra: "tests/regress_test.go"},
-		{name: "untracked-kb", extra: "kb.jsonl"},
+		{name: "untracked-regression-test", extra: "tests/regress_test.go", isHeadTree: true},
+		{name: "intent-to-add-regression-test", extra: "tests/regress_test.go", intent: true},
+		{name: "intent-to-add-kb", extra: "kb.jsonl", intent: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := committedRepo(t)
 			writeTreeFile(t, root, ".verdict/"+tc.extra, "x\n")
-			receipt := runPatchVerify(t, root)
-			headTree := gitOrFatal(t, root, "rev-parse", "HEAD^{tree}")
-			if receipt.Tree == "" || (receipt.Tree == headTree) != tc.isHeadTree || receipt.Tree != contentTree(t, root) {
-				t.Fatalf("receipt tree = %q, HEAD tree %s, content tree %s; want it to be HEAD's: %t",
-					receipt.Tree, headTree, contentTree(t, root), tc.isHeadTree)
+			if tc.intent {
+				gitOrFatal(t, root, "add", "-N", ".verdict/"+tc.extra)
 			}
+			receipt, _ := runPatchVerify(t, root)
+			requireReceiptTree(t, root, receipt.Tree, tc.isHeadTree)
 		})
 	}
 }
 
-// TestVerifyPatchReceiptCountsHiddenUntracked pins that status config cannot
-// hide content: with status.showUntrackedFiles=no an untracked source file is
-// still in the tree the receipt names.
-func TestVerifyPatchReceiptCountsHiddenUntracked(t *testing.T) {
+// requireReceiptTree checks the receipt names the checkout's content tree,
+// and whether that is HEAD's.
+func requireReceiptTree(t *testing.T, root, tree string, isHeadTree bool) {
+	t.Helper()
+	headTree := gitOrFatal(t, root, "rev-parse", "HEAD^{tree}")
+	if want := contentTree(t, root); tree == "" || (tree == headTree) != isHeadTree || tree != want {
+		t.Fatalf("receipt tree = %q, HEAD tree %s, content tree %s; want it to be HEAD's: %t", tree, headTree, want, isHeadTree)
+	}
+}
+
+// TestVerifyPatchReceiptLeavesOutUntracked pins that a VERIFIED claim is
+// never backed by content no reviewer saw: an untracked source file — outside
+// the bundle's diff — is neither in the receipt's tree nor in the snapshot
+// the command runs in, and verify names it.
+func TestVerifyPatchReceiptLeavesOutUntracked(t *testing.T) {
 	root := committedRepo(t)
-	gitOrFatal(t, root, "config", "status.showUntrackedFiles", "no")
 	writeTreeFile(t, root, "helper.go", "package main\n")
-	receipt := runPatchVerify(t, root)
-	if receipt.Tree == gitOrFatal(t, root, "rev-parse", "HEAD^{tree}") || receipt.Tree != contentTree(t, root) {
-		t.Fatalf("receipt tree = %q, want the content tree with helper.go (%s)", receipt.Tree, contentTree(t, root))
+	writeTreeFile(t, root, ".verdict/state/5201/patch.json", `{"verifyCmd":"test ! -e helper.go"}`)
+	receipt, diag := runPatchVerify(t, root)
+	if receipt.Tree != gitOrFatal(t, root, "rev-parse", "HEAD^{tree}") || receipt.Exit != 0 {
+		t.Fatalf("receipt tree = %q exit %d, want HEAD's tree and the command not to see helper.go", receipt.Tree, receipt.Exit)
+	}
+	if !strings.Contains(diag, "untracked file(s) the bundle does not cover: helper.go") ||
+		!strings.Contains(diag, "git add -N") {
+		t.Errorf("diagnostics never name the untracked file:\n%s", diag)
+	}
+}
+
+// TestVerifyRunsNoRepositoryHooks pins that making the snapshot runs no code
+// the checkout controls: with core.hooksPath at a committed .husky directory
+// (PR content) and a post-checkout and post-index-change hook there and in
+// .git/hooks, each writing a marker outside the repository, verify leaves no
+// marker behind.
+func TestVerifyRunsNoRepositoryHooks(t *testing.T) {
+	root := committedRepo(t)
+	markers := t.TempDir()
+	for _, dir := range []string{".husky", ".git/hooks"} {
+		writeHooks(t, root, dir, markers)
+	}
+	gitOrFatal(t, root, "add", ".husky")
+	gitOrFatal(t, root, "commit", "-q", "--no-verify", "-m", "hooks")
+	gitOrFatal(t, root, "config", "core.hooksPath", ".husky")
+	clearDir(t, markers)
+	writeTreeFile(t, root, "marker.txt", "edited\n")
+	if receipt, _ := runPatchVerify(t, root); receipt.Tree == "" {
+		t.Fatal("verify recorded no tree")
+	}
+	if left, err := os.ReadDir(markers); err != nil || len(left) != 0 {
+		t.Errorf("repository hooks ran during verify: %v (%v)", left, err)
+	}
+}
+
+// writeHooks writes, under root's dir, a post-checkout, post-index-change,
+// and reference-transaction hook that each touch a marker in markers.
+func writeHooks(t *testing.T, root, dir, markers string) {
+	t.Helper()
+	for _, hook := range []string{"post-checkout", "post-index-change", "reference-transaction"} {
+		writeTreeFile(t, root, dir+"/"+hook, "#!/bin/sh\ntouch "+filepath.Join(markers, hook)+"\n")
+		if err := os.Chmod(filepath.Join(root, filepath.FromSlash(dir), hook), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// clearDir empties dir.
+func clearDir(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -70,7 +137,7 @@ func TestVerifyRunsOnSnapshotContent(t *testing.T) {
 	writeTreeFile(t, root, "marker.txt", "uncommitted edit\n")
 	writeTreeFile(t, root, ".verdict/state/5201/patch.json",
 		`{"verifyCmd":"git checkout -- marker.txt && cat marker.txt && test ! -e `+root+`/should-not-exist"}`)
-	receipt := runPatchVerify(t, root)
+	receipt, _ := runPatchVerify(t, root)
 	out, err := os.ReadFile(filepath.Join(root, ".verdict", "state", "5201", ".verify.out"))
 	if err != nil {
 		t.Fatal(err)
@@ -104,24 +171,34 @@ func committedRepo(t *testing.T) string {
 	return root
 }
 
-// contentTree computes the checkout's content tree with plain git — HEAD
-// updated by `git add -A`, verdict's state restored to HEAD — through a
-// throwaway index, independently of the code under test.
+// contentTree computes the checkout's content tree with plain git — the
+// user's index with every tracked entry's working-tree bytes (`add -u`),
+// verdict's state restored to HEAD — through a throwaway copy of the index,
+// independently of the code under test. The fixtures carry no conversions,
+// so git's clean form is the bytes on disk.
 func contentTree(t *testing.T, root string) string {
 	t.Helper()
 	index := filepath.Join(t.TempDir(), "index")
+	raw, err := os.ReadFile(filepath.Join(root, ".git", "index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(index, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	run := func(args ...string) string {
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = root
 		cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+index)
+		// A descendant holding the output pipe cannot hang the read (GO-CONC-06).
+		cmd.WaitDelay = 10 * time.Second
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 		return strings.TrimSpace(string(out))
 	}
-	run("read-tree", "HEAD")
-	run("add", "-A", "--", ".")
+	run("add", "-u", "--", ".")
 	run("reset", "-q", "HEAD", "--", ".verdict/state", ".verdict/loop", ".verdict/.gitignore")
 	return run("write-tree")
 }
@@ -138,8 +215,8 @@ func writeTreeFile(t *testing.T, root, rel, body string) {
 }
 
 // runPatchVerify runs the patch-path CLI at root and returns the receipt it
-// wrote.
-func runPatchVerify(t *testing.T, root string) core.VerifyReceipt {
+// wrote and the human and diagnostic output.
+func runPatchVerify(t *testing.T, root string) (core.VerifyReceipt, string) {
 	t.Helper()
 	t.Chdir(root)
 	var out, diag strings.Builder
@@ -163,5 +240,5 @@ func runPatchVerify(t *testing.T, root string) core.VerifyReceipt {
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
 	}
-	return receipt
+	return receipt, out.String() + diag.String()
 }

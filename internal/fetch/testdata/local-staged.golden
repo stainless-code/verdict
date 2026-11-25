@@ -7,7 +7,9 @@ exit: 0
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "feed .verdict/state/local-demo/procedure.md + .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json",
-  "warnings": [],
+  "warnings": [
+    "a --staged bundle reviews the index, which verdict verify does not run — source.json records no content_tree, so no VERIFIED claim can land on this bundle; fetch-local without --staged to verify fixes"
+  ],
   "data": {
     "dir": ".verdict/state/local-demo",
     "kind": "staged",
@@ -49,6 +51,7 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: a --staged bundle reviews the index, which verdict verify does not run — source.json records no content_tree, so no VERIFIED claim can land on this bundle; fetch-local without --staged to verify fixes
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » roles -> .verdict/state/local-demo/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
@@ -997,7 +1000,7 @@ rather than becoming ground truth.
   "range": "HEAD:index",
   "dirty": false,
   "worktree_diff_sha256": null,
-  "content_tree": "cdc85319769f77fede3d48aec54e0e0f7e02817b",
+  "content_tree": null,
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
   "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
   "patch_id_kind": "git-patch-id",

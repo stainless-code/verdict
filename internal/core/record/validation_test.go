@@ -89,14 +89,16 @@ func writeValidation(t *testing.T, body string) {
 // validationCommander keeps every posted payload, so a case grades what
 // reached the host.
 type validationCommander struct {
-	t        *testing.T
+	t *testing.T
+	// onTree runs when the graded commit's tree is read.
+	onTree   func()
 	payloads []string
 }
 
 func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
 	argv := strings.Join(cmd.Argv, " ")
-	if res, ok := validationReads(argv); ok {
+	if res, ok := c.reads(argv); ok {
 		return res, nil
 	}
 	switch {
@@ -117,6 +119,14 @@ func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Re
 		c.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{ExitCode: 1}, errors.New("unexpected argv")
 	}
+}
+
+// reads answers the fixed reads, first running onTree on the tree read.
+func (c *validationCommander) reads(argv string) (core.Result, bool) {
+	if c.onTree != nil && strings.HasSuffix(argv, "^{tree}") {
+		c.onTree()
+	}
+	return validationReads(argv)
 }
 
 // validationReads answers the fixed reads a post makes: the graded commit's
@@ -146,6 +156,11 @@ func runValidationPostProgress(t *testing.T, flags postcore.Flags, floors ...str
 	t.Helper()
 	cmdr := &validationCommander{t: t}
 	progress := &testkit.Collector{}
+	resp, ref := postcore.Run(context.Background(), validationRequest(cmdr, progress, flags, floors...))
+	return resp, ref, cmdr, progress.Warnings
+}
+
+func validationRequest(cmdr *validationCommander, progress *testkit.Collector, flags postcore.Flags, floors ...string) *postcore.Request {
 	root := ""
 	req := &postcore.Request{
 		Runtime:      &core.Runtime{Env: map[string]string{}, Now: testRuntime(progress).Now, Progress: progress},
@@ -158,8 +173,7 @@ func runValidationPostProgress(t *testing.T, flags postcore.Flags, floors ...str
 		JSONMode:     true,
 	}
 	req.Commander = cmdr
-	resp, ref := postcore.Run(context.Background(), req)
-	return resp, ref, cmdr, progress.Warnings
+	return req
 }
 
 func validationFlags() postcore.Flags {
@@ -461,9 +475,9 @@ func TestCriticalDowngradesInsteadOfRefusing(t *testing.T) {
 
 // writtenReview is the closed-finding fixture: one `said` critical the run can
 // close, plus a clean important finding so the post still has something to say.
-func writtenReview(t *testing.T, path string) {
+func writtenReview(t *testing.T) {
 	t.Helper()
-	testkit.WriteFile(t, path, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Two findings.","approved":false,"comments":[`+
+	testkit.WriteFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> Two findings.","approved":false,"comments":[`+
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+hedgedBody+`","rigor":"said","severity":"critical"},`+
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
 }
@@ -472,8 +486,31 @@ func writtenReview(t *testing.T, path string) {
 func verifyClaim(t *testing.T, sig string) {
 	t.Helper()
 	testkit.WriteFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
-		`","verdict":"VERIFIED","resultHead":"`+coverageHead+`","verifyCmd":"go test ./..."}]`)
+		`","verdict":"VERIFIED","verifyCmd":"go test ./..."}]`)
 	writeVerifyReceipt(t, ".verdict/state/7", coverageTree)
+}
+
+// TestPostStopsWhenCanceledDuringTheTreeRead pins GO-CONTEXT-02 on the
+// graded-tree read: a cancel that lands while a VERIFIED claim's tree is
+// read refuses canceled before the merge persists anything, instead of
+// recording a content-tree gap and writing the store.
+func TestPostStopsWhenCanceledDuringTheTreeRead(t *testing.T) {
+	validationBundle(t, "")
+	writtenReview(t)
+	verifyClaim(t, hedgedSig)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmdr := &validationCommander{t: t, onTree: cancel}
+	_, ref := postcore.Run(ctx, validationRequest(cmdr, &testkit.Collector{}, validationFlags()))
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("refusal = %v, want canceled", ref)
+	}
+	if _, err := os.Stat(".verdict/state/7/findings.json"); !os.IsNotExist(err) {
+		t.Errorf("a canceled merge wrote findings.json (%v)", err)
+	}
+	if len(cmdr.payloads) != 0 {
+		t.Errorf("a canceled post reached the host: %d payload(s)", len(cmdr.payloads))
+	}
 }
 
 // TestFloorsSkipSameRunAddressedFinding pins the closed-finding rule for the
@@ -481,7 +518,7 @@ func verifyClaim(t *testing.T, sig string) {
 // floors judge, so an addressed critical is neither refused nor downgraded.
 func TestFloorsSkipSameRunAddressedFinding(t *testing.T) {
 	validationBundle(t, "")
-	writtenReview(t, ".verdict/state/7/review.json")
+	writtenReview(t)
 	verifyClaim(t, hedgedSig)
 	_, ref, _ := runValidationPost(t, validationFlags(), "critical=walked", "important=said")
 	if ref != nil {
@@ -500,7 +537,7 @@ func TestFloorsSkipSameRunAddressedFinding(t *testing.T) {
 // run closed: a closed candidate is not an open finding under a floor.
 func TestFloorsSkipStoredAddressedFinding(t *testing.T) {
 	validationBundle(t, "")
-	writtenReview(t, ".verdict/state/7/review.json")
+	writtenReview(t)
 	verifyClaim(t, hedgedSig)
 	if _, ref, _ := runValidationPost(t, validationFlags()); ref != nil {
 		t.Fatalf("first post refused: %v (%s)", ref, ref.Message)
@@ -523,7 +560,7 @@ func TestFloorsSkipStoredAddressedFinding(t *testing.T) {
 // disarm the gate: an open `said` critical still refuses.
 func TestFloorsStillRefuseOpenFinding(t *testing.T) {
 	validationBundle(t, "")
-	writtenReview(t, ".verdict/state/7/review.json")
+	writtenReview(t)
 	_, ref, _ := runValidationPost(t, validationFlags(), "critical=walked")
 	if ref == nil || ref.Code != "rigor-below-floor" {
 		t.Fatalf("refusal = %v, want rigor-below-floor", ref)

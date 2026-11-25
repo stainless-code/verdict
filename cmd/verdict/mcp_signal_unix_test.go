@@ -82,7 +82,21 @@ type mcpRun struct {
 func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	t.Helper()
 	dir := t.TempDir()
-	writeVerifyCmd(t, dir, `sleep 30 & echo $! > gc.pid; wait`)
+	// verify runs the command in a snapshot of a git checkout, gone once the
+	// run ends, so the checkout is a repository and the pid file sits outside
+	// it, under /tmp (the one absolute scratch path the verify gate allows).
+	gitInit := exec.CommandContext(t.Context(), "git", "init", "-q", dir)
+	gitInit.WaitDelay = 10 * time.Second
+	if out, err := gitInit.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	scratch, err := os.MkdirTemp("/tmp", "verdict-mcp-signal-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(scratch) })
+	pidFile := filepath.Join(scratch, "gc.pid")
+	writeVerifyCmd(t, dir, `sleep 30 & echo $! > `+pidFile+`; wait`)
 	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestMCPChild$")
 	cmd.Dir = dir
 	cmd.Env = []string{
@@ -105,7 +119,7 @@ func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	if _, err := stdin.Write([]byte(mcpSignalInitialize + "\n" + mcpSignalToolCall + "\n")); err != nil {
 		t.Fatal(err)
 	}
-	gcPID := waitForMCPPID(t, filepath.Join(dir, "gc.pid"))
+	gcPID := waitForMCPPID(t, pidFile)
 	sent := time.Now()
 	if err := cmd.Process.Signal(sig); err != nil {
 		t.Fatal(err)

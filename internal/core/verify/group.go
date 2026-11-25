@@ -25,7 +25,7 @@ const (
 	codeNoRunBundle        = "no-run-bundle"
 	codeUnknownGroup       = "unknown-group"
 	codeHeadMismatch       = "head-mismatch"
-	validationSchema       = "1"
+	validationSchema       = "2"
 )
 
 // receiptNamePrefix and receiptSuffix frame the per-group receipt file: one
@@ -58,13 +58,20 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 	if ref := st.prepareEnv(dir, run.rs.BaseSHA); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	// The command runs in a snapshot checkout of the reviewed content, so
-	// nothing done to the user's checkout while it runs changes what it tested.
-	snap, err := checkoutTree(ctx, run.git, run.tree, dir)
-	if err != nil {
-		return nil, st.withWarnings(failed(fmt.Errorf("snapshot the reviewed content: %w", err)))
+	// The command runs in a snapshot of the checkout's content, which must be
+	// the reviewed commit's tree; nothing done to the checkout while it runs
+	// changes what it tested.
+	snap, ref := st.takeSnapshot(ctx, run.commander, run.root, run.timeout)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
-	defer st.removeSnapshot(ctx, snap)
+	run.snap = snap
+	// A backstop for the refusal paths; the run removes it as soon as the
+	// command ends, so a cleanup warning reaches the response.
+	defer func() { st.removeSnapshot(ctx, run.snap) }()
+	if snap.content.Tree != run.tree {
+		return nil, st.withWarnings(otherContent(run))
+	}
 	run.workDir = snap.dir
 	if ref := st.bindSandbox(ctx, run); ref != nil {
 		return nil, st.withWarnings(ref)
@@ -87,8 +94,10 @@ func (st *state) bindSandbox(ctx context.Context, run *validationRun) *core.Refu
 // capture identity verified before execution, the canonical reviewed root,
 // the reviewed head, and the command budget.
 type validationRun struct {
-	commander    core.Commander
-	sandbox      *sandbox
+	commander core.Commander
+	sandbox   *sandbox
+	// snap is the snapshot the command runs in; nil once removed.
+	snap         *snapshot
 	rs           *config.RunState
 	group        config.PlanGroup
 	receiptPath  string
@@ -179,6 +188,7 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 	}
 	// The receipt certifies content, so the checkout's content — committed or
 	// not — must be the reviewed commit's tree; HEAD itself does not matter.
+	// The snapshot the command runs in is what gets compared (RunGroup).
 	want, err := run.git.Commit(ctx, reviewedHead)
 	if errors.Is(err, contenttree.ErrUnresolved) {
 		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
@@ -188,18 +198,16 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 	if err != nil {
 		return failed(err)
 	}
-	tree, err := run.git.Worktree(ctx)
-	if err != nil {
-		return failed(err)
-	}
-	if tree != want {
-		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
-			"the content at %s is not the reviewed commit %s's — check out the reviewed head with no "+
-				"other changes; validation certifies the reviewed content only", run.root, readcommon.ShortSHA(reviewedHead))}
-	}
-	run.tree = tree
+	run.tree = want
 	run.reviewedHead = reviewedHead
 	return nil
+}
+
+// otherContent refuses a snapshot whose content is not the reviewed commit's.
+func otherContent(run *validationRun) *core.RefusalError {
+	return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+		"the content at %s is not the reviewed commit %s's — check out the reviewed head with no "+
+			"other changes; validation certifies the reviewed content only", run.root, readcommon.ShortSHA(run.reviewedHead))}
 }
 
 // executeValidation runs the pinned command once and records its outcome.
@@ -229,6 +237,8 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, commandDir(run.workDir, run.sandbox),
 		st.childEnv(), run.sandbox)
 	st.releaseSandbox(run.sandbox)
+	st.removeSnapshot(ctx, run.snap)
+	run.snap = nil
 	if ref := bundle.unchanged(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -574,8 +584,11 @@ func groupDesc(group *config.PlanGroup) string {
 }
 
 // validationState classifies one group receipt for read-only surfaces without
-// deciding approval: pending (no receipt), unreadable, unavailable, timeout,
-// stale-head, stale-capture, failed, or passed (a current successful receipt).
+// deciding approval: pending (no receipt), unreadable, stale (another head,
+// run, capture, or root), contradictory (it says passed but ReceiptCurrent
+// rejects its evidence: a failing exit, a timeout, no tree), its recorded
+// unavailable, timeout, or failed status, or passed (a current successful
+// receipt).
 func validationState(r *core.ValidationReceipt, found bool, ref *core.RefusalError, rs *config.RunState, group, head, root string) string {
 	switch {
 	case ref != nil:
@@ -588,6 +601,9 @@ func validationState(r *core.ValidationReceipt, found bool, ref *core.RefusalErr
 		return "stale"
 	case r.Run != rs.Name || r.InputsSHA256 != rs.InputsSHA256 || r.RepoRoot != root:
 		return "stale"
+	case r.Status == statusPassed:
+		// Only ReceiptCurrent may call a receipt passed.
+		return "contradictory"
 	}
 	return r.Status
 }

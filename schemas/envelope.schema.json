@@ -2621,7 +2621,7 @@
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
         },
         "verify_hint": {
-          "description": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
+          "description": "The exact rerun command from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verifyHint" }]
         },
         "caution": {
@@ -2684,10 +2684,9 @@
       "description": "A recorded rerun command and its nullable head bracket.",
       "type": "object",
       "properties": {
-        "verifyCmd": { "type": "string" },
-        "resultHead": { "type": ["string", "null"] }
+        "verifyCmd": { "type": "string" }
       },
-      "required": ["verifyCmd", "resultHead"],
+      "required": ["verifyCmd"],
       "additionalProperties": true
     },
     "fetchEstimate": {

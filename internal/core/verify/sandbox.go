@@ -1033,10 +1033,13 @@ func sandboxGitOutsideDirs(repo string) []string {
 	var outside []string
 	for _, dir := range sandboxPointedGitDirs(dotgit, repo) {
 		if inside, ref := root.inside(dotgit, dir); ref == nil && !inside {
-			outside = append(outside, dir)
+			outside = append(outside, filepath.Clean(dir))
 		}
 	}
-	return sandboxCleanUnique(outside)
+	// A parent sorts before its children, so a bwrap bind of the common
+	// directory never lands over the admin directory bound inside it.
+	slices.Sort(outside)
+	return slices.Compact(outside)
 }
 
 // sandboxPointedGitDirs is the git directory a `.git` file names and the

@@ -135,8 +135,9 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
-	dir := bundle.dir
+// prepareExecute checks the runtime can run the command and resolves the
+// child environment from the bundle's base.
+func (st *state) prepareExecute(dir string) (core.Commander, *core.RefusalError) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -150,13 +151,25 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
-	// The command runs in a snapshot checkout of the content, and the receipt
-	// names that content's tree: what record and post compare with the tree
-	// they grade, whatever happens to the user's checkout meanwhile.
-	root := st.req.RepoRootPath()
-	snap := st.takeSnapshot(ctx, commander, root, dir)
-	defer st.removeSnapshot(ctx, snap)
-	runRoot, tree := snap.runIn(root)
+	return commander, nil
+}
+
+func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+	commander, ref := st.prepareExecute(bundle.dir)
+	if ref != nil {
+		return nil, ref
+	}
+	// The command runs in a snapshot of the content, and the receipt names
+	// that content's tree: what record and post compare with the tree they
+	// grade, whatever happens to the user's checkout meanwhile.
+	snap, ref := st.takeSnapshot(ctx, commander, st.req.RepoRootPath(), timeout)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	// A backstop for the refusal paths; the run removes it as soon as the
+	// command ends, so a cleanup warning reaches the response.
+	defer func() { st.removeSnapshot(ctx, snap) }()
+	runRoot, tree := snap.dir, snap.content.Tree
 	sb, ref := st.sandboxed(ctx, commander, runRoot, runRoot)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -172,6 +185,8 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
 	st.releaseSandbox(sb)
+	st.removeSnapshot(ctx, snap)
+	snap = nil
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
 	}

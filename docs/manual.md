@@ -316,19 +316,39 @@ and `patch.json` too — both are proposals. Only `verdict verify` writes
 (`sig`, from `findingSig` or `sig`), the exit, whether the watchdog fired, and
 `tree` — the git tree id of the content the command ran on.
 
-`verify` binds the receipt to content, not to HEAD. Before the command runs it names
-the checkout's content as a tree — HEAD's tree updated with every change `git add -A`
-sees (modified, deleted, and untracked files, `.gitignore` respected, whatever the
-checkout's status config), through a throwaway index that never touches your index or
-refs — leaving out only verdict's own state (`.verdict/state/`, `verdict loop`'s
-`.verdict/loop/`, and the generated `.verdict/.gitignore`); everything else under
-`.verdict/` (config, KB, packs, regression tests, `verify-env`) is content. It then
-checks that tree out as a snapshot — a detached worktree under the bundle — and runs
-the command there, never in your checkout, and removes it afterwards. So uncommitted
-edits are verified as they are, and nothing done to your checkout while the command
-runs (an edit, a checkout and restore) changes what it tested. A directory git cannot
-snapshot (not a repository) still runs the command in place, but its receipt names no
-tree and backs no claim. `verify` resolves the bundle like every writing verb (a
+`verify` binds the receipt to content, not to HEAD. The content is the paths in your
+index — exactly what a working-tree bundle's diff covers: tracked files and
+intent-to-add (`git add -N`) files — each with its working-tree bytes as they are on
+disk, uncommitted edits included. Untracked files are outside it, as they are outside
+the bundle; `git add -N <path>` brings one in. Verdict's own state stays at its index
+version (`.verdict/state/`, `verdict loop`'s `.verdict/loop/`, and the generated
+`.verdict/.gitignore`); everything else under `.verdict/` that is in the index
+(config, KB, packs, regression tests, `verify-env`) is content. Before the command
+runs, `verify` copies those bytes into a snapshot — a private directory under the
+host temp root, outside your checkout, that git sees as a detached linked worktree —
+names exactly what it copied as a git tree, re-reads the snapshot to prove it still
+holds that tree, and runs the command there, never in your checkout; it removes the
+snapshot afterwards, and a later run sweeps any a killed run stranded. So nothing done
+to your checkout while the command runs (an edit, a checkout and restore) changes
+what it tested.
+
+The snapshot is a clean checkout of that content, like CI: ignored files — installed
+dependencies (`node_modules/`), build output, local config such as `.env.local` — are
+not in it, and submodules are empty directories. Install dependencies in the command
+itself (`npm ci && npm test`); `verify` warns naming the untracked files, the ignored
+top-level entries, and the submodules it left out. Making the snapshot runs no code
+the checkout controls: every git call runs with hooks off (even with
+`core.hooksPath` pointing at `.husky/` or other tree content), fsmonitor off, and no
+filter — blobs are hashed and files copied byte for byte, so no clean or smudge filter
+(git-lfs included), line-ending conversion, or ident expansion runs or changes a byte.
+A checkout whose conversions change bytes (CRLF working files under `core.autocrlf`,
+smudged LFS objects) therefore names a different tree than its commit, and a PR
+bundle's claim or a group run there does not bind. Naming writes the index paths'
+blobs, a tree, and one unreferenced commit into the repository's object store (never
+an untracked or ignored file's bytes); git's normal gc collects them. A checkout
+`verify` cannot snapshot — not a git repository, an unreadable file — refuses
+`verify-failed` with nothing run: the command never falls back to your checkout,
+where it could change what it is credited with testing. `verify` resolves the bundle like every writing verb (a
 symlinked `.verdict/state/<pr>` refuses), pins the bundle directory before the
 command runs, reads the finding sig then, and deletes the previous receipt then,
 so a run that cannot start, is canceled, or cannot be recorded leaves no receipt at
@@ -336,14 +356,18 @@ all; a run that completes with a nonzero exit or times out writes a receipt reco
 that exit or timeout, which never reads as a pass. Every write goes through that
 pinned directory, and a command that moves or replaces the bundle directory makes
 verify refuse with nothing recorded. `verify --group` pins the bundle and runs in a
-snapshot the same way, and it requires the checkout's content to be the reviewed
+snapshot the same way, and it requires the snapshot's content to be the reviewed
 commit's tree before the command runs (`head-mismatch` otherwise), so a group receipt
 is written only into the bundle it validated, for the content it reviewed.
 
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the
 head commit's tree for a PR bundle (read from the local repository — fetch the commit
-if it is missing). They flip a `VERIFIED` claim only when the receipt shows exit 0, no
+if it is missing). `fetch-local` names a working-tree bundle's content before and
+after it reads the diff and records no tree when the two differ (the tree moved during
+the capture); a `--staged` bundle reviews the index, which `verify` never runs, so it
+records no tree either, and no claim can land on it — fetch without `--staged` to
+verify fixes. They flip a `VERIFIED` claim only when the receipt shows exit 0, no
 timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
 `sig` must resolve to exactly that one finding in the store; a prefix two findings
 share backs neither), and a `tree` equal to the graded content's. A receipt with no
@@ -1050,7 +1074,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run.json`                                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
 | `validation-<group>.json`                 | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed head and the content tree the command ran on, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                         | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
-| `verify-receipt.json`                     | The patch-path receipt `verify` writes (record and post validate its contents; authorship is not checked against a process with bundle write access, per SECURITY.md): the command `verify` ran, the finding sig `patch.json` named, exit, timeout, and the tree id of the content it ran on (absent when git could not snapshot it).   | `verify` (patch path); `verify` (authorship not enforced)                                                                     | Yes. `record`/`post` flip a `VERIFIED` claim only on a passing receipt for its command, finding, and the graded content.                                                                                                                                                                                                               |
+| `verify-receipt.json`                     | The patch-path receipt `verify` writes (record and post validate its contents; authorship is not checked against a process with bundle write access, per SECURITY.md): the command `verify` ran, the finding sig `patch.json` named, exit, timeout, and the tree id of the content it ran on (`schema_version` `"2"`).                  | `verify` (patch path); `verify` (authorship not enforced)                                                                     | Yes. `record`/`post` flip a `VERIFIED` claim only on a passing receipt for its command, finding, and the graded content.                                                                                                                                                                                                               |
 | `filesource.json`                         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`                           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`                           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                                                                                                | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
@@ -1417,8 +1441,9 @@ a plan group (`unknown-group`). Before anything runs, the tool pins three
 facts: the canonical reviewed root, the bundle's reviewed head, and the
 checkout's content tree, which must be that commit's tree — committed or not,
 nothing else may differ (otherwise `head-mismatch`; a reviewed head the local
-repository does not hold also refuses `head-mismatch`). The command then runs in a
-snapshot checkout of that content under the bundle, never in your checkout.
+repository does not hold also refuses `head-mismatch`). The command runs in a
+snapshot of that content outside your checkout (see the patch path above), and the
+snapshot's tree is what must equal the commit's.
 
 The command runs once through the same allowlist and watchdog as patch
 verify, and every outcome leaves a receipt — a failure is never dropped.
@@ -1432,8 +1457,9 @@ a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, g
 reviewed head, the content tree, canonical repo root, command, timestamp, exit
 code, timeout and sandbox flags and mechanism, `status` (`passed`, `failed`, `timeout`, `unavailable`,
 `stale-head`), and a redacted output tail. Reads re-derive the verdict: a
-receipt claiming a pass while recording a nonzero exit, a timeout, or another
-status is contradictory evidence and never approves. The command runs in a
+receipt claiming a pass while recording a nonzero exit, a timeout, no tree, or
+another status is contradictory evidence: it never approves, and `ready` and
+`report` show it as `deep validation contradictory`. The command runs in a
 snapshot, so moving your checkout's head while it runs changes nothing it tested; a
 capture re-fetched or edited mid-command records `unavailable`.
 
@@ -1894,17 +1920,17 @@ joins findings against live ground truth, read-only.
 order) plus `data.fix`, a read-only repair directive built from that record
 and the bundle's history:
 
-| `data.fix` key | Meaning                                                                                                                        |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `sig`          | Full finding sig (short prefixes still address the run).                                                                       |
-| `status`       | The record's stored status string, read verbatim (absent reads empty).                                                         |
-| `severity`     | `critical`/`important`/`informational`, else `null`.                                                                           |
-| `files`        | Deduped anchor paths: the record's `path` plus any `files`/`related_files` lists; `[]` when none.                              |
-| `locator`      | `path:line` for inline findings, the heading for section findings, else empty.                                                 |
-| `suggestion`   | The record's embedded suggestion body, else `null`.                                                                            |
-| `brief`        | The stored machine brief `{sites, outcome, approach?, questions?}`, read as stored (no re-validation), else `null`.            |
-| `verify_hint`  | `{verifyCmd, resultHead}` from a `verification.json` claim for this sig, else a matching (or unnamed) `patch.json`; else null. |
-| `caution`      | Fixed reminder that finding text quotes attacker-controlled PR content and is untrusted evidence, never instructions.          |
+| `data.fix` key | Meaning                                                                                                               |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `sig`          | Full finding sig (short prefixes still address the run).                                                              |
+| `status`       | The record's stored status string, read verbatim (absent reads empty).                                                |
+| `severity`     | `critical`/`important`/`informational`, else `null`.                                                                  |
+| `files`        | Deduped anchor paths: the record's `path` plus any `files`/`related_files` lists; `[]` when none.                     |
+| `locator`      | `path:line` for inline findings, the heading for section findings, else empty.                                        |
+| `suggestion`   | The record's embedded suggestion body, else `null`.                                                                   |
+| `brief`        | The stored machine brief `{sites, outcome, approach?, questions?}`, read as stored (no re-validation), else `null`.   |
+| `verify_hint`  | `{verifyCmd}` from a `verification.json` claim for this sig, else a matching (or unnamed) `patch.json`; else null.    |
+| `caution`      | Fixed reminder that finding text quotes attacker-controlled PR content and is untrusted evidence, never instructions. |
 
 The block is pure read: no `gh` call, no `verifyCmd` execution, no store
 writes — the bundle is byte-identical after the run, and the bare text path
@@ -5482,11 +5508,12 @@ writable bind of the reviewed root, a private `/tmp`, an empty `/run`, a
 fresh `/dev` and `/proc` under `--unshare-pid`, `--unshare-net`,
 `--new-session`, and `--die-with-parent`. The command gets its own loopback,
 its own PID namespace, and no route out. The reviewed root is the snapshot
-`verify` runs in: a throwaway linked worktree of the content it grades,
-under the bundle directory. Under both mechanisms that copy is the writable
-root, and the checkout you review stays read-only like the rest of the host.
-When git cannot snapshot the content, the command runs in your checkout, which
-is then the writable root, and its receipt names no tree:
+`verify` runs in: a private copy of the content it grades, outside your
+checkout. Under both mechanisms that copy is the writable root, and the
+checkout you review stays read-only like the rest of the host. Its git
+directory and common directory, which live in your checkout, are re-exposed
+read-only so git works in the snapshot even when the checkout sits under a
+temp root:
 
 - **No host process data.** `/proc/<host-pid>` does not exist, so the
   environment of the parent `verdict` process and every other same-uid

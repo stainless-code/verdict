@@ -28,9 +28,12 @@ type scriptCommander struct {
 	calls [][]string
 	stdin []string
 	env   [][]string
-	// untreeable makes the content-tree index step fail the way git does
-	// on content it cannot index (an untracked nested repo with no commit).
+	// untreeable makes the content listing fail, as git does where it
+	// cannot read the checkout; moving makes each naming of the working tree
+	// return a new tree, as a tree edited during the capture does.
 	untreeable bool
+	moving     bool
+	namings    int
 }
 
 // scriptResult is one canned spawn: the streams plus the failure flag.
@@ -61,17 +64,38 @@ func (s *scriptCommander) contentTreeAnswer(argv []string) (core.Result, bool) {
 		return core.Result{}, false
 	}
 	switch argv[3] {
-	case "add":
-		if s.untreeable {
-			return core.Result{ExitCode: 128, Stderr: "error: 'nested/' does not have a commit checked out\n"}, true
-		}
-		return core.Result{}, true
-	case "rev-parse", "write-tree":
+	case "ls-files":
+		return s.listAnswer(argv)
+	case "write-tree":
+		return s.treeAnswer(), true
+	case "rev-parse":
 		return core.Result{Stdout: testContentTree + "\n"}, true
-	case "read-tree", "reset", "rm":
+	case "read-tree":
 		return core.Result{}, true
 	}
 	return core.Result{}, false
+}
+
+// listAnswer answers contenttree's own listing (`ls-files -z …`), failing it
+// when untreeable; fetch's own ls-files calls stay scripted.
+func (s *scriptCommander) listAnswer(argv []string) (core.Result, bool) {
+	switch {
+	case len(argv) < 5 || argv[4] != "-z":
+		return core.Result{}, false
+	case s.untreeable:
+		return core.Result{ExitCode: 128, Stderr: "fatal: unable to read nested/data: Permission denied\n"}, true
+	}
+	return core.Result{}, true
+}
+
+// treeAnswer names the content: one tree, or a new one on every naming
+// after the first when moving.
+func (s *scriptCommander) treeAnswer() core.Result {
+	s.namings++
+	if s.moving && s.namings > 1 {
+		return core.Result{Stdout: strings.Repeat("d", 40) + "\n"}
+	}
+	return core.Result{Stdout: testContentTree + "\n"}
 }
 
 // Run records argv/stdin/env and replays the canned result.

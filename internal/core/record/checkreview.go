@@ -1107,13 +1107,13 @@ func (c *checker) checkVerification() {
 	items, ok := doc.([]any)
 	if !ok {
 		c.wrongType("verification.json", msgMalformedVerifyClaims,
-			"write an array of {sig, verdict, verifyCmd, resultHead}")
+			"write an array of {sig, verdict, verifyCmd}")
 		return
 	}
 	for i, item := range items {
 		if _, ok := item.(*jq.Obj); !ok {
 			c.wrongType(fmt.Sprintf("verification.json[%d]", i), msgNonObjectVerifyClaim,
-				"use {sig, verdict, verifyCmd, resultHead}")
+				"use {sig, verdict, verifyCmd}")
 		}
 	}
 }

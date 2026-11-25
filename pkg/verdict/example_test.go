@@ -456,10 +456,33 @@ func sdkGitAnswer(cmd *verdict.Command) (verdict.CommandResult, bool) {
 		return verdict.CommandResult{Stdout: scriptTree + "\n"}, true
 	case "commit-tree":
 		return verdict.CommandResult{Stdout: scriptHead + "\n"}, true
-	case "read-tree", "add", "reset", "rm", "worktree":
+	case "worktree":
+		fakeWorktreeAdd(a)
+		return verdict.CommandResult{}, true
+	case "read-tree", "ls-files", "update-index", "hash-object":
 		return verdict.CommandResult{}, true
 	}
 	return verdict.CommandResult{}, false
+}
+
+// fakeWorktreeAdd leaves what `git worktree add` would: a `gitdir:` file
+// naming an admin directory (kept inside the checkout, so removing the
+// snapshot removes it). verify checks for it, and the sandbox follows it.
+func fakeWorktreeAdd(argv []string) {
+	if len(argv) < 5 || argv[4] != "add" {
+		return
+	}
+	dest := argv[len(argv)-2]
+	admin := filepath.Join(dest, ".gitadmin")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "HEAD"), []byte(scriptHead+"\n"), 0o600); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, ".git"), []byte("gitdir: "+admin+"\n"), 0o600); err != nil {
+		panic(err)
+	}
 }
 
 // Run implements verdict.Commander.

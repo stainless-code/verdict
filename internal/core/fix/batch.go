@@ -56,8 +56,9 @@ const (
 const commaSpace = ", "
 
 const batchInstructionsFmt = "instructions: patch each anchor file (%s), record the " +
-	"verify command (%s) as verifyCmd in %s/patch.json, re-run fetch-local so the " +
-	"bundle captures the patched content (no commit needed), then run it through " +
+	"verify command (%s) as verifyCmd in %s/patch.json, git add -N any file the " +
+	"fixes create, re-run fetch-local so the bundle captures the patched content " +
+	"(no commit needed), then run it through " +
 	"verdict verify %s %s and write verification.json beside it [{sig, verdict, " +
 	"verifyCmd}] with one claim per sig, verdict VERIFIED, and that verifyCmd (a " +
 	"claim flips only on the verify-receipt.json verify writes — exit 0 for that " +

@@ -1349,7 +1349,7 @@ export interface ShowFix {
   suggestion: string | null;
   /** The stored machine brief, read as stored without re-validation, or null when the finding has none. */
   brief: Brief | null;
-  /** The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
+  /** The exact rerun command from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
   verify_hint: VerifyHint | null;
   /** Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction. */
   caution: string;
@@ -1380,7 +1380,6 @@ export interface BriefSite {
 /** A recorded rerun command and its nullable head bracket. */
 export interface VerifyHint {
   verifyCmd: string;
-  resultHead: string | null;
   [key: string]: unknown;
 }
 

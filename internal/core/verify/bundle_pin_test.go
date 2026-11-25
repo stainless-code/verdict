@@ -247,7 +247,7 @@ func TestVerifyGroupTailSanitizesBeforeTheCut(t *testing.T) {
 // included — refuses before the command runs and writes no receipt.
 func TestVerifyGroupRefusesOtherContent(t *testing.T) {
 	root := groupBundle(t)
-	cmdr := &groupCommander{out: "ok\n", worktree: "0d1ff0d1ff0d1ff0d1ff0d1ff0d1ff0d1ff0d1f"}
+	cmdr := &groupCommander{out: "ok\n", worktree: strings.Repeat("0d1f", 10)}
 	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
 	if ref == nil || ref.Code != "head-mismatch" || !strings.Contains(ref.Message, "is not the reviewed commit") {
 		t.Fatalf("refusal = %v, want head-mismatch naming the reviewed commit", ref)

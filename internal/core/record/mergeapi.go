@@ -146,7 +146,7 @@ func Merge(ctx context.Context, rt *core.Runtime, in *MergeParams) (MergeResult,
 		requireRigor:    in.RequireRigor,
 		bodyOnlyAnchors: in.BodyOnlyAnchors,
 	}
-	st.readTree = func() (string, string) {
+	st.readTree = func() (string, string, error) {
 		return gradedTree(ctx, rt.Commander, st.repoRoot, st.dir, st.prov, st.headFull)
 	}
 	panel, err := st.loadPanel(in)

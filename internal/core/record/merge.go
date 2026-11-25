@@ -58,9 +58,10 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	headFull     string
 	// readTree reads the graded content's tree; tree, treeGap, and treeRead
 	// memoize it for the run (see gradedTree).
-	readTree        func() (tree, gap string)
+	readTree        func() (tree, gap string, err error)
 	tree            string
 	treeGap         string
+	treeErr         error
 	treeRead        bool
 	kept            []any
 	keptSigs        []string

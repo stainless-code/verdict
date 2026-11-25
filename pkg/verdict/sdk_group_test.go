@@ -141,19 +141,22 @@ func TestVerifyGroupForwardsDirToInjectedCommander(t *testing.T) {
 }
 
 // requireCommanderDir asserts a custom runner saw the canonical snapshot of
-// the reviewed content under the bundle, not the caller's directory or an
-// empty Dir.
+// the reviewed content — a private directory under the physical temp root,
+// outside the checkout — not the caller's directory or an empty Dir.
 func requireCommanderDir(t *testing.T, root string, cmdr *dirCommander) {
 	t.Helper()
 	if cmdr.commandDir == "" {
 		t.Fatalf("injected Commander saw an empty Dir; deep command would run in the caller's cwd")
 	}
-	bundle, err := filepath.EvalSymlinks(filepath.Join(root, ".verdict", "state", "5201"))
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(cmdr.commandDir) != bundle || !strings.HasPrefix(filepath.Base(cmdr.commandDir), ".snapshot-") {
-		t.Fatalf("command Dir = %q, want a canonical snapshot under %q", cmdr.commandDir, bundle)
+	if filepath.Dir(cmdr.commandDir) != tmp || !strings.HasPrefix(filepath.Base(cmdr.commandDir), "verdict-snapshot-") {
+		t.Fatalf("command Dir = %q, want a canonical snapshot under %q", cmdr.commandDir, tmp)
+	}
+	if strings.HasPrefix(cmdr.commandDir, root+string(filepath.Separator)) {
+		t.Fatalf("command Dir %q sits inside the checkout %q", cmdr.commandDir, root)
 	}
 }
 
@@ -165,7 +168,14 @@ type dirCommander struct {
 }
 
 func (c *dirCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
+	if a := cmd.Argv; len(a) > 3 && a[0] == "git" {
+		switch a[3] {
+		case "worktree":
+			fakeWorktreeAdd(a)
+			return verdict.CommandResult{}, nil
+		case "ls-files", "read-tree":
+			return verdict.CommandResult{}, nil
+		}
 		return verdict.CommandResult{Stdout: c.head + "\n"}, nil
 	}
 	c.commandDir = cmd.Dir

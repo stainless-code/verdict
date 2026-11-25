@@ -1000,7 +1000,7 @@ rather than becoming ground truth.
   "range": "HEAD:worktree",
   "dirty": true,
   "worktree_diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
-  "content_tree": "b014665138a8972eb2ad13e6c544bccd9abac44a",
+  "content_tree": "cdc85319769f77fede3d48aec54e0e0f7e02817b",
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
   "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
   "patch_id_kind": "git-patch-id",

@@ -42,20 +42,21 @@ func TestSandboxGitDirsFollowsPointers(t *testing.T) {
 // otherwise hide a checkout's git directory that lives under them (the
 // snapshot verify runs in keeps its git directory in the source checkout).
 func TestSandboxArgvMakesGitControlReadOnly(t *testing.T) {
-	root, outside := t.TempDir(), t.TempDir()
+	root := t.TempDir()
+	// git writes a pointer in its canonical spelling: links resolved (/var is
+	// one on macOS) and, on Windows, the long name of an 8.3 alias such as
+	// RUNNER~1, which is how the walk then reads and binds it.
+	physical, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	gitdir := filepath.Join(root, "meta", "worktrees", "wt")
 	mustSandboxFS(t, os.MkdirAll(gitdir, 0o755))
 	mustSandboxFS(t, os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: meta/worktrees/wt\n"), 0o600))
-	mustSandboxFS(t, os.WriteFile(filepath.Join(gitdir, "commondir"), []byte(outside+"\n"), 0o600))
+	mustSandboxFS(t, os.WriteFile(filepath.Join(gitdir, "commondir"), []byte(physical+"\n"), 0o600))
 	argv, ref := bwrapArgv(root, homeInputs(t.TempDir()))
 	if ref != nil {
 		t.Fatalf("bwrapArgv: %v", ref)
-	}
-	// The pointer walk follows links, so the outside directory is bound by its
-	// physical spelling (/var is a link on macOS).
-	physical, err := filepath.EvalSymlinks(outside)
-	if err != nil {
-		t.Fatal(err)
 	}
 	// The git directory sits under the top-level `meta`, so `meta` is what
 	// gets pinned: a bind of the deep directory alone would leave `meta`

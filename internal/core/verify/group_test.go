@@ -3,6 +3,7 @@ package verifycore_test
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,11 +122,12 @@ func TestGroupValidationRecordsMatchingReceipt(t *testing.T) {
 	}
 	dir := filepath.Join(root, ".verdict", "state", "7")
 	requireBoundReceipt(t, dir, "go test ./...")
-	// The one spawn is the command, run in a snapshot checkout under the
-	// bundle — never the user's checkout.
-	if len(cmdr.runs) != 1 || !strings.Contains(filepath.ToSlash(cmdr.runs[0].Dir), "/.verdict/state/7/.snapshot-") {
-		t.Fatalf("command runs = %d (dir %q), want one, in a snapshot", len(cmdr.runs), firstDir(cmdr.runs))
+	// The one spawn is the command, run in a snapshot outside the checkout —
+	// never the user's checkout.
+	if len(cmdr.runs) != 1 {
+		t.Fatalf("command runs = %d (dir %q), want one", len(cmdr.runs), firstDir(cmdr.runs))
 	}
+	requireSnapshotDir(t, cmdr.runs[0].Dir, root)
 }
 
 func firstDir(runs []*core.Command) string {
@@ -346,6 +348,40 @@ func TestDeepGapsReadsReceiptsWithoutExecuting(t *testing.T) {
 		t.Fatalf("current receipt still reported: %v", gaps)
 	}
 	requireSingleGap(t, verifycore.DeepGaps(rs, dir, strings.Repeat("9", 40), root), "deep validation stale")
+
+	// A receipt that still says passed after its evidence stopped saying so
+	// is a gap, never a pass.
+	path := filepath.Join(dir, "validation-group-a1.json")
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"timed_out": true`, `"exit": 1`, `"passed": false`, `"tree": ""`} {
+		rewriteReceipt(t, path, current, field)
+		requireSingleGap(t, verifycore.DeepGaps(rs, dir, groupHead, root), "deep validation contradictory")
+	}
+}
+
+// rewriteReceipt writes raw back to path with the one field the setting
+// names replaced.
+func rewriteReceipt(t *testing.T, path string, raw []byte, setting string) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var one map[string]any
+	if err := json.Unmarshal([]byte("{"+setting+"}"), &one); err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(doc, one)
+	next, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, next, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // requireSingleGap asserts exactly one gap line carrying the state token.
