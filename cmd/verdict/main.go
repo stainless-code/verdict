@@ -468,7 +468,7 @@ func dispatchStoreVerbs(
 ) (int, bool) {
 	switch cmd {
 	case "triage":
-		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+		return triage.Run(ctx, r, rest, req), true
 	case "adopt":
 		return adopt.Run(ctx, r, rest, req), true
 	case "ingest":
