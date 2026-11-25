@@ -127,8 +127,10 @@ In scope (highest priority first):
   `addressed` only on the bundle's `verify-receipt.json`, which
   `verdict verify` alone writes. It binds the command, the finding, and the
   git tree of the content the command ran on — a snapshot of that content
-  outside the user's checkout, so edits to the checkout during the run cannot
-  change what was tested — and verify writes it only through the bundle directory it
+  outside the user's checkout: reads that resolve inside the snapshot see the
+  snapshot, while a path resolving outside it (an absolute path, or a symlink
+  the tree carries) reaches the real filesystem, read-only under `--sandbox`
+  and possibly hidden by its rules — and verify writes it only through the bundle directory it
   pinned before the command ran (a symlinked bundle refuses; a bundle moved
   or replaced mid-run records nothing). A path where a claim flips without a
   passing receipt for its command, finding, and the graded content's tree — a
