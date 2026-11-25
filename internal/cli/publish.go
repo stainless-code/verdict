@@ -41,12 +41,6 @@ func resolveAttributionEnv(env map[string]string, eff *Effective, warn func(stri
 	case "":
 	case AttributionOff, AttributionProduct, AttributionFull:
 		eff.PublishAttribution = v
-	case FlagOn:
-		warn("REVIEW_PUBLISH_ATTRIBUTION 'true' is deprecated (P1 bool migrated to off|product|full) — treating as product")
-		eff.PublishAttribution = AttributionProduct
-	case FlagOff:
-		warn("REVIEW_PUBLISH_ATTRIBUTION 'false' is deprecated (P1 bool migrated to off|product|full) — treating as off")
-		eff.PublishAttribution = AttributionOff
 	default:
 		warn(fmt.Sprintf("ignoring invalid REVIEW_PUBLISH_ATTRIBUTION '%s' (want off|product|full)", v))
 	}
@@ -183,8 +177,6 @@ func resolveAttributionKey(path string, pub map[string]any, eff *Effective) erro
 		return nil
 	}
 	switch t := raw.(type) {
-	case bool:
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgAttrMigrated, path)}
 	case string:
 		switch t {
 		case AttributionOff, AttributionProduct, AttributionFull:
