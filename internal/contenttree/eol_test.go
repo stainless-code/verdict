@@ -48,6 +48,14 @@ func checkoutAfresh(t *testing.T, root string, rels ...string) {
 // its index: the independent oracle for what a commit of it would hold.
 func addedTree(t *testing.T, root string) string {
 	t.Helper()
+	index := copyIndex(t, root)
+	runIndexed(t, root, index, "add", "-u")
+	return runIndexed(t, root, index, "write-tree")
+}
+
+// copyIndex copies root's index to a fresh path.
+func copyIndex(t *testing.T, root string) string {
+	t.Helper()
 	index := filepath.Join(t.TempDir(), "index")
 	raw, err := os.ReadFile(filepath.Join(root, ".git", "index"))
 	if err != nil {
@@ -56,21 +64,23 @@ func addedTree(t *testing.T, root string) string {
 	if err := os.WriteFile(index, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var tree string
-	for _, args := range [][]string{{"add", "-u"}, {"write-tree"}} {
-		cmd := exec.CommandContext(t.Context(), "git", args...)
-		cmd.Dir = root
-		cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+index)
-		cmd.WaitDelay = 10 * time.Second
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		out, err := cmd.Output()
-		if err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
-		}
-		tree = string(bytes.TrimSpace(out))
+	return index
+}
+
+// runIndexed runs git in root against index and returns its trimmed stdout.
+func runIndexed(t *testing.T, root, index string, args ...string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "GIT_INDEX_FILE="+index)
+	cmd.WaitDelay = 10 * time.Second
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, stderr.String())
 	}
-	return tree
+	return string(bytes.TrimSpace(out))
 }
 
 // TestCRLFCheckoutNamesTheCommittedTree pins Git for Windows' default: with
@@ -128,10 +138,10 @@ func TestCRLFCheckoutNamesTheCommittedTree(t *testing.T) {
 
 // TestEolAttributeCheckoutNamesTheCommittedTree pins the attribute route to
 // CRLF on disk: `text eol=crlf` checks an LF commit out as CRLF on every
-// platform, with core.autocrlf off, and the content is still the commit's.
-// A UTF-16 working-tree-encoding file is named and snapshotted as its UTF-8
-// blob, which pins the snapshot's re-check to the bytes as they are:
-// cleaning the UTF-8 copy again as UTF-16 fails.
+// platform, with core.autocrlf off, and the content is still the commit's,
+// snapshotted as LF. A UTF-16 working-tree-encoding file is named by its
+// UTF-8 blob but snapshotted as git's checkout writes it, UTF-16, so a
+// command reads what a checkout holds; its re-check cleans it back.
 func TestEolAttributeCheckoutNamesTheCommittedTree(t *testing.T) {
 	root, g := repo(t)
 	write(t, root, ".gitattributes", "*.txt text eol=crlf\nwide.txt working-tree-encoding=UTF-16LE\n")
@@ -140,7 +150,7 @@ func TestEolAttributeCheckoutNamesTheCommittedTree(t *testing.T) {
 	git(t, root, "add", "-A")
 	git(t, root, "commit", "-q", "-m", "eol")
 	head := git(t, root, "rev-parse", "HEAD^{tree}")
-	checkoutAfresh(t, root, "notes.txt")
+	checkoutAfresh(t, root, "notes.txt", "wide.txt")
 	requireBytes(t, filepath.Join(root, "notes.txt"), "a\r\nb\r\n")
 	if got := mustTree(t, g); got != head {
 		t.Fatalf("eol=crlf checkout named %s, want the commit's tree %s", got, head)
@@ -150,7 +160,80 @@ func TestEolAttributeCheckoutNamesTheCommittedTree(t *testing.T) {
 		t.Fatalf("eol=crlf snapshot named %s, want the commit's tree %s", snap.content.Tree, head)
 	}
 	requireBytes(t, filepath.Join(snap.dir, "notes.txt"), "a\nb\n")
-	requireBytes(t, filepath.Join(snap.dir, "wide.txt"), "hi\n")
+	requireBytes(t, filepath.Join(snap.dir, "wide.txt"), "h\x00i\x00\r\x00\n\x00")
+	if blob := gitRaw(t, root, "cat-file", "blob", head+":wide.txt"); blob != "hi\n" {
+		t.Errorf("wide.txt committed as %q, want its UTF-8 form", blob)
+	}
+}
+
+// TestIdentPathIsSnapshottedAsCheckoutWritesIt pins the false VERIFIED the
+// committed form allowed: with `ident`, a checkout holds `$Id: <blob> $`,
+// so a command that greps for the collapsed `$Id$` must fail in the
+// snapshot as it would anywhere. The tree is still the commit's.
+func TestIdentPathIsSnapshottedAsCheckoutWritesIt(t *testing.T) {
+	root, g := repo(t)
+	write(t, root, ".gitattributes", "id.txt ident\n")
+	write(t, root, "id.txt", "hello $Id$ world\n")
+	git(t, root, "add", "-A")
+	git(t, root, "commit", "-q", "-m", "ident")
+	head := git(t, root, "rev-parse", "HEAD^{tree}")
+	checkoutAfresh(t, root, "id.txt")
+	blob := git(t, root, "rev-parse", "HEAD:id.txt")
+	checkedOut := "hello $Id: " + blob + " $ world\n"
+	requireBytes(t, filepath.Join(root, "id.txt"), checkedOut)
+	snap := snapshot(t, g)
+	if snap.content.Tree != head {
+		t.Fatalf("ident snapshot named %s, want the commit's tree %s", snap.content.Tree, head)
+	}
+	requireBytes(t, filepath.Join(snap.dir, "id.txt"), checkedOut)
+}
+
+// TestMissingAttributesFileIsReadFromItsIndexedCopy pins the attribute
+// sources: a tracked .gitattributes deleted from disk still applies, read
+// from the index, as `git add` reads it — here `text`, which cleans the
+// CRLF an edit saved.
+func TestMissingAttributesFileIsReadFromItsIndexedCopy(t *testing.T) {
+	root, g := repo(t)
+	write(t, root, ".gitattributes", "*.txt text\n")
+	write(t, root, "a.txt", "x\n")
+	git(t, root, "add", "-A")
+	git(t, root, "commit", "-q", "-m", "attrs")
+	if err := os.Remove(filepath.Join(root, ".gitattributes")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, root, "a.txt", "x\r\ny\r\n")
+	tree := mustTree(t, g)
+	if blob := gitRaw(t, root, "cat-file", "blob", tree+":a.txt"); blob != "x\ny\n" {
+		t.Errorf("a.txt named as %q, want the indexed .gitattributes' `text` to clean it", blob)
+	}
+	if want := addedBlob(t, root, "a.txt"); git(t, root, "rev-parse", tree+":a.txt") != want {
+		t.Errorf("a.txt named differently from `git add a.txt`'s %s", want)
+	}
+}
+
+// addedBlob is the blob `git add rel` makes, in a copy of root's index.
+func addedBlob(t *testing.T, root, rel string) string {
+	t.Helper()
+	index := copyIndex(t, root)
+	runIndexed(t, root, index, "add", "--", rel)
+	return runIndexed(t, root, index, "rev-parse", ":"+rel)
+}
+
+// TestFailedCleanNamesGitsReason pins the refusal text under verify's
+// combined-capture watchdog, which delivers git's stderr in Stdout: an
+// encoding git cannot convert names git's own fatal line, not an empty
+// reason.
+func TestFailedCleanNamesGitsReason(t *testing.T) {
+	root, _ := repo(t)
+	write(t, root, ".gitattributes", "x.txt working-tree-encoding=NO-SUCH-ENCODING\n")
+	write(t, root, "x.txt", "hi\n")
+	git(t, root, "add", "-N", ".gitattributes", "x.txt")
+	g := contenttree.Git{Cmdr: coreexec.Watchdog{}, Root: root}
+	_, err := g.Worktree(t.Context())
+	want := "git update-index exited 128: fatal: failed to encode 'x.txt' from NO-SUCH-ENCODING to UTF-8"
+	if err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
 }
 
 // lfsPointer is a Git LFS pointer file, as a commit stores one.
@@ -162,15 +245,22 @@ const lfsPointer = "version https://git-lfs.github.com/spec/v1\n" +
 // naming and snapshotting run it never, name the smudged file by its bytes
 // (the pointer cannot be re-derived without git-lfs, so the tree is not the
 // commit's), and report the path under the lfs driver. A pointer left
-// unsmudged is named as the commit names it and not reported.
+// unsmudged, or one whose index entry differs but whose bytes are HEAD's,
+// is named as the commit names it and not reported.
 func TestLFSContentRunsNoGitLFSAndIsReported(t *testing.T) {
 	root, _ := repo(t)
 	write(t, root, ".gitattributes", "*.bin filter=lfs diff=lfs merge=lfs -text\n")
 	write(t, root, "big.bin", lfsPointer)
 	write(t, root, "kept.bin", lfsPointer)
+	write(t, root, "restored.bin", lfsPointer)
 	git(t, root, "add", "-A")
 	git(t, root, "commit", "-q", "-m", "lfs")
 	head := git(t, root, "rev-parse", "HEAD^{tree}")
+	// A change staged and then undone on disk: the index differs from the
+	// file, but the file is HEAD's, so nothing changes the outcome there.
+	write(t, root, "restored.bin", "staged\n")
+	git(t, root, "add", "restored.bin")
+	write(t, root, "restored.bin", lfsPointer)
 	shim, markers := t.TempDir(), t.TempDir()
 	write(t, shim, "git-lfs", "#!/bin/sh\ntouch '"+filepath.ToSlash(filepath.Join(markers, "git-lfs"))+"'\ncat\n")
 	if err := os.Chmod(filepath.Join(shim, "git-lfs"), 0o755); err != nil {

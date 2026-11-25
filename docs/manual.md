@@ -326,8 +326,8 @@ version (`.verdict/state/`, `verdict loop`'s `.verdict/loop/`, and the generated
 (config, KB, packs, regression tests, `verify-env`) is content. Before the command
 runs, `verify` copies them into a snapshot — a private directory under the host
 temp root, outside your checkout, that git sees as a detached linked worktree —
-names exactly what it copied as a git tree, re-reads the snapshot byte for byte to
-prove it still holds that tree, and runs the command there, never in your checkout; it removes the
+names exactly what it copied as a git tree, re-reads the snapshot (byte for byte, but
+for the expanded paths below) to prove it still holds that tree, and runs the command there, never in your checkout; it removes the
 snapshot afterwards, and a later run sweeps any a killed run stranded. Reads that
 resolve inside the snapshot see the snapshot, so an edit or a checkout and restore in
 your checkout while it runs does not change them. A path that resolves outside it — an
@@ -335,7 +335,7 @@ absolute path, or a symlink the tree carries — reaches the real filesystem, yo
 checkout and its edits included: under `--sandbox` read-only, and possibly hidden by
 the sandbox's rules.
 
-The snapshot is a clean checkout of that content, like CI: ignored files — installed
+The snapshot holds only that content: ignored files — installed
 dependencies (`node_modules/`), build output, local config such as `.env.local` — are
 not in it, and submodules are empty directories. Install dependencies in the command
 itself (`npm ci && npm test`); `verify` warns naming the untracked files, the ignored
@@ -346,9 +346,14 @@ Cleaning is git's own built-in conversion, as `git add` applies it: `core.autocr
 `working-tree-encoding`). A CRLF checkout of an LF commit — Git for Windows' default
 `core.autocrlf=true`, or a `text eol=crlf` attribute — therefore names that commit's
 tree, so a PR bundle's VERIFIED claim and a group run bind there. The snapshot holds
-the cleaned bytes, the blobs the tree names: on such a checkout the command runs on
-LF files, as CI's Linux checkout would, and a `binary` or `-text` file keeps its bytes
-exactly. Making the snapshot runs no code the checkout controls: every git call runs
+the committed form, the blobs the tree names: the command runs on LF line endings
+wherever the commit has them, whatever `core.autocrlf` or an `eol` attribute would
+write, and a `binary` or `-text` file keeps its bytes exactly. The exception is a path
+whose checkout expands its blob — `ident` (`$Id: <blob> $`) or `working-tree-encoding`
+— which the snapshot writes as git's built-in checkout writes it (line endings
+included), with every filter driver still off, so a command reads there what any
+checkout holds; the snapshot's re-check cleans those paths back to their blobs. Making
+the snapshot runs no code the checkout controls: every git call runs
 with hooks off (even with `core.hooksPath` pointing at `.husky/` or other tree
 content), fsmonitor off, and every configured filter driver switched off, so no clean,
 smudge, or process filter runs — git-lfs included. A path whose attributes select one

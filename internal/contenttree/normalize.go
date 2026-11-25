@@ -35,60 +35,105 @@ func (g Git) filterListing(ctx context.Context) (string, error) {
 	case res.ExitCode == 1 && res.Stdout == "":
 		return "", nil // no filter.* key at all
 	case res.ExitCode != 0:
-		reason, _, _ := strings.Cut(strings.TrimSpace(res.Stderr), "\n")
-		return "", jq.NewErrf("git config exited %d: %s", res.ExitCode, reason)
+		return "", jq.NewErrf("git config exited %d: %s", res.ExitCode, reason(res))
 	case res.StdoutTruncated:
 		return "", jq.NewErrf("git config printed more than %d bytes", outputCap)
 	}
 	return res.Stdout, nil
 }
 
+// staged is what naming a snapshot's copies reports beside the ids: the
+// paths a filter driver would have handled, and the paths written as git's
+// checkout expands them ([Git.expand]).
+type staged struct {
+	filtered []Filtered
+	expanded []string
+}
+
 // batchIDs names each batched file by the blob `git add` would make of the
 // checkout's bytes ([Git.cleaned]); a snapshot's re-check (exact) names the
-// copy's bytes as they are. With copyTo set, a copy whose bytes are not its
-// cleaned blob is overwritten with that blob, so the snapshot holds exactly
-// what the tree names, and the paths a filter driver would have handled are
-// reported.
-func (g Git) batchIDs(ctx context.Context, b *hashBatch, copyTo string) (map[string]string, []Filtered, error) {
+// copy's bytes as they are ([Git.exactIDs]). With copyTo set, the copies
+// are made to hold what a checkout of those blobs holds ([Git.fillCopies]).
+func (g Git) batchIDs(ctx context.Context, b *hashBatch, copyTo string) (map[string]string, staged, error) {
+	if g.recheck != nil {
+		ids, err := g.exactIDs(ctx, b)
+		return ids, staged{}, err
+	}
 	var raw map[string]string
-	if g.exact || copyTo != "" {
+	if copyTo != "" {
 		var err error
 		if raw, err = g.rawIDs(ctx, b); err != nil {
-			return nil, nil, err
+			return nil, staged{}, err
 		}
 	}
-	if g.exact {
-		return raw, nil, nil
-	}
-	clean, drivers, err := g.cleaned(ctx, b.entries)
+	clean, drivers, err := g.cleaned(ctx, b.index, b.entries)
 	if err != nil {
-		return nil, nil, err
+		return nil, staged{}, err
 	}
 	ids, stale, changed := compareCleaned(b, clean, raw)
 	if copyTo == "" {
-		return ids, nil, nil
+		return ids, staged{}, nil
 	}
-	filtered, err := g.fillCopies(ctx, stale, changed, drivers)
-	return ids, filtered, err
+	st, err := g.fillCopies(ctx, b, clean, stale, changed, drivers, copyTo)
+	return ids, st, err
 }
 
-// fillCopies writes the stale copies' cleaned blobs and names the changed
-// paths a configured driver would have handled.
-func (g Git) fillCopies(ctx context.Context, stale map[string]string, changed, drivers []string) ([]Filtered, error) {
-	if err := g.writeCleaned(ctx, stale); err != nil {
-		return nil, err
+// exactIDs names each batched file's bytes as they are, except the reclean
+// paths, which are cleaned back to the blob their expansion came from.
+func (g Git) exactIDs(ctx context.Context, b *hashBatch) (map[string]string, error) {
+	ids, err := g.rawIDs(ctx, b)
+	if err != nil || len(g.recheck.reclean) == 0 {
+		return ids, err
 	}
-	return g.filtered(ctx, changed, drivers)
+	var files []entry
+	keys := map[string]string{}
+	for i, e := range b.entries {
+		if slices.Contains(g.recheck.reclean, e.path) {
+			files = append(files, e)
+			keys[e.path] = b.files[i]
+		}
+	}
+	clean, _, err := g.cleaned(ctx, b.index, files)
+	for path, file := range keys {
+		ids[file] = clean[path]
+	}
+	return ids, err
+}
+
+// fillCopies makes the copies hold what a checkout of their cleaned blobs
+// holds — the stale copies rewritten with their blob, then the paths git's
+// checkout expands written as it writes them — and names the changed paths
+// a configured driver would have handled.
+func (g Git) fillCopies(ctx context.Context, b *hashBatch, clean, stale, changed map[string]string,
+	drivers []string, copyTo string,
+) (staged, error) {
+	if err := g.writeCleaned(ctx, stale); err != nil {
+		return staged{}, err
+	}
+	paths := make([]string, len(b.entries))
+	for i, e := range b.entries {
+		paths[i] = e.path
+	}
+	attrs, err := g.attributes(ctx, paths)
+	if err != nil {
+		return staged{}, err
+	}
+	expanded := expanding(attrs)
+	if err := g.expand(ctx, b, clean, expanded, copyTo); err != nil {
+		return staged{}, err
+	}
+	filtered, err := g.filtered(ctx, attrs, changed, drivers)
+	return staged{filtered: filtered, expanded: expanded}, err
 }
 
 // compareCleaned keys each batched file's cleaned id (clean, by path) by
 // file, and returns the copies whose bytes (raw, nil when there are none)
-// are not their cleaned blob, and the paths whose cleaned blob is not what
-// the index records. A file whose bytes are what the index holds — an LFS
-// pointer left unsmudged — is named as a commit names it, driver or not.
-func compareCleaned(b *hashBatch, clean, raw map[string]string) (ids, stale map[string]string, changed []string) {
+// are not their cleaned blob, and, by path, the cleaned ids that are not
+// what the index records. A file whose bytes are what the index holds — an
+// LFS pointer left unsmudged — is named as a commit names it, driver or not.
+func compareCleaned(b *hashBatch, clean, raw map[string]string) (ids, stale, changed map[string]string) {
 	ids = make(map[string]string, len(b.files))
-	stale = map[string]string{}
+	stale, changed = map[string]string{}, map[string]string{}
 	for i, file := range b.files {
 		e := b.entries[i]
 		ids[file] = clean[e.path]
@@ -96,7 +141,7 @@ func compareCleaned(b *hashBatch, clean, raw map[string]string) (ids, stale map[
 			stale[file] = ids[file]
 		}
 		if ids[file] != e.id {
-			changed = append(changed, e.path)
+			changed[e.path] = ids[file]
 		}
 	}
 	return ids, stale, changed
@@ -109,12 +154,13 @@ func compareCleaned(b *hashBatch, clean, raw map[string]string) (ids, stale map[
 // so no clean or process program (git-lfs included) runs. It also returns
 // the drivers the listing named.
 //
-// The files are re-added into a throwaway index seeded with their entries
-// from the user's index: git leaves CRLF alone in a file whose indexed blob
-// already holds CRLF, and only an index that holds that blob reproduces the
-// rule (`hash-object` does not read one). A seeded entry has no stat data,
+// The files are re-added into a throwaway index seeded with every entry of
+// the user's index (seed), so the clean step reads what `git add` reads
+// there: git leaves CRLF alone in a file whose indexed blob already holds
+// CRLF (`hash-object` reads no index), and a tracked .gitattributes missing
+// from disk is read from its indexed copy. A seeded entry has no stat data,
 // so update-index hashes every file afresh instead of trusting a cache.
-func (g Git) cleaned(ctx context.Context, files []entry) (ids map[string]string, drivers []string, err error) {
+func (g Git) cleaned(ctx context.Context, seed, files []entry) (ids map[string]string, drivers []string, err error) {
 	listing, err := g.filterListing(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -124,7 +170,7 @@ func (g Git) cleaned(ctx context.Context, files []entry) (ids map[string]string,
 		return nil, nil, err
 	}
 	defer cleanup()
-	if err := g.readd(ctx, index, files, gitcmd.FilterOptions(listing)); err != nil {
+	if err := g.readd(ctx, index, seed, files, gitcmd.FilterOptions(listing)); err != nil {
 		return nil, nil, err
 	}
 	list := g.command(index, cmdLsFiles, flagZ, "--stage")
@@ -144,15 +190,17 @@ func (g Git) cleaned(ctx context.Context, files []entry) (ids map[string]string,
 	return ids, gitcmd.FilterDrivers(listing), nil
 }
 
-// readd seeds index with files' entries and re-adds each from the working
-// tree under filterOff.
-func (g Git) readd(ctx context.Context, index string, files []entry, filterOff []string) error {
-	var seed, paths bytes.Buffer
+// readd seeds index with the seed entries and re-adds each file from the
+// working tree under filterOff.
+func (g Git) readd(ctx context.Context, index string, seed, files []entry, filterOff []string) error {
+	var records, paths bytes.Buffer
+	for _, e := range seed {
+		fmt.Fprintf(&records, recordFmt, e.mode, e.id, e.path)
+	}
 	for _, e := range files {
-		fmt.Fprintf(&seed, recordFmt, e.mode, e.id, e.path)
 		paths.WriteString(e.path + nul)
 	}
-	if err := g.writeIndex(ctx, index, seed.Bytes()); err != nil {
+	if err := g.writeIndex(ctx, index, records.Bytes()); err != nil {
 		return err
 	}
 	update := g.command(index, slices.Concat(filterOff, []string{"update-index", flagZ, "--stdin"})...)
@@ -161,42 +209,38 @@ func (g Git) readd(ctx context.Context, index string, files []entry, filterOff [
 	return err
 }
 
-// attrFields is the field count of one `check-attr -z` record.
-const attrFields = 3
-
-// filtered names the paths whose `filter` attribute selects one of the
-// configured drivers: the ones git would have run a program for.
-func (g Git) filtered(ctx context.Context, paths, drivers []string) ([]Filtered, error) {
-	if len(paths) == 0 || len(drivers) == 0 {
+// filtered names the changed paths whose `filter` attribute selects one of
+// the configured drivers and whose cleaned blob is not HEAD's either: the
+// ones git would have run a program for, where that changes the content.
+func (g Git) filtered(ctx context.Context, attrs map[string]pathAttrs, changed map[string]string, drivers []string) ([]Filtered, error) {
+	byDriver := map[string][]string{}
+	for path := range changed {
+		if driver := attrs[path].filter; slices.Contains(drivers, driver) {
+			byDriver[driver] = append(byDriver[driver], path)
+		}
+	}
+	if len(byDriver) == 0 {
 		return nil, nil
 	}
-	cmd := g.command("", "check-attr", flagZ, "--stdin", "filter")
-	cmd.Stdin = strings.NewReader(strings.Join(paths, nul) + nul)
-	cmd.OutputCap = listCap
-	res, err := g.check(ctx, cmd)
+	head, err := g.headBlobs(ctx, slices.Concat(slices.Collect(maps.Values(byDriver))...))
 	if err != nil {
 		return nil, err
 	}
-	return byDriver(splitNUL(res.Stdout), drivers)
+	return unlikeHead(byDriver, changed, head), nil
 }
 
-// byDriver groups `check-attr -z` records' paths by the driver their filter
-// attribute names, keeping only drivers, sorted by driver.
-func byDriver(fields, drivers []string) ([]Filtered, error) {
-	if len(fields)%attrFields != 0 {
-		return nil, jq.NewErrf("git check-attr printed %d fields, not records of %d", len(fields), attrFields)
-	}
-	byDriver := map[string][]string{}
-	for i := 0; i < len(fields); i += attrFields {
-		if driver := fields[i+2]; slices.Contains(drivers, driver) {
-			byDriver[driver] = append(byDriver[driver], fields[i])
+// unlikeHead keeps, by driver and sorted, the paths whose cleaned id
+// (changed) is not HEAD's blob for them.
+func unlikeHead(byDriver map[string][]string, changed, head map[string]string) []Filtered {
+	var out []Filtered
+	for _, driver := range slices.Sorted(maps.Keys(byDriver)) {
+		paths := slices.DeleteFunc(byDriver[driver], func(p string) bool { return head[p] == changed[p] })
+		if len(paths) > 0 {
+			slices.Sort(paths)
+			out = append(out, Filtered{Driver: driver, Paths: paths})
 		}
 	}
-	out := make([]Filtered, 0, len(byDriver))
-	for _, driver := range slices.Sorted(maps.Keys(byDriver)) {
-		out = append(out, Filtered{Driver: driver, Paths: byDriver[driver]})
-	}
-	return out, nil
+	return out
 }
 
 // batchHeaderMax bounds one `cat-file --batch` header line: id, type, size.

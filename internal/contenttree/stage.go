@@ -44,42 +44,42 @@ type entry struct {
 // hold exactly the blob its path is named by, and the kept entries' index
 // bytes are written there too; the paths a filter driver would have handled
 // are reported then.
-func (g Git) name(ctx context.Context, entries, kept []entry, copyTo string) (string, []Filtered, error) {
+func (g Git) name(ctx context.Context, entries, kept []entry, copyTo string) (string, staged, error) {
 	index, cleanup, err := tempIndex()
 	if err != nil {
-		return "", nil, err
+		return "", staged{}, err
 	}
 	defer cleanup()
 	var records bytes.Buffer
-	filtered, err := g.records(ctx, &records, entries, kept, copyTo)
+	st, err := g.records(ctx, &records, entries, kept, copyTo)
 	if err != nil {
-		return "", nil, err
+		return "", staged{}, err
 	}
 	if err := g.writeIndex(ctx, index, records.Bytes()); err != nil {
-		return "", nil, err
+		return "", staged{}, err
 	}
 	res, err := g.run(ctx, index, "write-tree")
 	if err != nil {
-		return "", nil, err
+		return "", staged{}, err
 	}
 	tree, err := objectID("write-tree", res.Stdout)
-	return tree, filtered, err
+	return tree, st, err
 }
 
 // records renders every entry's index record, copying as it goes when
 // copyTo is set.
-func (g Git) records(ctx context.Context, records *bytes.Buffer, entries, kept []entry, copyTo string) ([]Filtered, error) {
+func (g Git) records(ctx context.Context, records *bytes.Buffer, entries, kept []entry, copyTo string) (staged, error) {
 	if err := g.restore(ctx, kept, copyTo); err != nil {
-		return nil, err
+		return staged{}, err
 	}
-	filtered, err := g.stage(ctx, records, entries, copyTo)
+	st, err := g.stage(ctx, records, entries, copyTo)
 	if err != nil {
-		return nil, err
+		return staged{}, err
 	}
 	for _, e := range kept {
 		fmt.Fprintf(records, recordFmt, e.mode, e.id, e.path)
 	}
-	return filtered, nil
+	return st, nil
 }
 
 // writeIndex loads the records into the throwaway index.
@@ -186,11 +186,13 @@ func isExcluded(path string) bool {
 }
 
 // hashBatch collects the files the batch hashes, with each one's index mode
-// and path, and its entry in the user's index.
+// and path, and its entry in the user's index; index is every entry listed,
+// files or not, which the clean step's throwaway index is seeded with.
 type hashBatch struct {
 	modes   map[string][2]string
 	files   []string
 	entries []entry
+	index   []entry
 }
 
 func (b *hashBatch) add(file, mode string, e entry) {
@@ -201,11 +203,11 @@ func (b *hashBatch) add(file, mode string, e entry) {
 
 // stage renders the index records for the working tree's state of each
 // entry, copying each file to copyTo first when it is set.
-func (g Git) stage(ctx context.Context, records *bytes.Buffer, entries []entry, copyTo string) ([]Filtered, error) {
-	batch := hashBatch{modes: map[string][2]string{}}
+func (g Git) stage(ctx context.Context, records *bytes.Buffer, entries []entry, copyTo string) (staged, error) {
+	batch := hashBatch{modes: map[string][2]string{}, index: entries}
 	for _, e := range entries {
 		if err := g.stageEntry(ctx, records, &batch, e, copyTo); err != nil {
-			return nil, err
+			return staged{}, err
 		}
 	}
 	return g.hashFiles(ctx, records, &batch, copyTo)
@@ -315,22 +317,22 @@ func (g Git) restoreEntry(ctx context.Context, e entry, copyTo string) error {
 
 // hashFiles names each batched file ([Git.batchIDs]) and appends its index
 // record.
-func (g Git) hashFiles(ctx context.Context, records *bytes.Buffer, b *hashBatch, copyTo string) ([]Filtered, error) {
+func (g Git) hashFiles(ctx context.Context, records *bytes.Buffer, b *hashBatch, copyTo string) (staged, error) {
 	if len(b.files) == 0 {
-		return nil, nil
+		return staged{}, nil
 	}
-	ids, filtered, err := g.batchIDs(ctx, b, copyTo)
+	ids, st, err := g.batchIDs(ctx, b, copyTo)
 	if err != nil {
-		return nil, err
+		return staged{}, err
 	}
 	for _, file := range b.files {
 		id, err := objectID(cmdHashObject, ids[file])
 		if err != nil {
-			return nil, err
+			return staged{}, err
 		}
 		fmt.Fprintf(records, recordFmt, b.modes[file][0], id, b.modes[file][1])
 	}
-	return filtered, nil
+	return st, nil
 }
 
 // rawIDs writes each batched file's bytes as a blob, unfiltered, and

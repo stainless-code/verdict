@@ -68,8 +68,7 @@ func (g Git) check(ctx context.Context, cmd *core.Command) (core.Result, error) 
 	case err != nil:
 		return res, jq.Sealed("git "+sub, err)
 	case res.ExitCode != 0:
-		reason, _, _ := strings.Cut(strings.TrimSpace(res.Stderr), "\n")
-		return res, jq.NewErrf("git %s exited %d: %s", sub, res.ExitCode, reason)
+		return res, jq.NewErrf("git %s exited %d: %s", sub, res.ExitCode, reason(res))
 	case res.StdoutTruncated:
 		return res, jq.NewErrf("git %s printed more than %d bytes", sub, cmd.OutputCap)
 	}
@@ -95,3 +94,23 @@ func (g Git) command(index string, args ...string) *core.Command {
 	}
 	return &core.Command{Argv: gitcmd.Argv(g.Root, args...), Env: env, OutputCap: outputCap}
 }
+
+// reason is git's reason for a failed call: the first line it printed to
+// stderr, or — under a combined-capture commander (verify's watchdog), where
+// stderr arrives in Stdout — the last line of the output, which is where
+// git prints its fatal line.
+func reason(res core.Result) string {
+	if line, _, _ := strings.Cut(strings.TrimSpace(res.Stderr), "\n"); line != "" {
+		return line
+	}
+	out := strings.TrimSpace(res.Stdout)
+	line := out[strings.LastIndexByte(out, '\n')+1:]
+	if len(line) > reasonMax {
+		line = line[:reasonMax] + "…"
+	}
+	return line
+}
+
+// reasonMax bounds a reason read from a call's output, which also carries
+// whatever the call printed before failing.
+const reasonMax = 512

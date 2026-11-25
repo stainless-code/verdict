@@ -165,7 +165,8 @@ func TestSnapshotCopiesTheContent(t *testing.T) {
 // TestSnapshotCleansLikeGitAddAndRunsNoRepoCode pins the two properties a
 // content receipt rests on, on a checkout set up to defeat both: `* text=auto`
 // cleans line endings, a `filter=mark` attribute names a required
-// clean/smudge driver, and fsmonitor and post-checkout name programs. Every
+// clean/smudge driver on an `ident` path the snapshot writes as checkout
+// would, and fsmonitor and post-checkout name programs. Every
 // one of those programs writes a marker. Naming and snapshotting must clean
 // the working tree's bytes as git's built-in conversions do — CRLF to LF —
 // without running the driver, report the path it would have handled, and
@@ -186,11 +187,15 @@ func TestSnapshotCleansLikeGitAddAndRunsNoRepoCode(t *testing.T) {
 	}
 	cleaned := map[string]string{"crlf.txt": "one\ntwo\n", "filtered.txt": "raw $Id$ bytes\n"}
 	for rel, body := range cleaned {
-		requireBytes(t, filepath.Join(dest.dir, rel), body)
 		if blob := gitRaw(t, root, "cat-file", "blob", tree+":"+rel); blob != body {
 			t.Errorf("named blob %s = %q, want the cleaned %q", rel, blob, body)
 		}
 	}
+	// filtered.txt is also `ident`, so git's checkout — with the smudge
+	// driver switched off — writes it expanded.
+	requireBytes(t, filepath.Join(dest.dir, "crlf.txt"), cleaned["crlf.txt"])
+	expanded := "raw $Id: " + git(t, root, "rev-parse", tree+":filtered.txt") + " $ bytes\n"
+	requireBytes(t, filepath.Join(dest.dir, "filtered.txt"), expanded)
 	want := []contenttree.Filtered{{Driver: "mark", Paths: []string{"filtered.txt"}}}
 	if !slices.EqualFunc(dest.content.Filtered, want, equalFiltered) {
 		t.Errorf("Filtered = %+v, want %+v", dest.content.Filtered, want)
@@ -211,7 +216,7 @@ func equalFiltered(a, b contenttree.Filtered) bool {
 func armRepoCode(t *testing.T, root, markers string) {
 	t.Helper()
 	marker := func(name string) string { return filepath.ToSlash(filepath.Join(markers, name)) }
-	write(t, root, ".gitattributes", "* text=auto\nfiltered.txt filter=mark\n")
+	write(t, root, ".gitattributes", "* text=auto\nfiltered.txt filter=mark ident\n")
 	git(t, root, "config", "filter.mark.clean", "sh -c 'touch "+marker("clean")+"; cat'")
 	git(t, root, "config", "filter.mark.smudge", "sh -c 'touch "+marker("smudge")+"; cat'")
 	git(t, root, "config", "filter.mark.required", "true")
