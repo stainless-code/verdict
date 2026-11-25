@@ -59,18 +59,27 @@ func hermeticGit(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
 }
 
-// runShareInit runs init in repo with real git behind it.
-func runShareInit(t *testing.T, repo string) string {
+// runShareInit runs init in repo with real git behind it and returns the
+// written configuration and the human preview.
+func runShareInit(t *testing.T, repo string) (config, human string) {
 	t.Helper()
 	req := ciRequest(repo, githubTarget(t))
 	req.Commander = coreexec.Watchdog{}
+	var out strings.Builder
+	req.Human = &out
 	mustRunInit(t, req)
 	raw, err := os.ReadFile(filepath.Join(repo, reviewDotName, configName))
 	if err != nil {
 		t.Fatal(err)
 	}
-	return string(raw)
+	return string(raw), out.String()
 }
+
+// shareTradeOff is the preview line init prints with a proposal: the
+// trade-off and the way out, in one sentence.
+const shareTradeOff = "verify.share: node_modules (from the lockfile here) — verify reuses the installed " +
+	"directory instead of installing on every run, but a stub planted there could make a command pass " +
+	"(only --sandbox makes it read-only); delete the entry for a clean CI-like snapshot\n"
 
 // TestInitProposesTheDependencyDirAPackageLockImplies proves the proposal
 // lands in the written configuration only when a lockfile implies it and
@@ -78,11 +87,15 @@ func runShareInit(t *testing.T, repo string) string {
 func TestInitProposesTheDependencyDirAPackageLockImplies(t *testing.T) {
 	hermeticGit(t)
 	repo := lockfileRepo(t, map[string]string{"package-lock.json": "{}\n", ".gitignore": "node_modules/\n"})
-	if got := runShareInit(t, repo); !strings.HasSuffix(strings.TrimRight(got, "\n"), shareConfigTail) {
+	got, human := runShareInit(t, repo)
+	if !strings.HasSuffix(strings.TrimRight(got, "\n"), shareConfigTail) {
 		t.Fatalf(".verdict/config.json =\n%s\nwant it to end with the node_modules proposal:\n%s", got, shareConfigTail)
 	}
+	if !strings.Contains(human, shareTradeOff) {
+		t.Fatalf("init preview lacks the trade-off line %q:\n%s", shareTradeOff, human)
+	}
 	bare := lockfileRepo(t, map[string]string{".gitignore": "node_modules/\n"})
-	if got := runShareInit(t, bare); strings.Contains(got, `"verify"`) {
+	if got, _ := runShareInit(t, bare); strings.Contains(got, `"verify"`) {
 		t.Fatalf("init proposed a share with no lockfile:\n%s", got)
 	}
 }
@@ -93,14 +106,14 @@ func TestInitProposesTheDependencyDirAPackageLockImplies(t *testing.T) {
 func TestInitProposesNoShareVerifyWouldRefuse(t *testing.T) {
 	hermeticGit(t)
 	unignored := lockfileRepo(t, map[string]string{"package-lock.json": "{}\n"})
-	if got := runShareInit(t, unignored); strings.Contains(got, `"verify"`) {
+	if got, _ := runShareInit(t, unignored); strings.Contains(got, `"verify"`) {
 		t.Fatalf("init proposed node_modules though .gitignore does not cover it:\n%s", got)
 	}
 	tracked := lockfileRepo(t, map[string]string{
 		"package-lock.json": "{}\n", ".gitignore": "node_modules/\n", "node_modules/patched/index.js": "x\n",
 	})
 	shareGitIn(t, tracked, "add", "-f", "node_modules/patched/index.js")
-	if got := runShareInit(t, tracked); strings.Contains(got, `"verify"`) {
+	if got, _ := runShareInit(t, tracked); strings.Contains(got, `"verify"`) {
 		t.Fatalf("init proposed node_modules though git tracks a file in it:\n%s", got)
 	}
 }

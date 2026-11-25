@@ -384,10 +384,15 @@ command passes on the reviewed content alone, while a shared directory is bytes
 outside the tree, so a stub planted there could make it pass. The receipt (and the
 envelope) lists every shared path in `shared`, sorted, so a strict gate can refuse a
 receipt that depended on one, and `sandboxed` says whether it was read-only; an empty
-or absent list keeps the clean snapshot. `verdict init` proposes `node_modules` when
+or absent list keeps the clean snapshot. `verify` says so after the command
+(`» verified with shared directories: node_modules (read-only under --sandbox)`, or
+`(writable: no --sandbox)` plus a warning), and `gate`'s evidence detail appends
+`receipt used shared directories: …` when a VERIFIED claim rests on such a receipt —
+information only, never a failure. `verdict init` proposes `node_modules` when
 it finds `package-lock.json`, `pnpm-lock.yaml`, or `yarn.lock`, and `.venv` for
 `uv.lock` or `poetry.lock`, but only when git already ignores the directory and
-tracks nothing in it.
+tracks nothing in it; its preview states the trade-off, and deleting the entry
+restores the clean snapshot.
 
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the

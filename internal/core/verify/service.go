@@ -193,6 +193,7 @@ func (st *state) execute(
 	}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
+	st.reportShares(sb)
 	st.releaseSandbox(sb)
 	st.removeSnapshot(ctx, snap)
 	snap = nil

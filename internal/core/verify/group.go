@@ -236,6 +236,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, commandDir(run.workDir, run.sandbox),
 		st.childEnv(), run.sandbox)
+	st.reportShares(run.sandbox)
 	st.releaseSandbox(run.sandbox)
 	st.removeSnapshot(ctx, run.snap)
 	run.snap = nil

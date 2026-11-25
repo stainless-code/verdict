@@ -132,7 +132,8 @@ const shareProbe = `node_modules/.bin/stub && if (printf x > node_modules/plante
 func TestSandboxedShareRunsTheStubButDeniesWrites(t *testing.T) {
 	requireHostSandbox(t)
 	root := shareCheckout(t, shareConfig("node_modules"), shareProbe)
-	resp, ref := Run(t.Context(), shareRequest(t, true))
+	req := shareRequest(t, true)
+	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %s: %s", ref.Code, ref.Message)
 	}
@@ -144,6 +145,7 @@ func TestSandboxedShareRunsTheStubButDeniesWrites(t *testing.T) {
 	}
 	requireSharedRecorded(t, resp, []string{"node_modules"})
 	requireStubIntact(t, root)
+	requireHumanLine(t, req, "» verified with shared directories: node_modules (read-only under --sandbox)")
 }
 
 // TestUnsandboxedShareLinksTheDirectory proves the unsandboxed shape: the
@@ -151,7 +153,8 @@ func TestSandboxedShareRunsTheStubButDeniesWrites(t *testing.T) {
 // snapshot never follows the link into the checkout.
 func TestUnsandboxedShareLinksTheDirectory(t *testing.T) {
 	root := shareCheckout(t, shareConfig("node_modules"), "node_modules/.bin/stub")
-	resp, ref := Run(t.Context(), shareRequest(t, false))
+	req := shareRequest(t, false)
+	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %s: %s", ref.Code, ref.Message)
 	}
@@ -164,6 +167,21 @@ func TestUnsandboxedShareLinksTheDirectory(t *testing.T) {
 		if strings.Contains(w, "ignored entr") {
 			t.Errorf("a shared directory is still reported as left out: %q", w)
 		}
+	}
+	requireHumanLine(t, req, "» verified with shared directories: node_modules (writable: no --sandbox)")
+	const writable = "verify.share: node_modules was writable during the run — only --sandbox makes a shared " +
+		"directory read-only, so a stub planted there could make the command pass"
+	if !slices.Contains(resp.Warnings, writable) {
+		t.Errorf("warnings = %q, want the writable share named", resp.Warnings)
+	}
+}
+
+// requireHumanLine finds line among the run's streamed human lines.
+func requireHumanLine(t *testing.T, req *Request, line string) {
+	t.Helper()
+	c, ok := req.Progress.(*testkit.Collector)
+	if !ok || !slices.Contains(c.HumanLines, line) {
+		t.Errorf("human lines lack %q", line)
 	}
 }
 

@@ -241,6 +241,24 @@ func shareRefusal(rel, why string) *core.RefusalError {
 		"%s verify.share entry %q %s; nothing ran", config.ConfigPath, rel, why)}
 }
 
+// reportShares says, once the command ran, which directories it saw from
+// the checkout and whether they were read-only. A writable share is also a
+// warning, so a --json reader sees the weaker guarantee without reading the
+// human lines: only the full sandbox stops a stub planted there.
+func (st *state) reportShares(sb *sandbox) {
+	if len(st.shared) == 0 {
+		return
+	}
+	names := strings.Join(sharedRels(st.shared), ", ")
+	if sb.full() {
+		st.human("» verified with shared directories: " + names + " (read-only under --sandbox)")
+		return
+	}
+	st.human("» verified with shared directories: " + names + " (writable: no --sandbox)")
+	st.warn("verify.share: " + names + " was writable during the run — only --sandbox makes a shared directory " +
+		"read-only, so a stub planted there could make the command pass")
+}
+
 // bindsShares reports whether the run's sandbox mounts each share read-only
 // (bwrap), which needs an empty directory as its mount point in the snapshot.
 // Every other run gets a symbolic link: Seatbelt denies writes through it by

@@ -799,8 +799,8 @@ func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfSta
 	}
 	if len(st.share) > 0 {
 		st.humanf("verify.share: %s (from the lockfile here) — verify reuses the installed directory instead of "+
-			"installing on every run; only --sandbox makes it read-only, and a stub planted there could pass, "+
-			"so drop the key for a clean CI-like snapshot\n", strings.Join(st.share, ", "))
+			"installing on every run, but a stub planted there could make a command pass (only --sandbox makes "+
+			"it read-only); delete the entry for a clean CI-like snapshot\n", strings.Join(st.share, ", "))
 	}
 	if workflow != nil {
 		st.humanf("--- %s (%s) ---\n", st.ci.path(), wfStatus)

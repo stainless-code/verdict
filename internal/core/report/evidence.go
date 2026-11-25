@@ -188,6 +188,13 @@ func warnEvidence(st *state) {
 // findings dimension excludes it as unconfirmed, so this is the one place it
 // can stop the gate.
 func gateEvidenceCheck(st *state) core.GateDimension {
+	dim := evidenceDimension(st)
+	dim.Detail = withSharedNote(st, dim.Detail)
+	return dim
+}
+
+// evidenceDimension is the evidence dimension's status and detail.
+func evidenceDimension(st *state) core.GateDimension {
 	if st.flags.Check != "" {
 		if pending := gatePendingCross(st); pending > 0 {
 			return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(pending), Detail: pendingCrossDetail(pending)}
