@@ -80,6 +80,11 @@ type Deps struct {
 type Resolved struct {
 	Refusal  *core.RefusalError
 	Repo, Pr string
+	// Host is the code host the target lives on (an authority, port kept),
+	// from the URL or the origin remote; "" for a typed `<owner/repo>`, which
+	// names no host. The front door pins every host call to it.
+	Host     string
+	provider string
 	Note     string
 	Rest     []string
 }
@@ -93,6 +98,8 @@ func Resolve(ctx context.Context, d Deps, q *Request) Resolved {
 		out.Refusal = &core.RefusalError{Code: "canceled", Message: "canceled before target resolution completed"}
 	case out.Refusal == nil && incomplete(q, out):
 		out.Refusal = missingTarget(q, out)
+	case out.Refusal == nil:
+		out.Refusal = hostConflict(out.provider, out.Host, q.Env)
 	}
 	return *out
 }
@@ -154,6 +161,7 @@ func fromURL(q *Request, out *Resolved) {
 		return
 	}
 	out.Repo, out.Note = t.Repo, describe(t.Repo, t.Pr, t.Provider, "from the URL")
+	out.Host, out.provider = t.Host, t.Provider
 	if !q.RepoOnly {
 		out.Pr = t.Pr
 	}
@@ -236,6 +244,7 @@ func fromOrigin(ctx context.Context, d Deps, q *Request, out *Resolved, pr strin
 		return
 	}
 	out.Repo, out.Pr = f.repo, pr
+	out.Host, out.provider = f.host, f.provider
 	out.Note = describe(f.repo, pr, f.provider, "repository from the origin remote")
 }
 
@@ -275,6 +284,7 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 			branch, strings.Join(labels, ", "), hint)
 	default:
 		out.Repo, out.Pr = f.repo, hits[0].num
+		out.Host, out.provider = f.host, f.provider
 		out.Note = describe(f.repo, hits[0].num, f.provider,
 			fmt.Sprintf("inferred from branch %q recorded in .verdict/state/%s", branch, hits[0].num))
 	}
@@ -289,6 +299,7 @@ func inferFromHost(ctx context.Context, d Deps, q *Request, out *Resolved, f *fo
 		return
 	}
 	out.Repo, out.Pr = f.repo, pr
+	out.Host, out.provider = f.host, f.provider
 	out.Note = describe(f.repo, pr, f.provider, fmt.Sprintf("from %s for branch %q", f.host, branch))
 	if providerFlagVerbs[q.Verb] {
 		// No bundle names this pull request yet, so the verb would otherwise

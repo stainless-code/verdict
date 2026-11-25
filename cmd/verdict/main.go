@@ -129,11 +129,10 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	}
 	tgt := resolveTarget(cmd, repo, pr, rest, env, getenv)
 	r.Repo, r.Pr = tgt.Repo, tgt.Pr
-	repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	if code, done := gateInvocation(r, uverb, &tgt, forces, env, readFile, stderr); done {
 		return code
 	}
-	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
+	return dispatch(cmd, r, &tgt, root, env, forces, args, stderr, readFile)
 }
 
 // gateInvocation runs the checks that stop an invocation before its verb: the
@@ -338,14 +337,19 @@ func shutdownSignalContext() (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 }
 
+// dispatch runs the verb against the resolved target. The target's host rides
+// on the context, so every gh and glab call the verb makes names it
+// (core.PinHostArgv) and the environment's default host cannot redirect one.
 func dispatch(
-	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
-	forces *cli.GlobalForces, args, rest []string, stderr *os.File,
+	cmd string, r *cli.Runner, tgt *target.Resolved, root string, env map[string]string,
+	forces *cli.GlobalForces, args []string, stderr *os.File,
 	readFile func(string) ([]byte, error),
 ) int {
+	repo, pr, rest := tgt.Repo, tgt.Pr, tgt.Rest
 	r.RouteHuman()
 	ctx, stop := shutdownSignalContext()
 	defer stop()
+	ctx = core.WithHost(ctx, tgt.Host)
 	if htmlInvocation(cmd, rest) {
 		return serve.RunHTML(ctx, r, rest, cliVersion(root, readFile))
 	}

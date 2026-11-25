@@ -165,7 +165,10 @@ Do not "fix" the inherited side: it is the documented local posture.
   operator: the calls must use the operator's existing `gh` auth and git
   configuration, and shadowing either would break the command rather than
   harden it. The spawn site passes no environment, so the child inherits the
-  parent's (`internal/core/exec`).
+  parent's (`internal/core/exec`). The host choice is not inherited: when the
+  target names a host, every `gh` and `glab` argv names it explicitly
+  (`core.PinHostArgv`), so `GH_HOST` or `GITLAB_HOST` cannot redirect a call to
+  another host's pull request (`docs/manual.md` § Targets).
 - **Default-deny allowlist: the agent-written `bash -c` verify command.**
   `verify` runs the agent's claimed proof (or deep-group `--command`) with a
   default-deny filtered slice of the caller's environment

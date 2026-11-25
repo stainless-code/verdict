@@ -771,6 +771,12 @@ Cause: the bundle carries no reviewed head, or the checked-out head is not the r
 Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation or
 `fix` — on a PR bundle `fix` refuses until the checkout is on the bundle's head.
 
+## `host-mismatch`
+
+Cause: a host call could not be pinned to the target's host. The target (a URL or the `origin` remote) is on one host and `FORGEJO_HOST` names another, the target is a GitLab host on a non-default port (glab's `--hostname` takes none), or the bundle `post` would publish was fetched from another host than the target names. The message names both hosts.
+
+Fix: point the target, the bundle, and the host variable at one host: set `FORGEJO_HOST` and `FORGEJO_TOKEN` for the target's host, re-fetch the target before posting, or pass a target on the bundle's host.
+
 ## `html-not-export`
 
 Cause: the HTML export destination is a file or a non-empty directory without

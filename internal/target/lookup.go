@@ -154,7 +154,7 @@ func validEntry(e map[string]any, keys *lookupFields, f *found, branch string, e
 	if ref != nil || t.Provider != f.provider || !strings.EqualFold(t.Repo, f.repo) || t.Pr != n.String() {
 		return "", false
 	}
-	if u, err := url.Parse(raw); err != nil || strings.ToLower(u.Hostname()) != f.host {
+	if u, err := url.Parse(raw); err != nil || core.URLAuthority(u) != f.host {
 		return "", false
 	}
 	return n.String(), true

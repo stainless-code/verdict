@@ -172,6 +172,8 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-target-url"}, hint: "try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), " +
 		"or pass <owner/repo> <pr> --provider <name>"},
 	{codes: []string{"target-unresolved"}, hint: "try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL"},
+	{codes: []string{"host-mismatch"}, hint: "try: point the target, the bundle, and the host variable named above " +
+		"at one host, then re-run"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
 	{codes: []string{"bad-rigor-policy"}, hint: "try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, " +

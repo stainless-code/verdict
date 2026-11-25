@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // slashSep is the URL path separator the project-path walk splits on.
@@ -41,7 +43,8 @@ func BundleProject(dir string) string {
 	return path.Join(parts[:2]...)
 }
 
-// BundleHost names the review URL's host (lowercased, port stripped), or ""
+// BundleHost names the review URL's authority ([core.URLAuthority]: a
+// non-default port kept, so two hosts that differ by port never match), or ""
 // when the bundle carries no review URL: a local bundle names no host, so two
 // local bundles never mismatch on it.
 func BundleHost(dir string) string {
@@ -53,7 +56,7 @@ func BundleHost(dir string) string {
 	if err != nil || parsed.Host == "" {
 		return ""
 	}
-	return strings.ToLower(parsed.Hostname())
+	return core.URLAuthority(parsed)
 }
 
 // azureProject reads Azure DevOps' <project>/<repo> out of

@@ -50,11 +50,12 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	if len(cmd.Argv) == 0 {
 		return core.Result{}, errEmptyArgv
 	}
-	if err := r.precheck(cmd.Argv[0]); err != nil {
+	argv, err := r.argv(ctx, cmd)
+	if err != nil {
 		return core.Result{}, err
 	}
 	//nolint:gosec // G204: argv is the operator's own gh/git plumbing, not external input.
-	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
+	proc := osexec.CommandContext(ctx, argv[0], argv[1:]...)
 	limit := r.captureCap(cmd)
 	stdout := newBoundedBuffer(limit, captureHead)
 	stderr := newBoundedBuffer(limit, captureTail)
@@ -88,6 +89,20 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 		return res, &core.OutputCappedError{Stream: "stdout", Limit: limit, ReadBytes: stdout.Seen()}
 	}
 	return res, nil
+}
+
+// argv is the argv Run spawns: the tool must resolve when MissingTool is set,
+// and every gh and glab call names the target's host itself, so GH_HOST,
+// GITLAB_HOST and the CLIs' default host cannot route it elsewhere.
+func (r Runner) argv(ctx context.Context, cmd *core.Command) ([]string, error) {
+	if err := r.precheck(cmd.Argv[0]); err != nil {
+		return nil, err
+	}
+	argv, ref := core.PinHostArgv(cmd.Argv, core.HostOf(ctx))
+	if ref != nil {
+		return nil, ref //nolint:wrapcheck // the typed refusal reaches the verb as is, so its code renders
+	}
+	return argv, nil
 }
 
 // commandStdin is the command's own stdin when it sets one, else the
