@@ -295,4 +295,18 @@ func TestStripControlCharsEndsAnOpenOSCAtTheLineBreak(t *testing.T) {
 	if !strings.HasSuffix(got, "last-line\n") || strings.Contains(got, "no terminator") {
 		t.Fatalf("stripControlChars = %q", got)
 	}
+	// The break ends the OSC and goes with it, so a credential the escape was
+	// planted in is rejoined and redacted rather than split across lines.
+	environ := []string{"EVAL_PROBE_TOKEN=secretpartvaluerest123"}
+	for _, split := range []string{"sk-\x1b]0;x\nant-abcdefghijklmnop123 end", "boom secretpart\x1b]0;x\nvaluerest123 done"} {
+		requireNoLeak(t, split, sanitizeTail(split, environ))
+		if got := sanitizeTail(split, environ); strings.Contains(got, "abcdefghijklmnop123") {
+			t.Fatalf("sanitizeTail(%q) = %q leaks the split shape", split, got)
+		}
+	}
+	// A stripped form under the 8-byte floor is never added: it would shred
+	// ordinary text.
+	if got := StripControlledSecrets([]string{"abc\rdefg"}); len(got) != 1 {
+		t.Fatalf("StripControlledSecrets(short) = %q, want only the raw form", got)
+	}
 }
