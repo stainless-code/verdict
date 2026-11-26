@@ -408,6 +408,9 @@ func (c *coordinator) freeze() *core.RefusalError {
 }
 
 func (c *coordinator) finish() *core.RefusalError {
+	if ref := c.dedupe(); ref != nil {
+		return ref
+	}
 	if ref := writeCoordinator(c.dir, filepath.Join(verificationDir, "verdicts.json"), c.binding); ref != nil {
 		return ref
 	}
