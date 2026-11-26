@@ -905,7 +905,7 @@ one that gives `control_fp_rate` a denominator.
 
 ## Ordered sampling
 
-The runner accepts `-repeats N` (`-runs` is its existing alias) and `-k K`,
+The runner accepts `-repeats N` and `-k K`,
 with `1 <= K <= N`. Each bundle's `corpus_run.json` snapshots run identity,
 sample index, k, repeats, and resolved severity weights. Only the first k
 ordered samples contribute to `any_of_k_recall`: union their matched bug

@@ -25,6 +25,7 @@ const (
 	VerbIngest = "ingest"
 
 	codeMissingSARIF  = "missing-sarif"
+	msgMissingSource  = "--from sarif <file|-> is required"
 	codeBadFrom       = "bad-from"
 	codeSARIFTooLarge = "sarif-too-large"
 	codeIngestFailed  = "ingest-failed"
@@ -47,7 +48,7 @@ const (
 )
 
 // Request carries the resolved ingest invocation: target bundle, the source
-// format named by --from (SourceSARIF, or empty for the legacy --sarif form),
+// format named by --from (SourceSARIF; required),
 // the SARIF source (either a file path in SARIF or pre-read bytes in SARIFData
 // when SARIFInline), and clock/runtime overrides.
 type Request struct {
@@ -188,12 +189,14 @@ func prepareIngest(ctx context.Context, req *Request) (*ingestState, *parseOutpu
 	return st, parsed, nil
 }
 
-// validateSource accepts the one source format this build reads. An empty value
-// is the legacy `--sarif <file|->` form of the same thing.
+// validateSource accepts the one source format this build reads. An unnamed
+// format is a missing source: the format is always stated, never implied.
 func validateSource(from string) *core.RefusalError {
 	switch strings.ToLower(strings.TrimSpace(from)) {
-	case "", SourceSARIF:
+	case SourceSARIF:
 		return nil
+	case "":
+		return &core.RefusalError{Code: codeMissingSARIF, Message: msgMissingSource}
 	default:
 		return &core.RefusalError{
 			Code:    codeBadFrom,
@@ -219,7 +222,7 @@ func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	}
 	path := strings.TrimSpace(req.SARIF)
 	if path == "" {
-		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "--from sarif <file|-> is required"}
+		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: msgMissingSource}
 	}
 	// ReadRegularCapped opens via O_NONBLOCK without O_NOFOLLOW, so check Lstat first.
 	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {

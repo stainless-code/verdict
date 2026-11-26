@@ -79,6 +79,13 @@ func TestInvalidParamsContract(t *testing.T) {
 			want: `missing required argument "pr"`,
 		},
 		{
+			// ingest names its source format; the removed `--sarif` spelling
+			// had no MCP form beyond leaving `from` out, which now refuses.
+			name: "ingest without from",
+			line: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ingest","arguments":{"repo":"a/b","pr":"1","sarif":"scan.sarif"}}}`,
+			want: `missing required argument "from"`,
+		},
+		{
 			name: "repo wrong type",
 			line: `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"report","arguments":{"repo":7,"pr":"1"}}}`,
 			want: `argument "repo": json: cannot unmarshal number into Go value of type string`,

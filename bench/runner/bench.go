@@ -109,7 +109,7 @@ func (cfg *Config) applyDefaults() {
 func (cfg *Config) validateNumbers() error {
 	switch {
 	case cfg.Runs < 1:
-		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
+		return jq.NewErrf("-repeats must be at least 1, got %d", cfg.Runs)
 	case cfg.Loop < 0:
 		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
 	case cfg.Loop > loopMaxRounds:

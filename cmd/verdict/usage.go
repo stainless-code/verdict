@@ -169,7 +169,6 @@ func usageText() string {
 		"    repository, or a line the changed hunks do not carry) comes back in data.skipped[]\n" +
 		"    with a typed reason instead of being dropped or stored at line 0; an anchored\n" +
 		"    finding grades pointed against the verified diff line, never verified.\n" +
-		"    --sarif <file|-> is the same source under its older spelling.\n" +
 		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected|--recipe <name> [--min-severity <s>]\n" +
 		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
 		"    one bounded pass over a bundle: picks the top open inline sig\n" +

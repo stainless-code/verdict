@@ -380,8 +380,8 @@ type IngestRequest struct {
 	SARIFData []byte
 }
     IngestRequest imports OASIS SARIF 2.1.0 results into the target bundle's
-    findings store. From names the source format (SourceSARIF, or empty for
-    the same thing); SARIF is a file path and SARIFData carries pre-read bytes
+    findings store. From names the source format; empty means SourceSARIF,
+    the SDK's default. SARIF is a file path and SARIFData carries pre-read bytes
     instead. Every document is capped at 8 MiB and read offline.
 
 type IngestResponse struct {

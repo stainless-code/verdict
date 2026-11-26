@@ -12,7 +12,7 @@ goreleaser imports `bench/`, while the shared scoring code is part of the shippe
 
 ```sh
 make build
-go run ./bench/runner -model fixture-good -runs 3 -internal \
+go run ./bench/runner -model fixture-good -repeats 3 -internal \
   -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/fixture.sh"'
 ```
 
@@ -41,7 +41,7 @@ command. The runner sets:
 
 ```sh
 go run ./bench/runner \
-  -model my-model -panel my-panel -runs 3 \
+  -model my-model -panel my-panel -repeats 3 \
   -agent 'my-agent --prompt "$VERDICT_BENCH_PROMPT" --out "$VERDICT_BENCH_OUT" --cost "$VERDICT_BENCH_COST"'
 ```
 
@@ -59,7 +59,7 @@ writes the review and its spend where the runner expects them.
 
 ```sh
 make build
-go run ./bench/runner -model deepseek/deepseek-flash -runs 3 -internal \
+go run ./bench/runner -model deepseek/deepseek-flash -repeats 3 -internal \
   -agent 'sh "$VERDICT_BENCH_ROOT/bench/agents/pi.sh"'
 ```
 

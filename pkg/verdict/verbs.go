@@ -1007,8 +1007,8 @@ func (c *Client) Adopt(ctx context.Context, req *AdoptRequest) (*AdoptResponse, 
 }
 
 // IngestRequest imports OASIS SARIF 2.1.0 results into the target bundle's
-// findings store. From names the source format (SourceSARIF, or empty for the
-// same thing); SARIF is a file path and SARIFData carries pre-read bytes
+// findings store. From names the source format; empty means SourceSARIF, the
+// SDK's default. SARIF is a file path and SARIFData carries pre-read bytes
 // instead. Every document is capped at 8 MiB and read offline.
 type IngestRequest struct {
 	Invocation
@@ -1037,9 +1037,13 @@ func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestRespons
 	if err != nil {
 		return nil, err
 	}
+	from := req.From
+	if from == "" {
+		from = SourceSARIF
+	}
 	creq := &ingestcore.Request{
 		ReadRequest: rr,
-		From:        req.From,
+		From:        from,
 		SARIF:       req.SARIF,
 	}
 	if len(req.SARIFData) > 0 {

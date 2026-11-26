@@ -5392,8 +5392,8 @@ live ground truth.
 document from any static analyzer into `.verdict/state/<bundle>/findings.json`.
 The flag names a format, never a vendor: `Semgrep`, `Opengrep`, `CodeQL`,
 `golangci-lint`, `Ruff`, `Trivy`, and `verdict report --sarif` all produce input
-this reads. `--sarif <file|->` is the same source under its older spelling; one
-call takes exactly one source. `-` reads stdin under the same 8 MiB cap a file
+this reads. One call takes exactly one source, and an MCP `ingest` call names
+`from` as well. `-` reads stdin under the same 8 MiB cap a file
 reads under, and an empty or oversize stream refuses typed (`missing-sarif`,
 `sarif-too-large`), never silently ingests nothing.
 
