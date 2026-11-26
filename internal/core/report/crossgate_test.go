@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -54,7 +55,7 @@ func crossBundleBase(t *testing.T, entry string) {
 	t.Chdir(t.TempDir())
 	writeFile(t, crossStore+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+storeHeadSHA+`","baseRefOid":"`+crossBase+`"}`)
-	writeFile(t, crossStore+"/findings.json", "["+entry+"]")
+	writeFile(t, crossStore+"/findings.json", "["+entry+"]") // an empty entry is an empty store
 	writeRecordWithEvidence(t, &core.EvidenceReceipt{
 		Head:       storeHeadSHA,
 		DiffSHA256: digestOf(crossDiff),
@@ -143,6 +144,86 @@ func TestCrossGateIncompleteExecutionNeverReadsAsNoFindings(t *testing.T) {
 	evidence := findEvidenceDim(t, resp)
 	if evidence.Status != "fail" || evidence.Detail != crossLine+" (the execution is incomplete)" {
 		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
+// TestCrossGateIncompleteExecutionResumesInEveryMode proves any execution that
+// stopped before it finished leaves the gate failed and marked for `run
+// --resume`, whichever dimensions were asked for: a finding below the tier,
+// outside the category, or absent from the store still reads unknown rather
+// than absent, a missing aggregate plan or panel receipt is the same stopped
+// run, and a gate on the head alone still names the recovery.
+func TestCrossGateIncompleteExecutionResumesInEveryMode(t *testing.T) {
+	tier := reportcore.Flags{Check: "important", Live: "skip"}
+	for _, tc := range []struct {
+		prepare  func(t *testing.T)
+		name     string
+		entry    string
+		flags    reportcore.Flags
+		findings bool
+	}{
+		{name: "below the tier", entry: crossEntryJSON("informational", ""), flags: tier, findings: true},
+		{
+			name: "outside the category", entry: crossEntryJSON("important", ""), findings: true,
+			flags: reportcore.Flags{Check: "important", Category: "security", Live: "skip"},
+		},
+		{name: "absent", flags: tier, findings: true},
+		{
+			name: "plan missing", entry: crossEntryJSON("important", ""), flags: tier, findings: true,
+			prepare: func(t *testing.T) { t.Helper(); removeFile(t, crossStore+"/verification/plan.json") },
+		},
+		{
+			name: "receipt missing", entry: crossEntryJSON("important", ""), flags: tier, findings: true,
+			prepare: func(t *testing.T) { t.Helper(); removeFile(t, crossStore+"/verification/verdicts.json") },
+		},
+		{name: "head only", entry: crossEntryJSON("important", ""), flags: reportcore.Flags{Completeness: true, Live: "skip"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			incompleteBundle(t, tc.entry)
+			if tc.prepare != nil {
+				tc.prepare(t)
+			}
+			assertResumeGate(t, &tc.flags, tc.findings)
+		})
+	}
+}
+
+// assertResumeGate runs the gate over the stopped execution the bundle holds
+// and requires it failed, marked for resume, and — when the gate asked for
+// findings — reading them unknown.
+func assertResumeGate(t *testing.T, flags *reportcore.Flags, findings bool) {
+	t.Helper()
+	req := crossRequest()
+	req.Flags = *flags
+	resp, ref := reportcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !resp.GateFailed || resp.Gate == nil || !resp.Gate.Resume {
+		t.Fatalf("gate = %+v, want failed and marked for resume\n%s", resp.Gate, dimSummary(resp))
+	}
+	if !findings {
+		return
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// TestCrossGateCompleteExecutionNeverResumes proves the resume marker belongs
+// to a stopped run alone: the finished execution the other cross tests use
+// gates without it.
+func TestCrossGateCompleteExecutionNeverResumes(t *testing.T) {
+	crossBundle(t, crossEntryJSON("important", ""))
+	if resp := runCross(t); resp.Gate == nil || resp.Gate.Resume {
+		t.Fatalf("gate = %+v, want no resume marker", resp.Gate)
+	}
+}
+
+func removeFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
 	}
 }
 

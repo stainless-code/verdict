@@ -42,6 +42,9 @@ type coordinator struct {
 	failures    []any
 	snapMu      sync.RWMutex
 	rounds      int
+	// resumable records that the aggregate refused an execution `run
+	// --resume` continues, so the response can say so.
+	resumable bool
 }
 
 // check is the snapshot checkpoint. It takes the read lock, so a phase can
@@ -452,7 +455,9 @@ func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
 
 // causeLines names each failed phase, in phase order, with the agent's own
 // error when it left one, so a partial execution's refusal carries the cause
-// beside the evidence gap it left behind, and the recovery that continues it.
+// beside the evidence gap it left behind, and the recovery: `--resume` only
+// for an execution it can continue, a fresh run for one whose bound artifacts
+// no longer hold.
 func (c *coordinator) causeLines() string {
 	if len(c.failures) == 0 {
 		return ""
@@ -466,13 +471,17 @@ func (c *coordinator) causeLines() string {
 			phases = append(phases, phase+" "+jq.StrOf(readcommon.FieldOf(row, "code")))
 		}
 	}
-	return "; failed: " + strings.Join(phases, "; ") + "; finish it with the same command plus --resume: " +
-		"the phases that passed are reused and only the failed ones launch again"
+	recovery := "; continue it with --resume: the phases that passed are reused and only the failed ones launch again"
+	if !c.resumable {
+		recovery = "; it cannot be resumed, so re-run without --resume to start a fresh execution"
+	}
+	return "; failed: " + strings.Join(phases, "; ") + recovery
 }
 
 func (c *coordinator) validateAggregate() *core.RefusalError {
 	execution := panelcore.CheckExecution(c.dir, nil)
 	if execution.Problem() != "" {
+		c.resumable = execution.Incomplete()
 		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
 	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
@@ -794,6 +803,7 @@ func (c *coordinator) executionResponse() {
 		Counts: counts, Failures: failures,
 	}
 	c.response.Data.Resume = c.resumeData()
+	c.response.Resumable = c.resumable
 	c.aggregateResponse()
 }
 

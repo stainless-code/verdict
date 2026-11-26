@@ -189,3 +189,16 @@ func equalLines(got, want []string) bool {
 	}
 	return true
 }
+
+// TestRefusalErrCarriesProblems proves the public refusal keeps the problem
+// list its hint points at: an SDK caller told to fix "the evidence gaps named
+// above" can read them, as a CLI or MCP caller can.
+func TestRefusalErrCarriesProblems(t *testing.T) {
+	t.Parallel()
+	problem := core.ReceiptMissingProblem("pkg/a.go\tNEW\t1\t5")
+	err := refusalErr(core.InsufficientRefusal("1 hunk without receipt", []core.Problem{problem}))
+	ref, ok := errors.AsType[*RefusalError](err)
+	if !ok || len(ref.Problems) != 1 || ref.Problems[0].Code != "receipt-missing" || ref.Problems[0].Fix == "" {
+		t.Fatalf("refusal = %+v, want the receipt-missing problem", err)
+	}
+}

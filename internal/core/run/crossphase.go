@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -227,29 +228,39 @@ func crossBatch(plan, review *jq.Obj, checker string) []any {
 }
 
 // checkCross validates one cross answer and names every problem a repair
-// round can fix, in the stage order a fix has to follow: the document, the
-// requested row set and each row's fields, the receipt parse, then the quotes
-// against the pinned diff.
+// round can fix in one pass — the requested row set, each row's fields, and
+// each quote against the pinned diff — so one round can fix them all; the
+// receipt parse then backs the shape a clean answer must also pass.
 func (c *coordinator) checkCross(raw []byte, checker string, batch []any) ([]any, []core.Problem) {
 	rows, problems := crossRows(raw)
 	if len(problems) > 0 {
 		return nil, problems
 	}
+	idx, problems := c.crossDiff()
+	if len(problems) > 0 {
+		return nil, problems
+	}
 	problems = assignCrossRows(rows, checker, batch)
 	for i, row := range rows {
-		problems = append(problems, crossRowProblems(fmt.Sprintf("$.results[%d]", i), row)...)
+		problems = append(problems, crossRowProblems(idx, fmt.Sprintf("$.results[%d]", i), row)...)
 	}
 	if len(problems) > 0 {
 		return nil, problems
 	}
-	file, problems := c.parseCross(rows)
-	if len(problems) > 0 {
-		return nil, problems
-	}
-	if problems := c.groundedCross(file); len(problems) > 0 {
+	if problems := c.parseCross(rows); len(problems) > 0 {
 		return nil, problems
 	}
 	return rows, nil
+}
+
+// crossDiff indexes the pinned diff every quote is checked against.
+func (c *coordinator) crossDiff() (*evidence.DiffIndex, []core.Problem) {
+	diff, ref := snapshotBytes(c.dir, "full.diff")
+	if ref != nil {
+		return nil, []core.Problem{crossProblem(crossResultsPath, core.ProblemCodeQuoteNotCheckable,
+			"full.diff cannot be read to check the quotes: "+ref.Message, "re-run the same command")}
+	}
+	return evidence.IndexDiff(diff), nil
 }
 
 // crossRows decodes the answer's result rows.
@@ -269,21 +280,21 @@ func crossRows(raw []byte) ([]any, []core.Problem) {
 
 // parseCross reads the rows as the receipt they become, through the same
 // parser every later reader of verdicts.json uses.
-func (c *coordinator) parseCross(rows []any) (*panelcore.File, []core.Problem) {
+func (c *coordinator) parseCross(rows []any) []core.Problem {
 	receipt := cloneUnionRow(c.binding)
 	receipt.Set(crossResults, withoutSameAs(rows))
-	file, warnings, err := panelcore.Parse(coordinatorBytes(receipt),
+	_, warnings, err := panelcore.Parse(coordinatorBytes(receipt),
 		jq.StrOf(readcommon.FieldOf(c.binding, "head_sha")), panelcore.Findings(c.review))
 	if err != nil {
-		return nil, []core.Problem{crossProblem(crossResultsPath, core.ProblemCodeWrongType, refusalMessage(err),
+		return []core.Problem{crossProblem(crossResultsPath, core.ProblemCodeWrongType, core.FoldLine(refusalMessage(err)),
 			"write each row as {sig, verdict, evidence, quote {path,side,line,text}}")}
 	}
 	var problems []core.Problem
 	for _, warning := range warnings {
-		problems = append(problems, crossProblem(crossResultsPath, core.ProblemCodeUnknownField, warning,
+		problems = append(problems, crossProblem(crossResultsPath, core.ProblemCodeUnknownField, core.FoldLine(warning),
 			"remove the key: a row carries only sig, verdict, evidence, quote, checker and same_as"))
 	}
-	return file, problems
+	return problems
 }
 
 // withoutSameAs copies the rows the panel receipt parser reads: same_as is a
@@ -390,17 +401,17 @@ func sameAsShape(row *jq.Obj) bool {
 	return isString
 }
 
-// crossRowProblems checks the fields a repair can name exactly: the verdict
-// word, the evidence length, and the quote side, which the quote check would
-// otherwise report only as a line it cannot find.
-func crossRowProblems(path string, row any) []core.Problem {
+// crossRowProblems checks one row's fields — the verdict word, the evidence
+// length, and the quote's shape, side, and text against the pinned diff —
+// reporting every problem the row has rather than the first.
+func crossRowProblems(idx *evidence.DiffIndex, path string, row any) []core.Problem {
 	obj, ok := row.(*jq.Obj)
 	if !ok {
 		return nil
 	}
 	var problems []core.Problem
 	verdict := readcommon.FieldOf(obj, "verdict")
-	if verdict != "confirmed" && verdict != "refuted" && verdict != "insufficient" {
+	if verdict != crossConfirmed && verdict != "refuted" && verdict != "insufficient" {
 		problems = append(problems, crossProblem(path+".verdict", core.ProblemCodeBadEnum,
 			"unknown verdict "+describeValue(verdict), "use confirmed, refuted or insufficient"))
 	}
@@ -410,20 +421,86 @@ func crossRowProblems(path string, row any) []core.Problem {
 			fmt.Sprintf("evidence must be a string of %d–%d characters", panelcore.MinEvidence, panelcore.MaxEvidence),
 			"explain the verdict from the code in one or two sentences"))
 	}
-	if quote, ok := readcommon.FieldOf(obj, "quote").(*jq.Obj); ok {
-		problems = append(problems, crossSideProblem(path+".quote.side", quote)...)
+	return append(problems, crossQuoteProblems(idx, path+".quote", verdict, readcommon.FieldOf(obj, "quote"))...)
+}
+
+// crossQuoteProblems checks a row's quote: a confirmed or refuted row needs
+// one, its side is RIGHT or LEFT, and its text matches the pinned diff at
+// path:line. A bad side does not hide the text check: the text is matched on
+// either side, so a round that fixes the side is not refused again for text
+// it was never told about.
+func crossQuoteProblems(idx *evidence.DiffIndex, path string, verdict, raw any) []core.Problem {
+	cites := verdict == crossConfirmed || verdict == "refuted"
+	if raw == nil {
+		if !cites {
+			return nil
+		}
+		return []core.Problem{crossProblem(path, core.ProblemCodeMissingField,
+			fmt.Sprintf("a %s verdict needs a quote", verdict),
+			"quote the exact line from full.diff, or answer insufficient")}
+	}
+	quote, ok := crossQuoteOf(raw)
+	if !ok {
+		return []core.Problem{crossProblem(path, core.ProblemCodeWrongType,
+			"quote must be {path, side, line, text} with a string path, side and text and a positive integer line",
+			"write the quote as {\"path\":\"a.go\",\"side\":\"RIGHT\",\"line\":12,\"text\":\"<the exact line>\"}")}
+	}
+	problems, sides := crossSideProblems(path+".side", quote.Side)
+	if !cites {
+		return problems
+	}
+	if reason := crossQuoteMismatch(idx, quote, sides); reason != "" {
+		problems = append(problems, crossProblem(path, core.QuoteProblemCode(reason),
+			fmt.Sprintf("quote does not match full.diff at %s:%d (%s)", strconv.Quote(quote.Path), quote.Line, reason),
+			"copy an exact line from that hunk of full.diff, or answer insufficient"))
 	}
 	return problems
 }
 
-// crossSideProblem names a quote side the evidence check does not accept; a
-// quote without a side is the new side, as it is for a finding.
-func crossSideProblem(path string, quote *jq.Obj) []core.Problem {
-	if side, present := quote.Get("side"); present && side != "RIGHT" && side != "LEFT" {
-		return []core.Problem{crossProblem(path, core.ProblemCodeBadEnum,
-			"unknown quote side "+describeValue(side), "use "+crossSides)}
+// crossSideProblems names a side the evidence check does not accept and
+// returns the sides the text is matched on: the written one, or both when it
+// is neither.
+func crossSideProblems(path, side string) ([]core.Problem, []string) {
+	if side == evidence.SideRight || side == evidence.SideLeft {
+		return nil, []string{side}
 	}
-	return nil
+	return []core.Problem{crossProblem(path, core.ProblemCodeBadEnum,
+		"unknown quote side "+describeValue(side), "use "+crossSides)}, []string{evidence.SideRight, evidence.SideLeft}
+}
+
+// crossQuoteOf reads a quote object: every field present with its type, the
+// side included, since the receipt every later reader checks has no default
+// for it; any other shape is not a quote.
+func crossQuoteOf(raw any) (panelcore.CodeQuote, bool) {
+	obj, ok := raw.(*jq.Obj)
+	if !ok {
+		return panelcore.CodeQuote{}, false
+	}
+	side, sideOK := readcommon.FieldOf(obj, "side").(string)
+	path, pathOK := readcommon.FieldOf(obj, "path").(string)
+	text, textOK := readcommon.FieldOf(obj, "text").(string)
+	number, lineOK := readcommon.FieldOf(obj, "line").(json.Number)
+	line, err := number.Int64()
+	if !sideOK || !pathOK || !textOK || !lineOK || err != nil || line < 1 {
+		return panelcore.CodeQuote{}, false
+	}
+	return panelcore.CodeQuote{Path: path, Side: side, Text: text, Line: int(line)}, true
+}
+
+// crossQuoteMismatch matches the quote on each candidate side and returns the
+// first side's reason when none verifies, or "" when one does.
+func crossQuoteMismatch(idx *evidence.DiffIndex, quote panelcore.CodeQuote, sides []string) string {
+	reason := ""
+	for _, side := range sides {
+		res := evidence.MatchQuote(idx, evidence.QuoteRequest{Path: quote.Path, Side: side, Line: quote.Line, Quote: quote.Text})
+		if res.Verified() {
+			return ""
+		}
+		if reason == "" {
+			reason = res.Reason
+		}
+	}
+	return reason
 }
 
 // describeValue quotes an agent-written string, or names the JSON type of a
@@ -436,46 +513,6 @@ func describeValue(v any) string {
 		return "(missing)"
 	}
 	return fmt.Sprintf("(%T)", v)
-}
-
-// groundedCross checks every confirmed or refuted row's quote against the
-// pinned diff and names each one that does not match, with the reason.
-func (c *coordinator) groundedCross(file *panelcore.File) []core.Problem {
-	diff, ref := snapshotBytes(c.dir, "full.diff")
-	if ref != nil {
-		return []core.Problem{crossProblem(crossResultsPath, core.ProblemCodeQuoteNotCheckable,
-			"full.diff cannot be read to check the quotes: "+ref.Message, "re-run the same command")}
-	}
-	idx := evidence.IndexDiff(diff)
-	var problems []core.Problem
-	for i := range file.Results {
-		if p := crossQuoteProblem(idx, fmt.Sprintf("$.results[%d].quote", i), &file.Results[i]); p != nil {
-			problems = append(problems, *p)
-		}
-	}
-	return problems
-}
-
-// crossQuoteProblem names a confirmed or refuted row whose quote is missing or
-// does not match the pinned diff; an insufficient row quotes nothing.
-func crossQuoteProblem(idx *evidence.DiffIndex, path string, row *panelcore.Result) *core.Problem {
-	if row.Verdict == "insufficient" {
-		return nil
-	}
-	q := row.Quote
-	if q == nil {
-		p := crossProblem(path, core.ProblemCodeMissingField, "a "+row.Verdict+" verdict needs a quote",
-			"quote the exact line from full.diff, or answer insufficient")
-		return &p
-	}
-	res := evidence.MatchQuote(idx, evidence.QuoteRequest{Path: q.Path, Side: q.Side, Line: q.Line, Quote: q.Text})
-	if res.Verified() {
-		return nil
-	}
-	p := crossProblem(path, core.QuoteProblemCode(res.Reason),
-		fmt.Sprintf("quote does not match full.diff at %s:%d (%s)", q.Path, q.Line, res.Reason),
-		"copy an exact line from that hunk of full.diff, or answer insufficient")
-	return &p
 }
 
 func (c *coordinator) appendResults(rows []any) {

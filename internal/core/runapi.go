@@ -114,6 +114,9 @@ type RunResponse struct { //nolint:govet // field grouping documents the respons
 	Warnings []string
 	Next     string
 	Exit     int
+	// Resumable reports a refusal over an execution `run --resume` continues;
+	// the adapter re-enters with --resume. It is not published.
+	Resumable bool
 }
 
 // RunData is the run verb's --json data profile: what was launched, from

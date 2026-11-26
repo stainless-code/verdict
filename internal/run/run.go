@@ -28,6 +28,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/budget"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -70,7 +71,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return code
 	}
 	r.Rentry = rentry(&req, &flags, r.JSONMode)
-	if code, done := r.Canceled(ctx, "run"); done {
+	if code, done := r.Canceled(ctx, verbRun); done {
 		return code
 	}
 	agents, policy, ref := personalAgents(req.Env)
@@ -81,8 +82,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	request.SpendPolicy = policy
 	resp, ref := runcore.WithAgents(ctx, request, agents)
 	if ref != nil {
-		addPermissionHint(ref, &req, &flags)
-		return refuse(r, resp, ref)
+		return refuseRun(r, &req, &flags, request, resp, ref)
 	}
 	r.Warnings = resp.Warnings
 	if flags.print && !r.JSONMode {
@@ -90,7 +90,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return cli.ExitOK
 	}
 	if r.JSONMode {
-		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope("run", resp.Repo, resp.Pr, resp.At,
+		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope(verbRun, resp.Repo, resp.Pr, resp.At,
 			resp.Next, resp.Warnings, resp.Data.Wire(), nil)))
 	}
 	return cli.ExitOK
@@ -109,6 +109,22 @@ const codeAgentFailed = "agent-failed"
 
 // refuse renders a run refusal, preserving the agent's own exit code when the
 // service reports one (only the agent-failed refusal carries it).
+// verbRun is the verb's name in its envelope and its re-run lines.
+const verbRun = "run"
+
+// refuseRun renders the service's refusal. A refusal over an execution
+// `--resume` continues re-enters with --resume among verdict's own flags, so
+// the line it prints is the one that continues it.
+func refuseRun(r *cli.Runner, req *readcommon.Request, f *flags, request *core.RunRequest,
+	resp *core.RunResponse, ref *core.RefusalError,
+) int {
+	if resp != nil && resp.Resumable && !f.resume {
+		r.Rentry = reentry(req, f, r.JSONMode, true, request.Environ)
+	}
+	addPermissionHint(ref, req, f)
+	return refuse(r, resp, ref)
+}
+
 func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 	code := cli.ExitRefused
 	if resp != nil && resp.Exit != 0 && ref.Code == codeAgentFailed {
@@ -282,56 +298,62 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	return next, 0, false
 }
 
-// rentry rebuilds the exact re-run command after flag parsing, the agent
-// arguments after `--` included: `--resume` refuses a different argument list,
-// so a line without them could never continue the execution it names.
+// rentry rebuilds the exact re-run command after flag parsing.
 func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
-	s := "verdict run " + req.Repo + argSep + req.Pr + flagTail(f)
+	return reentry(req, f, jsonMode, f.resume, os.Environ())
+}
+
+// redactedNote tells the operator what a redacted agent argument needs: the
+// line stays pasteable, since a shell reads the note as a comment.
+const redactedNote = "  # replace each '" + argvshape.RedactedValue + "' with the agent argument you passed"
+
+// reentry renders the re-run command as argv through [RenderCommand], so no
+// operand the operator typed reaches the line unquoted. resume puts --resume
+// before the `--` separator for an execution the refusal says to continue. The
+// agent arguments after `--` are kept, since --resume refuses a different
+// list, but shown by the launch display's rule: only the model and budget
+// options it can show safely survive, every other argument is redacted for the
+// operator to re-supply, and the line is scrubbed of the environment's
+// credentials and token shapes, because it lands in terminal and CI logs.
+func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ []string) string {
+	argv := append([]string{"verdict", verbRun, req.Repo, req.Pr}, flagArgv(f, resume)...)
 	if f.consent {
-		s += " --consent-over-budget"
+		argv = append(argv, "--consent-over-budget")
 	}
 	if jsonMode {
-		s += " --json"
+		argv = append(argv, "--json")
 	}
-	return s + passTail(f.pass, os.Environ())
+	line := RenderCommand(argv)
+	if len(f.pass) > 0 {
+		shape, shown := runcore.DisplayPassThrough(f.pass, environ)
+		line += " -- " + RenderCommand(shape)
+		if !shown {
+			line += redactedNote
+		}
+	}
+	return envsecret.ScrubShapes(envsecret.ScrubValues(line, argvshape.SecretValues(environ)))
 }
 
-// passTail renders the agent arguments the way [RenderCommand] quotes argv,
-// with a credential-shaped value redacted by the rule the launch record uses:
-// the line lands in terminal and CI logs, and the operator re-supplies it.
-func passTail(pass, environ []string) string {
-	if len(pass) == 0 {
-		return ""
+// flagArgv rebuilds the flags the operator typed, each one only when the
+// invocation actually asked for it, in the order the line has always used.
+func flagArgv(f *flags, resume bool) []string {
+	var argv []string
+	add := func(on bool, args ...string) {
+		if on {
+			argv = append(argv, args...)
+		}
 	}
-	shape, _ := argvshape.Record(pass, "", environ)
-	return " -- " + RenderCommand(shape)
-}
-
-// flagTail rebuilds the flags the operator typed, each one only when the
-// invocation actually asked for it. The stage operand is quoted: it reaches
-// this line exactly as typed — a refusal names the value it could not read —
-// and the line exists to be pasted back into a shell.
-func flagTail(f *flags) string {
-	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f) + allowShellTail(f)
-	if f.agent != "" {
-		s += " --agent " + f.agent
-	}
-	if f.recipe != "" {
-		s += " --recipe " + f.recipe
-	}
-	if f.timeout != DefaultTimeoutS {
-		s += " --timeout " + f.timeout
-	}
-	if f.rounds != DefaultRounds && f.rounds != "" {
-		s += " --rounds " + f.rounds
-	}
-	if f.print {
-		s += " --print"
-	}
-	if f.stage != "" {
-		s += " --stage " + quoteArg(f.stage)
-	}
-	return s
+	add(f.finders != "", findersFlag, f.finders)
+	add(f.budget != "", budgetFlag, f.budget)
+	add(resume, "--resume")
+	add(f.allowShell, allowShellFlag)
+	add(f.agent != "", "--agent", f.agent)
+	add(f.recipe != "", recipeFlag, f.recipe)
+	add(f.timeout != DefaultTimeoutS, "--timeout", f.timeout)
+	add(f.rounds != DefaultRounds && f.rounds != "", roundsFlag, f.rounds)
+	add(f.print, "--print")
+	add(f.stage != "", stageFlag, f.stage)
+	return argv
 }
 
 // shellSafeChars are the argument bytes a POSIX shell passes through unquoted:
@@ -370,7 +392,7 @@ func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags
 	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" {
 		return
 	}
-	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
+	command := RenderCommand([]string{"verdict", verbRun, req.Repo, req.Pr, "--agent", f.agent})
 	command += findersTail(f.finders)
 	ref.Message += core.Msgf("\nre-run with: %s -- %s", command, row.Launch.PermissionHint)
 }
@@ -385,24 +407,6 @@ func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	}
 	f.finders = value
 	return next, 0, false
-}
-
-// resumeTail renders --resume for the re-entry line when the invocation asked
-// to continue an execution.
-func resumeTail(f *flags) string {
-	if !f.resume {
-		return ""
-	}
-	return " --resume"
-}
-
-// allowShellTail renders --allow-shell for the re-entry line when the
-// invocation opted out of the discovery restriction.
-func allowShellTail(f *flags) string {
-	if !f.allowShell {
-		return ""
-	}
-	return " " + allowShellFlag
 }
 
 func findersTail(raw string) string {
@@ -425,11 +429,4 @@ func parseBudgetFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, b
 	}
 	f.budget = value
 	return next, 0, false
-}
-
-func budgetTail(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	return argSep + budgetFlag + argSep + quoteArg(raw)
 }

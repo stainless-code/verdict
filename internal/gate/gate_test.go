@@ -533,20 +533,30 @@ func TestGateHintNamesReRunOnce(t *testing.T) {
 	}
 }
 
-// TestGateHintResumesAnIncompleteExecution pins the recovery for the findings
-// an incomplete execution left unchecked: continuing the run, not editing
-// review.json, and named once although the evidence dimension fails on the
-// same findings. A later dimension keeps its own recovery.
+// TestGateHintResumesAnIncompleteExecution pins the recovery for a gate over
+// an execution that stopped before it finished: continuing the run, not
+// editing review.json, named once although the findings and evidence
+// dimensions both fail on it, and named in a gate that asked only for the
+// head. A dimension with a cause of its own keeps its recovery.
 func TestGateHintResumesAnIncompleteExecution(t *testing.T) {
-	gate := &core.ReportGate{Dimensions: []core.GateDimension{
-		{ID: "findings", Status: statusUnknown},
-		{ID: "evidence", Status: statusFail},
-		{ID: "risk", Status: statusFail},
-	}}
-	want := "finish the incomplete execution with the same verdict run command plus --resume, then re-run record, " +
-		"then resolve the open findings that raise the reported risk, or re-record a lower risk claim, then re-run gate"
-	if got := gateHint(gate); got != want {
-		t.Errorf("gateHint = %q, want %q", got, want)
+	const resume = "finish the incomplete execution with the same verdict run command plus --resume, then re-run record"
+	for _, tc := range []struct {
+		name string
+		want string
+		dims []core.GateDimension
+	}{
+		{"findings and risk", resume + ", then resolve the open findings that raise the reported risk, " +
+			"or re-record a lower risk claim, then re-run gate", []core.GateDimension{
+			{ID: "findings", Status: statusUnknown}, {ID: "risk", Status: statusFail}, {ID: "evidence", Status: statusFail},
+		}},
+		{"head only", resume + ", then re-run gate", []core.GateDimension{
+			{ID: "head", Status: statusPass}, {ID: "evidence", Status: statusFail},
+		}},
+	} {
+		gate := &core.ReportGate{Dimensions: tc.dims, Resume: true}
+		if got := gateHint(gate); got != tc.want {
+			t.Errorf("%s: gateHint = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }
 

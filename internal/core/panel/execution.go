@@ -52,6 +52,12 @@ func parseQuote(raw any) (CodeQuote, error) {
 	if err := decoder.Decode(&quote); err != nil {
 		return CodeQuote{}, bad("invalid checker quote")
 	}
+	// The side is required and spelled one way: an absent or empty side would
+	// reach the quote matcher as its finding default, RIGHT, so a receipt the
+	// cross check refuses would still verify here.
+	if quote.Side != "RIGHT" && quote.Side != "LEFT" {
+		return CodeQuote{}, bad("checker quote side must be RIGHT or LEFT")
+	}
 	return quote, nil
 }
 
@@ -73,6 +79,9 @@ type Execution struct {
 	// outlives the artifacts the capture bound: a receipt that still states
 	// the execution forbids reading its findings as a manual review.
 	CrossRequired bool
+	// partial records that the bound manifest never reached complete: a run
+	// stopped before its last barrier, which `run --resume` continues.
+	partial bool
 	// oneFinder records that the capture settled on one finder (see
 	// readTopology). Such a capture is manual by declaration: a leftover
 	// execution reference must not re-arm cross checks on it.
@@ -261,12 +270,27 @@ func digest(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
-	manifest, _ := readObject(dir, "launcher.json")
-	plan, planRaw := readObject(dir, filepath.Join(executionVerification, "plan.json"))
+// readBound reads the manifest, aggregate plan, and diff an execution bound,
+// recording whether the manifest stopped short of complete, and names the
+// first one missing.
+func (s *Execution) readBound(dir string) (manifest, plan *jq.Obj, planRaw, diff []byte, gap string) {
+	manifest, _ = readObject(dir, "launcher.json")
+	plan, planRaw = readObject(dir, filepath.Join(executionVerification, "plan.json"))
 	diff, err := readArtifact(dir, "full.diff", coreexec.FetchOutputCap)
-	if manifest == nil || plan == nil || err != nil {
-		return "execution manifest, plan or diff missing"
+	if manifest == nil || err != nil {
+		return nil, nil, nil, nil, "execution manifest or diff missing"
+	}
+	s.partial = readcommon.FieldOf(manifest, fieldStatus) != "complete"
+	if plan == nil {
+		return nil, nil, nil, nil, gapPlanMissing
+	}
+	return manifest, plan, planRaw, diff, ""
+}
+
+func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
+	manifest, plan, planRaw, diff, gap := s.readBound(dir)
+	if gap != "" {
+		return gap
 	}
 	head := readcommon.OpenBundle(dir).Head()
 	s.head = head
@@ -304,7 +328,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 func (s *Execution) boundReceipt(dir, head string, bindings map[string]string, findings []any) (*File, string) {
 	receipt, receiptRaw := readObject(dir, filepath.Join(executionVerification, "verdicts.json"))
 	if receipt == nil {
-		return nil, "execution panel receipt missing"
+		return nil, gapReceiptMissing
 	}
 	if gap := bindingGap(receipt, bindings); gap != "" {
 		return nil, "execution panel " + gap
@@ -498,14 +522,22 @@ func (s *Execution) ApplyEvidence(receipt *core.EvidenceReceipt) {
 	receipt.Gaps = append(receipt.Gaps, "execution: "+strings.TrimSpace(s.Gap+" "+s.BlockingGap))
 }
 
-// gapIncomplete is the gap of an execution that recorded every artifact it
-// bound but still names a failed phase: `run --resume` continues it.
-const gapIncomplete = "execution manifest is incomplete"
+// The gaps a stopped run leaves and `run --resume` repairs: a failed phase
+// after every bound artifact verified, or an aggregate plan or panel receipt
+// the run never reached. A missing manifest or diff, a binding mismatch, or a
+// receipt that fails its parse is not one: resume refuses those.
+const (
+	gapIncomplete     = "execution manifest is incomplete"
+	gapPlanMissing    = "execution plan missing"
+	gapReceiptMissing = "execution panel receipt missing"
+)
 
-// Incomplete reports whether a two-finder execution stopped with a failed
-// phase, so its findings await cross checks a resumed run can still finish.
+// Incomplete reports whether a two-finder execution stopped before it
+// finished — its manifest is not complete and its gap is one a resumed run
+// repairs — so its findings await cross checks `run --resume` can finish.
 func (s *Execution) Incomplete() bool {
-	return s != nil && s.CrossRequired && s.Gap == gapIncomplete
+	return s != nil && s.CrossRequired && s.partial &&
+		(s.Gap == gapIncomplete || s.Gap == gapPlanMissing || s.Gap == gapReceiptMissing)
 }
 
 // Problem is the bound execution failure exposed by readiness.
