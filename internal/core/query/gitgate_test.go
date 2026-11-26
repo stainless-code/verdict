@@ -189,9 +189,26 @@ func TestBundleLookupNeverWalksARelayToTheRoot(t *testing.T) {
 		t.Fatalf("Detail with a relay link = %v, want it served", err)
 	}
 	store := filepath.Join(dir, ".verdict", "state")
-	if i := slices.IndexFunc(reads, func(p string) bool { return !strings.HasPrefix(p, store) }); i >= 0 {
+	if i := slices.IndexFunc(reads, func(p string) bool { return !physicallyWithin(store, p) }); i >= 0 {
 		t.Errorf("lookup read %s, outside the store", reads[i])
 	}
+}
+
+// physicallyWithin reports whether path resolves to base or below it. Both
+// sides are resolved first, so a link (the relay back to the root) is judged
+// by where it lands, and Windows' 8.3 short names and slash spellings compare
+// equal to their long forms. A path that does not resolve is not within.
+func physicallyWithin(base, path string) bool {
+	realBase, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		return false
+	}
+	realPath, err := filepath.EvalSymlinks(filepath.FromSlash(path))
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(realBase, realPath)
+	return err == nil && !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // TestGitGateServesARootBehindALinkedAncestor proves a checkout reached
