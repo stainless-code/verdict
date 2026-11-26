@@ -20,6 +20,11 @@ const (
 	unionFindings = "findings"
 	findingPath   = "path"
 	findingLine   = "line"
+	// findingStartLine and findingSide complete the anchor the guard compares.
+	findingStartLine = "start_line"
+	findingSide      = "side"
+	crossVerdict     = "verdict"
+	crossConfirmed   = "confirmed"
 	// shortSigLen is how much of a signature a warning prints: enough to find
 	// it in review.json, short enough to keep the line readable.
 	shortSigLen = 12
@@ -72,11 +77,22 @@ func ownFindings(plan, review *jq.Obj, checker string) []any {
 		if !soleOrigin(u.origins[signature], checker) {
 			continue
 		}
-		row := u.rows[signature]
-		out = append(out, jq.NewObj(crossSig, signature, findingPath, readcommon.FieldOf(row, findingPath),
-			findingLine, readcommon.FieldOf(row, findingLine), "claim", readcommon.FieldOf(row, "claim")))
+		out = append(out, ownFinding(signature, u.rows[signature]))
 	}
 	return out
+}
+
+// ownFinding is one request row: the signature, the whole anchor the guard
+// compares, and the claim.
+func ownFinding(signature string, row *jq.Obj) *jq.Obj {
+	own := jq.NewObj(crossSig, signature, findingPath, readcommon.FieldOf(row, findingPath))
+	for _, key := range []string{findingStartLine, findingLine, findingSide} {
+		if value, ok := row.Get(key); ok && value != nil {
+			own.Set(key, value)
+		}
+	}
+	own.Set("claim", readcommon.FieldOf(row, "claim"))
+	return own
 }
 
 func soleOrigin(origins []string, finder string) bool {
@@ -89,44 +105,107 @@ type sameAsPair struct {
 	checked, own, checker string
 }
 
-// sameAsPairs reads every same_as the cross rows carry, in receipt order, and
-// keeps the ones the anchors support. Each ignored one is named with why.
+// crossVerdicts is each recorded cross verdict keyed by signature and checker.
+type crossVerdicts map[[2]string]string
+
+func indexVerdicts(results []any) crossVerdicts {
+	out := crossVerdicts{}
+	for _, row := range results {
+		key := [2]string{jq.StrOf(readcommon.FieldOf(row, crossSig)), jq.StrOf(readcommon.FieldOf(row, crossChecker))}
+		out[key] = jq.StrOf(readcommon.FieldOf(row, crossVerdict))
+	}
+	return out
+}
+
+// sameAsPairs reads every same_as the cross rows carry, in plan order rather
+// than the order an agent wrote its rows, and keeps the ones both checks and
+// the anchors support. Each ignored one is named with why. Two checkers naming
+// the same pair from either side is agreement, not a second merge.
 func (u *unionIndex) sameAsPairs(results []any) ([]sameAsPair, []string) {
 	var pairs []sameAsPair
 	var notes []string
-	taken := map[string]bool{}
-	for _, row := range results {
-		named := jq.StrOf(readcommon.FieldOf(row, crossSameAs))
-		if named == "" {
-			continue
+	verdicts := indexVerdicts(results)
+	partner := map[string]string{}
+	for _, row := range u.canonical(results) {
+		pair, note, accepted := u.pairRow(row, verdicts, partner)
+		if note != "" {
+			notes = append(notes, note)
 		}
-		pair := sameAsPair{
-			checked: jq.StrOf(readcommon.FieldOf(row, crossSig)), checker: jq.StrOf(readcommon.FieldOf(row, crossChecker)),
-			own: readcommon.ResolveSig(u.identities, named),
+		if accepted {
+			partner[pair.checked], partner[pair.own] = pair.own, pair.checked
+			pairs = append(pairs, pair)
 		}
-		if problem := u.sameAsProblem(row, pair, taken); problem != "" {
-			notes = append(notes, core.Msgf("%s's cross check named finding %s same_as %s; ignored: %s",
-				pair.checker, shortSig(pair.checked), shortSig(named), problem))
-			continue
-		}
-		taken[pair.checked], taken[pair.own] = true, true
-		pairs = append(pairs, pair)
 	}
 	return pairs, notes
 }
 
-func (u *unionIndex) sameAsProblem(row any, pair sameAsPair, taken map[string]bool) string {
+// pairRow judges one cross row's same_as: accepted, ignored with a note, or
+// silent when the row carries none or repeats a pair already accepted.
+func (u *unionIndex) pairRow(row any, verdicts crossVerdicts, partner map[string]string) (sameAsPair, string, bool) {
+	named := jq.StrOf(readcommon.FieldOf(row, crossSameAs))
+	if named == "" {
+		return sameAsPair{}, "", false
+	}
+	pair := sameAsPair{
+		checked: jq.StrOf(readcommon.FieldOf(row, crossSig)), checker: jq.StrOf(readcommon.FieldOf(row, crossChecker)),
+		own: readcommon.ResolveSig(u.identities, named),
+	}
+	if partner[pair.checked] == pair.own && partner[pair.own] == pair.checked {
+		return pair, "", false
+	}
+	if problem := u.sameAsProblem(row, pair, verdicts, partner); problem != "" {
+		return pair, core.Msgf("%s's cross check named finding %s same_as %s; ignored: %s",
+			pair.checker, shortSig(pair.checked), shortSig(named), problem), false
+	}
+	return pair, "", true
+}
+
+// canonical orders the cross rows by the union's finding order, then checker,
+// so the pairing never depends on the order an agent listed its rows.
+func (u *unionIndex) canonical(results []any) []any {
+	rank := make(map[string]int, len(u.order))
+	for i, signature := range u.order {
+		rank[signature] = i
+	}
+	out := slices.Clone(results)
+	slices.SortStableFunc(out, func(a, b any) int {
+		if diff := rank[jq.StrOf(readcommon.FieldOf(a, crossSig))] - rank[jq.StrOf(readcommon.FieldOf(b, crossSig))]; diff != 0 {
+			return diff
+		}
+		return strings.Compare(jq.StrOf(readcommon.FieldOf(a, crossChecker)), jq.StrOf(readcommon.FieldOf(b, crossChecker)))
+	})
+	return out
+}
+
+// finderID names finder index the way every phase record spells it.
+func finderID(index int) string { return fmt.Sprintf("finder-%d", index+1) }
+
+func otherFinder(finder string) string {
+	if finder == finderID(0) {
+		return finderID(1)
+	}
+	return finderID(0)
+}
+
+func (u *unionIndex) sameAsProblem(row any, pair sameAsPair, verdicts crossVerdicts, partner map[string]string) string {
+	opposite := otherFinder(pair.checker)
 	switch {
-	case readcommon.FieldOf(row, "verdict") != "confirmed":
+	case readcommon.FieldOf(row, crossVerdict) != crossConfirmed:
 		return "only a confirmed check can name a duplicate"
 	case pair.own == "NONE" || pair.own == "MANY":
 		return "it names no single finding in the union"
 	case !soleOrigin(u.origins[pair.own], pair.checker):
 		return "it names a finding the checker did not report alone"
-	case len(u.origins[pair.checked]) != 1:
-		return "the checked finding already carries both finders"
-	case taken[pair.checked] || taken[pair.own]:
+	case u.rows[pair.checked] == nil || !soleOrigin(u.origins[pair.checked], opposite):
+		return "the checked finding is not the other finder's alone"
+	case partner[pair.checked] != "" || partner[pair.own] != "":
 		return "a finding merges at most once"
+	}
+	switch verdict, checked := verdicts[[2]string{pair.own, opposite}]; {
+	case !checked:
+		return "the named finding has no check from the other checker"
+	case verdict != crossConfirmed:
+		return "the named finding was not confirmed by the other checker"
 	}
 	return anchorProblem(u.rows[pair.checked], u.rows[pair.own])
 }
@@ -146,20 +225,23 @@ func anchorProblem(checked, own *jq.Obj) string {
 	if !checkedOK || !ownOK {
 		return "a finding without a line cannot merge"
 	}
-	if checkedStart > ownEnd+1 || ownStart > checkedEnd+1 {
+	if checkedStart-1 > ownEnd || ownStart-1 > checkedEnd {
 		return fmt.Sprintf("it names a finding at %s, not overlapping or adjacent to %s",
 			spanText(ownStart, ownEnd), spanText(checkedStart, checkedEnd))
 	}
 	return ""
 }
 
+// lineSpan reads a finding's start_line through line. Discovery treats a zero
+// start_line as absent, so it does here: a zero would stretch the span over
+// the whole file and overlap every finding in it.
 func lineSpan(row *jq.Obj) (int, int, bool) {
 	end, ok := jq.IntOf(readcommon.FieldOf(row, findingLine))
-	if !ok {
+	if !ok || end < 1 {
 		return 0, 0, false
 	}
-	start, ok := jq.IntOf(readcommon.FieldOf(row, "start_line"))
-	if !ok || start > end {
+	start, ok := jq.IntOf(readcommon.FieldOf(row, findingStartLine))
+	if !ok || start < 1 || start > end {
 		start = end
 	}
 	return start, end, true
@@ -232,11 +314,14 @@ func (c *coordinator) republishUnion() *core.RefusalError {
 	return c.bind(reviewFile, planPath)
 }
 
+// findingQuoteVerified checks a finding's quote the way record does, over the
+// start_line through line window.
 func findingQuoteVerified(idx *evidence.DiffIndex, row *jq.Obj) bool {
 	line, _ := jq.IntOf(readcommon.FieldOf(row, findingLine))
+	start, _ := jq.IntOf(readcommon.FieldOf(row, findingStartLine))
 	return evidence.MatchQuote(idx, evidence.QuoteRequest{
 		Path: jq.StrOf(readcommon.FieldOf(row, findingPath)), Side: quoteSide(row),
-		Line: line, Quote: jq.StrOf(readcommon.FieldOf(row, "quote")),
+		Line: line, StartLine: start, Quote: jq.StrOf(readcommon.FieldOf(row, "quote")),
 	}).Verified()
 }
 
@@ -259,13 +344,36 @@ func (u *unionIndex) mergePairs(pairs []sameAsPair, verified func(*jq.Obj) bool)
 			kept, dropped = pair.own, pair.checked
 		}
 		row := cloneUnionRow(u.rows[kept])
-		severity := readcommon.FieldOf(u.rows[dropped], unionSeverity)
-		if core.TierRank(severity) < core.TierRank(readcommon.FieldOf(row, unionSeverity)) {
-			row.Set(unionSeverity, severity)
-		}
+		foldStronger(row, u.rows[dropped])
 		out = append(out, mergedFinding{row: row, kept: kept, dropped: dropped, checker: pair.checker})
 	}
 	return out
+}
+
+// rigorRungs orders the evidence rungs a finding may claim, weakest first.
+var rigorRungs = []string{"said", "pointed", "walked", "ran", "reproduced"}
+
+// foldStronger carries what the dropped finding knew better onto the
+// survivor: the higher severity, a category the survivor left out (compliance
+// clauses gate on it), and a higher rigor rung with the reproduction behind it.
+func foldStronger(row, dropped *jq.Obj) {
+	severity := readcommon.FieldOf(dropped, unionSeverity)
+	if core.TierRank(severity) < core.TierRank(readcommon.FieldOf(row, unionSeverity)) {
+		row.Set(unionSeverity, severity)
+	}
+	if category := readcommon.FieldOf(dropped, "category"); category != nil && readcommon.FieldOf(row, "category") == nil {
+		row.Set("category", category)
+	}
+	rigor := jq.StrOf(readcommon.FieldOf(dropped, "rigor"))
+	if slices.Index(rigorRungs, rigor) <= slices.Index(rigorRungs, jq.StrOf(readcommon.FieldOf(row, "rigor"))) {
+		return
+	}
+	row.Set("rigor", rigor)
+	if reproduction, ok := dropped.Get("reproduction"); ok {
+		row.Set("reproduction", reproduction)
+	} else {
+		row.Delete("reproduction")
+	}
 }
 
 // survivors maps each dropped signature to the one it folded into.
@@ -327,8 +435,12 @@ func rekeySpecChecks(specs []any, u *unionIndex, folded map[string]string) []any
 			out = append(out, spec)
 			continue
 		}
-		cited := readcommon.ResolveSig(u.identities, jq.StrOf(readcommon.FieldOf(row, "finding_sig")))
-		if kept := folded[cited]; kept != "" {
+		citation := jq.StrOf(readcommon.FieldOf(row, "finding_sig"))
+		if citation == "" {
+			out = append(out, row)
+			continue
+		}
+		if kept := folded[readcommon.ResolveSig(u.identities, citation)]; kept != "" {
 			row = cloneUnionRow(row)
 			row.Set("finding_sig", kept)
 		}

@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -142,7 +145,75 @@ func assertSameAsIgnored(t *testing.T, second, problem string) {
 	}
 }
 
-// sameAsUnion is a frozen union of one finding from each finder.
+// TestCoordinatorNeedsTheOtherCheckerToConfirmTheNamedFinding proves finder-2's
+// same_as never merges a finding finder-1's check did not confirm: refuted,
+// insufficient, or a check that never finished. Both findings stand with the
+// verdicts their checkers actually returned.
+func TestCoordinatorNeedsTheOtherCheckerToConfirmTheNamedFinding(t *testing.T) {
+	t.Parallel()
+	for name, tc := range map[string]struct{ verdict, fail, problem string }{
+		"refuted":      {verdict: "refuted", problem: "the named finding was not confirmed by the other checker"},
+		"insufficient": {verdict: "insufficient", problem: "the named finding was not confirmed by the other checker"},
+		"check failed": {fail: "x-cross-1", problem: "the named finding has no check from the other checker"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			req, commander := coordinatorFixture(t)
+			commander.distinct, commander.sameAs, commander.secondFinding = true, true, secondDuplicate
+			commander.firstCheckerVerdict, commander.failPhase = tc.verdict, tc.fail
+			response, ref := TwoFinders(t.Context(), req)
+			warnings := runWarnings(response, ref)
+			assertUnmerged(t, commander.dir, warnings, tc.problem)
+			if tc.verdict != "" {
+				assertRecordedVerdict(t, commander.dir, secondDefectSig, "finder-1", tc.verdict)
+			}
+		})
+	}
+}
+
+// runWarnings is the warnings a run carried, on its response or its refusal.
+func runWarnings(response *core.RunResponse, ref *core.RefusalError) []string {
+	if ref != nil {
+		return ref.Warnings
+	}
+	return response.Warnings
+}
+
+// assertUnmerged proves both findings still stand, the plan records no merge,
+// and a warning names why the same_as was ignored.
+func assertUnmerged(t *testing.T, dir string, warnings []string, problem string) {
+	t.Helper()
+	review := readPhaseObject(t, filepath.Join(dir, "review.json"))
+	if n := len(jq.Elements(readcommon.FieldOf(review, "findings"))); n != 2 {
+		t.Fatalf("findings = %d, want both kept", n)
+	}
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.HasSuffix(w, "; ignored: "+problem) }) {
+		t.Fatalf("warnings = %q, want %q", warnings, problem)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "verification", "plan.json"))
+	if err != nil || strings.Contains(string(raw), `"merged"`) {
+		t.Fatalf("plan = %s (%v), want no merge", raw, err)
+	}
+}
+
+// assertRecordedVerdict proves the aggregate receipt keeps checker's verdict on
+// signature, not a confirmation grafted from the other finding.
+func assertRecordedVerdict(t *testing.T, dir, signature, checker, verdict string) {
+	t.Helper()
+	receipt := readPhaseObject(t, filepath.Join(dir, "verification", "verdicts.json"))
+	for _, row := range jq.Elements(readcommon.FieldOf(receipt, "results")) {
+		if readcommon.FieldOf(row, "sig") == signature && readcommon.FieldOf(row, "checker") == checker {
+			if got := readcommon.FieldOf(row, "verdict"); got != verdict {
+				t.Fatalf("%s on %s = %v, want %s", checker, signature, got, verdict)
+			}
+			return
+		}
+	}
+	t.Fatalf("no %s row on %s: %s", checker, signature, jq.Compact(receipt))
+}
+
+// sameAsUnion is a frozen union of finder-1's findings and finder-2's, each
+// list a comma-joined run of finding objects.
 func sameAsUnion(t *testing.T, first, second string) *unionIndex {
 	t.Helper()
 	review, plan, err := discoveryUnion("test", []byte(fixtureDiff), []*jq.Obj{
@@ -157,10 +228,26 @@ func sameAsUnion(t *testing.T, first, second string) *unionIndex {
 // sameAsFirst is finder-1's finding the checker confirms in the unit tests.
 var sameAsFirst = strings.ReplaceAll(coordinatorFinding, "Changed value breaks the caller.", "First finder defect.")
 
+// thirdDefect is a second finder-2 finding at the same anchor whose signature
+// shares the prefix "87" with secondDefectSig.
+const (
+	thirdDefect    = `{"path":"a.go","line":1,"side":"RIGHT","severity":"important","claim":"Third finder defect 119.","quote":"new line 1","confidence":"high"}`
+	thirdDefectSig = "87d6a7c7bb43b56bc5ee7c57ae56d11dffd2aee3"
+)
+
 // sameAsRow is finder-2's cross row on finder-1's finding, naming sameAs.
 func sameAsRow(verdict, sameAs string) *jq.Obj {
 	return jq.NewObj("sig", firstDefectSig, "checker", "finder-2", "verdict", verdict, "same_as", sameAs)
 }
+
+// firstCheckerRow is finder-1's cross row on signature, without a same_as.
+func firstCheckerRow(signature, verdict string) *jq.Obj {
+	return jq.NewObj("sig", signature, "checker", "finder-1", "verdict", verdict)
+}
+
+// confirmedSecond is finder-1's confirmation of finder-2's finding, the check a
+// same_as naming that finding needs before it can merge.
+func confirmedSecond() *jq.Obj { return firstCheckerRow(secondDefectSig, "confirmed") }
 
 func TestSameAsAcceptsAnchoredPairs(t *testing.T) {
 	t.Parallel()
@@ -173,7 +260,8 @@ func TestSameAsAcceptsAnchoredPairs(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			pairs, notes := sameAsUnion(t, sameAsFirst, tc.second).sameAsPairs([]any{sameAsRow("confirmed", tc.sameAs)})
+			rows := []any{sameAsRow("confirmed", tc.sameAs), confirmedSecond()}
+			pairs, notes := sameAsUnion(t, sameAsFirst, tc.second).sameAsPairs(rows)
 			if len(notes) != 0 || len(pairs) != 1 || pairs[0].own != secondDefectSig {
 				t.Fatalf("pairs = %+v notes = %q", pairs, notes)
 			}
@@ -181,45 +269,207 @@ func TestSameAsAcceptsAnchoredPairs(t *testing.T) {
 	}
 }
 
+// sameAsCase is one same_as the guard must refuse: finder-2's findings, the
+// rows both checkers returned, and the reason the warning names.
+type sameAsCase struct {
+	second, problem string
+	rows            []any
+}
+
 func TestSameAsProblems(t *testing.T) {
 	t.Parallel()
-	for name, tc := range map[string]struct{ second, verdict, sameAs, problem string }{
+	for name, tc := range map[string]sameAsCase{
 		"refuted": {
-			second: secondDuplicate, verdict: "refuted", sameAs: secondDefectSig,
+			second: secondDuplicate, rows: []any{sameAsRow("refuted", secondDefectSig), confirmedSecond()},
 			problem: "only a confirmed check can name a duplicate",
 		},
 		"unknown sig": {
-			second: secondDuplicate, verdict: "confirmed", sameAs: "ffff",
+			second: secondDuplicate, rows: []any{sameAsRow("confirmed", "ffff"), confirmedSecond()},
+			problem: "it names no single finding in the union",
+		},
+		"ambiguous prefix": {
+			second: secondDuplicate + "," + thirdDefect,
+			rows: []any{
+				sameAsRow("confirmed", "87"), confirmedSecond(),
+				firstCheckerRow(thirdDefectSig, "confirmed"),
+			},
 			problem: "it names no single finding in the union",
 		},
 		"not the checker's own": {
-			second: secondDuplicate, verdict: "confirmed", sameAs: firstDefectSig,
+			second: secondDuplicate, rows: []any{sameAsRow("confirmed", firstDefectSig), confirmedSecond()},
 			problem: "it names a finding the checker did not report alone",
 		},
 		"other side": {
 			second:  `{"path":"a.go","line":1,"side":"LEFT","severity":"important","claim":"Second finder defect.","quote":"old line 1","confidence":"high"}`,
-			verdict: "confirmed", sameAs: secondDefectSig,
+			rows:    []any{sameAsRow("confirmed", secondDefectSig), confirmedSecond()},
 			problem: "it names a finding on the other side of the diff",
+		},
+		"named finding refuted by the other checker": {
+			second: secondDuplicate,
+			rows: []any{
+				sameAsRow("confirmed", secondDefectSig),
+				firstCheckerRow(secondDefectSig, "refuted"),
+			},
+			problem: "the named finding was not confirmed by the other checker",
+		},
+		"named finding insufficient": {
+			second: secondDuplicate,
+			rows: []any{
+				sameAsRow("confirmed", secondDefectSig),
+				firstCheckerRow(secondDefectSig, "insufficient"),
+			},
+			problem: "the named finding was not confirmed by the other checker",
+		},
+		"named finding never checked": {
+			second: secondDuplicate, rows: []any{sameAsRow("confirmed", secondDefectSig)},
+			problem: "the named finding has no check from the other checker",
+		},
+		"zero start_line spans nothing": {
+			second:  `{"path":"a.go","start_line":0,"line":5,"side":"RIGHT","severity":"important","claim":"Second finder defect.","quote":"old line 5","confidence":"high"}`,
+			rows:    []any{sameAsRow("confirmed", secondDefectSig), confirmedSecond()},
+			problem: "it names a finding at line 5, not overlapping or adjacent to line 1",
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			pairs, notes := sameAsUnion(t, sameAsFirst, tc.second).sameAsPairs([]any{sameAsRow(tc.verdict, tc.sameAs)})
-			if len(pairs) != 0 || len(notes) != 1 || !strings.HasSuffix(notes[0], "; ignored: "+tc.problem) {
-				t.Fatalf("pairs = %+v notes = %q", pairs, notes)
-			}
+			assertSameAsProblem(t, tc)
 		})
 	}
 }
 
-func TestSameAsMergesAFindingOnce(t *testing.T) {
+func assertSameAsProblem(t *testing.T, tc sameAsCase) {
+	t.Helper()
+	pairs, notes := sameAsUnion(t, sameAsFirst, tc.second).sameAsPairs(tc.rows)
+	if len(pairs) != 0 || len(notes) != 1 || !strings.HasSuffix(notes[0], "; ignored: "+tc.problem) {
+		t.Fatalf("pairs = %+v notes = %q", pairs, notes)
+	}
+}
+
+// TestSameAsRefusesAnExactSignatureDuplicate proves a finding both finders
+// already reported under one signature cannot fold a third: it carries both
+// origins, so the checker confirming it is checking its own claim too.
+func TestSameAsRefusesAnExactSignatureDuplicate(t *testing.T) {
+	t.Parallel()
+	u := sameAsUnion(t, sameAsFirst, sameAsFirst+","+secondDuplicate)
+	rows := []any{sameAsRow("confirmed", secondDefectSig), firstCheckerRow(firstDefectSig, "confirmed"), confirmedSecond()}
+	assertSingleNote(t, u, rows, "the checked finding is not the other finder's alone")
+}
+
+func assertSingleNote(t *testing.T, u *unionIndex, rows []any, problem string) {
+	t.Helper()
+	pairs, notes := u.sameAsPairs(rows)
+	if len(pairs) != 0 || len(notes) != 1 || !strings.HasSuffix(notes[0], "; ignored: "+problem) {
+		t.Fatalf("pairs = %+v notes = %q", pairs, notes)
+	}
+}
+
+// TestSameAsMutualNamingIsAgreement proves both checkers naming the same pair,
+// the expected happy path, merges once and warns about nothing.
+func TestSameAsMutualNamingIsAgreement(t *testing.T) {
 	t.Parallel()
 	u := sameAsUnion(t, sameAsFirst, secondDuplicate)
-	row := sameAsRow("confirmed", secondDefectSig)
 	reverse := jq.NewObj("sig", secondDefectSig, "checker", "finder-1", "verdict", "confirmed", "same_as", firstDefectSig)
-	pairs, notes := u.sameAsPairs([]any{row, reverse})
-	if len(pairs) != 1 || len(notes) != 1 || !strings.HasSuffix(notes[0], "; ignored: a finding merges at most once") {
+	pairs, notes := u.sameAsPairs([]any{sameAsRow("confirmed", secondDefectSig), reverse})
+	if len(pairs) != 1 || len(notes) != 0 {
 		t.Fatalf("pairs = %+v notes = %q", pairs, notes)
+	}
+}
+
+// TestSameAsMergesAFindingOnce proves a finding already folded with one partner
+// refuses a third, and the refusal does not depend on the order an agent wrote
+// its rows.
+func TestSameAsMergesAFindingOnce(t *testing.T) {
+	t.Parallel()
+	u := sameAsUnion(t, sameAsFirst, secondDuplicate+","+thirdDefect)
+	third := jq.NewObj("sig", thirdDefectSig, "checker", "finder-1", "verdict", "confirmed", "same_as", firstDefectSig)
+	for _, rows := range [][]any{
+		{sameAsRow("confirmed", secondDefectSig), confirmedSecond(), third},
+		{third, confirmedSecond(), sameAsRow("confirmed", secondDefectSig)},
+	} {
+		pairs, notes := u.sameAsPairs(rows)
+		if len(pairs) != 1 || pairs[0].own != secondDefectSig || len(notes) != 1 ||
+			!strings.HasSuffix(notes[0], "; ignored: a finding merges at most once") {
+			t.Fatalf("pairs = %+v notes = %q", pairs, notes)
+		}
+	}
+}
+
+func TestLineSpanRejectsNonPositiveAnchors(t *testing.T) {
+	t.Parallel()
+	for raw, want := range map[string]string{
+		`{"line":0}`:                  "0 0 false",
+		`{"start_line":0,"line":0}`:   "0 0 false",
+		`{"start_line":3}`:            "0 0 false",
+		`{"start_line":0,"line":500}`: "500 500 true",
+		`{"start_line":-4,"line":9}`:  "9 9 true",
+		`{"start_line":2,"line":4}`:   "2 4 true",
+	} {
+		start, end, ok := lineSpan(unionInput(t, raw))
+		if got := fmt.Sprintf("%d %d %v", start, end, ok); got != want {
+			t.Fatalf("lineSpan(%s) = %s, want %s", raw, got, want)
+		}
+	}
+}
+
+// TestFindingQuoteVerifiedReadsStartLine proves a multi-line finding's quote
+// near its start_line verifies, exactly as record's evidence pass reads it.
+func TestFindingQuoteVerifiedReadsStartLine(t *testing.T) {
+	t.Parallel()
+	idx := evidence.IndexDiff([]byte(fixtureDiff))
+	row := unionInput(t, `{"path":"a.go","start_line":2,"line":12,"side":"RIGHT","quote":"old line 2"}`)
+	if !findingQuoteVerified(idx, row) {
+		t.Fatal("a quote at start_line read as unverified")
+	}
+}
+
+func TestRekeySpecChecksFollowsTheFold(t *testing.T) {
+	t.Parallel()
+	u := sameAsUnion(t, sameAsFirst, secondDuplicate)
+	specs := []any{
+		unionInput(t, `{"item":"full","status":"violated","finding_sig":"`+secondDefectSig+`"}`),
+		unionInput(t, `{"item":"short","status":"violated","finding_sig":"`+secondDefectSig[:8]+`"}`),
+		unionInput(t, `{"item":"empty","status":"met","finding_sig":""}`),
+		unionInput(t, `{"item":"absent","status":"met"}`),
+	}
+	got := compactRows(rekeySpecChecks(specs, u, map[string]string{secondDefectSig: firstDefectSig}))
+	want := `[{"item":"full","status":"violated","finding_sig":"` + firstDefectSig + `"},` +
+		`{"item":"short","status":"violated","finding_sig":"` + firstDefectSig + `"},` +
+		`{"item":"empty","status":"met","finding_sig":""},{"item":"absent","status":"met"}]`
+	if got != want {
+		t.Fatalf("specs = %s\nwant    %s", got, want)
+	}
+}
+
+func TestSameAsShapeAcceptsOnlyStrings(t *testing.T) {
+	t.Parallel()
+	for raw, want := range map[string]bool{
+		`{"sig":"s"}`:                 true,
+		`{"sig":"s","same_as":null}`:  true,
+		`{"sig":"s","same_as":""}`:    true,
+		`{"sig":"s","same_as":"abc"}`: true,
+		`{"sig":"s","same_as":7}`:     false,
+		`{"sig":"s","same_as":["a"]}`: false,
+	} {
+		rows := []any{unionInput(t, raw)}
+		batch := []any{jq.NewObj("sig", "s")}
+		if got := assignCrossRows(rows, "finder-2", batch); got != want {
+			t.Fatalf("assignCrossRows(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestFoldStrongerKeepsCategoryAndRigor(t *testing.T) {
+	t.Parallel()
+	row := unionInput(t, `{"severity":"important","rigor":"pointed"}`)
+	dropped := unionInput(t, `{"severity":"critical","category":"security","rigor":"reproduced","reproduction":{"command":"go test"}}`)
+	foldStronger(row, dropped)
+	if got := jq.NewObj("row", row).MarshalCompact(); got != `{"row":{"severity":"critical","rigor":"reproduced","category":"security","reproduction":{"command":"go test"}}}` {
+		t.Fatalf("row = %s", got)
+	}
+	weaker := unionInput(t, `{"severity":"informational","category":"style","rigor":"said"}`)
+	foldStronger(row, weaker)
+	if got := jq.NewObj("row", row).MarshalCompact(); got != `{"row":{"severity":"critical","rigor":"reproduced","category":"security","reproduction":{"command":"go test"}}}` {
+		t.Fatalf("row after a weaker fold = %s", got)
 	}
 }
 
@@ -274,5 +524,46 @@ func TestResumeReachesTheSameMerge(t *testing.T) {
 	}
 	if again, err := os.ReadFile(reviewPath); err != nil || !bytes.Equal(again, merged) {
 		t.Fatalf("review = %s (%v), want %s", again, err, merged)
+	}
+	assertMergedBundleGates(t, req)
+}
+
+// assertMergedBundleGates proves record, gate, and approval read the merged
+// bundle as one finding: the gate at critical fails on exactly one open
+// finding, and approval gates on the survivor alone.
+func assertMergedBundleGates(t *testing.T, req *core.RunRequest) {
+	t.Helper()
+	if _, ref := recordcore.Run(t.Context(), &recordcore.Request{
+		ReadRequest: req.ReadRequest, Effective: core.Defaults(),
+	}); ref != nil {
+		t.Fatalf("record refused the merged bundle: %v", ref)
+	}
+	critical := runResumedGate(t, req, "critical")
+	if critical.Gate == nil || !critical.GateFailed {
+		t.Fatalf("gate at critical passed a merged critical finding: %+v", critical.Gate)
+	}
+	if detail := gateDetail(critical.Gate, "findings"); !strings.Contains(detail, "1 open finding") {
+		t.Fatalf("findings dimension = %q, want the one merged finding", detail)
+	}
+	approval := critical.Data.Approval
+	if approval == nil || approval.Insufficient || !slices.Equal(approval.GatingSigs, []string{firstDefectSig}) {
+		t.Fatalf("approval = %+v, want gating on %s alone", approval, firstDefectSig)
+	}
+}
+
+// TestOwnFindingsCarryTheWholeAnchor proves the request hands the checker every
+// anchor field the guard compares, so it can tell an adjacent range or the
+// other side apart before it names a same_as.
+func TestOwnFindingsCarryTheWholeAnchor(t *testing.T) {
+	t.Parallel()
+	second := `{"path":"a.go","start_line":2,"line":4,"side":"LEFT","severity":"important","claim":"Second finder defect.","quote":"old line 4","confidence":"high"}`
+	review, plan, err := discoveryUnion("test", []byte(fixtureDiff), []*jq.Obj{
+		unionInput(t, `{"findings":[`+sameAsFirst+`]}`), unionInput(t, `{"findings":[`+second+`]}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := compactRows(ownFindings(plan, review, "finder-2")); got != `[{"sig":"`+secondDefectSig+`","path":"a.go","start_line":2,"line":4,"side":"LEFT","claim":"Second finder defect."}]` {
+		t.Fatalf("own_findings = %s", got)
 	}
 }

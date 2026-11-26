@@ -28,21 +28,24 @@ type phaseCommander struct {
 	// secondFinding replaces finder-2's one finding, so a test can place the
 	// duplicate a checker names at another line, file, or severity.
 	secondFinding string
-	calls         map[string]int
-	phases        []string
-	mu            sync.Mutex
-	fail          bool
-	failFinders   bool // every finder exits 7
-	placeholder   bool // a failing finder first leaves the directive's empty review
-	silent        bool // every finder exits 0 and writes nothing
-	drift         bool
-	repair        bool
-	crossRepair   bool
-	crossBroken   bool
-	tamper        bool
-	distinct      bool
-	empty         bool // finders find nothing, so no cross check is dispatched
-	outputDir     bool
+	// firstCheckerVerdict is the verdict finder-1's cross check returns, so a
+	// test can deny the finding finder-2's same_as names.
+	firstCheckerVerdict string
+	calls               map[string]int
+	phases              []string
+	mu                  sync.Mutex
+	fail                bool
+	failFinders         bool // every finder exits 7
+	placeholder         bool // a failing finder first leaves the directive's empty review
+	silent              bool // every finder exits 0 and writes nothing
+	drift               bool
+	repair              bool
+	crossRepair         bool
+	crossBroken         bool
+	tamper              bool
+	distinct            bool
+	empty               bool // finders find nothing, so no cross check is dispatched
+	outputDir           bool
 	// sameAs makes finder-2's cross check name its first own finding as the
 	// same issue as every candidate it confirms.
 	sameAs bool
@@ -196,17 +199,28 @@ func (p *phaseCommander) crossReview(phase string, attempt int) string {
 	for _, candidate := range candidates {
 		finding := readcommon.FieldOf(candidate, "finding")
 		p.assertCrossCandidate(phase, finding)
-		row := jq.NewObj("sig", readcommon.FieldOf(candidate, "sig"), "verdict", "confirmed",
-			"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", "RIGHT", "line", 1, "text", "new line 1"))
-		if own := jq.Elements(readcommon.FieldOf(request, "own_findings")); p.sameAs && phase == "x-cross-2" && len(own) > 0 {
-			row.Set("same_as", readcommon.FieldOf(own[0], "sig"))
-		}
-		results = append(results, row)
+		results = append(results, p.crossRow(phase, request, candidate))
 	}
 	if p.crossBroken || (p.crossRepair && phase == "x-cross-1" && attempt == 1) {
 		return `{"results":[]}`
 	}
 	return jq.PrettyOrdered(jq.NewObj("results", results))
+}
+
+// crossRow is one scripted verdict on a candidate: confirmed unless the test
+// set finder-1's verdict, and naming finder-2's first own finding when the test
+// asked for a same_as.
+func (p *phaseCommander) crossRow(phase string, request *jq.Obj, candidate any) *jq.Obj {
+	verdict := "confirmed"
+	if phase == "x-cross-1" && p.firstCheckerVerdict != "" {
+		verdict = p.firstCheckerVerdict
+	}
+	row := jq.NewObj("sig", readcommon.FieldOf(candidate, "sig"), "verdict", verdict,
+		"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", "RIGHT", "line", 1, "text", "new line 1"))
+	if own := jq.Elements(readcommon.FieldOf(request, "own_findings")); p.sameAs && phase == "x-cross-2" && len(own) > 0 {
+		row.Set("same_as", readcommon.FieldOf(own[0], "sig"))
+	}
+	return row
 }
 
 func coordinatorFixture(t *testing.T) (*core.RunRequest, *phaseCommander) {
