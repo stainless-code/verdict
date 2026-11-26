@@ -108,8 +108,9 @@ func usageText() string {
 		"    carries the row's documented tool restrictions (claude: --disallowedTools=Bash,PowerShell, bob:\n" +
 		"    --disable-tool-groups execute,mcp, pi: --exclude-tools bash,powershell), which block shell\n" +
 		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
-		"    row's own tools; your own flag after '--' that replaces the whole tool set (claude: --tools)\n" +
-		"    replaces the restriction, and an additive one sits beside it. verify --sandbox is untouched.\n" +
+		"    row's own tools; no flag after '--' drops the restriction (pi's --exclude-tools and bob's\n" +
+		"    --disable-tool-groups get its value merged in; one with no value is bad-flags). verify\n" +
+		"    --sandbox is untouched.\n" +
 		"    claude launches also carry a write grant scoped to the launch's own bundle directory\n" +
 		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +
 		"    flag; your own permission flag after '--' drops it, and a symlinked bundle is refused.\n" +

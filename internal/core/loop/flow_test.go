@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
 	"github.com/stainless-code/verdict/internal/testenv"
@@ -835,5 +836,24 @@ func TestLoopFixRefusesALinkedPatchFile(t *testing.T) {
 	}
 	if len(agent.spawns) != 0 {
 		t.Errorf("spawns = %q, want none", agent.spawns)
+	}
+}
+
+// TestLoopVerifyReceivesTheDefaultSandbox records the posture the verify
+// service itself receives under the default — no opt-out set — so a
+// regression in the default cannot hide behind the plan's rendering.
+func TestLoopVerifyReceivesTheDefaultSandbox(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	req := flowRequest(t, repo, &agentCommander{t: t})
+	req.VerifyNoSandbox = false
+	var got *verifycore.Request
+	p := &flowPhases{req: req, runVerify: func(_ context.Context, r *verifycore.Request) (*verifycore.Response, *core.RefusalError) {
+		got = r
+		return &verifycore.Response{}, nil
+	}}
+	p.verify(t.Context(), &reviewflow.Bundle{Dir: repo, Repo: "acme/app", Pr: "local-x"}, "60")
+	if got == nil || !got.Sandbox || got.SandboxNetworkOnly {
+		t.Fatalf("verify request = %+v, want the full sandbox by default", got)
 	}
 }

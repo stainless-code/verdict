@@ -27,13 +27,15 @@ type MCP struct {
 
 // Launch describes one non-interactive invocation.
 type Launch struct {
-	Usage              *Usage
-	KeyEnvCitation     string
-	Citation           string
-	Name               string
-	Binary             string
-	Install            string
-	ModelFlag          string
+	Usage          *Usage
+	KeyEnvCitation string
+	Citation       string
+	Name           string
+	Binary         string
+	Install        string
+	ModelFlag      string
+	// ModelAliasCitation is the doc that names ModelFlagAliases.
+	ModelAliasCitation string
 	PromptFlag         string
 	Source             string
 	PermissionHint     string
@@ -51,14 +53,19 @@ type Launch struct {
 	DiscoveryArgs       []string
 	// DiscoveryMergeFlags are the spellings of the restriction's own
 	// denylist flag (DiscoveryArgs is that flag and its comma-separated
-	// value). An operator spelling of one after `--` is additive, so run
-	// merges the restriction's value into the operator's instead of letting
-	// the operator's replace it; DiscoveryOverrideFlags are the flags that
-	// replace the whole tool set and so drop the restriction.
-	DiscoveryMergeFlags    []string
-	ResumeArgs             []string
+	// value). A later spelling may replace an earlier one, so run merges the
+	// restriction's value into an operator spelling instead of repeating the
+	// restriction, and refuses a spelling with no value.
+	DiscoveryMergeFlags []string
+	ResumeArgs          []string
+	// DiscoveryOverrideFlags are the flags that decide the agent's whole tool
+	// set. They never drop the shell denial — only --allow-shell does — but
+	// they decide the review write grant's question, so they drop the grant.
 	DiscoveryOverrideFlags []string
-	Args                   []string
+	// ModelFlagAliases are other documented spellings of ModelFlag (codex's
+	// -m); the self-review loop's `--` allowlist accepts them beside it.
+	ModelFlagAliases []string
+	Args             []string
 	// EditArgs is the documented flag set that lets the CLI edit files in its
 	// working directory non-interactively, with the narrowest shell scope its
 	// docs allow and no permission checks skipped. Only `verdict loop` applies
@@ -137,8 +144,11 @@ const (
 	// (step_finish's part.cost and tokens, text deltas) is in
 	// anomalyco/opencode packages/cli/src/run/noninteractive.ts — read
 	// 2026-11-25.
-	docOpenCodeRun  = "https://opencode.ai/docs/cli/commands"
-	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
+	docOpenCodeRun = "https://opencode.ai/docs/cli/commands"
+	docCodexReadme = "https://github.com/openai/codex/blob/main/README.md"
+	// docCodexCLIRef lists codex's and codex exec's flags, `--model, -m`
+	// among them — read 2026-11-27.
+	docCodexCLIRef  = "https://learn.chatgpt.com/docs/developer-commands?surface=cli"
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
 	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
 	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
@@ -278,9 +288,9 @@ var catalog = []Agent{
 			// review.json.
 			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
 			DiscoveryCitation: docClaudeCLI,
-			// Claude Code merges allow and deny lists across flags and settings,
-			// so an operator's own --disallowedTools or --allowedTools sits
-			// beside the shell denial; only --tools replaces the tool set.
+			// The shell denial is never dropped for an operator flag; a deny rule
+			// beats any allow. --tools decides the tool set, so it drops the
+			// review write grant.
 			DiscoveryOverrideFlags: []string{"--tools"},
 			Usage: &Usage{
 				Format: UsageClaudeJSON, Citation: docClaudeHeadless,
@@ -344,6 +354,9 @@ var catalog = []Agent{
 			PermissionCitation: docCodexReadme,
 			EditArgs:           []string{"--sandbox", "workspace-write"},
 			EditCitation:       docCodexReadme,
+			// `--model, -m` per the codex CLI reference.
+			ModelFlagAliases:   []string{"-m"},
+			ModelAliasCitation: docCodexCLIRef,
 			// workspace-write also runs shell commands, sandboxed to the
 			// workspace; codex documents no edit-only mode.
 			PermissionFlags: []string{
@@ -884,6 +897,7 @@ func All() []Agent {
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
 			v.DiscoveryMergeFlags = slices.Clone(v.DiscoveryMergeFlags)
+			v.ModelFlagAliases = slices.Clone(v.ModelFlagAliases)
 			v.EditArgs = slices.Clone(v.EditArgs)
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)

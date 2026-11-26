@@ -43,6 +43,9 @@ type phases interface {
 // flowPhases runs every phase through the shipped services.
 type flowPhases struct {
 	req *Request
+	// runVerify is the verify service; nil is verifycore.Run. A test records
+	// the posture the service receives through it.
+	runVerify func(context.Context, *verifycore.Request) (*verifycore.Response, *core.RefusalError)
 	// noUsage records that the agent rejected the structured-output flag, so
 	// later spawns in this loop stop asking for it.
 	noUsage bool
@@ -354,7 +357,11 @@ func (p *flowPhases) verify(ctx context.Context, b *reviewflow.Bundle, timeout s
 		Env: read.Env, Now: read.Now, Progress: read.Progress, Commander: p.req.Flow.AgentCommander,
 	}
 	sandbox, networkOnly := verifyPosture(p.req)
-	resp, ref := verifycore.Run(ctx, &verifycore.Request{
+	run := p.runVerify
+	if run == nil {
+		run = verifycore.Run
+	}
+	resp, ref := run(ctx, &verifycore.Request{
 		ReadRequest:        read,
 		TimeoutRaw:         timeout,
 		Environ:            p.req.Flow.Environ,

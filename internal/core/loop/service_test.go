@@ -836,6 +836,9 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"model without one":  func(r *Request) { r.AgentArgs = []string{"--model"} },
 		"model eats a flag":  func(r *Request) { r.AgentArgs = []string{"--model", "--tools"} },
 		"a stray positional": func(r *Request) { r.AgentArgs = []string{"--model", "opus", "extra"} },
+		"an empty argument":  func(r *Request) { r.AgentArgs = []string{""} },
+		"empty after model":  func(r *Request) { r.AgentArgs = []string{"--model", "opus", ""} },
+		"claude has no -m":   func(r *Request) { r.AgentArgs = []string{"-m", "opus"} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -851,9 +854,17 @@ func TestLoopValidatesLimits(t *testing.T) {
 // model flag, spaced or inline, starts the loop.
 func TestLoopAcceptsTheModelFlag(t *testing.T) {
 	t.Parallel()
-	for _, args := range [][]string{{"--model", "opus"}, {"--model=opus"}} {
+	for _, tc := range []struct {
+		agent string
+		args  []string
+	}{
+		{agent: "claude", args: []string{"--model", "opus"}},
+		{agent: "claude", args: []string{"--model=opus"}},
+		{agent: "codex", args: []string{"-m", "gpt-5"}},
+		{agent: "codex", args: []string{"-m=gpt-5"}},
+	} {
 		h := newHarness(t, 1)
-		h.req.Print, h.req.AgentArgs = true, args
+		h.req.Print, h.req.Agent, h.req.AgentArgs = true, tc.agent, tc.args
 		h.run(t)
 	}
 }
@@ -887,6 +898,9 @@ func TestLoopPlanPassesTheVerifySandbox(t *testing.T) {
 		verify := resp.Data.Plan[5].Argv
 		if resp.Data.Plan[5].Phase != PhaseVerify || !strings.HasSuffix(strings.Join(verify, " "), flag) {
 			t.Errorf("verify step = %q, want it to end with %s", verify, flag)
+		}
+		if sandboxes := slices.Contains(verify, "--sandbox"); sandboxes != (flag == "--sandbox") {
+			t.Errorf("verify step = %q carries --sandbox %v, want %v", verify, sandboxes, flag == "--sandbox")
 		}
 	}
 }

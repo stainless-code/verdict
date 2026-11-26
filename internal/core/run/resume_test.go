@@ -927,7 +927,9 @@ func assertSymlinkedPhaseRefusal(t *testing.T, name string) {
 	planted := readFixtureFile(t, filepath.Join(target, phaseFile(name)))
 
 	req.Resume = true
-	assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "not a plain directory")
+	// The pre-launch bundle walk refuses the link before the resume plan
+	// reads it: the agent's write grant covers the whole bundle.
+	assertResumeRefused(t, req, commander, path, before, readcommon.CodeArtifactUnsafe, "is a symlink inside the bundle")
 	if after := readFixtureFile(t, filepath.Join(target, phaseFile(name))); !bytes.Equal(after, planted) {
 		t.Fatalf("resume wrote through the link into %s", target)
 	}

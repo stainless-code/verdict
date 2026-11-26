@@ -90,43 +90,63 @@ func argvPrefixLen(def *agentcatalog.Launch, model string, restriction []string)
 	return n
 }
 
-// discoveryRestriction is the read-only restriction one launch carries: the
-// row's documented tool flags, unless the operator allowed the shell back with
-// --allow-shell or spelled a flag that replaces the row's whole tool set after
-// `--` (DiscoveryOverrideFlags). An additive or tightening flag sits beside the
-// restriction instead: dropping the shell denial for it would hand the shell
-// back to a review of untrusted content.
-//
-// An operator spelling of the restriction's own denylist flag
-// (DiscoveryMergeFlags) is additive: mergeDenials folds the restriction's
-// value into it before any launch is composed, so that pass-through already
-// carries the denial and the restriction is not repeated beside it.
+// discoveryRestriction is the shell denial one review launch carries: the
+// row's documented tool flags, always, unless the operator allowed the shell
+// back with --allow-shell. No operator flag replaces it — every exception
+// grew a bypass — so it sits beside whatever the `--` tail spells. The one
+// placement exception is an operator spelling of the restriction's own
+// denylist flag (DiscoveryMergeFlags): mergeDenials has already folded the
+// restriction's value into it, because a later spelling of that flag would
+// replace an earlier one, so that pass-through carries the denial and the
+// restriction is not repeated beside it.
 func discoveryRestriction(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
-	if allowShell || len(def.DiscoveryArgs) == 0 ||
-		operatorSpells(passthrough, slices.Concat(def.DiscoveryOverrideFlags, def.DiscoveryMergeFlags)) {
+	if allowShell || len(def.DiscoveryArgs) == 0 || spellsMergeFlag(def, passthrough) {
 		return nil
 	}
 	return slices.Clone(def.DiscoveryArgs)
 }
 
-// mergeDenials folds the row's restriction value into every operator
-// spelling of the restriction's own denylist flag: pi's `--exclude-tools
-// markdown` becomes `--exclude-tools bash,powershell,markdown`, so an additive
-// denylist sits beside the shell denial instead of replacing it. Every other
-// argument, and every position, is kept, so the recorded argv's redaction
-// stays aligned. --allow-shell and a row without a mergeable restriction
-// leave the pass-through as it is.
-func mergeDenials(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
-	if allowShell || len(def.DiscoveryArgs) != 2 || len(def.DiscoveryMergeFlags) == 0 {
-		return passthrough
-	}
-	merged := slices.Clone(passthrough)
-	for i, arg := range merged {
-		if strings.HasPrefix(arg, optionPrefix) && (i == 0 || !bareOption(merged[i-1])) {
-			mergeAt(def.DiscoveryMergeFlags, def.DiscoveryArgs[1], merged, i)
+// spellsMergeFlag reports whether the pass-through spells the restriction's
+// own denylist flag anywhere, operand position included: mergeDenials merges
+// into every such spelling or refuses the launch.
+func spellsMergeFlag(def *agentcatalog.Launch, passthrough []string) bool {
+	for _, arg := range passthrough {
+		if name, _, _ := strings.Cut(arg, inlineValue); slices.Contains(def.DiscoveryMergeFlags, name) {
+			return true
 		}
 	}
-	return merged
+	return false
+}
+
+// mergeDenials folds the row's restriction value into every operator
+// spelling of the restriction's own denylist flag: pi's `--exclude-tools
+// markdown` becomes `--exclude-tools bash,powershell,markdown`, so the
+// denylist keeps the shell denial even where a later spelling of the flag
+// replaces an earlier one. Every spelling counts, whatever precedes it. Every
+// other argument, and every position, is kept, so the recorded argv's
+// redaction stays aligned. A spelling with no value — dangling at the end,
+// followed by another option, or `--flag=` — is a usage error: bad names it,
+// and the launch refuses. --allow-shell and a row without a mergeable
+// restriction leave the pass-through as it is.
+func mergeDenials(def *agentcatalog.Launch, passthrough []string, allowShell bool) (merged []string, bad string) {
+	if allowShell || len(def.DiscoveryArgs) != 2 || len(def.DiscoveryMergeFlags) == 0 {
+		return passthrough, ""
+	}
+	merged = slices.Clone(passthrough)
+	for i := 0; i < len(merged); i++ {
+		name, value, inline := strings.Cut(merged[i], inlineValue)
+		switch {
+		case !slices.Contains(def.DiscoveryMergeFlags, name):
+		case inline && value != "":
+			merged[i] = name + inlineValue + joinDenials(def.DiscoveryArgs[1], value)
+		case !inline && i+1 < len(merged) && safeValue(merged[i+1]):
+			merged[i+1] = joinDenials(def.DiscoveryArgs[1], merged[i+1])
+			i++
+		default:
+			return passthrough, merged[i]
+		}
+	}
+	return merged, ""
 }
 
 // optionPrefix starts every option spelling; inlineValue joins an option to
@@ -136,24 +156,8 @@ const (
 	inlineValue  = "="
 )
 
-// mergeAt folds ours into the option at merged[i] when it spells one of
-// flags: its inline value, or the value argument after it.
-func mergeAt(flags []string, ours string, merged []string, i int) {
-	name, value, inline := strings.Cut(merged[i], inlineValue)
-	switch {
-	case !slices.Contains(flags, name):
-	case inline:
-		merged[i] = name + inlineValue + joinDenials(ours, value)
-	case i+1 < len(merged) && !strings.HasPrefix(merged[i+1], optionPrefix):
-		merged[i+1] = joinDenials(ours, merged[i+1])
-	}
-}
-
 // joinDenials appends the operator's denylist to the restriction's.
 func joinDenials(ours, theirs string) string {
-	if theirs == "" {
-		return ours
-	}
 	return ours + "," + theirs
 }
 
@@ -294,27 +298,28 @@ func EditArgs(name string, agents []config.PersonalAgent) []string {
 // only the named agent's documented model flag, each with one value, in the
 // spaced or the `=` form. That tail reaches the review of untrusted content,
 // so a denylist of permission spellings would always miss one; anything else
-// is refused. bad is the first argument outside the list ("" when every one
-// is allowed), and allowed names the flags that are.
-func LoopArgs(name string, agents []config.PersonalAgent, args []string) (bad string, allowed []string) {
+// is refused, an empty argument included. ok is false when any argument is
+// outside the list, bad is the first such argument (possibly ""), and
+// allowed names the flags that are.
+func LoopArgs(name string, agents []config.PersonalAgent, args []string) (bad string, ok bool, allowed []string) {
 	st := &state{defs: agents}
 	def, _ := st.lookupAgent(name)
 	if def.ModelFlag != "" {
-		allowed = []string{def.ModelFlag}
+		allowed = append([]string{def.ModelFlag}, def.ModelFlagAliases...)
 	}
 	for i := 0; i < len(args); i++ {
 		flag, value, inline := strings.Cut(args[i], inlineValue)
 		switch {
 		case !slices.Contains(allowed, flag):
-			return args[i], allowed
+			return args[i], false, allowed
 		case inline && safeValue(value):
 		case !inline && i+1 < len(args) && safeValue(args[i+1]):
 			i++
 		default:
-			return args[i], allowed
+			return args[i], false, allowed
 		}
 	}
-	return "", allowed
+	return "", true, allowed
 }
 
 // safeValue reports a flag value that cannot read as another option.

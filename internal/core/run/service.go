@@ -142,7 +142,9 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
-	st.mergeDenials(&def)
+	if ref := st.mergeDenials(&def); ref != nil {
+		return nil, ref
+	}
 	timeout, ref := st.timeout()
 	if ref != nil {
 		return nil, ref
@@ -214,24 +216,33 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 // mergeDenials rewrites the request's pass-through once, before any launch
 // is composed or sealed, so every launch, the recorded argv, and the resume
 // fingerprint read the same merged denylist.
-func (st *state) mergeDenials(def *agentcatalog.Launch) {
-	merged := mergeDenials(def, st.req.PassThrough, st.req.AllowShell)
-	if slices.Equal(merged, st.req.PassThrough) {
-		return
+func (st *state) mergeDenials(def *agentcatalog.Launch) *core.RefusalError {
+	merged, bad := mergeDenials(def, st.req.PassThrough, st.req.AllowShell)
+	if bad != "" {
+		return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s takes a value, and verdict merges its shell denial "+
+			"into it; got '%s' with none (pass a value, or --allow-shell to drop the denial)", def.Name, bad, bad))
 	}
-	req := *st.req
-	req.PassThrough = merged
-	st.req = &req
+	if !slices.Equal(merged, st.req.PassThrough) {
+		req := *st.req
+		req.PassThrough = merged
+		st.req = &req
+	}
+	return nil
 }
 
-// refuseLinkedPaths refuses a launch whose artifact, launcher record, or
-// output log is a symlink: the agent's scoped write, or verdict's read back,
-// would follow it out of the bundle. A render writes nothing and is spared.
+// refuseLinkedPaths refuses a launch whose bundle holds a symlink, a
+// non-regular entry, or a hard-linked file anywhere: the agent's write grant
+// covers the whole bundle, so its write, or verdict's read back, would follow
+// that entry out of it. A render writes nothing and is spared.
 func (st *state) refuseLinkedPaths(target *launchTarget) *core.RefusalError {
 	if st.req.Print {
 		return nil
 	}
-	return readcommon.RefuseArtifactLinks(target.output, target.artifact, launcherFile, runOutputFile)
+	dir := target.evidence
+	if dir == "" {
+		dir = target.output
+	}
+	return readcommon.RefuseUnsafeBundle(dir)
 }
 
 // grantFor is the row's review-write grant for a launch writing into dir. A

@@ -250,21 +250,22 @@ assert_file_grep "the directive named the one artifact to write" "$STUB_AGENT_LO
 assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=6$'
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
-# --- the operator's own tool set replaces the restriction -------------------
-# claude's --tools replaces the whole tool set, so the launch carries it once
-# and the row's restriction is dropped rather than riding beside it; an
-# additive allow or deny list would sit beside the restriction instead.
+# --- the operator's own tool set never drops the shell denial ---------------
+# The denial is unconditional on review launches: claude's --tools replaces the
+# tool set, yet the row's restriction still rides beside it, and only
+# --allow-shell drops it. The tool flag decides the write grant's question, so
+# verdict's scoped grant is dropped.
 rm -f "$STUB_AGENT_LOG"
 run_review run acme/app "$LOCAL" --finders 1 --agent claude --json -- --tools Read
 assert_exit "a pass-through tool flag still launches" 0
-assert_file_grep "the operator's tool flag reached the child" "$STUB_AGENT_LOG" '^arg\[1\]=--tools$'
-assert_file_grep "the operator's tool flag kept its operand" "$STUB_AGENT_LOG" '^arg\[2\]=Read$'
-assert_file_nogrep "the row's restriction is not duplicated beside it" "$STUB_AGENT_LOG" \
-  "--disallowedTools" "-F"
-assert_file_nogrep "the operator's tool flag replaces verdict's review grant too" "$STUB_AGENT_LOG" \
+assert_file_grep "the row's shell denial stays first" "$STUB_AGENT_LOG" \
+  '^arg\[1\]=--disallowedTools=Bash,PowerShell$'
+assert_file_grep "the operator's tool flag reached the child" "$STUB_AGENT_LOG" '^arg\[2\]=--tools$'
+assert_file_grep "the operator's tool flag kept its operand" "$STUB_AGENT_LOG" '^arg\[3\]=Read$'
+assert_file_nogrep "the operator's tool flag replaces verdict's review grant" "$STUB_AGENT_LOG" \
   "Edit(" "-F"
-assert_json_field "the recorded argv hides the operator's tool flag and drops the restriction" "true" \
-  '.data.argv[2] == "***REDACTED***" and .data.argv[3] == "***REDACTED***" and (.data.argv | index("--disallowedTools=Bash,PowerShell") == null)'
+assert_json_field "the recorded argv keeps the denial and hides the operator's tool flag" "true" \
+  '.data.argv[2] == "--disallowedTools=Bash,PowerShell" and .data.argv[3] == "***REDACTED***" and .data.argv[4] == "***REDACTED***"'
 
 assert_json_field "launcher.json carries its own schema_version" "1" '.schema_version' "$LAUNCHER"
 assert_json_field "launcher.json records the agent name" "claude" '.agent' "$LAUNCHER"

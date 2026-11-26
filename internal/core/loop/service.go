@@ -241,7 +241,7 @@ func validateGate(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-severity must be critical, important, or informational, got '%s'", req.MaxSeverity)}
 	}
-	if bad, allowed := runcore.LoopArgs(req.Agent, req.Flow.Agents, req.AgentArgs); bad != "" {
+	if bad, ok, allowed := runcore.LoopArgs(req.Agent, req.Flow.Agents, req.AgentArgs); !ok {
 		want := "no agent arguments for " + req.Agent
 		if len(allowed) > 0 {
 			want = "only " + strings.Join(allowed, ", ") + " <value>"

@@ -4218,27 +4218,26 @@ documented tool flags to every launch it makes — finders, opposite-finder
 cross-checks, repair rounds, and drain — while leaving file reads and the
 artifact write (`review.json`, `verdicts.json`, `drain.replies.json`) intact.
 Only rows whose CLI documents the exact spelling carry one; a row without one is
-launched unchanged. `--allow-shell` restores the row's own tool set, and a
-pass-through spelling of a flag below — one that replaces the row's whole tool
-set — suppresses the restriction instead of sitting beside it. An additive or
-tightening flag keeps the shell denial: `claude` merges allow and deny lists,
-so `--disallowedTools WebFetch` or `--allowedTools mcp__x` sits beside it, and
-an operator spelling of the restriction's own denylist flag (pi
-`--exclude-tools`/`-xt`, bob `--disable-tool-groups`) gets the restriction's
-value merged into it — `--exclude-tools markdown` launches as
-`--exclude-tools bash,powershell,markdown`, at your position, once. Only a
-flag that replaces the whole tool set (the third column) or `--allow-shell`
-drops the denial. An argument right after a bare option is read as that
-option's value (`--append-system-prompt "--tools"` is no override), so a doubt
-keeps the restriction.
+launched unchanged. The denial is unconditional: only `--allow-shell`
+restores the row's own tool set, and no flag you pass after `--` drops it —
+not an allow or deny list, not a whole tool set (`claude --tools`, pi
+`--tools`/`--no-tools`), not pi's additive `--tools +name`. `claude`'s
+restriction is its own argument, and a deny rule beats any allow. pi applies
+`--exclude-tools` after every other tool selection, but a later
+`--exclude-tools` replaces an earlier one, and Bob documents nothing about a
+repeated `--disable-tool-groups`; so an operator spelling of the restriction's
+own flag (the third column) gets the restriction's value merged into it —
+`--exclude-tools markdown` launches as `--exclude-tools bash,powershell,markdown`,
+at your position, once — and a spelling with no value (dangling at the end,
+followed by another option, or `--flag=`) refuses `bad-flags`.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                     | Flags that replace the tool set                              | Source                                                                                     |
-| -------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp` | none (`--disable-tool-groups` merges)                        | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | `--tools`                                                    | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`   | `--tools`, `--no-builtin-tools`, `--no-tools` (`-xt` merges) | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                     | Operator spellings merged into it | Source                                                                                     |
+| -------- | ----------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`           | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | none (its own argument)           | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`          | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
@@ -7720,9 +7719,10 @@ the agent just edited, so the loop runs that verify step under `verify
 --sandbox` by default (sandbox-exec on macOS, bwrap on Linux; `--sandbox`
 confirms it). A host without the sandbox stops the loop at that verify with
 `sandbox-unavailable`, naming the opt-outs — it never runs the command
-unwrapped on its own. `--sandbox-network-only` is the network-only sandbox,
-and `--no-sandbox` runs the command unsandboxed, as you, with a warning; the
-three are mutually exclusive. Every phase runs under the `--timeout` deadline, and the review's
+unwrapped on its own. `--sandbox-network-only` cuts the network only — it gives
+no filesystem or PID isolation, so the command can still read and write as
+you — and `--no-sandbox` runs the command unsandboxed, as you, with a warning;
+the three are mutually exclusive. Every phase runs under the `--timeout` deadline, and the review's
 two launch-to-check attempts each get half the time that remains. The next
 round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
@@ -7743,7 +7743,8 @@ own scoped review-write grant. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
 grant. They also reach the review of untrusted content, so they are an
 allowlist, not a denylist: only the agent row's model flag with one value
-(`--model opus` or `--model=opus`) is accepted, and any other argument — a
+(`--model opus` or `--model=opus`, plus a documented alias such as codex's
+`-m`) is accepted, and any other argument — an empty one included, or a
 tool set, a permission mode, a sandbox, an approval bypass, a config override
 — refuses `bad-flags` before anything runs, naming what is allowed. (`verdict
 run --` keeps passing your arguments as they are: there you own them.) A

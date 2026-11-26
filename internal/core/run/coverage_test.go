@@ -536,3 +536,70 @@ func TestRunNeverReadsAReviewThroughALink(t *testing.T) {
 		t.Fatal("run graded a review read through a symlink")
 	}
 }
+
+// TestRunRefusesAnUnsafeBundleEntry proves the pre-launch walk covers the whole
+// bundle, since the agent's write grant does: a symlinked cost.json or
+// validation.json, and a review.json hard-linked to a source file, each refuse
+// artifact-path-unsafe before any agent starts, and the source file keeps its
+// bytes.
+func TestRunRefusesAnUnsafeBundleEntry(t *testing.T) {
+	t.Parallel()
+	for name, plant := range map[string]func(t *testing.T, bundle, source string) error{
+		"symlinked cost.json": func(_ *testing.T, bundle, source string) error {
+			return os.Symlink(source, filepath.Join(bundle, "cost.json"))
+		},
+		"symlinked validation.json": func(_ *testing.T, bundle, source string) error {
+			return os.Symlink(source, filepath.Join(bundle, "validation.json"))
+		},
+		"hard-linked review.json": func(_ *testing.T, bundle, source string) error {
+			return os.Link(source, filepath.Join(bundle, reviewFile))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assertUnsafeBundleRefused(t, plant)
+		})
+	}
+}
+
+// assertUnsafeBundleRefused plants one entry in a fresh bundle, then proves the
+// launch refuses before any spawn and the source file is untouched.
+func assertUnsafeBundleRefused(t *testing.T, plant func(t *testing.T, bundle, source string) error) {
+	t.Helper()
+	root := repairFixture(t)
+	writeUnder(t, root, filepath.Join("src", "main.go"), "package main\n")
+	source := filepath.Join(root, "src", "main.go")
+	if err := plant(t, bundleDir(root), source); err != nil {
+		t.Fatalf("plant: %v", err)
+	}
+	cmdr := perCall(t, root, coveredReviewDoc)
+	if _, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &collector{})); ref == nil || ref.Code != "artifact-path-unsafe" {
+		t.Fatalf("ref = %v, want artifact-path-unsafe", ref)
+	}
+	assertSpawns(t, cmdr, 0)
+	if got, err := os.ReadFile(source); err != nil || string(got) != "package main\n" {
+		t.Errorf("source = %q (%v), want it untouched", got, err)
+	}
+}
+
+// TestArtifactReadsNeverFollowALink proves the readers after exit open the
+// artifact without following a link, so a link swapped in after the Lstat
+// check is refused rather than read.
+func TestArtifactReadsNeverFollowALink(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	target := filepath.Join(dir, "elsewhere.json")
+	if err := os.WriteFile(target, []byte(coveredReviewDoc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, reviewFile)
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	if raw, ref := readRoundReview(&launchArgs{abs: link, artifact: reviewFile}, &core.Result{}); ref == nil {
+		t.Errorf("readRoundReview read %d bytes through a link", len(raw))
+	}
+	if raw, ok := crashReviewBytes(link); ok {
+		t.Errorf("crashReviewBytes read %d bytes through a link", len(raw))
+	}
+}

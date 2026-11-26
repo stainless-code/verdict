@@ -707,6 +707,69 @@ func RefuseArtifactLinks(dir string, names ...string) *core.RefusalError {
 	return nil
 }
 
+// RefuseUnsafeBundle refuses a launch over a bundle whose tree holds a
+// symlink, a non-regular entry (a FIFO, a socket, a device), or a regular file
+// with more than one hard link. An agent's review write grant covers the whole
+// bundle, so any such entry — a checked-in `cost.json -> ../../src/main.go`, a
+// `review.json` hard-linked to a source file — would carry that write, or
+// verdict's read back, to a file outside it. The bundle is small and verdict
+// owns it, so the whole tree is walked; a directory is followed only as
+// itself, never through a link.
+func RefuseUnsafeBundle(dir string) *core.RefusalError {
+	if _, err := os.Lstat(dir); errors.Is(err, fs.ErrNotExist) {
+		// Nothing there yet: the launch creates its own files.
+		return nil
+	}
+	var ref *core.RefusalError
+	err := filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if ref = unsafeBundleEntry(dir, path, entry); ref != nil {
+			return fs.SkipAll
+		}
+		return nil
+	})
+	if ref == nil && err != nil {
+		ref = &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("cannot inspect the bundle %s: %v", dir, err)}
+	}
+	return ref
+}
+
+// unsafeBundleEntry is the refusal one walked entry earns, nil when it is
+// the bundle itself or safe.
+func unsafeBundleEntry(dir, path string, entry fs.DirEntry) *core.RefusalError {
+	why := unsafeEntry(entry)
+	if why == "" || path == dir {
+		return nil
+	}
+	return &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("%s is %s inside the bundle; "+
+		"the agent's write grant covers the bundle, so it would carry a write or a read outside it — "+
+		"remove it, then re-run", path, why)}
+}
+
+// unsafeEntry names what makes one bundle entry unsafe, "" when it is a
+// plain directory or a singly linked regular file.
+func unsafeEntry(entry fs.DirEntry) string {
+	mode := entry.Type()
+	switch {
+	case mode&fs.ModeSymlink != 0:
+		return "a symlink"
+	case mode.IsDir():
+		return ""
+	case !mode.IsRegular():
+		return "not a regular file"
+	}
+	info, err := entry.Info()
+	switch {
+	case err != nil:
+		return "unreadable"
+	case HasHardLinks(info):
+		return "a hard link"
+	}
+	return ""
+}
+
 // IsRegularNoFollow reports a regular file at path without following a
 // final symlink.
 func IsRegularNoFollow(path string) bool {

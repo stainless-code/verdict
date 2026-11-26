@@ -20,7 +20,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -417,7 +416,7 @@ func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds
 // the 32 MiB agent-input cap record uses. A read failure after a passing
 // stat keeps the artifact family: the contract path did not deliver bytes.
 func readRoundReview(args *launchArgs, res *core.Result) ([]byte, *core.RefusalError) {
-	f, err := noblock.OpenRegular(args.abs)
+	f, err := openNoFollow(args.abs)
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
@@ -553,7 +552,7 @@ func (st *state) writeRoundOut(args *launchArgs, k int, res *core.Result) {
 // has no size ceiling. A file that does not open, is not regular once opened,
 // or outgrew the review cap yields nothing to copy.
 func crashReviewBytes(path string) ([]byte, bool) {
-	f, err := readcommon.OpenNoBlock(path)
+	f, err := openNoFollow(path)
 	if err != nil {
 		return nil, false
 	}
@@ -567,6 +566,23 @@ func crashReviewBytes(path string) ([]byte, bool) {
 		return nil, false
 	}
 	return raw, true
+}
+
+// openNoFollow opens the regular file at path without following a link at
+// its final element, and proves the opened file is the one inspected: an
+// agent that swaps the artifact for a link between the check and the read
+// gets a refusal, never the bytes the link names.
+func openNoFollow(path string) (*os.File, error) {
+	root, err := os.OpenRoot(filepath.Dir(path))
+	if err != nil {
+		return nil, jq.Sealed("open artifact directory", err)
+	}
+	defer func() { _ = root.Close() }()
+	f, err := readcommon.OpenRegularNoSymlinkIn(root, filepath.Base(path))
+	if err != nil {
+		return nil, jq.Sealed("open artifact", err)
+	}
+	return f, nil
 }
 
 // writeCrashRoundReview keeps the review bytes a failed round left, when they

@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // sequenced is a canned commander that changes its side effect per call, so
@@ -1093,10 +1094,12 @@ func TestRepairRefusesSymlinkedRoundsDir(t *testing.T) {
 	cmdr := &sequenced{write: func(int) { writeDoc(t, root, repairReviewDoc) }}
 	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
 	if ref == nil {
-		t.Fatal("Run ran through a symlinked .run.rounds, want rounds-path-unsafe")
+		t.Fatal("Run ran through a symlinked .run.rounds, want artifact-path-unsafe")
 	}
-	if ref.Code != "rounds-path-unsafe" {
-		t.Errorf("refusal = %q, want rounds-path-unsafe", ref.Code)
+	// The pre-launch bundle walk refuses the link before the round files are
+	// prepared: the agent's write grant covers the whole bundle.
+	if ref.Code != readcommon.CodeArtifactUnsafe {
+		t.Errorf("refusal = %q, want artifact-path-unsafe", ref.Code)
 	}
 	if !strings.Contains(ref.Message, ".verdict/state/42/.run.rounds") {
 		t.Errorf("refusal message = %q, want it to name the bundle-relative .run.rounds path", ref.Message)

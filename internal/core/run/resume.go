@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -1083,8 +1084,15 @@ func (c *coordinator) readArtifact(artifact string) ([]byte, *core.RefusalError)
 		return nil, c.driftRefusal(fmt.Sprintf("%s is %d bytes, over the %d-byte resume read cap",
 			artifact, info.Size(), resumeArtifactCap))
 	}
-	raw, err := noblock.ReadFile(path)
+	// No-follow, and the same file the Lstat saw: a link swapped in after
+	// the check is refused, never read.
+	f, err := openNoFollow(path)
 	if err != nil {
+		return nil, snapshotUnreadable(artifact)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(f, resumeArtifactCap+1))
+	if err != nil || int64(len(raw)) > resumeArtifactCap {
 		return nil, snapshotUnreadable(artifact)
 	}
 	return raw, nil

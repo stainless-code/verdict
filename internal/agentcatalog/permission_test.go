@@ -281,3 +281,22 @@ func collectGrant(t *testing.T, into map[string][]string, name, field string, ar
 		t.Errorf("%s declares %s without a citation", name, field)
 	}
 }
+
+// TestModelFlagAliasesAreCited pins the model aliases the loop's `--`
+// allowlist accepts: exactly the documented ones, each row citing its doc.
+func TestModelFlagAliasesAreCited(t *testing.T) {
+	t.Parallel()
+	got := map[string][]string{}
+	for _, agent := range All() {
+		if agent.Launch == nil || len(agent.Launch.ModelFlagAliases) == 0 {
+			continue
+		}
+		got[agent.Name] = agent.Launch.ModelFlagAliases
+		if agent.Launch.ModelAliasCitation == "" {
+			t.Errorf("%s declares ModelFlagAliases without a citation", agent.Name)
+		}
+	}
+	if want := map[string][]string{"codex": {"-m"}}; !maps.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("model aliases = %v, want %v", got, want)
+	}
+}
