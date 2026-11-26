@@ -40,18 +40,22 @@ func TestParseFlagsSurface(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newRunner(false)
 	f, code, done := parseFlags(r, []string{
-		"--agent=codex", "--max-rounds", "5", "--max-cost-usd=2.5", "--budget", "15m",
+		"--agent=codex", "--max-rounds", "5", "--max-cost-usd=2.5", "--timeout", "15m",
 		"--output", "out", "--fix-prompt=fix.md", "--print", "--sandbox",
 	})
 	want := flags{
-		agent: "codex", maxRounds: "5", maxCost: "2.5", budget: "15m",
+		agent: "codex", maxRounds: "5", maxCost: "2.5", timeout: "15m",
 		output: "out", fixPrompt: "fix.md", print: true, sandbox: true,
 	}
 	if done || code != 0 || f != want {
 		t.Fatalf("parse = %+v (code %d, done %v), want %+v", f, code, done, want)
 	}
+	f, _, _ = parseFlags(r, []string{"--agent", "claude", "--timeout=90"})
+	if f.timeout != "90" {
+		t.Errorf("--timeout=90 parsed %+v, want timeout 90", f)
+	}
 	f, _, _ = parseFlags(r, []string{"--agent", "claude"})
-	if f.maxRounds != "3" || f.budget != "600s" {
+	if f.maxRounds != "3" || f.timeout != "600s" {
 		t.Errorf("defaults = %+v, want 3 rounds and 600s", f)
 	}
 }
@@ -68,6 +72,15 @@ func TestParseFlagsUsage(t *testing.T) {
 		"lost value":   {args: []string{"--agent", "--print"}, want: "--agent needs a value"},
 		"empty inline": {args: []string{"--agent="}, want: "--agent needs a value"},
 		"unknown flag": {args: []string{"--agent", "claude", "--rounds", "2"}, want: "unknown flag '--rounds' for loop"},
+		"budget is run's depth flag, not loop's": {
+			args: []string{"--agent", "claude", "--budget", "600s"},
+			want: "unknown flag '--budget' for loop",
+		},
+		"budget inline": {
+			args: []string{"--agent", "claude", "--budget=600s"},
+			want: "unknown flag '--budget=600s' for loop",
+		},
+		"lost timeout": {args: []string{"--agent", "claude", "--timeout"}, want: "--timeout needs a value"},
 		"extra operand": {
 			args: []string{"--agent", "claude", "42"},
 			want: "loop takes one <owner/repo> positional; unexpected '42'",
@@ -91,7 +104,7 @@ func TestRunRefusesBadLimits(t *testing.T) {
 	for name, args := range map[string][]string{
 		"rounds":     {"--agent", "claude", "--max-rounds", "0"},
 		"rounds pad": {"--agent", "claude", "--max-rounds", "03"},
-		"budget":     {"--agent", "claude", "--budget", "soon"},
+		"timeout":    {"--agent", "claude", "--timeout", "soon"},
 		"cost":       {"--agent", "claude", "--max-cost-usd", "-2"},
 		"prompt":     {"--agent", "claude", "--fix-prompt", "/no/such/file.md"},
 		"sandboxes":  {"--agent", "claude", "--sandbox", "--sandbox-network-only"},
@@ -125,16 +138,20 @@ func assertBadFlags(t *testing.T, args []string) {
 	}
 }
 
-func TestParseBudget(t *testing.T) {
+func TestParseTimeout(t *testing.T) {
 	t.Parallel()
 	for raw, want := range map[string]time.Duration{"600": 600 * time.Second, "600s": 600 * time.Second, "10m": 10 * time.Minute} {
-		if got, ref := parseBudget(raw); ref != nil || got != want {
-			t.Errorf("parseBudget(%q) = %v, %v; want %v", raw, got, ref, want)
+		if got, ref := parseTimeout(raw); ref != nil || got != want {
+			t.Errorf("parseTimeout(%q) = %v, %v; want %v", raw, got, ref, want)
 		}
 	}
+}
+
+func TestParseTimeoutRefuses(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"0", "-5s", "0s", "ten"} {
-		if _, ref := parseBudget(raw); ref == nil {
-			t.Errorf("parseBudget(%q) accepted a non-positive or unreadable budget", raw)
+		if _, ref := parseTimeout(raw); ref == nil || !strings.HasPrefix(ref.Message, "--timeout must be a positive duration") {
+			t.Errorf("parseTimeout(%q) = %v, want a refusal naming --timeout", raw, ref)
 		}
 	}
 }
@@ -184,8 +201,8 @@ func TestExitFor(t *testing.T) {
 		{loopcore.Data{Stop: loopcore.StopMaxRounds}, cli.ExitRefused},
 		{loopcore.Data{Stop: loopcore.StopAgentFailed, Refusal: &loopcore.Refusal{Code: "agent-failed"}}, cli.ExitRefused},
 		{loopcore.Data{Stop: loopcore.StopRefused, Refusal: &loopcore.Refusal{Code: "canceled"}}, cli.ExitBroke},
-		// A deadline that canceled a phase is the wall budget, not a ^C.
-		{loopcore.Data{Stop: loopcore.StopWallBudget, Refusal: &loopcore.Refusal{Code: "canceled"}}, cli.ExitRefused},
+		// A deadline that canceled a phase is the timeout, not a ^C.
+		{loopcore.Data{Stop: loopcore.StopTimeout, Refusal: &loopcore.Refusal{Code: "canceled"}}, cli.ExitRefused},
 	} {
 		if got := exitFor(&tc.data); got != tc.want {
 			t.Errorf("exitFor(%s) = %d, want %d", tc.data.Stop, got, tc.want)

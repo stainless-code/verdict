@@ -13,7 +13,7 @@
 #   empty  review attests no coverage (record --require-coverage refuses)
 #   stale  review edits the working tree after the fetch (coverage-stale)
 #   fail   the review spawn exits 7
-#   slow   the review spawn sleeps past a short wall budget
+#   slow   the review spawn sleeps past a short --timeout
 #   cost   like never, plus a priced cost.json beside the review, in the
 #          review prompt's own schema-2 shape (undated, total at the root)
 #

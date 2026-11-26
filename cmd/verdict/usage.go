@@ -369,7 +369,7 @@ func usageText() string {
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts; report never gates.\n" +
 		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
-		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
+		"        [--timeout <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
 		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
 		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
 		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
@@ -378,7 +378,7 @@ func usageText() string {
 		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
 		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
 		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
-		"    settings.json agent. Stops: pass, max-rounds, wall-budget (--budget bounds every phase and\n" +
+		"    settings.json agent. Stops: pass, max-rounds, timeout (--timeout bounds every phase and\n" +
 		"    spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
 		"    whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling\n" +
 		"    refusing a spawn — every review attempt and fix leaves a budget.json receipt), no-progress (no\n" +

@@ -7,7 +7,7 @@ package loopcore
 const (
 	StopPass        = "pass"
 	StopMaxRounds   = "max-rounds"
-	StopWallBudget  = "wall-budget"
+	StopTimeout     = "timeout"
 	StopCostBudget  = "cost-budget"
 	StopNoProgress  = "no-progress"
 	StopAgentFailed = "agent-failed"
@@ -31,15 +31,15 @@ const (
 // receipt. A --print render carries the plan, stop "planned", and no rounds.
 type Data struct { //nolint:govet // field order is the published property order
 	Passed     bool       `json:"passed"`
-	Stop       string     `enum:"pass|max-rounds|wall-budget|cost-budget|no-progress|agent-failed|refused|planned" json:"stop"`
+	Stop       string     `enum:"pass|max-rounds|timeout|cost-budget|no-progress|agent-failed|refused|planned" json:"stop"`
 	Agent      string     `json:"agent"`
-	MaxRounds  int        `json:"max_rounds"                                                                       min:"1"`
-	BudgetS    int        `json:"budget_s"                                                                         min:"1"`
-	MaxCostUSD *float64   `json:"max_cost_usd"                                                                     min:"0"`
-	CostUSD    *float64   `json:"cost_usd"                                                                         min:"0"`
-	ElapsedMS  int64      `json:"elapsed_ms"                                                                       min:"0"`
+	MaxRounds  int        `json:"max_rounds"                                                                   min:"1"`
+	TimeoutS   int        `json:"timeout_s"                                                                    min:"1"`
+	MaxCostUSD *float64   `json:"max_cost_usd"                                                                 min:"0"`
+	CostUSD    *float64   `json:"cost_usd"                                                                     min:"0"`
+	ElapsedMS  int64      `json:"elapsed_ms"                                                                   min:"0"`
 	Output     *string    `json:"output"`
-	Refusal    *Refusal   `anyOf:"null"                                                                            json:"refusal"`
+	Refusal    *Refusal   `anyOf:"null"                                                                        json:"refusal"`
 	Plan       []PlanStep `json:"plan"`
 	Rounds     []Round    `json:"rounds"`
 }

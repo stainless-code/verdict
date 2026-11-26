@@ -22,7 +22,7 @@ import (
 var t0 = time.Date(2026, 11, 25, 10, 15, 0, 0, time.UTC)
 
 // fakeClock is the injected clock: each phase call moves it by step, so the
-// wall budget is spent deterministically.
+// loop's timeout is spent deterministically.
 type fakeClock struct {
 	now  time.Time
 	step time.Duration
@@ -209,7 +209,7 @@ func newHarness(t *testing.T, rounds int) *harness {
 		Repo:      "acme/app",
 		Agent:     "claude",
 		MaxRounds: rounds,
-		Budget:    10 * time.Minute,
+		Timeout:   10 * time.Minute,
 		Output:    h.output,
 	}
 	return h
@@ -433,42 +433,42 @@ func (c *canceling) verify(ctx context.Context, b *reviewflow.Bundle, timeout st
 }
 
 // TestLoopDeadlineBoundsTheInProcessPhases proves fetch, record, and gate run
-// under the wall deadline: a gate that hangs stops the loop on the budget,
+// under the loop's deadline: a gate that hangs stops the loop on the timeout,
 // not as an operator cancel.
 func TestLoopDeadlineBoundsTheInProcessPhases(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, 3)
-	h.req.Budget = 50 * time.Millisecond
+	h.req.Timeout = 50 * time.Millisecond
 	h.script.clock.step = 0
 	h.script.hang = map[string]bool{"gate": true}
 	resp := h.run(t)
-	if resp.Data.Stop != StopWallBudget || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeCanceled {
-		t.Fatalf("stop=%s refusal=%+v, want wall-budget carrying the phase's own cancel", resp.Data.Stop, resp.Data.Refusal)
+	if resp.Data.Stop != StopTimeout || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeCanceled {
+		t.Fatalf("stop=%s refusal=%+v, want timeout carrying the phase's own cancel", resp.Data.Stop, resp.Data.Refusal)
 	}
 }
 
-// TestLoopSplitsTheReviewBudgetAcrossAttempts proves one review cannot outlast
+// TestLoopSplitsTheTimeoutAcrossReviewAttempts proves one review cannot outlast
 // the deadline: run makes up to two attempts, so each watchdog gets half the
-// remaining budget, rounded up.
-func TestLoopSplitsTheReviewBudgetAcrossAttempts(t *testing.T) {
+// remaining time, rounded up.
+func TestLoopSplitsTheTimeoutAcrossReviewAttempts(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, 1)
-	h.req.Budget = 7 * time.Second
+	h.req.Timeout = 7 * time.Second
 	h.script.gate[1] = true
 	h.run(t)
-	// 7s budget, 1s spent fetching: 6s left over two attempts.
+	// 7s timeout, 1s spent fetching: 6s left over two attempts.
 	assertCalls(t, h.script.calls, "fetch 1", "admit 1-review-1", "review 1 timeout 3 rounds 2", "record 1", "gate 1")
 }
 
-func TestLoopStopsOnTheWallBudget(t *testing.T) {
+func TestLoopStopsOnTheTimeout(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, 5)
-	h.req.Budget = 6 * time.Second
+	h.req.Timeout = 6 * time.Second
 	h.script.open[1] = 3
 	h.script.open[2] = 2
 	resp := h.run(t)
-	if stopOf(t, resp.Data) != StopWallBudget {
-		t.Fatalf("stop = %s, want wall-budget", stopOf(t, resp.Data))
+	if stopOf(t, resp.Data) != StopTimeout {
+		t.Fatalf("stop = %s, want timeout", stopOf(t, resp.Data))
 	}
 	// Six one-second phases fill round 1 (fetch, review, record, gate, fix);
 	// round 2 starts with one second left and stops before its fix.
@@ -477,16 +477,16 @@ func TestLoopStopsOnTheWallBudget(t *testing.T) {
 	}
 }
 
-func TestLoopMapsTheWatchdogToTheWallBudget(t *testing.T) {
+func TestLoopMapsTheWatchdogToTheTimeout(t *testing.T) {
 	t.Parallel()
 	h := newHarness(t, 3)
 	h.script.reviewRef = map[int]*core.RefusalError{1: {
 		Code: codeAgentTimeout, Message: "claude ran past the 600s watchdog and was killed",
 	}}
 	resp := h.run(t)
-	if stopOf(t, resp.Data) != StopWallBudget || resp.Data.Refusal == nil ||
+	if stopOf(t, resp.Data) != StopTimeout || resp.Data.Refusal == nil ||
 		resp.Data.Refusal.Code != codeAgentTimeout {
-		t.Fatalf("stop=%s refusal=%+v, want wall-budget carrying agent-timeout",
+		t.Fatalf("stop=%s refusal=%+v, want timeout carrying agent-timeout",
 			stopOf(t, resp.Data), resp.Data.Refusal)
 	}
 }
@@ -760,7 +760,7 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"no agent":      func(r *Request) { r.Agent = "" },
 		"zero rounds":   func(r *Request) { r.MaxRounds = 0 },
 		"too many":      func(r *Request) { r.MaxRounds = 21 },
-		"zero budget":   func(r *Request) { r.Budget = 0 },
+		"zero timeout":  func(r *Request) { r.Timeout = 0 },
 		"negative cost": func(r *Request) { r.MaxCostUSD = "-1" },
 		"zero cost":     func(r *Request) { r.MaxCostUSD = "0" },
 		"word cost":     func(r *Request) { r.MaxCostUSD = "lots" },
