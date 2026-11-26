@@ -234,7 +234,7 @@ func (st *state) reportMoves() {
 		loc := anchorLoc(m)
 		body200 := runeSlice(entryBody(m), maxBodyRunes)
 		reason, _ := m.Get(fieldDropReason)
-		st.human(fmt.Sprintf("  - `%s` (%s): %s", loc, jq.Interp(jq.Alt(reason, "outside reviewed hunks")), body200))
+		st.human(core.Msgf("  - `%s` (%s): %s", loc, jq.Interp(jq.Alt(reason, "outside reviewed hunks")), body200))
 	}
 }
 

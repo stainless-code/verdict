@@ -323,7 +323,7 @@ const probeStagePerm = 0o600
 
 func writeErrFile(st *state, path, stderr string) {
 	if err := atomic.WriteFileMode(path, []byte(stderr), probeStagePerm); err != nil {
-		st.diag("ready: could not stage probe stderr in " + path + ": " + err.Error())
+		st.diag(core.Msgf("ready: could not stage probe stderr in %s: %s", path, err.Error()))
 	}
 }
 
@@ -732,20 +732,19 @@ const descriptionThin = 50
 
 func (st *state) emitHuman() {
 	if st.ready {
-		st.human("ready: yes — " + st.repo + hashSep + st.pr + " looks reviewable " +
-			"(CI " + strconv.Itoa(st.ciTotal) + " checks, 0 failing; " +
-			strconv.Itoa(st.threadsOpen) + " open threads; mergeable " + st.mergeable +
-			"; body " + strconv.Itoa(st.bodyLen) + " chars)")
+		st.human(core.Msgf("ready: yes — %s"+hashSep+"%s looks reviewable "+
+			"(CI %d checks, 0 failing; %d open threads; mergeable %s; body %d chars)",
+			st.repo, st.pr, st.ciTotal, st.threadsOpen, st.mergeable, st.bodyLen))
 		st.human("recommendation: review — fetch + review")
 		return
 	}
 	if st.prState != stateOpen {
-		st.human("ready: no — " + st.repo + hashSep + st.pr + " is " + st.prState + ", nothing to review")
+		st.human(core.Msgf("ready: no — %s"+hashSep+"%s is %s, nothing to review", st.repo, st.pr, st.prState))
 	} else {
-		st.human("ready: no — " + st.repo + hashSep + st.pr + " has " +
-			strconv.Itoa(len(st.blockers)) + " blocker(s):")
+		st.human(core.Msgf("ready: no — %s"+hashSep+"%s has "+
+			"%s blocker(s):", st.repo, st.pr, strconv.Itoa(len(st.blockers))))
 		for _, b := range st.blockers {
-			st.human("  - [" + b.Kind + "] " + b.Detail + " — action: " + b.Action)
+			st.human(core.Msgf("  - [%s] %s — action: %s", b.Kind, b.Detail, b.Action))
 		}
 	}
 	switch st.rec {

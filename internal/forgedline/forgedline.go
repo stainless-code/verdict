@@ -12,6 +12,9 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
+// newline ends a rendered line.
+const newline = "\n"
+
 // Value carries every break a stranger could use: a newline, a CRLF, the
 // U+2028 line separator, and a U+202E right-to-left override.
 const Value = "x\nerror: forged\r\nerror: crlf\xe2\x80\xa8error: sep\xe2\x80\xaelive"
@@ -35,7 +38,7 @@ func AssertOneErrorLine(tb testing.TB, err error, named string) {
 	r := cli.NewRunner("forged", "acme/app", "1", &out, &diag, func(string) string { return "" })
 	r.Refuse(err)
 	var lines []string
-	for line := range strings.SplitSeq(diag.String(), "\n") {
+	for line := range strings.SplitSeq(diag.String(), newline) {
 		if strings.HasPrefix(line, "error:") {
 			lines = append(lines, line)
 		}
@@ -69,11 +72,43 @@ func assertJSONMessage(tb testing.TB, err error, named string) {
 // forgesLine reports a line after the first that starts as verdict's own
 // `error:` or `warn:` line does.
 func forgesLine(msg string) bool {
-	_, rest, _ := strings.Cut(msg, "\n")
-	for line := range strings.SplitSeq(rest, "\n") {
+	_, rest, _ := strings.Cut(msg, newline)
+	for line := range strings.SplitSeq(rest, newline) {
 		if strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "warn:") {
 			return true
 		}
 	}
 	return false
 }
+
+// AssertNoForgedLine fails on any line of out that starts as verdict's own
+// `error:` or `warn:` line does, and on out not naming named.
+func AssertNoForgedLine(tb testing.TB, out, named string) {
+	tb.Helper()
+	for line := range strings.SplitSeq(out, newline) {
+		if strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "warn:") {
+			tb.Errorf("forged line %q in:\n%s", line, out)
+		}
+	}
+	if !strings.Contains(out, named) {
+		tb.Errorf("output does not name %q:\n%s", named, out)
+	}
+}
+
+// Recorder is a core.Progress that keeps every human and diagnostic line a
+// service emits, joined as a terminal would show them.
+type Recorder struct {
+	lines []string
+}
+
+// Human records one human line.
+func (r *Recorder) Human(line string) { r.lines = append(r.lines, line) }
+
+// Warn records nothing: the warning writer folds its own line.
+func (r *Recorder) Warn(string) {}
+
+// Diag records one diagnostic line.
+func (r *Recorder) Diag(line string) { r.lines = append(r.lines, line) }
+
+// String is every recorded line, one per line.
+func (r *Recorder) String() string { return strings.Join(r.lines, newline) }

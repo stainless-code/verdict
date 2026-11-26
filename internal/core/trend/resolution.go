@@ -2,7 +2,6 @@ package trendcore
 
 import (
 	"encoding/json"
-	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -43,7 +42,7 @@ func resolutionAudit(st *state, rows []row) any {
 		st.human("resolution: unmeasured (no calibration.json yet — run calibrate)")
 		return nil
 	}
-	st.human(fmt.Sprintf("unmeasured: %d bundles (run calibrate)", unmeasured))
+	st.human(core.Msgf("unmeasured: %d bundles (run calibrate)", unmeasured))
 	return jq.NewObj("by_model", resolutionCells(st, "model", models),
 		"by_panel", resolutionCells(st, "panel", panels), "unmeasured", unmeasured)
 }
@@ -69,7 +68,7 @@ func resolutionCells(st *state, kind string, cells map[string]*resolutionCell) *
 		c := cells[key]
 		doc.Set(key, jq.NewObj("reviews", c.reviews, "judged", c.judged, "fixed", c.fixed,
 			"resolution_rate", rateOrNil(c.fixed, c.judged), "n", c.judged))
-		st.human(fmt.Sprintf("resolution %s %s: %.1f%% (n=%d)", kind, key, percentScale*float64(c.fixed)/float64(c.judged), c.judged))
+		st.human(core.Msgf("resolution %s %s: %.1f%% (n=%d)", kind, key, percentScale*float64(c.fixed)/float64(c.judged), c.judged))
 	}
 	return doc
 }

@@ -51,7 +51,7 @@ func removePathEntry(ctx context.Context, req *Request, det *detection, resp *Re
 	}
 	resp.PathLineRemoved = changed
 	if changed {
-		req.human("uninstall: removed the marked PATH line from " + where)
+		req.human(core.Msgf("uninstall: removed the marked PATH line from %s", where))
 	}
 	return nil
 }

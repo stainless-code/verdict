@@ -144,35 +144,36 @@ func finishUpgradeRefusal(r *cli.Runner, ref *cli.RefusalError, exit int) int {
 }
 
 func printUpgradePlan(r *cli.Runner, resp *upgrade.Response) {
-	fmt.Fprintf(r.Human, "upgrade: channel: %s (%s)\n", resp.Channel, resp.Target)
+	fmt.Fprint(r.Human, core.Msgf("upgrade: channel: %s (%s)\n", resp.Channel, resp.Target))
 	switch {
 	case resp.Action == upgrade.ActionRefuse:
-		fmt.Fprintf(r.Human, "upgrade: action: refuse — %s\n", resp.Reason)
+		fmt.Fprint(r.Human, core.Msgf("upgrade: action: refuse — %s\n", resp.Reason))
 	case len(resp.Command) > 0:
-		fmt.Fprintf(r.Human, "upgrade: action: %s\n", resp.Action)
-		fmt.Fprintf(r.Human, "upgrade: would run: %s\n", strings.Join(resp.Command, " "))
+		fmt.Fprint(r.Human, core.Msgf("upgrade: action: %s\n", resp.Action))
+		fmt.Fprint(r.Human, core.Msgf("upgrade: would run: %s\n", strings.Join(resp.Command, " ")))
 	default:
-		fmt.Fprintf(r.Human, "upgrade: action: %s %s\n", resp.Action, resp.Version)
+		fmt.Fprint(r.Human, core.Msgf("upgrade: action: %s %s\n", resp.Action, resp.Version))
 	}
 	fmt.Fprintln(r.Human, "upgrade: dry-run: nothing changed")
 }
 
 func printSelfReplace(r *cli.Runner, resp *upgrade.Response) {
 	if resp.Handoff {
-		fmt.Fprintf(r.Human, "upgrade: verdict %s staged; the replacement helper finishes after this process exits\n", resp.Version)
-		fmt.Fprintf(r.Human, "upgrade: result %s (log %s)\n", resp.HelperResult, resp.HelperLog)
+		fmt.Fprint(r.Human, core.Msgf(
+			"upgrade: verdict %s staged; the replacement helper finishes after this process exits\n", resp.Version))
+		fmt.Fprint(r.Human, core.Msgf("upgrade: result %s (log %s)\n", resp.HelperResult, resp.HelperLog))
 		return
 	}
-	fmt.Fprintf(r.Human, "upgrade: installed verdict %s to %s (SHA-256 verified)\n", resp.Version, resp.Target)
+	fmt.Fprint(r.Human, core.Msgf("upgrade: installed verdict %s to %s (SHA-256 verified)\n", resp.Version, resp.Target))
 }
 
 func printUninstall(r *cli.Runner, resp *upgrade.Response) {
 	if resp.DryRun {
-		fmt.Fprintf(r.Human, "uninstall: would remove: %s\n", strings.Join(resp.Removed, ", "))
+		fmt.Fprint(r.Human, core.Msgf("uninstall: would remove: %s\n", strings.Join(resp.Removed, ", ")))
 		fmt.Fprintln(r.Human, "uninstall: dry-run: nothing changed")
 		return
 	}
-	fmt.Fprintf(r.Human, "uninstall: removed %s\n", strings.Join(resp.Removed, ", "))
+	fmt.Fprint(r.Human, core.Msgf("uninstall: removed %s\n", strings.Join(resp.Removed, ", ")))
 }
 
 func upgradeData(resp *upgrade.Response) *jq.Obj {

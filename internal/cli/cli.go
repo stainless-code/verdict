@@ -206,6 +206,21 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	return code
 }
 
+// HumanLine prints one line of a verb's human output, folded to that line
+// ([untrusted.Line]): a service renders its lines with the values it quotes
+// (a locator, a rule, a host's state) already in place, so a newline in one
+// would otherwise start a line that reads as verdict's own `error:`.
+func (r *Runner) HumanLine(line string) {
+	fmt.Fprintln(r.Human, untrusted.Line(line))
+}
+
+// HumanLines prints each of lines through [Runner.HumanLine].
+func (r *Runner) HumanLines(lines []string) {
+	for _, line := range lines {
+		r.HumanLine(line)
+	}
+}
+
 // WriteRentry prints the re-enter line, for a renderer that writes its own
 // envelope instead of calling [Runner.RefuseExit].
 func (r *Runner) WriteRentry() {

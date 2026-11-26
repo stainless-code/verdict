@@ -316,7 +316,7 @@ func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
 		return nil
 	}
 	st.estUSD = stat.mean
-	fmt.Fprintln(r.Human, estimateLine(st, tier)+st.basisNote())
+	fmt.Fprintln(r.Human, core.Msgf("%s%s", estimateLine(st, tier), st.basisNote()))
 	return nil
 }
 

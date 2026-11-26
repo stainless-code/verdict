@@ -40,6 +40,8 @@ func RunNext(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if resp.StoreUnreadable {
 		return nextStoreError(r, resp)
 	}
+	// resp.Human is one line, or the coverage block whose builder folds each
+	// value it quotes into its own line.
 	fmt.Fprintln(r.Human, resp.Human)
 	if !r.JSONMode {
 		return cli.ExitOK

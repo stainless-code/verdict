@@ -138,11 +138,11 @@ func coversAnyPath(file string, paths []string) bool {
 // emitIncidentsHuman renders the miss-rate summary and one line per bundle,
 // after the overlap and corpus lines.
 func (st *state) emitIncidentsHuman(out *incidentRollup) {
-	st.human(fmt.Sprintf("incidents: %d attached, %d measured, %d unmeasured — %s",
+	st.human(core.Msgf("incidents: %d attached, %d measured, %d unmeasured — %s",
 		out.Incidents, out.Measured, out.Unmeasured, missedText(out.Missed, out.Measured)))
 	for i := range out.PerBundle {
 		row := &out.PerBundle[i]
-		st.human(fmt.Sprintf("  %s: %d attached, %d measured, %d unmeasured — %s",
+		st.human(core.Msgf("  %s: %d attached, %d measured, %d unmeasured — %s",
 			row.Bundle, row.Incidents, row.Measured, row.Incidents-row.Measured, missedText(row.Missed, row.Measured)))
 	}
 }

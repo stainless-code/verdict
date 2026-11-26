@@ -78,7 +78,9 @@ if grep -q "fix: ${CRIT:0:8} \\[critical\\] app.txt:2 (pass 1/3" "$EVAL_OUT"; th
 else
   bad "pass line: $(head -c 300 "$EVAL_OUT")"
 fi
-if grep -q "readiness:" "$EVAL_OUT" && grep -q "finding: Critical boundary bug" "$EVAL_OUT" \
+# The finding body is the reviewer's text: it prints one tagged line per line.
+if grep -q "readiness:" "$EVAL_OUT" && grep -q "^finding:$" "$EVAL_OUT" \
+  && grep -q "^  | Critical boundary bug" "$EVAL_OUT" \
   && grep -q "anchors: app.txt:2-2" "$EVAL_OUT" && grep -q "instructions:" "$EVAL_OUT" \
   && grep -q "next: patch app.txt" "$EVAL_OUT"; then
   good "human output carries readiness + finding + anchors + instructions + next"

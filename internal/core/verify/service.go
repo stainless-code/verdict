@@ -3,7 +3,6 @@ package verifycore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"strconv"
@@ -345,7 +344,7 @@ func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *s
 	if ref := bundle.unchanged(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
+	st.human(core.Msgf("recorded into %s/patch.json", dir))
 	if err := atomic.WriteFileModeIn(bundle.root, verifyOutName, []byte(combined), verifyOutputMode); err != nil {
 		return nil, st.withWarnings(failed(err))
 	}
@@ -358,7 +357,7 @@ func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *s
 	if ref := bundle.writeReceipt(receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	st.human(fmt.Sprintf("receipt: %s/%s", dir, ReceiptFile))
+	st.human(core.Msgf("receipt: %s/%s", dir, ReceiptFile))
 	resp := st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb)
 	resp.Data.Tree, resp.Data.Receipt = receipt.Tree, dir+"/"+ReceiptFile
 	return resp, nil

@@ -137,16 +137,16 @@ func replaySide(d reportcore.Decision) core.ReportReplaySide {
 
 // renderReplay prints the two decisions and the dimensions whose status moved.
 func renderReplay(r *cli.Runner, path string, replay *reportcore.PolicyReplay) {
-	fmt.Fprintf(r.Human, "policy replay (read-only): captured policy vs %s\n", path)
-	fmt.Fprintf(r.Human, "  gate      %s -> %s\n",
-		passLabel(replay.Captured.GatePassed), passLabel(replay.Candidate.GatePassed))
-	fmt.Fprintf(r.Human, "  approval  %s -> %s\n",
-		approvalLabel(replay.Captured), approvalLabel(replay.Candidate))
+	fmt.Fprint(r.Human, core.Msgf("policy replay (read-only): captured policy vs %s\n", path))
+	fmt.Fprint(r.Human, core.Msgf("  gate      %s -> %s\n",
+		passLabel(replay.Captured.GatePassed), passLabel(replay.Candidate.GatePassed)))
+	fmt.Fprint(r.Human, core.Msgf("  approval  %s -> %s\n",
+		approvalLabel(replay.Captured), approvalLabel(replay.Candidate)))
 	if replay.Candidate.Reason != "" {
-		fmt.Fprintf(r.Human, "  reason    %s\n", replay.Candidate.Reason)
+		fmt.Fprint(r.Human, core.Msgf("  reason    %s\n", replay.Candidate.Reason))
 	}
 	for _, move := range replay.Moves() {
-		fmt.Fprintf(r.Human, "  changed   %s %s -> %s\n", move.ID, move.Before, move.After)
+		fmt.Fprint(r.Human, core.Msgf("  changed   %s %s -> %s\n", move.ID, move.Before, move.After))
 	}
 }
 
@@ -179,19 +179,17 @@ func writeOutputs(resp *reportcore.Response) *cli.RefusalError {
 // summary.
 func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 	if resp.Sarif != nil {
-		fmt.Fprintf(r.Human, "wrote %s\n", resp.Sarif.Path)
+		fmt.Fprint(r.Human, core.Msgf("wrote %s\n", resp.Sarif.Path))
 	}
 	if r.JSONMode {
 		if resp.Output != nil {
-			fmt.Fprintf(r.Human, "wrote %s\n", resp.Output.Path)
+			fmt.Fprint(r.Human, core.Msgf("wrote %s\n", resp.Output.Path))
 		}
 		r.Emit(cmdReport, req.Repo, req.Pr, resp.At, resp.Next,
 			resp.Warnings, resp.Data.Wire())
 		return
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 }
 
 // reportRequest builds the core request from the parsed flags and runner.

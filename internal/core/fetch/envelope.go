@@ -120,11 +120,12 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 // about it too.
 func writeFetchDone(r *session, dir, filesStr string, chunked bool, index string, hint string) {
 	shown := r.display(dir)
-	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
-	fmt.Fprintf(r.Human, "next: feed %s/procedure.md + "+
+	fmt.Fprint(r.Human, core.Msgf(
+		"done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr))
+	fmt.Fprint(r.Human, core.Msgf("next: feed %s/procedure.md + "+
 		"%s/PR.json + %s%s%s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s%s\n",
 		dir, dir, diffFeed(dir, chunked, dir+"/full.diff"), impactFeed(dir, index), contextFeed(dir),
-		dir, dir, threadsHint(dir), hint)
+		dir, dir, threadsHint(dir), hint))
 }
 
 // threadsHint names the normalized conversation feed when the PR carries

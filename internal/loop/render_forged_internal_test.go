@@ -30,3 +30,12 @@ func TestRefusalRenderCannotForgeLines(t *testing.T) {
 		}
 	}
 }
+
+// A round names its bundle, which a loop read back from disk carries as
+// written.
+func TestRoundRenderCannotForgeLines(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	render(&out, &loopcore.Data{Stop: loopcore.StopRefused, Rounds: []loopcore.Round{{Round: 1, Bundle: forgedline.Value}}})
+	forgedline.AssertNoForgedLine(t, out.String(), "loop: round 1  "+forgedline.Named)
+}

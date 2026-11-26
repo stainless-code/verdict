@@ -29,6 +29,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 	"github.com/stainless-code/verdict/internal/spend"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -373,9 +374,9 @@ func render(w io.Writer, d *loopcore.Data) {
 		return
 	}
 	for i := range d.Rounds {
-		fmt.Fprintln(w, roundLine(&d.Rounds[i]))
+		fmt.Fprintln(w, untrusted.Line(roundLine(&d.Rounds[i])))
 	}
-	fmt.Fprintln(w, outcomeLine(d))
+	fmt.Fprintln(w, untrusted.Line(outcomeLine(d)))
 	if d.Refusal != nil {
 		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, d.Refusal.Message))
 	}

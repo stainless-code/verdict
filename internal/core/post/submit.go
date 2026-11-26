@@ -471,10 +471,10 @@ func (st *state) retryTime(wait time.Duration) string {
 
 func (st *state) followPosted(k, n int, part string) {
 	if id := reviewID(part); id != "" {
-		st.human(fmt.Sprintf("posted follow-up part %d/%d as review %s", k, n, id))
+		st.human(core.Msgf("posted follow-up part %d/%d as review %s", k, n, id))
 		return
 	}
-	st.human(fmt.Sprintf("posted follow-up part %d/%d", k, n))
+	st.human(core.Msgf("posted follow-up part %d/%d", k, n))
 }
 
 func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalError {

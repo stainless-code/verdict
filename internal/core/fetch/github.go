@@ -325,7 +325,7 @@ func writeIncrementalNote(r *session, dir, reason string) *core.RefusalError {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/incremental.diff.note: %v", dir, werr)}
 	}
 	// The file keeps the host's text as it came; the human line folds it.
-	fmt.Fprintln(r.Human, "incrementalUnavailable: "+untrusted.Line(strings.TrimRight(head, newline)))
+	fmt.Fprintln(r.Human, core.Msgf("incrementalUnavailable: %s", strings.TrimRight(head, newline)))
 	_ = os.Remove(dir + "/incremental.diff")
 	return nil
 }

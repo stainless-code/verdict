@@ -651,14 +651,14 @@ func announce(r *cli.Runner, server *Server) {
 			r.Warnings, data)
 		return
 	}
-	fmt.Fprintln(r.Human, "serve: "+server.URL())
+	fmt.Fprintln(r.Human, core.Msgf("serve: %s", server.URL()))
 	mode := "read-only; Ctrl-C stops"
 	if server.rule.HostPost() {
 		mode = "interactive with host posting enabled; Ctrl-C stops"
 	} else if server.rule.LocalWrites() {
 		mode = "interactive (local triage & KB writes enabled); Ctrl-C stops"
 	}
-	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+mode+")")
+	fmt.Fprintln(r.Diag, core.Msgf("serve: listening on %s (%s)", server.Addr(), mode))
 }
 
 // resolveRoot resolves the served root: --root first (clean, absolute,

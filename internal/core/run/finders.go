@@ -30,7 +30,7 @@ func (st *state) selectFinders(dir string) *core.RefusalError {
 	}
 	st.recordBudgetCount(count)
 	if st.budget != nil {
-		st.human(budgetLine(st.budget))
+		st.human(core.Msgf("%s", budgetLine(st.budget)))
 	}
 	return st.applyFinderCount(count)
 }

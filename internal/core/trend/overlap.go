@@ -1,9 +1,9 @@
 package trendcore
 
 import (
-	"fmt"
 	"strconv"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 )
@@ -24,16 +24,16 @@ func overlapAudit(st *state, rows []row) *overlapRollup {
 }
 
 func (st *state) emitOverlapHuman(out *overlapRollup) {
-	st.human(fmt.Sprintf("overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)",
+	st.human(core.Msgf("overlap: %d measured, %d unmeasured — precision=%s coverage=%s (recalled=%d cited=%d overlap=%d)",
 		out.MeasuredBundles, out.UnmeasuredBundles, kb.NumOrNA(out.Precision), kb.NumOrNA(out.Coverage),
 		len(out.RecalledRules), len(out.CitedRules), len(out.OverlapRules)))
-	st.human(fmt.Sprintf("cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; "+
+	st.human(core.Msgf("cited outcomes: %d cited findings — addressed=%d false-positive=%d pending=%d wont-fix=%d; "+
 		"joins rows=%d (addressed=%d false-positive=%d)",
 		out.CitedFindings, out.Addressed, out.FalsePositive, out.Pending, out.WontFix,
 		out.JoinsRows, out.JoinsAddressed, out.JoinsFalse))
 	for i := range out.PerBundle {
 		row := &out.PerBundle[i]
-		st.human(fmt.Sprintf("  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
+		st.human(core.Msgf("  %s: measured=%s precision=%s coverage=%s (recalled=%d cited=%d overlap=%d) "+
 			"outcomes addressed=%d false-positive=%d pending=%d",
 			row.Bundle, strconv.FormatBool(row.Measured), kb.NumOrNA(row.Precision), kb.NumOrNA(row.Coverage),
 			len(row.Recalled), len(row.Cited), len(row.Overlap), row.Addressed, row.FalsePositive, row.Pending))

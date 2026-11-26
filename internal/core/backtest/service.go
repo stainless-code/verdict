@@ -26,6 +26,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Refusal codes this verb owns.
@@ -341,9 +342,12 @@ func (st *state) commander() core.Commander {
 }
 
 // human writes one human line through the injected observer.
+// humanLine prints one human line, folded to that line: a candidate names
+// paths, refs, and kinds from the repository's history, so a newline in one
+// cannot start a line that reads as verdict's own.
 func (st *state) humanLine(line string) {
 	if st.rt != nil {
-		st.rt.Human(line)
+		st.rt.Human(untrusted.Line(line))
 	}
 }
 

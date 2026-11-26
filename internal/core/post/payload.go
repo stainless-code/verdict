@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const paragraphBreak = "\n\n"
@@ -529,17 +530,23 @@ func postCommentKeys(comments []any) string {
 	return strings.Join(m.Keys, ",")
 }
 
+// previewTag leads each line of a dry-run preview block that carries text
+// verdict did not write.
+const previewTag = "  | "
+
 func (st *state) previewDryRun(footerText string) {
-	st.human("dry-run: payload NOT posted. body chars: " +
-		strconv.Itoa(len(st.body)) + splitNote(st) + ", payload comment keys: " + postCommentKeys(st.comments))
+	st.human(core.Msgf("dry-run: payload NOT posted. body chars: "+
+		"%s%s, payload comment keys: %s", strconv.Itoa(len(st.body)), splitNote(st), postCommentKeys(st.comments)))
 	if footerText != "" {
-		st.human("footer preview:\n" + footerText)
+		// The footer renders the repository's attribution template, so each of
+		// its lines is tagged: none can stand as an `error:` line of its own.
+		st.human("footer preview:\n" + strings.TrimSuffix(untrusted.Passthrough(previewTag, footerText), "\n"))
 	}
 	if st.diagram.State != "absent" {
-		st.human("diagram: " + st.diagram.State + " — " + st.diagram.Detail)
+		st.human(core.Msgf("diagram: %s — %s", st.diagram.State, st.diagram.Detail))
 	}
 	if st.summary != nil {
-		st.human(formatSummaryDryRun(st.summary))
+		st.human(core.Msgf("%s", formatSummaryDryRun(st.summary)))
 	}
 }
 

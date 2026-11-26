@@ -71,7 +71,7 @@ func runACP(ctx context.Context, r *cli.Runner, args []string, version string) i
 		return cli.ExitBroke
 	}
 	if err != nil {
-		fmt.Fprintf(r.Diag, "acp: %v\n", err)
+		fmt.Fprint(r.Diag, core.Msgf("acp: %v\n", err))
 		return cli.ExitRefused
 	}
 	return cli.ExitOK

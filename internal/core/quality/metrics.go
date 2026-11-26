@@ -2,11 +2,11 @@ package quality
 
 import (
 	"context"
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -329,25 +329,25 @@ func unknownText(n int) string {
 // Human renders the frozen human block from the report data.
 func Human(r *Report) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "backtest fixtures  (%d fixtures, %d recorded reviews, %d scored)\n",
-		len(r.Fixtures), r.Recordings, r.Scored)
+	sb.WriteString(core.Msgf("backtest fixtures  (%d fixtures, %d recorded reviews, %d scored)\n",
+		len(r.Fixtures), r.Recordings, r.Scored))
 	for i := range r.Fixtures {
 		f := &r.Fixtures[i]
-		fmt.Fprintf(&sb, "%s  %s  (%s, %d scored)\n", f.ID, f.Label,
-			countNoun(f.Runs, "recording"), f.Scored)
+		sb.WriteString(core.Msgf("%s  %s  (%s, %d scored)\n", f.ID, f.Label,
+			countNoun(f.Runs, "recording"), f.Scored))
 		perRun := make([]string, 0, len(f.Recall.PerRun))
 		for _, rate := range f.Recall.PerRun {
 			perRun = append(perRun, rateText(&rate))
 		}
-		fmt.Fprintf(&sb, "  recall per run: %s  mean: %s  union: %s (N=%d, %d known defects)\n",
-			strings.Join(perRun, " "), rateText(f.Recall.Mean), rateText(f.Recall.Union), len(perRun), f.Known)
-		fmt.Fprintf(&sb, "  bonus union: %d/%d  false green: %d/%d (%s)\n",
-			f.BonusUnion.Count, f.Bonus, f.FalseGreen.Passes, f.FalseGreen.Measured, unknownText(f.FalseGreen.Unknown))
-		fmt.Fprintf(&sb, "  hallucination: %s (%s; %d gating findings, %d checked, %d unverifiable)  review-insufficient: %d\n",
+		sb.WriteString(core.Msgf("  recall per run: %s  mean: %s  union: %s (N=%d, %d known defects)\n",
+			strings.Join(perRun, " "), rateText(f.Recall.Mean), rateText(f.Recall.Union), len(perRun), f.Known))
+		sb.WriteString(core.Msgf("  bonus union: %d/%d  false green: %d/%d (%s)\n",
+			f.BonusUnion.Count, f.Bonus, f.FalseGreen.Passes, f.FalseGreen.Measured, unknownText(f.FalseGreen.Unknown)))
+		sb.WriteString(core.Msgf("  hallucination: %s (%s; %d gating findings, %d checked, %d unverifiable)  review-insufficient: %d\n",
 			rateText(f.Hallucination.Rate), f.Hallucination.Status, f.Hallucination.GatingFindings,
-			f.Hallucination.Checked, f.Hallucination.Unverifiable, f.ReviewInsufficient)
+			f.Hallucination.Checked, f.Hallucination.Unverifiable, f.ReviewInsufficient))
 	}
-	fmt.Fprintf(&sb, "calibration: %d/%d rows reproduced\n", r.Calibration.Rows-len(r.Calibration.Mismatches), r.Calibration.Rows)
+	sb.WriteString(core.Msgf("calibration: %d/%d rows reproduced\n", r.Calibration.Rows-len(r.Calibration.Mismatches), r.Calibration.Rows))
 	sb.WriteString("known defects from fixture manifests; rates describe recorded reviews, not a model claim\n")
 	return sb.String()
 }

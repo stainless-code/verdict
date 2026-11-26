@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Request carries the resolved fix invocation.
@@ -309,22 +310,32 @@ func (st *state) refuse(code, msg string) *core.RefusalError {
 	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
+// humanf writes human output with each value folded to the line it sits in
+// by core.Msgf: a locator, a reason, or a path cannot start a line of its
+// own. A multi-line block a stranger wrote goes through humanBlock.
 func (st *state) humanf(format string, args ...any) {
-	if st.req.Human != nil {
-		fmt.Fprintf(st.req.Human, format, args...)
-	}
-}
-
-// progressf writes one `»` progress line, each value folded to that line by
-// core.Msgf: a path or a sig cannot start a line of its own.
-func (st *state) progressf(format string, args ...any) {
 	if st.req.Human != nil {
 		fmt.Fprint(st.req.Human, core.Msgf(format, args...))
 	}
 }
 
+// blockTag leads each line of a block fix shows but did not write: a
+// finding's body, the kb.txt recall, a stored brief.
+const blockTag = "  | "
+
+// humanBlock writes text another author wrote one tagged, folded line per
+// line (untrusted.Passthrough), so its lines stay lines and none can stand
+// as verdict's own `error:` or `warn:` line.
+func (st *state) humanBlock(text string) {
+	st.humanRaw(untrusted.Passthrough(blockTag, text))
+}
+
+// humanRaw writes text that is already safe as it stands: verdict's own
+// constant blocks, a block humanBlock tagged, a brief brief.Render folded.
 func (st *state) humanRaw(text string) {
-	st.humanf("%s", text)
+	if st.req.Human != nil {
+		fmt.Fprint(st.req.Human, text)
+	}
 }
 
 func (st *state) response() *Response {
@@ -483,7 +494,7 @@ func (st *state) printReadiness(dir string, entries []any) (string, int, int) {
 	now := st.req.TimeUTC()
 	st.at = now
 	fixOpen, fixOpenInline := countOpen(entries)
-	st.progressf("» readiness: %s — findings %d open (%d inline open); "+
+	st.humanf("» readiness: %s — findings %d open (%d inline open); "+
 		"threads (stored): %s; PR %s\n",
 		dir, fixOpen, fixOpenInline, storedThreads(dir), prInfo(dir))
 	return now, fixOpen, fixOpenInline
@@ -1101,7 +1112,7 @@ func (st *state) passOutput(
 	full, anchor string,
 	pass, fixOpen, fixOpenInline int,
 ) *core.RefusalError {
-	st.progressf("» ledger: %s — sig %s pass %d/3\n",
+	st.humanf("» ledger: %s — sig %s pass %d/3\n",
 		ledgerPath, readcommon.Prefix(full), pass)
 	block := readPassBlock(rec, full, anchor)
 	st.printPassBlock(block, pass, ledgerPath)
@@ -1173,7 +1184,8 @@ func readPassBlock(rec *jq.Obj, full, anchor string) *passBlock {
 func (st *state) printPassBlock(block *passBlock, pass int, ledgerPath string) {
 	st.humanf("fix: %s [%s] %s (pass %d/3, ledger %s)\n",
 		readcommon.Prefix(block.full), block.severity, block.locator, pass, ledgerPath)
-	st.humanf("finding: %s\n", block.body)
+	st.humanf("finding:\n")
+	st.humanBlock(block.body)
 	st.humanf("anchors: %s:%s-%s side=%s anchored=%s\n",
 		block.anchors.Path, block.anchors.StartLine, block.anchors.Line,
 		block.anchors.Side, block.anchors.Anchored)
@@ -1201,7 +1213,7 @@ func (st *state) printKB(dir string) {
 		kbRaw = nil
 	}
 	st.humanf("--- kb.txt (%s/kb.txt, full context) ---\n", dir)
-	st.humanRaw(string(kbRaw))
+	st.humanBlock(string(kbRaw))
 	st.humanf("--- end kb.txt ---\n")
 }
 

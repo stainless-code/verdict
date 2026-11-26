@@ -5,6 +5,7 @@ import (
 	"maps"
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -164,11 +165,11 @@ func corpusCountsDoc(key, label string, c *corpusCounts) *jq.Obj {
 
 func (st *state) emitCorpusHuman(r *corpusRollup) {
 	st.human(corpuscore.Measure(r.total.samples).Summary())
-	st.human(fmt.Sprintf("corpus: %d bundle(s) over %d case(s) — ground_truth=%d reported=%d "+
+	st.human(core.Msgf("corpus: %d bundle(s) over %d case(s) — ground_truth=%d reported=%d "+
 		"matched=%d false_positives=%d missed=%d",
 		r.total.bundles, len(r.cases), r.total.bugs, r.total.reported,
 		r.total.matched, r.total.falsePositives, r.total.missed))
-	st.human(fmt.Sprintf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
+	st.human(core.Msgf("corpus rates: precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.reported)), r.total.reported,
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.matched, r.total.bugs)), r.total.bugs,
 		corpuscore.RateText(corpuscore.RateOrNil(r.total.falsePositives, r.total.reported)), r.total.reported))

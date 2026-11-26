@@ -506,10 +506,10 @@ func (st *state) emitProbeHuman(dir, bname string, grades []*jq.Obj) {
 		judgeText = fmt.Sprintf(" judgments: sampled=%d judged=%d agreed=%d disagreed=%d rate=%s",
 			c.sampled, c.judged, c.agreed, c.disagreed, rateText)
 	}
-	st.human(fmt.Sprintf("probe: %s#%s — %d finding(s): real=%d false=%d unknown=%d%s (grades: %s/kb-grades.jsonl)",
+	st.human(core.Msgf("probe: %s#%s — %d finding(s): real=%d false=%d unknown=%d%s (grades: %s/kb-grades.jsonl)",
 		st.req.Repo, bname, c.total, c.real, c.falseVerdicts, c.unknown, judgeText, dir))
 	for _, g := range grades {
-		st.human(gradeLine(g))
+		st.human(core.Msgf("%s", gradeLine(g)))
 	}
 }
 

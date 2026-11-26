@@ -38,7 +38,8 @@ exit: 0
 » readiness: .verdict/state/local-stale — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
 » ledger: .verdict/state/local-stale/fix.json — sig 61234567 pass 1/3
 fix: 61234567 [important] app.txt:2 (pass 1/3, ledger .verdict/state/local-stale/fix.json)
-finding: Important scoping bug here.
+finding:
+  | Important scoping bug here.
 anchors: app.txt:2-2 side=RIGHT anchored=true
 instructions: patch the anchor file (app.txt) — git add -N any file the fix creates — and re-run fetch-local so the bundle captures the patched content (no commit needed), then run its verify command (verifyCmd in .verdict/state/local-stale/patch.json) through verdict verify acme/app local-stale and write verification.json beside it [{sig, verdict, verifyCmd}] with verdict VERIFIED and that verifyCmd (fix itself runs nothing — a claim flips only on the verify-receipt.json verify writes: exit 0 for that command on the content the bundle grades); land it with record acme/app local-stale; re-run fix acme/app local-stale for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell — it writes no receipt, so settle that finding with verdict triage

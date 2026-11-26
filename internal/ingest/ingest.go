@@ -7,7 +7,6 @@ package ingest
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -46,7 +45,7 @@ func run(ctx context.Context, r *cli.Runner, args []string, req *readcommon.Requ
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	fmt.Fprintln(r.Human, resp.Human)
+	r.HumanLine(resp.Human)
 	r.Emit(ingestcore.VerbIngest, r.Repo, r.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK

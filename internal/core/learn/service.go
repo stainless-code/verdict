@@ -134,7 +134,7 @@ func (st *state) humanf(format string, args ...any) {
 	if st.req.JSONMode {
 		return
 	}
-	st.req.Human(strings.TrimSuffix(fmt.Sprintf(format, args...), "\n"))
+	st.req.Human(strings.TrimSuffix(core.Msgf(format, args...), "\n"))
 }
 
 func (st *state) response() *Response {
@@ -515,7 +515,7 @@ func (st *state) runRetire() *core.RefusalError {
 		forbid:   statusRetired,
 		shortMsg: msgRetireReason,
 		next:     nextRetire,
-		human:    "retired %s (tombstone kept, counters untouched)\n",
+		human:    core.Msgf("retired %s (tombstone kept, counters untouched)\n", id),
 		apply:    (*state).tombstoneRetire,
 		wrong: func() *core.RefusalError {
 			return st.refuse(codeAlreadyRetired, fmt.Sprintf(msgAlreadyRetired, id))
@@ -530,7 +530,7 @@ func (st *state) runRestore() *core.RefusalError {
 		forbid:   statusActive,
 		shortMsg: msgRestoreReason,
 		next:     nextRestore,
-		human:    "restored %s (status active, tombstone history kept)\n",
+		human:    core.Msgf("restored %s (status active, tombstone history kept)\n", id),
 		apply:    (*state).activateRow,
 		wrong: func() *core.RefusalError {
 			return st.refuse(codeNotRetired, fmt.Sprintf(msgNotRetired, id))
@@ -579,7 +579,7 @@ func (st *state) veto(v *veto) *core.RefusalError {
 	}
 	st.next = v.next
 	st.data = &Data{Rule: cur}
-	st.humanf(v.human, v.id)
+	st.humanf("%s", core.Trusted(v.human))
 	return nil
 }
 

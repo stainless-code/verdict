@@ -144,8 +144,8 @@ func corpusBugDoc(b *core.CorpusBug) *jq.Obj {
 
 func (st *state) emitCorpusHuman(r *corpusResult) {
 	rep := r.report
-	st.human(r.metrics.Summary())
-	st.human(fmt.Sprintf("calibrate: corpus %s — %s (model %s, panel %s)",
+	st.human(core.Msgf("%s", r.metrics.Summary()))
+	st.human(core.Msgf("calibrate: corpus %s — %s (model %s, panel %s)",
 		rep.Case.ID, readcommon.BundleName(r.dir), r.model, corpuscore.PanelLabel(r.panel)))
 	tol := corpuscore.Tolerance(rep.Case)
 	for i := range rep.Outcomes {
@@ -153,13 +153,13 @@ func (st *state) emitCorpusHuman(r *corpusResult) {
 		if o.Result == corpuscore.ResultTruePositive {
 			continue
 		}
-		st.human(corpusMissLine(o, tol))
+		st.human(core.Msgf("%s", corpusMissLine(o, tol)))
 	}
 	for i := range rep.Missed {
 		b := &rep.Missed[i]
-		st.human(fmt.Sprintf("missed: %s:%d %s (%s)", b.Path, b.Line, b.Kind, b.Severity))
+		st.human(core.Msgf("missed: %s:%d %s (%s)", b.Path, b.Line, b.Kind, b.Severity))
 	}
-	st.human(fmt.Sprintf("rates: bugs=%d reported=%d matched=%d missed=%d false-positives=%d "+
+	st.human(core.Msgf("rates: bugs=%d reported=%d matched=%d missed=%d false-positives=%d "+
 		"precision=%s (n=%d) recall=%s (n=%d) false-discovery-rate=%s (n=%d)",
 		len(rep.Case.Bugs), rep.Reported, rep.Matched, len(rep.Missed), rep.FalsePositives,
 		corpuscore.RateText(corpuscore.RateOrNil(rep.Matched, rep.Reported)), rep.Reported,

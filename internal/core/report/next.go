@@ -2,12 +2,10 @@ package reportcore
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // RunNext executes the next service: the top-ranked actionable finding plus
@@ -55,11 +53,11 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 }
 
 func nextTopLine(top *core.FindingItem) string {
-	locator := untrusted.Line(top.Locator)
+	locator := top.Locator
 	if locator == "" {
 		locator = "?"
 	}
-	return fmt.Sprintf("next: %s [%s] %s — address via address-reviews mode, then post",
+	return core.Msgf("next: %s [%s] %s — address via address-reviews mode, then post",
 		sigOf(top), statusOf(top), locator)
 }
 
