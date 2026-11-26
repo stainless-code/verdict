@@ -287,7 +287,7 @@ func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
 	req.FindersRaw = "2"
 	// A partial run nothing marks: no launcher record, and a capture that names
 	// no finders, exactly what a re-fetch over a partial run leaves behind.
-	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","finders":0}`)
+	writeCapture(t, commander.dir, `{"schema_version":"1","finders":0}`)
 	writeUnder(t, filepath.Join(commander.dir, "x-finder-2"), "review.json", `{"changed":true}`)
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatalf("orphaned phase refused the re-run: %v", ref)

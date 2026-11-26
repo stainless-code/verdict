@@ -204,15 +204,12 @@ func TestRunStateAbsent(t *testing.T) {
 // TestVerifyRunState pins the integrity binding with an independently
 // authored bundle: a fresh write verifies, an appended outcome keeps it
 // valid, an edited input refuses controls-stale, a deleted run bundle
-// refuses instead of degrading, and a missing directory reads legacy.
+// refuses instead of degrading, and a missing directory reads (nil, nil).
 func TestVerifyRunState(t *testing.T) {
 	_, dir := verifiedRunBundle(t)
 	verified, ref := VerifyRunState(dir)
 	if ref != nil || verified == nil {
 		t.Fatalf("VerifyRunState fresh = %v, %v; want verified", verified, ref)
-	}
-	if !verified.Verified() {
-		t.Fatal("fresh bundle reports unverified")
 	}
 	ok, err := AppendOutcome(dir, &CheckObservation{Check: CheckHeadCurrent, Group: "g", Passed: true, At: "2026-11-06T01:00:00Z"})
 	if err != nil || !ok {
@@ -251,8 +248,76 @@ func TestVerifyRunStateRefusesDeletedBundle(t *testing.T) {
 func TestVerifyRunStateReadsMissingAsLegacy(t *testing.T) {
 	root, _ := verifiedRunBundle(t)
 	if got, ref := VerifyRunState(filepath.Join(root, "missing")); got != nil || ref != nil {
-		t.Fatalf("missing bundle verify = %v, %v; want legacy (nil, nil)", got, ref)
+		t.Fatalf("missing bundle verify = %v, %v; want (nil, nil)", got, ref)
 	}
+}
+
+// TestRunStateRefusesPreIntegrityShape pins the removed pre-integrity read:
+// a run.json without requires_evidence or inputs_sha256 is what an older
+// verdict wrote, so every read refuses bundle-outdated with the re-fetch fix
+// instead of enforcing the stored policy as unverified.
+func TestRunStateRefusesPreIntegrityShape(t *testing.T) {
+	for _, tt := range []struct {
+		mutate func(*RunState)
+		name   string
+	}{
+		{name: "no requires_evidence", mutate: func(rs *RunState) { rs.RequiresEvidence = false }},
+		{name: "no inputs_sha256", mutate: func(rs *RunState) { rs.InputsSHA256 = "" }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			root := checkOutdatedRunState(t, tt.mutate)
+			t.Chdir(root)
+			if _, _, ref := Explain(".", "7"); ref == nil || ref.Code != "bundle-outdated" {
+				t.Fatalf("Explain = %v, want bundle-outdated", ref)
+			}
+		})
+	}
+}
+
+// checkOutdatedRunState rewrites a sealed bundle into one outdated shape and
+// proves every run-state reader refuses it with the same re-fetch message,
+// returning the repository root.
+func checkOutdatedRunState(t *testing.T, mutate func(*RunState)) string {
+	t.Helper()
+	root, dir := verifiedRunBundle(t)
+	path := rewriteRunStateRaw(t, dir, mutate)
+	want := path + " was written by an older verdict and carries no integrity binding " +
+		"(re-fetch the bundle with `verdict fetch`, or `verdict fetch-local`, then re-run)"
+	if _, found, serr := ReadRunState(dir); serr == nil || found || serr.Error() != want {
+		t.Fatalf("ReadRunState = found %v, %v; want %q", found, serr, want)
+	}
+	if _, ref := VerifyRunState(dir); ref == nil || ref.Code != "bundle-outdated" || ref.Message != want {
+		t.Fatalf("VerifyRunState = %v, want bundle-outdated %q", ref, want)
+	}
+	if ok, err := AppendOutcome(dir, &CheckObservation{Check: CheckHeadCurrent}); ok || err == nil {
+		t.Fatalf("AppendOutcome on an outdated bundle = %v, %v; want a refusal", ok, err)
+	}
+	return root
+}
+
+// rewriteRunStateRaw decodes run.json without the reader's checks, mutates
+// it, and writes it back, returning its path: the shape an older verdict
+// left on disk, which ReadRunState itself no longer loads.
+func rewriteRunStateRaw(t *testing.T, dir string, mutate func(*RunState)) string {
+	t.Helper()
+	path := filepath.Join(dir, "run.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rs RunState
+	if err := json.Unmarshal(raw, &rs); err != nil {
+		t.Fatal(err)
+	}
+	mutate(&rs)
+	out, err := json.Marshal(&rs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, out, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // verifiedRunBundle seeds a trusted config, the run bundle, and its controls

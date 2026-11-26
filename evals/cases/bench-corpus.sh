@@ -49,6 +49,13 @@ if [ "$schema_bad" -eq 0 ]; then
   good "every checked-in case.json validates against schemas/corpus.schema.json"
 fi
 
+# corpus_sampling prints the corpus_run.json bench/runner writes for a single
+# k=1 sample: every corpus bundle carries one, and a bundle without it was
+# written by an older runner and refuses bundle-outdated.
+corpus_sampling() {
+  jq -n --arg run "$1" '{latency_s:null,run_id:$run,severity_weights:{critical:25,important:5,informational:1},k:1,repeats:1,sample:1}'
+}
+
 bundles=0
 for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
   [ -d "$case_dir" ] || continue
@@ -65,6 +72,7 @@ for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
     jq --arg r "acme/bench" '.repo = $r' "$dir/source.json" >"$dir/source.json.tmp"
     mv "$dir/source.json.tmp" "$dir/source.json"
     cp "$case_dir/case.json" "$dir/corpus.json"
+    corpus_sampling "$slug" >"$dir/corpus_run.json"
     cp "$case_dir/full.diff" "$dir/full.diff"
     # The generic producer's hunk cache describes notes.txt, not this corpus patch.
     rm -f "$dir/hunks.tsv"
@@ -176,7 +184,19 @@ else
   bad "corrupt manifest trend: exit $EVAL_STATUS $(jq -c '.warnings, .data.corpus.bundles' <"$EVAL_OUT" 2>/dev/null)"
 fi
 
-rm -rf "$EVAL_SANDBOX/.verdict/state/corpus-broken" "$EVAL_SANDBOX/.verdict/state/local-bench"
+mkdir -p "$EVAL_SANDBOX/.verdict/state/corpus-outdated"
+cp "$EVAL_SANDBOX/.verdict/state/corpus-off-by-one-fixture-good/corpus.json" "$EVAL_SANDBOX/.verdict/state/corpus-outdated/corpus.json"
+cp "$EVAL_SANDBOX/.verdict/state/corpus-off-by-one-fixture-good/full.diff" "$EVAL_SANDBOX/.verdict/state/corpus-outdated/full.diff"
+cp "$EVAL_SANDBOX/.verdict/state/corpus-off-by-one-fixture-good/findings.json" "$EVAL_SANDBOX/.verdict/state/corpus-outdated/findings.json"
+run_review calibrate acme/bench corpus-outdated --json
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' <"$EVAL_OUT" 2>/dev/null)" = "bundle-outdated" ] \
+  && jq -e '.error.message | contains("has no corpus_run.json: an older bench runner wrote it (re-run the benchmark")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "a corpus bundle without corpus_run.json refuses bundle-outdated naming the re-run"
+else
+  bad "outdated corpus bundle calibrate: exit $EVAL_STATUS $(jq -c '.error // empty' <"$EVAL_OUT" 2>/dev/null)"
+fi
+
+rm -rf "$EVAL_SANDBOX/.verdict/state/corpus-broken" "$EVAL_SANDBOX/.verdict/state/corpus-outdated" "$EVAL_SANDBOX/.verdict/state/local-bench"
 after_hash="$(cd "$EVAL_SANDBOX" && find .verdict -type f | LC_ALL=C sort | xargs shasum -a 1)"
 if [ "$before_hash" = "$after_hash" ]; then
   good "corpus calibrate/trend wrote nothing (every fixture byte unchanged)"
@@ -195,6 +215,7 @@ for case_id in control-comment control-rename; do
   dir="$EVAL_SANDBOX/.verdict/state/$slug"
   eval_mk_bundle "$slug"
   cp "$EVAL_ROOT/bench/corpus/$case_id/case.json" "$dir/corpus.json"
+  corpus_sampling "$slug" >"$dir/corpus_run.json"
   cp "$EVAL_ROOT/bench/corpus/$case_id/full.diff" "$dir/full.diff"
   rm -f "$dir/hunks.tsv"
   jq '.review' "$EVAL_ROOT/bench/corpus/$case_id/agents/fixture-good.json" | eval_write_review_at "$dir/review.json"

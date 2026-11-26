@@ -34,6 +34,7 @@ const (
 	costJSONName     = "cost.json"
 	reviewJSONName   = "review.json"
 	corpusJSONName   = "corpus.json"
+	samplingName     = "corpus_run.json"
 	caseManifestName = "case.json"
 	panelName        = "panel"
 	agentLogName     = "agent.log"

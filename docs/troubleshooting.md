@@ -492,6 +492,12 @@ Cause: a served bundle name resolves to a different directory than the discovere
 
 Fix: address the local bundle explicitly as `local-<name>`, or restore the PR bundle's `PR.json` so the bare name resolves to it.
 
+## `bundle-outdated`
+
+Cause: the bundle was written by an older verdict, in a shape this build no longer reads: a `run.json` without the integrity binding (`requires_evidence` and `inputs_sha256`), a bundle directory with no `run.json` at all (`config preview`), a `findings.json` whose finding `verification` is a bare array of panel results, or a corpus bundle without `corpus_run.json`. Nothing was read, and nothing was written.
+
+Fix: re-create the bundle with this verdict: re-fetch a review bundle (`verdict fetch <pr>`, or `verdict fetch-local`), re-run the review and `record`, or re-run the benchmark with the current `bench/runner`. Then re-run the command.
+
 ## `bundle-unreadable`
 
 Cause: `verdict serve --allow-post` could not fingerprint the bundle for a preview or a confirmed submit, because a bundle file is unreadable or is not a regular file (a FIFO or device is refused without waiting for a writer). Nothing was posted, and a refused submit leaves its preview usable.

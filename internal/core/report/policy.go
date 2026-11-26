@@ -14,8 +14,9 @@ import (
 
 // loadRunPolicy verifies the persisted run bundle for the display
 // floor: a deleted or tampered bundle refuses controls-stale instead
-// of silently rendering everything, while legacy bundles without typed
-// evidence render everything with the gap warned.
+// of silently rendering everything, a bare bundle without typed evidence
+// renders everything with the gap warned, and a run.json an older verdict
+// wrote refuses bundle-outdated.
 func loadRunPolicy(st *state) *core.RefusalError {
 	rs, ref := config.VerifyRunState(st.dir)
 	if ref != nil {
@@ -24,9 +25,6 @@ func loadRunPolicy(st *state) *core.RefusalError {
 	if rs == nil {
 		st.warn("run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors")
 		return nil
-	}
-	if !rs.Verified() {
-		st.warn("typed evidence provenance unavailable (pre-integrity bundle) — stored policy enforced without verified evidence")
 	}
 	st.policy = rs
 	return nil

@@ -28,7 +28,7 @@ func TestConfidenceKeepsFindings(t *testing.T) {
 }
 
 func TestRepostPreservesAndReplaces(t *testing.T) {
-	entry := jq.NewObj("sig", "abc", "status", "open", "verification", []any{jq.NewObj("model", "a", "verdict", "refuted", "evidence", "original counterexample")})
+	entry := jq.NewObj("sig", "abc", "status", "open", "verification", jq.NewObj("quote", "unverified", "panel", []any{jq.NewObj("model", "a", "verdict", "refuted", "evidence", "original counterexample")}))
 	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "b", Model: "b", Verdict: "confirmed", Evidence: "later confirmation"}}})
 	Apply([]any{entry}, &File{})
 	if got, _ := entry.Get("confidence"); got != "contested" {

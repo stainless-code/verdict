@@ -30,18 +30,17 @@ const (
 
 // runPolicy is the typed run bundle loaded for one post: the fetch-time
 // resolution, the root requirements, and the appended check outcomes.
-// Nil when the bundle predates typed policy (legacy runs degrade to no
-// repository requirements instead of refusing, with the gap warned).
+// Nil for a bare bundle with no typed policy (no repository requirements,
+// with the gap warned).
 type runPolicy struct {
 	state *config.RunState
 }
 
 // loadRunPolicy verifies the persisted run bundle through the typed
 // integrity check: a deleted or tampered bundle refuses controls-stale
-// instead of silently degrading to no policy, and a bundle that
-// predates typed evidence warns and proceeds without requirements. A
-// pre-integrity bundle still enforces its stored policy but reports
-// unavailable provenance instead of verified evidence.
+// instead of silently degrading to no policy, a bare bundle with no typed
+// evidence warns and proceeds without requirements, and a run.json an
+// older verdict wrote refuses bundle-outdated.
 func (st *state) loadRunPolicy() *core.RefusalError {
 	rs, ref := config.VerifyRunState(st.dir)
 	if ref != nil {
@@ -50,9 +49,6 @@ func (st *state) loadRunPolicy() *core.RefusalError {
 	if rs == nil {
 		st.warn("run bundle has no typed evidence (pre-typed bundle?) — proceeding without repository requirements")
 		return nil
-	}
-	if !rs.Verified() {
-		st.warn("typed evidence provenance unavailable (pre-integrity bundle) — stored policy enforced without verified evidence")
 	}
 	st.policy = &runPolicy{state: rs}
 	return nil

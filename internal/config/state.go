@@ -71,6 +71,8 @@ const (
 type stateError struct {
 	cause error
 	msg   string
+	// code overrides the operator refusal's bad-config code when set.
+	code string
 	// operator marks failures the repository layout caused: the fix is an
 	// operator edit, not a retry.
 	operator bool
@@ -86,7 +88,11 @@ func (e *stateError) Refusal() *core.RefusalError {
 	if e == nil || !e.operator {
 		return nil
 	}
-	return &core.RefusalError{Code: CodeBadConfig, Message: e.msg}
+	code := CodeBadConfig
+	if e.code != "" {
+		code = e.code
+	}
+	return &core.RefusalError{Code: code, Message: e.msg}
 }
 
 // Unwrap exposes the cause to [errors.Is]/[errors.As].

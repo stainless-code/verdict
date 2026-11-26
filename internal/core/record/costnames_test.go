@@ -448,6 +448,7 @@ func TestPinnedPanelReadsResolvedDefaults(t *testing.T) {
 	dir := t.TempDir()
 	writeCostFile(t, filepath.Join(dir, "run.json"),
 		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+		  "requires_evidence":true,"inputs_sha256":"sealed",
 		  "resolved":{"defaults":{"values":{"panel":["lead","lens-1"]}}}}`)
 	got, conflict := pinnedPanel(dir)
 	if len(got) != 2 || got[0] != "lead" || got[1] != "lens-1" {
@@ -608,6 +609,7 @@ func TestPlanCostNamesAcceptsAgreeingScopes(t *testing.T) {
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), `{"models":[{"input":1},{"input":2}]}`)
 	writeCostFile(t, filepath.Join(dir, "run.json"),
 		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+		  "requires_evidence":true,"inputs_sha256":"sealed",
 		  "resolved":{
 		    "defaults":{"values":{}},
 		    "files":[{"path":"verdict.toml","scopes":["web"],
@@ -701,6 +703,7 @@ func TestPlanCostNamesRefusesScopedPanel(t *testing.T) {
 	writeCostFile(t, filepath.Join(dir, readcommon.CostFile), `{"models":[{"input":1},{"input":2}]}`)
 	writeCostFile(t, filepath.Join(dir, "run.json"),
 		`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+		  "requires_evidence":true,"inputs_sha256":"sealed",
 		  "resolved":{
 		    "defaults":{"values":{"panel":["lead","lens-1"]}},
 		    "files":[{"path":"verdict.toml","scopes":["web"],

@@ -128,16 +128,15 @@ func confidence(results []any) string {
 
 func live(m map[string]any) bool { return m["status"] == "open" || m["status"] == "deferred" }
 
-// storedPanel reads model results from the v2 verification object, while
-// still accepting a legacy array of results.
+// storedPanel reads model results from the verification object. The store
+// readers refuse the bare array an older verdict wrote before it gets here.
 func storedPanel(value any) []any {
-	if obj, ok := object(value); ok {
-		return jq.Elements(obj["panel"])
-	}
-	return jq.Elements(value)
+	obj, _ := object(value)
+	return jq.Elements(obj["panel"])
 }
 
-// Summarize returns live confidence counts, or nil for a legacy store.
+// Summarize returns live confidence counts, or nil when no live finding
+// carries a panel confidence.
 func Summarize(entries []any) *core.PanelSummary {
 	out := &core.PanelSummary{}
 	for _, item := range entries {

@@ -155,6 +155,11 @@ var hintRules = []HintRule{
 			"directory than the discovered one",
 	},
 	{
+		codes: []string{"bundle-outdated"},
+		hint: "try: re-create the bundle with this verdict — re-fetch a review bundle (verdict fetch, " +
+			"or verdict fetch-local), re-run a benchmark bundle — then re-run",
+	},
+	{
 		codes: []string{"bundle-unreadable"},
 		hint: "try: make every bundle file a regular, readable file (a FIFO or device cannot be " +
 			"fingerprinted), then re-run the preview",

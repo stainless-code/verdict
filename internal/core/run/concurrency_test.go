@@ -114,7 +114,7 @@ type concurrentArtifacts struct {
 // the launcher record. The digests move with the bundle's absolute paths and
 // launch timings; the set is the part a fan-in order must never change.
 var boundArtifacts = []string{
-	"PR.json", "context.txt", "full.diff", "hunks.tsv", "procedure.md", "review.json",
+	"PR.json", "context.txt", "controls.json", "full.diff", "hunks.tsv", "procedure.md", "review.json",
 	"roles.txt", "run.json", "source.json", "toc.txt", "verification/plan.json",
 	"x-cross-1/.run.out", "x-cross-1/.run.rounds/01.check.json", "x-cross-1/.run.rounds/01.review.json",
 	"x-cross-1/launcher.json", "x-cross-1/request.json", "x-cross-1/verdicts.json",

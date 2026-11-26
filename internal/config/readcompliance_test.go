@@ -71,19 +71,8 @@ func TestEvaluateReadComplianceTiesPendingToSavedHead(t *testing.T) {
 	}
 }
 
-// TestEvaluateReadComplianceUnknownWithoutVerifiedCapture proves an
-// unverified capture never reads satisfied even with no blockers or pending.
-func TestEvaluateReadComplianceUnknownWithoutVerifiedCapture(t *testing.T) {
-	rs, _ := readComplianceFixture(t, nil)
-	rs.InputsSHA256 = ""
-	got := EvaluateReadCompliance(rs, "aaaaaaa", nil)
-	if !got.Unverified || got.Satisfied() {
-		t.Fatalf("unverified capture = %+v, want unknown and unsatisfied", got)
-	}
-}
-
-// TestEvaluateReadComplianceAbsentPolicyInventsNothing proves a legacy run
-// with no captured requirements reports no policy and stays unsatisfied.
+// TestEvaluateReadComplianceAbsentPolicyInventsNothing proves a run with no
+// captured requirements reports no policy and stays unsatisfied.
 func TestEvaluateReadComplianceAbsentPolicyInventsNothing(t *testing.T) {
 	resolved, ref := Resolve(&Inputs{Files: []FileInput{{Path: "notes.txt"}}})
 	if ref != nil {

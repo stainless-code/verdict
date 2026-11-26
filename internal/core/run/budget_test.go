@@ -286,7 +286,7 @@ func intOf(v any) (int, bool) {
 func TestBudgetAutoEscalatesSensitivePath(t *testing.T) {
 	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json", sensitiveCapture)
+	writeCapture(t, commander.dir, sensitiveCapture)
 	req.FindersRaw = ""
 	req.BudgetRaw = "auto"
 	response, ref := Run(t.Context(), req)
@@ -313,7 +313,7 @@ func TestBudgetAutoEscalatesSensitivePath(t *testing.T) {
 func TestBudgetConfigDefault(t *testing.T) {
 	t.Parallel()
 	root, dir := docsOnlyBundle(t)
-	writeUnder(t, dir, "run.json", budgetCapture)
+	writeCapture(t, dir, budgetCapture)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, commander)
 	req.FindersRaw = ""
@@ -359,7 +359,7 @@ func TestFinderFlagOutranksBudgetFlag(t *testing.T) {
 func TestFinderFlagSkipsCapturedBudget(t *testing.T) {
 	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json", budgetCapture)
+	writeCapture(t, commander.dir, budgetCapture)
 	req.FindersRaw = "2"
 	response, ref := Run(t.Context(), req)
 	if ref != nil {
@@ -382,7 +382,7 @@ func TestFinderFlagSkipsCapturedBudget(t *testing.T) {
 func TestBudgetFlagOutranksCapturedFinders(t *testing.T) {
 	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json",
+	writeCapture(t, commander.dir,
 		`{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
 	req.FindersRaw = ""
 	req.BudgetRaw = "standard"
@@ -403,7 +403,7 @@ func TestBudgetFlagOutranksCapturedFinders(t *testing.T) {
 func TestBudgetRenderingRefusesTwoFinders(t *testing.T) {
 	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json", sensitiveCapture)
+	writeCapture(t, commander.dir, sensitiveCapture)
 	req.BudgetRaw = "auto"
 	req.FindersRaw = ""
 	req.Print = true
@@ -450,7 +450,7 @@ func assertInvalidCapturedBudget(t *testing.T) {
 	t.Helper()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	writeUnder(t, dir, "run.json",
+	writeCapture(t, dir,
 		`{"schema_version":"1","resolved":{"defaults":{"values":{"budget":"fast"}}}}`)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, commander)
@@ -524,7 +524,7 @@ func (r *lineRecorder) Diag(string)       {}
 // measurements, and every reason before the launch costs anything.
 func TestBudgetHumanLineNamesTheDecision(t *testing.T) {
 	req, commander := sizedCoordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json", sensitiveCapture)
+	writeCapture(t, commander.dir, sensitiveCapture)
 	recorder := &lineRecorder{}
 	req.Progress = recorder
 	req.FindersRaw = ""

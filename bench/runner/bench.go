@@ -704,7 +704,12 @@ func (r *runner) writeLoopBundle(ctx context.Context, cr *caseRun, bundle string
 	if err != nil {
 		return err
 	}
+	sampling, err := r.samplingRecord(cr)
+	if err != nil {
+		return err
+	}
 	files := []bundleFile{
+		{samplingName, sampling},
 		{fullDiffName, cr.corpus.diff},
 		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
 		{corpusJSONName, cr.corpus.manifest},
