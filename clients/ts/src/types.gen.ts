@@ -172,6 +172,7 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "coverage-incomplete"
     | "diagram-invalid"
     | "empty-findings-needs-summary"
     | "enum-synonym"

@@ -289,7 +289,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -374,7 +374,10 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	}
 	argv := readArgv(t, argvFile)
 	assertPrintedMatchesSpawned(t, printed, argv)
-	assertArgvPrefix(t, argv, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "opus"})
+	assertArgvPrefix(t, argv, []string{
+		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--allowedTools=Edit(./.verdict/state/local-work/**)",
+		"--model", "opus",
+	})
 }
 
 // TestRunRefusalsWithFakeBinaries covers the six failure modes with a real
@@ -690,10 +693,12 @@ func TestRunAgentFailureCarriesTheAgentsOwnError(t *testing.T) {
 	}
 }
 
-// TestRunTwoFinderPermissionRefusalKeepsClaudeHint covers the default launch:
-// both finders exit 0 without a review, which must stay no-review-artifact so
-// the catalog's printed permission hint still reaches the operator.
-func TestRunTwoFinderPermissionRefusalKeepsClaudeHint(t *testing.T) {
+// TestRunTwoFinderMissingReviewOffersNoBroadClaudeHint covers the default
+// launch: both finders exit 0 without a review, which stays
+// no-review-artifact. Every claude finder already carried its scoped
+// review-write grant, so the refusal must not suggest the broader
+// --permission-mode acceptEdits, which would let the review edit source.
+func TestRunTwoFinderMissingReviewOffersNoBroadClaudeHint(t *testing.T) {
 	f := newFixture(t)
 	f.plantAs(t, "claude", "silent")
 	seedControls(t, f)
@@ -704,7 +709,7 @@ func TestRunTwoFinderPermissionRefusalKeepsClaudeHint(t *testing.T) {
 		t.Fatalf("exit = %d: %s %s", code, out, diag)
 	}
 	if strings.Contains(diag, "review-insufficient") || !strings.Contains(diag, "wrote no") ||
-		!strings.Contains(diag, "--finders 2 -- --permission-mode acceptEdits") {
-		t.Fatalf("diagnostic lost the cause or the hint: %s", diag)
+		strings.Contains(diag, "acceptEdits") {
+		t.Fatalf("diagnostic lost the cause or suggests the broad edit grant: %s", diag)
 	}
 }

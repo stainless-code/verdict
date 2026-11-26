@@ -396,7 +396,7 @@ var publishedSemantics = map[string]string{
 	// loop's wall-clock limit is a timeout (a rename before loopData first
 	// ships): the stop enum value wall-budget becomes timeout and the required
 	// budget_s becomes timeout_s, so "budget" no longer names a duration.
-	"envelope.schema.json": "b5d2e343e0bc5c472fef8ffa373ffb23f2f224be205badf6a6d02afe9a2e83af",
+	"envelope.schema.json": "0fb3cc7b13d5aff00250a241d419900421bcefe929a23e8fad925c6a5ffd3e9c",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

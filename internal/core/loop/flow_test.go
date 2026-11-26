@@ -50,6 +50,12 @@ type agentCommander struct {
 	fixCapped bool
 	// rejectUsage makes the agent refuse the structured-output flag.
 	rejectUsage bool
+	// coverageLate omits coverage[] from the first review attempt, as the
+	// live opencode probe did.
+	coverageLate bool
+	// followsProcedure attests coverage only when the bundle's procedure.md
+	// asks for it, the way an agent following its handoff does.
+	followsProcedure bool
 }
 
 // measuredResult is the json result a measured spawn prints.
@@ -127,11 +133,40 @@ func (a *agentCommander) review(checkout, artifact string) {
 		receipts = "[]"
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
-		`,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":`+receipts+`}`)
+		a.coverage(dir)+`,"receipts":`+receipts+`}`)
 	if (a.measured && !a.selfReportToo) || (a.repairNoCost && a.reviews == 2) {
 		return
 	}
 	write(a.t, filepath.Join(dir, "cost.json"), a.costRecord())
+}
+
+// coverage is the review's attestation field, absent from a first attempt
+// the leg makes late.
+func (a *agentCommander) coverage(dir string) string {
+	if a.followsProcedure {
+		return a.askedCoverage(dir)
+	}
+	if a.coverageLate && a.reviews == 1 {
+		return ""
+	}
+	return `,"coverage":[{"file":"notes.txt","ranges":"1-3"}]`
+}
+
+// askedCoverage is the attestation the bundle's procedure.md asks for —
+// every changed file whole, [] when nothing changed — or none when it asks
+// for none.
+func (a *agentCommander) askedCoverage(dir string) string {
+	procedure, err := os.ReadFile(filepath.Join(dir, "procedure.md"))
+	if err != nil {
+		a.t.Errorf("read procedure.md: %v", err)
+	}
+	if !strings.Contains(string(procedure), "top-level `coverage[]` holds `{\"file\":\"<path>\",\"ranges\":\"all\"}` per changed file, `[]` if none") {
+		return ""
+	}
+	if diff, err := os.ReadFile(filepath.Join(dir, "full.diff")); err != nil || len(diff) == 0 {
+		return `,"coverage":[]`
+	}
+	return `,"coverage":[{"file":"notes.txt","ranges":"all"}]`
 }
 
 // findings is the review's finding list: the changed line until it is
@@ -424,6 +459,74 @@ func flowLoop(t *testing.T, agent *agentCommander, maxCost string) (*Response, s
 		t.Fatalf("loop refused: %v", ref)
 	}
 	return resp, repo
+}
+
+// TestLoopRepairsAReviewThatOmitsCoverage proves the loop's review repairs
+// what its own record step would refuse: the first attempt carries no
+// coverage[], run sends it back with the coverage gap, and the round reaches
+// record and gate instead of stopping refused coverage-incomplete. Every
+// review spawn carries claude's scoped bundle grant and no edit grant; the fix
+// spawn carries the edit grant.
+func TestLoopRepairsAReviewThatOmitsCoverage(t *testing.T) {
+	agent := &agentCommander{t: t, coverageLate: true, reportFixCost: true}
+	resp, _ := flowLoop(t, agent, "")
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
+		t.Fatalf("stop=%s refusal=%+v, want a pass in round 2", resp.Data.Stop, resp.Data.Refusal)
+	}
+	if rd := resp.Data.Rounds[0]; rd.Open == nil || *rd.Open != 1 || rd.Gate == nil || *rd.Gate {
+		t.Errorf("round 1 = open %v gate %v, want record and a failed gate after the repair", rd.Open, rd.Gate)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review,review,fix,review" {
+		t.Errorf("spawns = %s, want the repaired review, the fix, and the re-review", got)
+	}
+	assertSpawnGrants(t, agent)
+}
+
+// assertSpawnGrants proves the edit grant rides the fix spawn alone and the
+// scoped bundle grant every review spawn alone.
+func assertSpawnGrants(t *testing.T, agent *agentCommander) {
+	t.Helper()
+	for i, argv := range agent.argvs {
+		edits := slices.Contains(argv, "--permission-mode")
+		grant := slices.ContainsFunc(argv, func(a string) bool { return strings.HasPrefix(a, "--allowedTools=Edit(") })
+		if fix := agent.spawns[i] == "fix"; edits != fix || grant == fix {
+			t.Errorf("%s argv = %q, want the edit grant only on the fix and the bundle grant only on reviews",
+				agent.spawns[i], argv[:len(argv)-1])
+		}
+	}
+}
+
+// TestLoopPassesWithAnAgentFollowingTheProcedure proves the handoff asks for
+// the attestation the default gate requires: an agent that attests only what
+// its procedure.md asks for fixes the finding and passes, where a procedure
+// that never names coverage[] stops the loop refused coverage-incomplete.
+func TestLoopPassesWithAnAgentFollowingTheProcedure(t *testing.T) {
+	resp, _ := flowLoop(t, &agentCommander{t: t, followsProcedure: true, reportFixCost: true}, "")
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
+		t.Fatalf("stop=%s rounds=%d refusal=%+v, want a pass in round 2",
+			resp.Data.Stop, len(resp.Data.Rounds), resp.Data.Refusal)
+	}
+}
+
+// TestLoopPassesACleanTree proves a tree with nothing to fix passes in round
+// 1 without a fix spawn: the agent attests the empty change as the procedure
+// asks, so the default gate grades coverage as nothing to measure.
+func TestLoopPassesACleanTree(t *testing.T) {
+	repo := flowRepo(t)
+	git(t, repo, "checkout", "--", "notes.txt")
+	t.Chdir(repo)
+	agent := &agentCommander{t: t, followsProcedure: true}
+	resp, ref := Run(t.Context(), flowRequest(t, repo, agent))
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 1 {
+		t.Fatalf("stop=%s rounds=%d refusal=%+v, want a pass in round 1",
+			resp.Data.Stop, len(resp.Data.Rounds), resp.Data.Refusal)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review" {
+		t.Errorf("spawns = %s, want the one review and no fix", got)
+	}
 }
 
 // TestLoopDatedCostIsNotCountedTwice proves the legacy dated cost record,

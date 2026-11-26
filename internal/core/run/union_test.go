@@ -190,6 +190,25 @@ func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
 	}
 }
 
+// TestDiscoveryUnionKeepsAnEmptyAttestation proves `"coverage": []` survives
+// the union: it attests a diff with nothing to read, which the gate passes,
+// where an absent key reads unknown and fails.
+func TestDiscoveryUnionKeepsAnEmptyAttestation(t *testing.T) {
+	t.Parallel()
+	review, _, err := discoveryUnion("test", nil, []*jq.Obj{
+		unionInput(t, `{"coverage":[]}`), unionInput(t, coordinatorReview),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := review.Get("coverage"); !ok || len(jq.Elements(got)) != 0 {
+		t.Fatalf("coverage = %v (present %v), want an empty attestation", got, ok)
+	}
+	if _, ok := review.Get("chunks"); ok {
+		t.Fatal("chunks appeared though no finder attested any")
+	}
+}
+
 // TestDiscoveryUnionKeepsReproductionFromTheDuplicate proves a reproduced
 // finding keeps the reproduction it was reported with: the artifact is what
 // record captures, so a merge that keeps the tuple but drops the payload stores

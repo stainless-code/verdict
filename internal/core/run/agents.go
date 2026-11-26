@@ -1,10 +1,12 @@
 package run
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/config"
 )
 
 // modelFlag is the argument every shipped row takes a model name on; a row
@@ -94,15 +96,108 @@ func argvPrefixLen(def *agentcatalog.Launch, model string, restriction []string)
 // spelling suppresses it rather than riding beside it, so one argv never holds
 // two answers to the same question.
 func discoveryRestriction(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
-	if allowShell || len(def.DiscoveryArgs) == 0 {
+	if allowShell || len(def.DiscoveryArgs) == 0 || operatorDecidesTools(def, passthrough) {
 		return nil
 	}
+	return slices.Clone(def.DiscoveryArgs)
+}
+
+// operatorDecidesTools reports whether the operator's pass-through already
+// spells one of the row's tool-permission flags. Only the `--` tail counts:
+// the restriction and the review grant verdict adds are never in it.
+func operatorDecidesTools(def *agentcatalog.Launch, passthrough []string) bool {
 	for _, arg := range passthrough {
 		if name, _, _ := strings.Cut(arg, "="); slices.Contains(def.DiscoveryOverrideFlags, name) {
-			return nil
+			return true
 		}
 	}
-	return slices.Clone(def.DiscoveryArgs)
+	return false
+}
+
+// reviewGrant is the row's scoped review-write grant for one launch whose
+// artifacts land in dir: nil when the row documents none, when the
+// operator's `--` tail decides tool permissions itself, or when dir cannot
+// be spelled as a rule path (the launch then runs as before, and a missing
+// review refuses no-review-artifact).
+func reviewGrant(def *agentcatalog.Launch, passthrough []string, cwd, dir string) []string {
+	if len(def.ReviewWriteArgs) == 0 || operatorDecidesTools(def, passthrough) {
+		return nil
+	}
+	path, ok := rulePath(cwd, dir)
+	if !ok {
+		return nil
+	}
+	grant := make([]string, 0, len(def.ReviewWriteArgs))
+	for _, arg := range def.ReviewWriteArgs {
+		grant = append(grant, strings.ReplaceAll(arg, agentcatalog.ReviewDir, path))
+	}
+	return grant
+}
+
+// rulePathSafe is every byte a rule path may carry: anything else (a glob
+// metacharacter, a parenthesis, a comma or a space the flag splits on) would
+// widen or break the rule, so such a directory gets no grant.
+const rulePathSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./~@+="
+
+// rulePath spells dir as a Claude Code permission-rule path from the agent's
+// working directory cwd: `./<rel>` inside it, `//<abs>` outside it, with a
+// Windows drive in the POSIX form rules match (C:\x is //c/x).
+func rulePath(cwd, dir string) (string, bool) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return "", false
+	}
+	path, inside := relativeRulePath(cwd, absDir)
+	if path == "" && !inside {
+		path = absoluteRulePath(absDir)
+	}
+	if path == "" || strings.Trim(path, rulePathSafe) != "" {
+		return "", false
+	}
+	return path, true
+}
+
+// relativeRulePath is absDir as `./<rel>` when it lies under cwd. inside is
+// true for cwd itself, which gets no path: a grant there is the whole tree.
+func relativeRulePath(cwd, absDir string) (path string, inside bool) {
+	absCwd, err := filepath.Abs(cwd)
+	if err != nil {
+		return "", false
+	}
+	rel, err := filepath.Rel(absCwd, absDir)
+	switch {
+	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
+		return "", false
+	case rel == ".":
+		return "", true
+	}
+	return "./" + filepath.ToSlash(rel), true
+}
+
+// absoluteRulePath is an absolute directory in the rule's `//` form, "" for
+// a volume the rule syntax has no spelling for (a UNC share).
+func absoluteRulePath(abs string) string {
+	vol := filepath.VolumeName(abs)
+	switch {
+	case vol == "":
+		return "/" + filepath.ToSlash(abs)
+	case len(vol) == 2 && vol[1] == ':':
+		return "//" + strings.ToLower(vol[:1]) + filepath.ToSlash(abs[len(vol):])
+	}
+	return ""
+}
+
+// EditArgs is the edit grant the named agent's row documents: the shipped
+// row's EditArgs, nil for a prefs-defined agent (its definition declares no
+// grant) and for an unknown name. The self-review loop appends it to every
+// spawn unless the operator passed their own agent arguments.
+func EditArgs(name string, agents []config.PersonalAgent) []string {
+	st := &state{defs: agents}
+	def, ok := st.lookupAgent(name)
+	if !ok {
+		return nil
+	}
+	return slices.Clone(def.EditArgs)
 }
 
 // knownAgents renders the known-name list for a refusal message.

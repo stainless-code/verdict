@@ -1,6 +1,7 @@
 package agentcatalog
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -191,5 +192,63 @@ func checkDiscoveryManualRow(t *testing.T, manual string, agent Agent) {
 	}
 	if !strings.Contains(row, agent.Launch.DiscoveryCitation) {
 		t.Fatalf("%s discovery row cites no source: %s", agent.Name, row)
+	}
+}
+
+// TestGrantsAreScopedAndCited pins the two grants verdict adds on its own: the
+// loop's fix-phase edit grant and run's review-write grant. Exactly the rows
+// whose docs name an equally scoped flag carry one, each cites its doc, and
+// no grant is an approval or sandbox bypass — agy's documented hint is one,
+// so it must never be reused as a grant.
+func TestGrantsAreScopedAndCited(t *testing.T) {
+	t.Parallel()
+	edit, review := map[string][]string{}, map[string][]string{}
+	for _, agent := range All() {
+		l := agent.Launch
+		if l == nil {
+			continue
+		}
+		assertNoBypass(t, agent.Name, slices.Concat(l.EditArgs, l.ReviewWriteArgs))
+		collectGrant(t, edit, agent.Name, "EditArgs", l.EditArgs, l.EditCitation)
+		collectGrant(t, review, agent.Name, "ReviewWriteArgs", l.ReviewWriteArgs, l.ReviewWriteCitation)
+	}
+	wantEdit := map[string][]string{
+		"claude": {"--permission-mode", "acceptEdits"},
+		"codex":  {"--sandbox", "workspace-write"},
+	}
+	wantReview := map[string][]string{"claude": {"--allowedTools=Edit({review-dir}/**)"}}
+	if fmt.Sprint(edit) != fmt.Sprint(wantEdit) {
+		t.Errorf("EditArgs rows = %v, want %v", edit, wantEdit)
+	}
+	if fmt.Sprint(review) != fmt.Sprint(wantReview) {
+		t.Errorf("ReviewWriteArgs rows = %v, want %v", review, wantReview)
+	}
+}
+
+// bypassWords are the spellings of an approval or sandbox bypass; no grant may
+// carry one.
+var bypassWords = []string{"dangerous", "skip-permissions", "yolo", "bypass", "danger-full-access", "full-auto", "allow-all"}
+
+// assertNoBypass fails on a grant argument that spells a bypass.
+func assertNoBypass(t *testing.T, name string, args []string) {
+	t.Helper()
+	for _, arg := range args {
+		for _, word := range bypassWords {
+			if strings.Contains(strings.ToLower(arg), word) {
+				t.Errorf("%s grants %q, a bypass (%s)", name, arg, word)
+			}
+		}
+	}
+}
+
+// collectGrant records one row's grant and fails when it cites no doc.
+func collectGrant(t *testing.T, into map[string][]string, name, field string, args []string, citation string) {
+	t.Helper()
+	if len(args) == 0 {
+		return
+	}
+	into[name] = args
+	if citation == "" {
+		t.Errorf("%s declares %s without a citation", name, field)
 	}
 }

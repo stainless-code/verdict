@@ -41,10 +41,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		repo := lp.req.Repo
 		steps = append(steps,
 			PlanStep{Round: n, Phase: PhaseFetch, When: whenAlways, Argv: []string{verbName, "fetch-local", repo, name}},
-			PlanStep{Round: n, Phase: PhaseReview, When: whenAlways, Argv: []string{
-				verbName, "run", repo, local, "--agent", lp.req.Agent, "--finders", findersOne,
-				"--rounds", strconv.Itoa(reviewAttempts), "--timeout", reviewTimeout,
-			}},
+			PlanStep{Round: n, Phase: PhaseReview, When: whenAlways, Argv: lp.reviewArgv(repo, local, reviewTimeout)},
 			PlanStep{Round: n, Phase: PhaseRecord, When: whenAlways, Argv: []string{
 				verbName, "record", repo, local, "--require-coverage",
 			}},
@@ -73,6 +70,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 func (lp *loop) fixArgv(ctx context.Context, n int, timeout string) ([]string, *core.RefusalError) {
 	b := lp.bundle(n)
 	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: timeout}, nil)
+	req.PassThrough = lp.req.fixArgs()
 	req.Print = true
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), b.Pr)
 	// The plan is the exact argv: the fix spawn requests the CLI's
@@ -80,6 +78,19 @@ func (lp *loop) fixArgv(ctx context.Context, n int, timeout string) ([]string, *
 	req.MeasureSpend = true
 	out, ref := runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
 	return out.Argv, ref
+}
+
+// reviewArgv is the review step's CLI equivalent: one finder, the repair
+// rounds, coverage required, and the operator's `--` tail when they passed one.
+func (lp *loop) reviewArgv(repo, local, timeout string) []string {
+	argv := []string{
+		verbName, "run", repo, local, "--agent", lp.req.Agent, "--finders", findersOne,
+		"--rounds", strconv.Itoa(reviewAttempts), "--timeout", timeout, "--require-coverage",
+	}
+	if len(lp.req.AgentArgs) > 0 {
+		argv = append(append(argv, "--"), lp.req.AgentArgs...)
+	}
+	return argv
 }
 
 // verifyArgv is the verify step's CLI equivalent, with the sandbox the

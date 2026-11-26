@@ -50,18 +50,21 @@ const (
 	findersFlag    = "--finders"
 	budgetFlag     = "--budget"
 	allowShellFlag = "--allow-shell"
+	coverageFlag   = "--require-coverage"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
 	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
-	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --print, -- <agent args>, --json"
+	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --require-coverage, --print, " +
+	"-- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--allow-shell]
-// [--print] [-- <agent args>...] [--json]`, returning the process exit code. A
-// non-zero agent exit is preserved as this process's exit code after the typed
-// refusal is rendered, so CI surfaces the real failure.
+// [--require-coverage] [--print] [-- <agent args>...] [--json]`, returning
+// the process exit code. A non-zero agent exit is preserved as this process's
+// exit code after the typed refusal is rendered, so CI surfaces the real
+// failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -136,6 +139,7 @@ func runRequest(r *cli.Runner, req *readcommon.Request, flags *flags) *core.RunR
 		Print:             flags.print,
 		Resume:            flags.resume,
 		AllowShell:        flags.allowShell,
+		RequireCoverage:   flags.requireCoverage,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
 		Warnings:          append([]string{}, r.Warnings...),
@@ -171,6 +175,8 @@ type flags struct {
 	resume     bool
 	allowShell bool
 	roundsSet  bool
+	// requireCoverage is record --require-coverage carried into the launch.
+	requireCoverage bool
 }
 
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
@@ -215,6 +221,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return i, 0, false
 	case allowShellFlag:
 		f.allowShell = true
+		return i, 0, false
+	case coverageFlag:
+		f.requireCoverage = true
 		return i, 0, false
 	case "--print":
 		f.print = true
@@ -300,7 +309,7 @@ func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
 // this line exactly as typed — a refusal names the value it could not read —
 // and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
-	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f) + allowShellTail(f)
+	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f) + allowShellTail(f) + coverageTail(f)
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -350,12 +359,18 @@ func quoteArg(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }
 
+// addPermissionHint names the row's documented permission flag when the agent
+// wrote no review. A row that carries a scoped review-write grant already
+// had it on this launch (no `--` tail can have dropped it here), so its
+// broader flag would grant edits the review never needed: no hint.
+// (A checkout path the rule syntax cannot spell launches without it; the
+// operator's own `-- --allowedTools=...` covers that case.)
 func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags) {
 	if ref.Code != "no-review-artifact" || len(f.pass) != 0 {
 		return
 	}
 	row, ok := agentcatalog.Lookup(f.agent)
-	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" {
+	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" || len(row.Launch.ReviewWriteArgs) != 0 {
 		return
 	}
 	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
@@ -373,6 +388,15 @@ func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	}
 	f.finders = value
 	return next, 0, false
+}
+
+// coverageTail renders --require-coverage for the re-entry line when the
+// invocation asked for it.
+func coverageTail(f *flags) string {
+	if !f.requireCoverage {
+		return ""
+	}
+	return " " + coverageFlag
 }
 
 // resumeTail renders --resume for the re-entry line when the invocation asked

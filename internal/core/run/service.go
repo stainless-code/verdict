@@ -194,6 +194,8 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	args.grant = reviewGrant(def, st.req.PassThrough, st.workDir(), target.output)
+	args.coverage = st.req.RequireCoverage && target.artifact == reviewFile
 	args.usage = st.usageArgs(def)
 	artifact := st.promptPath(args.abs, args.artifact)
 	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
@@ -219,6 +221,9 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 		a.prompt = drainDirective(req.Repo, req.Pr, bundle, artifact, st.drainDigest)
 	case a.staged == nil:
 		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan)
+		if a.coverage {
+			a.prompt += "\n" + coverageParagraph + "\n"
+		}
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
 	}
@@ -510,10 +515,18 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
+	// grant is the row's review-write grant scoped to this launch's output
+	// directory, nil when none applies (see reviewGrant).
+	grant []string
 	// usage is the structured-output request this launch carries, nil when
 	// it measures nothing.
 	usage   []string
 	timeout int
+	// coverage adds record --require-coverage's gate to this launch's check:
+	// set on the review artifacts (the one-finder review and each finder's,
+	// all named review.json) when the request asks for it, never on a
+	// cross-check or a drain.
+	coverage bool
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a
@@ -939,6 +952,10 @@ func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.Re
 	if checkRef != nil {
 		return checkRef
 	}
+	if ref := coverageRefusal(check, ""); ref != nil {
+		return ref
+	}
+	check = withoutCoverage(check)
 	if ref := recordcore.ReviewRefusal(check, false); ref != nil {
 		return ref
 	}
@@ -1165,14 +1182,21 @@ func inspectArtifact(path string, launched time.Time) artifactState {
 }
 
 func (a *launchArgs) checkReview(review []byte) (recordcore.CheckResult, *core.RefusalError) {
-	if a.target.checker != nil {
-		return a.target.checker(a.target.evidence, review)
-	}
 	dir := a.target.evidence
 	if dir == "" {
 		dir = a.dir
 	}
-	return repair.Check(dir, review)
+	var check recordcore.CheckResult
+	var ref *core.RefusalError
+	if a.target.checker != nil {
+		check, ref = a.target.checker(a.target.evidence, review)
+	} else {
+		check, ref = repair.Check(dir, review)
+	}
+	if ref != nil || !a.coverage {
+		return check, ref
+	}
+	return withCoverage(dir, review, check), nil
 }
 
 func (st *state) phaseSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {

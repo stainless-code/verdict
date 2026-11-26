@@ -240,7 +240,7 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 		t.Fatalf("run refused: %v", ref)
 	}
 	want := []string{
-		"claude", "-p", "--output-format", "json", discoveryFlag,
+		"claude", "-p", "--output-format", "json", discoveryFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
 		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
 	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {

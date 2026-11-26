@@ -118,7 +118,7 @@ func usageFlag(args []string) string {
 // pass-through: the structured-output request, then the discovery
 // restriction.
 func (a *launchArgs) fixed() []string {
-	return append(slices.Clone(a.usage), a.restriction...)
+	return append(append(slices.Clone(a.usage), a.restriction...), a.grant...)
 }
 
 // spawnAgent runs one agent process for prompt, tapping its stdout when the

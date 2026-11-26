@@ -31,6 +31,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
+	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -130,6 +131,10 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Output string
 	// FixPrompt replaces the built-in fix instructions when non-empty.
 	FixPrompt string
+	// AgentArgs is the operator's `--` tail, passed to every spawn. When it
+	// is non-empty the fix spawn carries it instead of the row's edit grant:
+	// the operator owns the agent's permissions.
+	AgentArgs []string
 	// Print renders the plan and spawns nothing.
 	Print bool
 	// VerifySandbox and VerifySandboxNetworkOnly pass `verify --sandbox` and
@@ -465,8 +470,9 @@ func (lp *loop) review(
 	}
 	launch := reviewflow.Launch{
 		Agent: lp.req.Agent, FindersRaw: findersOne,
-		TimeoutRaw: strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
-		RoundsRaw:  strconv.Itoa(reviewAttempts),
+		TimeoutRaw:      strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
+		RoundsRaw:       strconv.Itoa(reviewAttempts),
+		RequireCoverage: true,
 	}
 	warnings, ref := lp.ph.review(dctx, b, launch, dir, lp.name(n)+"-review")
 	lp.warnAll(warnings)
@@ -513,6 +519,16 @@ func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, 
 		return "", nil
 	}
 	return lp.verifyFix(ctx, dctx, rd, b)
+}
+
+// fixArgs is the fix spawn's agent arguments: the operator's `--` tail when
+// they passed one, else the row's documented edit grant — the fix edits the
+// working tree, which a default-mode agent CLI refuses non-interactively.
+func (r *Request) fixArgs() []string {
+	if len(r.AgentArgs) > 0 {
+		return r.AgentArgs
+	}
+	return runcore.EditArgs(r.Agent, r.Flow.Agents)
 }
 
 // verifyFix runs verify on the command the fix declared and keeps its

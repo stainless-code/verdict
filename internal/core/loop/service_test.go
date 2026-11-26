@@ -688,15 +688,18 @@ func TestLoopPrintPlansWithoutRunning(t *testing.T) {
 	const local = "local-loop-20261125t101500z-496a8b-1"
 	assertPlanArgv(t, resp.Data.Plan, map[int][]string{
 		0: {"verdict", "fetch-local", "acme/app", "loop-20261125t101500z-496a8b-1"},
-		1: {"verdict", "run", "acme/app", local, "--agent", "claude", "--finders", "1", "--rounds", "2", "--timeout", "300"},
+		1: {
+			"verdict", "run", "acme/app", local, "--agent", "claude", "--finders", "1", "--rounds", "2", "--timeout", "300",
+			"--require-coverage",
+		},
 		2: {"verdict", "record", "acme/app", local, "--require-coverage"},
 		3: {"verdict", "gate", "acme/app", local, "--max-severity", "informational", "--coverage", "require", "--live", "skip"},
 		5: {"verdict", "verify", "acme/app", local, "--timeout", "300"},
 	})
 	fix := resp.Data.Plan[4].Argv
-	if len(fix) != 5 || !slices.Equal(fix[:4], []string{"claude", "-p", "--output-format", "json"}) ||
-		!strings.HasPrefix(fix[4], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
-		t.Errorf("fix argv = %q, want the claude row, its json output request, and the fix directive", fix)
+	if len(fix) != 7 || !slices.Equal(fix[:6], []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits"}) ||
+		!strings.HasPrefix(fix[6], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
+		t.Errorf("fix argv = %q, want the claude row, its json output request, its edit grant, and the fix directive", fix)
 	}
 	if _, err := os.Stat(filepath.Join(h.req.RepoRoot, ".verdict")); err == nil {
 		t.Error("--print wrote under the checkout")
@@ -722,6 +725,49 @@ func assertPlanArgv(t *testing.T, plan []PlanStep, want map[int][]string) {
 		if got := plan[i].Argv; !slices.Equal(got, argv) {
 			t.Errorf("plan[%d] = %q, want %q", i, got, argv)
 		}
+	}
+}
+
+// TestLoopPlanGrantsEditsToTheFixOnly pins each row's planned review and fix
+// argv: the review step is run with coverage required and no edit grant (run
+// adds its own scoped review grant), the fix spawn carries the row's
+// documented edit flag, a row without one gets none, and the operator's `--`
+// tail reaches both spawns and replaces the fix's grant.
+func TestLoopPlanGrantsEditsToTheFixOnly(t *testing.T) {
+	t.Parallel()
+	const local = "local-loop-20261125t101500z-496a8b-1"
+	review := []string{
+		"verdict", "run", "acme/app", local, "--agent", "", "--finders", "1", "--rounds", "2",
+		"--timeout", "300", "--require-coverage",
+	}
+	for _, tc := range []struct {
+		name   string
+		agent  string
+		pass   []string
+		review []string
+		fix    []string
+	}{
+		{name: "claude", agent: "claude", fix: []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits"}},
+		{name: "codex", agent: "codex", fix: []string{"codex", "exec", "--json", "--sandbox", "workspace-write"}},
+		{name: "opencode", agent: "opencode", fix: []string{"opencode", "run", "--format", "json"}},
+		{
+			name: "operator args replace the grant", agent: "claude", pass: []string{"--model", "opus"},
+			review: []string{"--", "--model", "opus"},
+			fix:    []string{"claude", "-p", "--output-format", "json", "--model", "opus"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := newHarness(t, 2)
+			h.req.Print, h.req.Output, h.req.Agent, h.req.AgentArgs = true, "/plan/receipts", tc.agent, tc.pass
+			plan := h.run(t).Data.Plan
+			want := slices.Clone(review)
+			want[5] = tc.agent
+			assertPlanArgv(t, plan, map[int][]string{1: append(want, tc.review...)})
+			if fix := plan[4].Argv; !slices.Equal(fix[:len(fix)-1], tc.fix) {
+				t.Errorf("fix argv = %q, want %q and the directive", fix[:len(fix)-1], tc.fix)
+			}
+		})
 	}
 }
 

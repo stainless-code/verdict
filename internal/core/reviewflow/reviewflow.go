@@ -71,6 +71,8 @@ type Launch struct {
 	TimeoutRaw string
 	// RoundsRaw is run's --rounds; empty keeps run's default.
 	RoundsRaw string
+	// RequireCoverage is run's --require-coverage.
+	RequireCoverage bool
 }
 
 // RecordOptions selects the record posture.
@@ -154,11 +156,13 @@ func (f *Flow) RunRequest(b *Bundle, l Launch, warnings []string) *core.RunReque
 		TimeoutRaw:  l.TimeoutRaw,
 		RoundsRaw:   l.RoundsRaw,
 		Checkout:    b.Checkout,
-		LookPath:    f.LookPath,
-		Environ:     f.Environ,
-		JSONMode:    f.JSONMode,
-		Warnings:    warnings,
-		SpendPolicy: f.SpendPolicy,
+
+		RequireCoverage: l.RequireCoverage,
+		LookPath:        f.LookPath,
+		Environ:         f.Environ,
+		JSONMode:        f.JSONMode,
+		Warnings:        warnings,
+		SpendPolicy:     f.SpendPolicy,
 	}
 }
 

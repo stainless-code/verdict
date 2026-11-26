@@ -60,18 +60,21 @@ const (
 
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
 		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
-		"--sandbox-network-only, --print, --json)"
+		"--sandbox-network-only, --print, -- <agent args>, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
 // flags is the parsed loop surface.
 type flags struct {
-	agent      string
-	maxRounds  string
-	maxCost    string
-	timeout    string
-	output     string
-	fixPrompt  string
+	agent     string
+	maxRounds string
+	maxCost   string
+	timeout   string
+	output    string
+	fixPrompt string
+	// pass is everything after `--`, verbatim: the agent arguments every
+	// spawn carries.
+	pass       []string
 	print      bool
 	sandbox    bool
 	sandboxNet bool
@@ -80,7 +83,7 @@ type flags struct {
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
 // [--max-cost-usd <usd>] [--timeout <duration>] [--output <dir>]
 // [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
-// [--json]`.
+// [-- <agent args>...] [--json]`.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, ""
 	// The summary owns stdout; every composed verb's progress goes to the
@@ -158,6 +161,7 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 		MaxCostUSD: f.maxCost,
 		Output:     output,
 		FixPrompt:  prompt,
+		AgentArgs:  f.pass,
 		Print:      f.print,
 
 		VerifySandbox:            f.sandbox,
@@ -254,10 +258,15 @@ func outputDir(raw string) (string, *core.RefusalError) {
 }
 
 // parseFlags strips loop's flags, refusing unknown ones and any positional
-// past the repo (exit 2).
+// past the repo (exit 2). Every argument after a bare `--` is the agent's,
+// passed through unchanged, as for run.
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout}
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			f.pass = append([]string{}, args[i+1:]...)
+			break
+		}
 		next, uerr := parseToken(&f, args, i)
 		if uerr != nil {
 			return f, r.ReportUsage(uerr), true
@@ -378,7 +387,10 @@ func render(w io.Writer, d *loopcore.Data) {
 	}
 	fmt.Fprintln(w, untrusted.Line(outcomeLine(d)))
 	if d.Refusal != nil {
-		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, d.Refusal.Message))
+		// A composed verb's message may already lead with its code (record's
+		// coverage-incomplete does); the line names the code once.
+		msg := strings.TrimPrefix(d.Refusal.Message, d.Refusal.Code+": ")
+		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, msg))
 	}
 }
 

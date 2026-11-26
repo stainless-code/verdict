@@ -27,28 +27,51 @@ type MCP struct {
 
 // Launch describes one non-interactive invocation.
 type Launch struct {
-	Usage                  *Usage
-	KeyEnvCitation         string
-	Citation               string
-	Name                   string
-	Binary                 string
-	Install                string
-	ModelFlag              string
-	PromptFlag             string
-	Source                 string
-	PermissionHint         string
-	KeyEnv                 string
-	PermissionCitation     string
-	LaunchWarning          string
-	ProbeMatch             string
-	DiscoveryCitation      string
-	ResumeCitation         string
+	Usage              *Usage
+	KeyEnvCitation     string
+	Citation           string
+	Name               string
+	Binary             string
+	Install            string
+	ModelFlag          string
+	PromptFlag         string
+	Source             string
+	PermissionHint     string
+	KeyEnv             string
+	PermissionCitation string
+	LaunchWarning      string
+	ProbeMatch         string
+	DiscoveryCitation  string
+	ResumeCitation     string
+	// EditCitation is the doc that states EditArgs.
+	EditCitation string
+	// ReviewWriteCitation is the doc that states ReviewWriteArgs' rule syntax.
+	ReviewWriteCitation    string
 	ProbeArgs              []string
 	DiscoveryArgs          []string
 	ResumeArgs             []string
 	DiscoveryOverrideFlags []string
 	Args                   []string
+	// EditArgs is the documented flag set that lets the CLI write files in its
+	// working directory non-interactively without granting the shell or
+	// skipping permission checks. Only `verdict loop` applies it, to its fix
+	// spawn — whose contract is editing the working tree — and an operator's
+	// own `--` arguments replace it. A row with no equally scoped flag leaves
+	// it and EditCitation empty: an approval bypass is never an edit grant.
+	EditArgs []string
+	// ReviewWriteArgs is the documented grant that lets a review launch write
+	// its artifacts without a prompt, scoped to the launch's own output
+	// directory: [ReviewDir] in each argument is replaced by that directory as
+	// the CLI's rule path. verdict run adds it to every review launch unless
+	// the operator's `--` arguments already decide tool permissions (a
+	// DiscoveryOverrideFlags spelling). A row without an equally scoped
+	// option leaves both it and ReviewWriteCitation empty.
+	ReviewWriteArgs []string
 }
+
+// ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
+// output directory.
+const ReviewDir = "{review-dir}"
 
 // Usage describes one CLI's structured output that carries its run's cost or
 // token usage. Args request it (the first one is the flag an operator's own
@@ -83,6 +106,11 @@ const modelFlag = "--model"
 const (
 	docBobShell  = "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive"
 	docClaudeCLI = "https://code.claude.com/docs/en/cli-reference.md"
+	// docClaudePermissions states the Edit rule syntax: Edit rules cover every
+	// built-in file-editing tool, `./path` is relative to the working
+	// directory, `//path` is absolute (a Windows path in its /c/... form),
+	// and `**` crosses directories — read 2026-11-26.
+	docClaudePermissions = "https://code.claude.com/docs/en/permissions"
 	// docClaudeHeadless states the json output's result object, including
 	// total_cost_usd and the final text in result — read 2026-11-25.
 	docClaudeHeadless = "https://code.claude.com/docs/en/headless"
@@ -210,9 +238,15 @@ var catalog = []Agent{
 			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
 			PermissionCitation: docClaudeCLI,
-			KeyEnv:             "ANTHROPIC_API_KEY",
-			KeyEnvCitation:     docClaudeCLI,
-			Binary:             nameClaude, ModelFlag: modelFlag,
+			EditArgs:           []string{"--permission-mode", "acceptEdits"},
+			EditCitation:       docClaudeCLI,
+			// The joined `=` form, like the discovery restriction: the
+			// separated form would swallow the directive as a rule.
+			ReviewWriteArgs:     []string{"--allowedTools=Edit(" + ReviewDir + "/**)"},
+			ReviewWriteCitation: docClaudePermissions,
+			KeyEnv:              "ANTHROPIC_API_KEY",
+			KeyEnvCitation:      docClaudeCLI,
+			Binary:              nameClaude, ModelFlag: modelFlag,
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c"},
 			ResumeCitation: docClaudeCLI,
@@ -286,6 +320,8 @@ var catalog = []Agent{
 			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
 			PermissionCitation: docCodexReadme,
+			EditArgs:           []string{"--sandbox", "workspace-write"},
+			EditCitation:       docCodexReadme,
 			KeyEnv:             "OPENAI_API_KEY",
 			KeyEnvCitation:     docCodexReadme,
 			Binary:             nameCodex, ModelFlag: modelFlag,
@@ -818,6 +854,8 @@ func All() []Agent {
 			v.ProbeArgs = slices.Clone(v.ProbeArgs)
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
+			v.EditArgs = slices.Clone(v.EditArgs)
+			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			a.Launch = &v
 		}
 		if a.Skills != nil {

@@ -1,11 +1,13 @@
 package recordcore
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
@@ -46,6 +48,32 @@ func (st *state) evaluateCoverage() error {
 		return nil
 	}
 	return st.coverageGate(&sum)
+}
+
+// CoverageGate is record --require-coverage's refusal for one bundle and its
+// raw review bytes, nil when record would accept the attestation: the same
+// normalization, evaluator, and gate record runs, so `run --require-coverage`
+// can repair what record would refuse. A document that does not decode to an
+// object is the shape check's to report, so it passes here.
+func CoverageGate(dir string, review []byte) *core.RefusalError {
+	normalized, _ := NormalizeReview(review)
+	obj, ok := normalizedObject(normalized).(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	sum, _, ref := coverage.Evaluate(dir, obj, readcommon.Generated)
+	if ref != nil {
+		return ref
+	}
+	if sum.Chunked {
+		return nil
+	}
+	if err := (&state{}).coverageGate(&sum); err != nil {
+		if gate, ok := errors.AsType[*core.RefusalError](err); ok {
+			return gate
+		}
+	}
+	return nil
 }
 
 // coverageGate is the opt-in requirement itself, kept apart from the evaluator

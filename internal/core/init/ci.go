@@ -415,7 +415,10 @@ type renderOptions struct {
 	keySecret  string
 	modelFlag  string
 	permission string
-	install    string
+	// reviewGrant is the scoped review-write grant verdict run adds for this
+	// agent itself, rendered for a PR bundle; "" when the row has none.
+	reviewGrant string
+	install     string
 	// keyDocumented reports whether the catalog row names the variable the
 	// agent reads. A row that names none reads the operator's secret name
 	// directly, so a GitLab render records that name instead of inventing an
@@ -522,6 +525,7 @@ func wiredOptions(agent, keySecret string) (renderOptions, *core.RefusalError) {
 		keyDocumented: row.Launch.KeyEnv != "",
 		modelFlag:     firstNonEmpty(row.Launch.ModelFlag, defaultModelFlag),
 		permission:    row.Launch.PermissionHint,
+		reviewGrant:   reviewGrant(row.Launch),
 		install:       row.Launch.Install,
 	}, nil
 }
@@ -585,12 +589,29 @@ func runnerHint(opts *renderOptions, indent string) string {
 
 // permissionComment is the agent's documented permission flag as a comment:
 // verdict never bakes a permission bypass into the agent's argv (STA-463).
-func permissionComment(hint, indent string) string {
-	if hint == "" {
+// The one grant it does add, a write scoped to the review bundle, is named so
+// the workflow reader sees every permission the step carries.
+func permissionComment(opts *renderOptions, indent string) string {
+	hint := opts.permission
+	switch {
+	case opts.reviewGrant != "":
+		return indent + "# verdict adds only a write scoped to the review bundle (" + opts.reviewGrant + ");\n" +
+			indent + "# this agent's broader documented flag, " + hint + ", stays yours to append inside agent_args.\n"
+	case hint == "":
 		return indent + "# This agent has no documented permission flag.\n"
 	}
 	return indent + "# verdict never bakes a permission flag: this agent's documented one is " +
 		hint + ",\n" + indent + "# appended by you inside agent_args when the run needs it.\n"
+}
+
+// reviewGrant renders the row's review-write grant for a PR bundle, as
+// verdict run spells it from the repository root.
+func reviewGrant(launch *agentcatalog.Launch) string {
+	parts := make([]string, 0, len(launch.ReviewWriteArgs))
+	for _, arg := range launch.ReviewWriteArgs {
+		parts = append(parts, strings.ReplaceAll(arg, agentcatalog.ReviewDir, "./.verdict/state/<pr>"))
+	}
+	return strings.Join(parts, " ")
 }
 
 // renderWorkflow renders the every-PR workflow: pinned checkout and install
@@ -602,7 +623,7 @@ func renderWorkflow(ci *ciProvider, opts *renderOptions) []byte {
 		skillEnv(opts), opts.skillAgent,
 		ci.vars.repository, ci.vars.pr, ci.vars.hostEnv, ci.vars.fetchFlag,
 		ci.vars.readyStep, opts.agent, ci.vars.agentClear, opts.keyEnv, opts.keySecret,
-		runnerHint(opts, githubRunIndent), permissionComment(opts.permission, githubRunIndent),
+		runnerHint(opts, githubRunIndent), permissionComment(opts, githubRunIndent),
 		opts.modelFlag, ci.vars.events, ci.vars.concurrencyGroup, ci.vars.concurrencyNote,
 	)
 	return append([]byte(ci.header()), body...)
@@ -708,7 +729,7 @@ func renderGitLabWorkflow(ci *ciProvider, opts *renderOptions) []byte {
 	body := fmt.Appendf(nil, gitlabWorkflowTemplate,
 		ci.vars.repository, ci.vars.pr, opts.agent, gitlabVariables(opts),
 		SetupVerdictPin, skillEnv(opts), ci.vars.fetchFlag,
-		runnerHint(opts, gitlabRunIndent), permissionComment(opts.permission, gitlabRunIndent),
+		runnerHint(opts, gitlabRunIndent), permissionComment(opts, gitlabRunIndent),
 		opts.modelFlag,
 	)
 	return append([]byte(ci.header()), body...)

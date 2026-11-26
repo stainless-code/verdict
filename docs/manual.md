@@ -21,7 +21,9 @@ verdict fetch owner/repo 123
 #    of refs/ files to pull on demand; an installed skill may be older):
 #    Point the agent at .verdict/state/123/. It writes review.json FIRST with
 #    {"schema_version":"1","findings":[]}, reads full.diff fully via toc.txt,
-#    then updates that same file with every suspected finding and its confidence.
+#    then updates that same file with every suspected finding and its confidence,
+#    plus the coverage[] attestation of what it read (chunks[] when chunked) that
+#    the default gate requires.
 #    refs/ holds the operator workflow and body-format rules for on-demand reads.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
@@ -557,6 +559,7 @@ used `[ev-N]` reference definitions so links stay self-contained.
 | `spec-na-unjustified`          | warning | An `n/a` spec check carries no `note` saying why the item does not apply; `--strict` and `strict_input` promote it to an error.                   |
 | `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
 | `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff`, or an `unmet`/`n/a` check carries evidence it may not.            |
+| `coverage-incomplete`          | error   | With `run --require-coverage` only: the coverage attestation `record --require-coverage` would refuse, carrying record's message.                 |
 
 ### Evidence checks
 
@@ -3969,6 +3972,17 @@ a shape-only repeat stays `repair-exhausted`. `--json` carries the loop in
 round's evidence summary); each round's bytes, check, and evidence receipt stay
 in the bundle's `.run.rounds/` files.
 
+`--require-coverage` carries `record --require-coverage` into the launch, with
+the same meaning: an absent or partial diff-coverage attestation on a
+non-chunked bundle is a `coverage-incomplete` problem in the round's fix list,
+so the agent gets a repair round for it, and the directive states the
+requirement up front so a first attempt usually carries it. A run that ends
+with the coverage gap as its only error refuses `coverage-incomplete` with
+record's own message; any other error left keeps its own refusal
+(`bad-review-input`, `repair-exhausted`, `review-insufficient`). It applies to
+the review artifacts (the one-finder review and each finder's, since each
+reviews the whole diff), never to cross-checks or drain.
+
 ### Resuming an interrupted execution (`--resume`)
 
 A two-finder run is four barriers: both finders, the union and plan, both cross
@@ -4113,7 +4127,7 @@ spend** under Cost control); a plain launch does not.
 | `zcode`       | `zcode`                          | `-p <directive>`       | `build @zcode/cli from https://github.com/zai-org/ZCode`                                                                               | none: `--mode` defaults to `yolo` with `--prompt`                                                | [ZCode reference](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/02-cli-reference.md)                        |
 
 Permission and approval flags are yours to pass after `--`, never baked into a
-row. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
+row; the one grant `run` adds itself is the scoped review write below. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
 and Ultra subscriptions use `agy`. Qwen Code's positional prompt is the
 supported one-shot form (`-p` is deprecated). `cursor` keeps `cursor-agent`
 because that is the binary its installer still puts on `PATH`.
@@ -4142,6 +4156,27 @@ under its own enforced sandbox and never reads this table.
 option takes `<tools...>`: the spaced form swallows the directive as a tool
 name. PowerShell is denied beside Bash because Windows Claude Code can reach the
 shell through either tool.
+
+### Review write grant
+
+`claude -p` in its default permission mode denies the `review.json` write, so
+the review would refuse `no-review-artifact`. `run` therefore adds one grant to
+every `claude` launch it makes — finders, cross-checks, repair rounds, and
+drain — scoped to that launch's own output directory and nothing else:
+`--allowedTools=Edit(./.verdict/state/<bundle>/**)` from the repository root
+(a finder or cross-check names its own phase directory under the bundle; a
+launch from another checkout names the directory absolutely, `//<path>`, with
+a Windows drive as `//c/...`). Claude Code's `Edit` rules cover every built-in
+file-editing tool, so the agent can write its artifacts there and nowhere
+else: a review of an untrusted change still cannot edit source. A pass-through
+spelling of a flag in the `claude` row above drops the grant with the
+restriction — your tool flags decide the question. A directory whose path
+holds a byte the rule syntax would read as syntax (a space, a comma, a glob
+character) gets no grant. `--print` renders the grant like every other
+argument. No other row carries one: `codex exec` runs read-only by default and
+documents no writable option narrower than `--sandbox workspace-write` (the
+whole working tree), so a `codex` review still needs that flag after `--`, and
+`no-review-artifact` names it. ([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
 
 `cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
 
@@ -7627,6 +7662,10 @@ the CLI verbs: `fetch-local` into a fresh local bundle (`local-loop-<id>-<n>`),
 `run --finders 1` (the review only — the agent writes `review.json` and leaves
 the working tree alone), `record --require-coverage`, and `gate --max-severity
 informational --coverage require --live skip`. A passing gate ends the loop.
+The review step is `run --finders 1 --rounds 2 --require-coverage`: a review
+`record --require-coverage` would refuse for missing or partial coverage gets a
+repair round instead of stopping the loop at record (see `--require-coverage`
+under the run verb).
 A failed gate starts the fix phase: the agent is spawned again with the fix
 directive — the built-in instructions, or the text of `--fix-prompt <file>`
 followed by the round's context (the findings file, the bundle, and its
@@ -7644,6 +7683,20 @@ round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
 phase: nothing would review it. The loop never commits, stages, pushes, posts,
 or opens a PR.
+
+The fix edits the working tree, which an agent CLI's default non-interactive
+mode refuses, so the fix spawn carries the row's documented edit grant, the
+narrowest flag its docs name that writes files in the working directory
+without granting the shell or skipping permission checks: `claude`
+`--permission-mode acceptEdits`, `codex` `--sandbox workspace-write`. Every
+other row carries none (an approval bypass such as `--yolo` or
+`--dangerously-skip-permissions` is never used as one). The review spawn needs
+no edit grant: it carries `run`'s own scoped review-write grant. Arguments
+after `--` (`verdict loop owner/repo --agent claude -- --model opus`) go to
+every spawn, as `run`'s `--` does; when you pass any, the fix spawn carries
+them instead of the edit grant, and on the review step `run`'s rule applies (a
+tool-permission flag drops its review grant). The operator who passes `--`
+owns the agent's permissions. `--print` renders each grant in the exact argv.
 
 The loop stops on the first of:
 

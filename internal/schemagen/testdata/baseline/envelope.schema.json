@@ -414,6 +414,7 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
+            "coverage-incomplete",
             "diagram-invalid",
             "empty-findings-needs-summary",
             "enum-synonym",

@@ -64,6 +64,9 @@ func (p *flowPhases) authorize(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	// The loop admits its fix spawn here, so the model is read from the fix's
+	// own arguments.
+	req.PassThrough = p.req.fixArgs()
 	return runcore.AuthorizeSpawn(ctx, req, dir, launchID, runcore.SpawnModel(req, p.req.Flow.Agents))
 }
 
@@ -86,6 +89,7 @@ func (p *flowPhases) review(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	req.PassThrough = p.req.AgentArgs
 	p.measuring(req)
 	model := runcore.SpawnModel(req, p.req.Flow.Agents)
 	var attempts []*attemptCost
@@ -265,6 +269,7 @@ func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	req.PassThrough = p.req.fixArgs()
 	p.measuring(req)
 	out, ref := runcore.Dispatch(ctx, req, p.req.Flow.Agents, directive)
 	if price, ok := p.fixPrice(out, dir, runcore.SpawnModel(req, p.req.Flow.Agents)); ok {

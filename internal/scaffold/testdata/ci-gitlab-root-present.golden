@@ -67,8 +67,8 @@ verdict-review:
       # Install claude on the runner before this step: verdict installs
       # itself and never downloads an agent CLI.
       #   curl -fsSL https://claude.ai/install.sh | bash
-      # verdict never bakes a permission flag: this agent's documented one is --permission-mode acceptEdits,
-      # appended by you inside agent_args when the run needs it.
+      # verdict adds only a write scoped to the review bundle (--allowedTools=Edit(./.verdict/state/<pr>/**));
+      # this agent's broader documented flag, --permission-mode acceptEdits, stays yours to append inside agent_args.
       (
         unset GITLAB_TOKEN GLAB_TOKEN GITLAB_ACCESS_TOKEN OAUTH_TOKEN CI_JOB_TOKEN GLAB_ENABLE_CI_AUTOLOGIN GH_TOKEN GITHUB_TOKEN
         agent_args=()
@@ -154,8 +154,8 @@ verdict-review:
       # Install claude on the runner before this step: verdict installs
       # itself and never downloads an agent CLI.
       #   curl -fsSL https://claude.ai/install.sh | bash
-      # verdict never bakes a permission flag: this agent's documented one is --permission-mode acceptEdits,
-      # appended by you inside agent_args when the run needs it.
+      # verdict adds only a write scoped to the review bundle (--allowedTools=Edit(./.verdict/state/<pr>/**));
+      # this agent's broader documented flag, --permission-mode acceptEdits, stays yours to append inside agent_args.
       (
         unset GITLAB_TOKEN GLAB_TOKEN GITLAB_ACCESS_TOKEN OAUTH_TOKEN CI_JOB_TOKEN GLAB_ENABLE_CI_AUTOLOGIN GH_TOKEN GITHUB_TOKEN
         agent_args=()

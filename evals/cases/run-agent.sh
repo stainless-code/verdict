@@ -146,8 +146,8 @@ assert_envelope "--print"
 assert_json_field "--print names the agent" "claude" '.data.agent'
 assert_json_field "--print is marked printed" "true" '.data.printed'
 assert_json_field "--print keeps the operator's flags before the directive" \
-  "claude -p --disallowedTools=Bash,PowerShell --model opus [prompt]" \
-  '.data.argv | "\(.[0:5] | join(" ")) [prompt]"'
+  "claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(./.verdict/state/local-launch/**) --model opus [prompt]" \
+  '.data.argv | "\(.[0:6] | join(" ")) [prompt]"'
 assert_json_field "--print's directive names the one review file" "true" \
   '.data.argv[-1] | startswith("Review acme/app local change local-launch") and contains("Write .verdict/state/local-launch/review.json FIRST with ")'
 assert_eq "--print launched no agent process" "$before_spawns" "$(spawns)"
@@ -160,7 +160,7 @@ fi
 run_review run acme/app "$LOCAL" --finders 1 --agent claude --print -- --model opus
 assert_exit "--print (human) exits 0" 0
 assert_file_grep "--print (human) renders the exact argv" "$EVAL_OUT" \
-  "claude -p --disallowedTools=Bash,PowerShell --model opus 'Review acme/app local change local-launch"
+  "claude -p --disallowedTools=Bash,PowerShell '--allowedTools=Edit(./.verdict/state/local-launch/**)' --model opus 'Review acme/app local change local-launch" "-F"
 assert_eq "--print (human) launched no agent process" "$before_spawns" "$(spawns)"
 
 # --- --allow-shell renders the row's own argv --------------------------------
@@ -170,8 +170,8 @@ run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --json --all
 assert_exit "--allow-shell renders" 0
 assert_json_field "--allow-shell drops the discovery restriction" "true" \
   '.data.argv | index("--disallowedTools=Bash,PowerShell") == null'
-assert_json_field "--allow-shell keeps the operator's flags in order" "claude -p --model opus" \
-  '.data.argv[:4] | join(" ")'
+assert_json_field "--allow-shell keeps the review grant and the operator's flags in order" \
+  "claude -p --allowedTools=Edit(./.verdict/state/local-launch/**) --model opus" '.data.argv[:5] | join(" ")'
 assert_eq "--allow-shell launched no agent process" "$before_spawns" "$(spawns)"
 
 # --- the handed spec: the directive names context the real producer wrote ---
@@ -233,19 +233,21 @@ assert_json_field "launch names its provenance record" ".verdict/state/$LOCAL/la
 assert_json_field "launch hands off, it does not record" \
   "record the review with verdict record acme/app $LOCAL" '.next'
 assert_json_field "launch's recorded argv carries the restriction, then the operator's flags" "true" \
-  '(.data.argv | map(select(. == "<prompt>")) | length) == 1 and (.data.argv | index("--disallowedTools=Bash,PowerShell")) == 2 and (.data.argv | index("--model")) == 3'
+  '(.data.argv | map(select(. == "<prompt>")) | length) == 1 and (.data.argv | index("--disallowedTools=Bash,PowerShell")) == 2 and (.data.argv | index("--allowedTools=Edit(./.verdict/state/local-launch/**)")) == 3 and (.data.argv | index("--model")) == 4'
 assert_eq "launch ran exactly one agent process" "1" "$(spawns)"
 assert_file_grep "the agent got the shipped non-interactive flag" "$STUB_AGENT_LOG" '^arg\[0\]=-p$'
 assert_file_grep "the agent got the row's discovery restriction" "$STUB_AGENT_LOG" \
   '^arg\[1\]=--disallowedTools=Bash,PowerShell$'
+assert_file_grep "the agent got a write grant scoped to its own bundle" "$STUB_AGENT_LOG" \
+  'arg[2]=--allowedTools=Edit(./.verdict/state/local-launch/**)' -Fx
 assert_file_grep "the agent got the operator's pass-through flags in order" "$STUB_AGENT_LOG" \
-  '^arg\[2\]=--model$'
-assert_file_grep "the operator's flag kept its operand" "$STUB_AGENT_LOG" '^arg\[3\]=opus$'
+  '^arg\[3\]=--model$'
+assert_file_grep "the operator's flag kept its operand" "$STUB_AGENT_LOG" '^arg\[4\]=opus$'
 assert_file_grep "the directive arrived whole as the last argument" "$STUB_AGENT_LOG" \
-  '^arg\[4\]=Review acme/app local change local-launch and write exactly one review file\.'
+  '^arg\[5\]=Review acme/app local change local-launch and write exactly one review file\.'
 assert_file_grep "the directive named the one artifact to write" "$STUB_AGENT_LOG" \
-  '^arg\[4\]=.*Write .verdict/state/local-launch/review.json FIRST with '
-assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=5$'
+  '^arg\[5\]=.*Write .verdict/state/local-launch/review.json FIRST with '
+assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=6$'
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
 # --- the operator's own tool flag replaces the restriction -------------------
@@ -258,6 +260,8 @@ assert_file_grep "the operator's tool flag reached the child" "$STUB_AGENT_LOG" 
 assert_file_grep "the operator's tool flag kept its operand" "$STUB_AGENT_LOG" '^arg\[2\]=Read$'
 assert_file_nogrep "the row's restriction is not duplicated beside it" "$STUB_AGENT_LOG" \
   "--disallowedTools" "-F"
+assert_file_nogrep "the operator's tool flag replaces verdict's review grant too" "$STUB_AGENT_LOG" \
+  "Edit(" "-F"
 assert_json_field "the recorded argv hides the operator's tool flag and drops the restriction" "true" \
   '.data.argv[2] == "***REDACTED***" and .data.argv[3] == "***REDACTED***" and (.data.argv | index("--disallowedTools=Bash,PowerShell") == null)'
 
@@ -373,10 +377,10 @@ run_review run acme/app "$LOCAL" --finders 1 --agent claude --json \
   -- --api-key "$ANTHROPIC_API_KEY" --fast
 assert_exit "a launch carrying a credential still succeeds" 0
 assert_json_field "the recorded argv redacts the secret operand" "***REDACTED***" \
-  '.argv[3]' "$LAUNCHER"
+  '.argv[4]' "$LAUNCHER"
 assert_file_nogrep "the record carries no secret bytes" "$LAUNCHER" "$SECRET" "-F"
 assert_json_field "unknown flags and their operands stay hidden" "true" \
-  '.argv[3:6] == ["***REDACTED***", "***REDACTED***", "***REDACTED***"]' "$LAUNCHER"
+  '.argv[4:7] == ["***REDACTED***", "***REDACTED***", "***REDACTED***"]' "$LAUNCHER"
 assert_file_grep "the child received the real credential" "$STUB_AGENT_LOG" \
   "^arg\\[[0-9]+\\]=$SECRET$" "-E"
 unset ANTHROPIC_API_KEY
@@ -399,10 +403,10 @@ run_review run acme/app "$LOCAL" --finders 1 --agent claude --json \
 export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
 assert_exit "a child that echoes its own argv still launches" 0
 assert_json_field "the record still marks the credential's position" "true" \
-  '.output_tail | contains("arg[2]=***REDACTED***") and contains("arg[3]=***REDACTED***")' "$LAUNCHER"
+  '.output_tail | contains("arg[3]=***REDACTED***") and contains("arg[4]=***REDACTED***")' "$LAUNCHER"
 assert_file_nogrep "the record carries no credential the child printed" "$LAUNCHER" "$ARG_SECRET" "-F"
 assert_file_grep "the child received the real credential (raw log)" "$LOCAL_DIR/.run.out" \
-  "^arg\\[3\\]=$ARG_SECRET$" "-E"
+  "^arg\\[4\\]=$ARG_SECRET$" "-E"
 assert_eq "the child's raw log is operator-only" "-rw-------" \
   "$(ls -l "$LOCAL_DIR/.run.out" | cut -c1-10)"
 

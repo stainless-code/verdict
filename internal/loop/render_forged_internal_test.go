@@ -39,3 +39,16 @@ func TestRoundRenderCannotForgeLines(t *testing.T) {
 	render(&out, &loopcore.Data{Stop: loopcore.StopRefused, Rounds: []loopcore.Round{{Round: 1, Bundle: forgedline.Value}}})
 	forgedline.AssertNoForgedLine(t, out.String(), "loop: round 1  "+forgedline.Named)
 }
+
+// TestRefusalRenderNamesTheCodeOnce pins the stop line for a refusal whose
+// message already leads with its code, as record's coverage-incomplete does.
+func TestRefusalRenderNamesTheCodeOnce(t *testing.T) {
+	t.Parallel()
+	var out bytes.Buffer
+	render(&out, &loopcore.Data{Stop: loopcore.StopRefused, Refusal: &loopcore.Refusal{
+		Code: "coverage-incomplete", Message: "coverage-incomplete: no coverage[] attestation in review.json",
+	}})
+	if want := "loop: coverage-incomplete: no coverage[] attestation in review.json\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("render = %q, want the line %q", out.String(), want)
+	}
+}

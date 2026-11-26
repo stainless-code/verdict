@@ -366,9 +366,13 @@ func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRep
 	// shape error left, or an evidence gap left. Demotion only lowers a level,
 	// so a round that ends invalid either keeps a shape error or keeps an
 	// evidence error, and either one is a refusal below.
-	ref := shapeRefusal(&attempt, last.check, rep.Rounds, last.noProgress, note)
+	ref := coverageRefusal(last.check, note)
+	check := withoutCoverage(last.check)
 	if ref == nil {
-		ref = repair.InsufficientRefusal(last.check, note)
+		ref = shapeRefusal(&attempt, check, rep.Rounds, last.noProgress, note)
+	}
+	if ref == nil {
+		ref = repair.InsufficientRefusal(check, note)
 	}
 	ended := st.now()
 	if writeRef := st.recordOutcome(rec, args.dir, ended, started, last.res, last.art, rep, argSecrets); writeRef != nil {
