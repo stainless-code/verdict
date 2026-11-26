@@ -49,36 +49,43 @@ func rowLines(r *Row) []string {
 		"fix: " + r.FixText,
 	}
 	if r.Suggestion != nil {
-		fence := fenceFor(*r.Suggestion)
-		lines = append(lines, "", "suggested code:", "", fence, *r.Suggestion, fence)
+		lines = append(lines, "", "suggested code:", "")
+		lines = append(lines, codeLines(*r.Suggestion)...)
 	}
 	lines = append(lines, "")
 	if r.BriefText == "" {
 		return append(lines, "brief: none stored")
 	}
-	return append(lines, strings.Split(strings.TrimRight(r.BriefText, "\n"), "\n")...)
+	return append(lines, strings.Split(strings.TrimRight(r.BriefText, newline), newline)...)
+}
+
+// codeIndent opens each line of a suggestion: four spaces make a markdown
+// indented code block, which renders the code exactly (markdown strips the
+// indent) and which no backtick run inside the code can close.
+const codeIndent = "    "
+
+// newline ends one line of a stored block.
+const newline = "\n"
+
+// codeLines renders a suggestion as an indented code block, one element per
+// line of code, so the code keeps its lines when the human surface folds
+// each element to one. The indent also leads every line, so a line of the
+// suggestion (the reviewing agent's text) cannot start as verdict's own
+// `error:` or `warn:` line. A blank line stays blank.
+func codeLines(code string) []string {
+	split := strings.Split(strings.TrimRight(code, newline), newline)
+	out := make([]string, 0, len(split))
+	for _, line := range split {
+		if strings.TrimSpace(line) == "" {
+			out = append(out, "")
+			continue
+		}
+		out = append(out, codeIndent+strings.TrimRight(line, "\r"))
+	}
+	return out
 }
 
 // verifyOf names the recorded rerun command, or says there is none.
-// minFence is the shortest fence a code block may open with.
-const minFence = 3
-
-// fenceFor returns a code fence longer than any backtick run in body, so a
-// suggestion that itself holds ``` (or more) cannot close the block early
-// (CommonMark: the closing fence must be at least as long as the opening).
-func fenceFor(body string) string {
-	n, run := minFence, 0
-	for _, r := range body {
-		if r != '`' {
-			run = 0
-			continue
-		}
-		run++
-		n = max(n, run+1)
-	}
-	return strings.Repeat("`", n)
-}
-
 func verifyOf(r *Row) string {
 	if r.VerifyCmd == nil || *r.VerifyCmd == "" {
 		return "none recorded"

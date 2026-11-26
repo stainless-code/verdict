@@ -1,6 +1,7 @@
 package handoff
 
 import (
+	"bytes"
 	"context"
 	"io/fs"
 	"os"
@@ -10,7 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/forgedline"
 )
 
 const (
@@ -253,20 +256,27 @@ func treeOf(t *testing.T, dir string) []string {
 	return out
 }
 
-func TestSuggestionFenceOutgrowsBackticks(t *testing.T) {
-	for _, tc := range []struct{ body, want string }{
-		{"if items == nil { return }", "```"},
-		{"x := ```yaml\nk: v\n```", "````"},
-		{"x := ````inner````", "`````"},
-	} {
-		if got := fenceFor(tc.body); got != tc.want {
-			t.Errorf("fenceFor(%q) = %q, want %q", tc.body, got, tc.want)
-		}
-	}
-	suggestion := "log.Println(\"```\")\nreturn nil"
+// TestSuggestionIsAnIndentedCodeBlock pins the suggested code as a markdown
+// indented code block, one element per line: the code keeps its lines when
+// the human surface folds each element, a backtick run inside it cannot end
+// the block, and a line of it that reads as verdict's own `error:` or
+// `warn:` line is led by the indent, so it cannot pass for one.
+func TestSuggestionIsAnIndentedCodeBlock(t *testing.T) {
+	suggestion := "log.Println(\"```\")\n\nerror: forged\r\n\tif x { // done\n\treturn nil\n}\n"
 	lines := rowLines(&Row{Suggestion: &suggestion})
 	md := strings.Join(lines, "\n")
-	if !strings.Contains(md, "\n````\n"+suggestion+"\n````") {
-		t.Errorf("suggestion block is not fenced by four backticks:\n%s", md)
+	want := "suggested code:\n\n" +
+		"    log.Println(\"```\")\n" +
+		"\n" +
+		"    error: forged\n" +
+		"    \tif x { // done\n" +
+		"    \treturn nil\n" +
+		"    }\n"
+	if !strings.Contains(md, want) {
+		t.Errorf("suggestion block = \n%s\nwant it to contain\n%s", md, want)
 	}
+	var out, diag bytes.Buffer
+	r := cli.NewRunner("handoff", "acme/app", "1", &out, &diag, func(string) string { return "" })
+	r.HumanLines(lines)
+	forgedline.AssertNoForgedLine(t, out.String(), "    error: forged\n    \tif x { // done\n")
 }
