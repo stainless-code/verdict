@@ -695,7 +695,7 @@ func TestLoopPrintPlansWithoutRunning(t *testing.T) {
 		},
 		2: {"verdict", "record", "acme/app", local, "--require-coverage"},
 		3: {"verdict", "gate", "acme/app", local, "--max-severity", "informational", "--coverage", "require", "--live", "skip"},
-		5: {"verdict", "verify", "acme/app", local, "--timeout", "300"},
+		5: {"verdict", "verify", "acme/app", local, "--timeout", "300", "--sandbox"},
 	})
 	fix := resp.Data.Plan[4].Argv
 	wantFix := []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"}
@@ -809,7 +809,7 @@ func TestLoopRefusesAnExistingOutput(t *testing.T) {
 func TestLoopValidatesLimits(t *testing.T) {
 	t.Parallel()
 	cases := map[string]func(*Request){
-		"two sandboxes": func(r *Request) { r.VerifySandbox, r.VerifySandboxNetworkOnly = true, true },
+		"two postures":  func(r *Request) { r.VerifyNoSandbox, r.VerifySandboxNetworkOnly = true, true },
 		"no agent":      func(r *Request) { r.Agent = "" },
 		"zero rounds":   func(r *Request) { r.MaxRounds = 0 },
 		"too many":      func(r *Request) { r.MaxRounds = 21 },
@@ -819,14 +819,23 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"word cost":     func(r *Request) { r.MaxCostUSD = "lots" },
 		"no severity":   func(r *Request) { r.MaxSeverity = "" },
 		"gate's off":    func(r *Request) { r.MaxSeverity = "off" },
-		// The `--` tail reaches the review of untrusted content, so no
-		// permission spelling may ride it — the row's, or any agent's bypass.
+		// The `--` tail reaches the review of untrusted content, so it is an
+		// allowlist: the row's model flag with one value, nothing else.
 		"permission mode":   func(r *Request) { r.AgentArgs = []string{"--permission-mode", "acceptEdits"} },
 		"inline allow list": func(r *Request) { r.AgentArgs = []string{"--model", "opus", "--allowedTools=Bash"} },
 		"skip permissions":  func(r *Request) { r.AgentArgs = []string{"--dangerously-skip-permissions"} },
-		"codex sandbox":     func(r *Request) { r.Agent, r.AgentArgs = "codex", []string{"-s", "workspace-write"} },
-		"codex inline":      func(r *Request) { r.Agent, r.AgentArgs = "codex", []string{"--sandbox=danger-full-access"} },
-		"any agent's yolo":  func(r *Request) { r.Agent, r.AgentArgs = "opencode", []string{"--yolo"} },
+		"claude tool set":   func(r *Request) { r.AgentArgs = []string{"--tools", "Bash,Edit"} },
+		"pi denylist":       func(r *Request) { r.Agent, r.AgentArgs = "pi", []string{"--exclude-tools", "x"} },
+		"bob groups":        func(r *Request) { r.Agent, r.AgentArgs = "bob", []string{"--disable-tool-groups", "mcp"} },
+		"opencode auto":     func(r *Request) { r.Agent, r.AgentArgs = "opencode", []string{"--auto"} },
+		"agy mode":          func(r *Request) { r.Agent, r.AgentArgs = "agy", []string{"--mode", "auto"} },
+		"codex config": func(r *Request) {
+			r.Agent, r.AgentArgs = "codex", []string{"-c", "sandbox_permissions=[\"disk-full-write-access\"]"}
+		},
+		"gemini yes":         func(r *Request) { r.Agent, r.AgentArgs = "gemini", []string{"-y"} },
+		"model without one":  func(r *Request) { r.AgentArgs = []string{"--model"} },
+		"model eats a flag":  func(r *Request) { r.AgentArgs = []string{"--model", "--tools"} },
+		"a stray positional": func(r *Request) { r.AgentArgs = []string{"--model", "opus", "extra"} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -838,6 +847,17 @@ func TestLoopValidatesLimits(t *testing.T) {
 
 // assertRefusedLimit proves one invalid limit refuses bad-flags with nothing
 // written.
+// TestLoopAcceptsTheModelFlag pins the allowlist's other side: the row's
+// model flag, spaced or inline, starts the loop.
+func TestLoopAcceptsTheModelFlag(t *testing.T) {
+	t.Parallel()
+	for _, args := range [][]string{{"--model", "opus"}, {"--model=opus"}} {
+		h := newHarness(t, 1)
+		h.req.Print, h.req.AgentArgs = true, args
+		h.run(t)
+	}
+}
+
 func assertRefusedLimit(t *testing.T, mutate func(*Request)) {
 	t.Helper()
 	h := newHarness(t, 1)
@@ -856,17 +876,45 @@ func assertRefusedLimit(t *testing.T, mutate func(*Request)) {
 func TestLoopPlanPassesTheVerifySandbox(t *testing.T) {
 	t.Parallel()
 	for flag, set := range map[string]func(*Request){
-		"--sandbox":              func(r *Request) { r.VerifySandbox = true },
+		"--sandbox":              func(*Request) {},
 		"--sandbox-network-only": func(r *Request) { r.VerifySandboxNetworkOnly = true },
+		"--timeout 300":          func(r *Request) { r.VerifyNoSandbox = true },
 	} {
 		h := newHarness(t, 2)
 		h.req.Print = true
 		set(h.req)
 		resp := h.run(t)
 		verify := resp.Data.Plan[5].Argv
-		if resp.Data.Plan[5].Phase != PhaseVerify || verify[len(verify)-1] != flag {
+		if resp.Data.Plan[5].Phase != PhaseVerify || !strings.HasSuffix(strings.Join(verify, " "), flag) {
 			t.Errorf("verify step = %q, want it to end with %s", verify, flag)
 		}
+	}
+}
+
+// TestLoopNoSandboxWarns proves the opt-out is never silent.
+func TestLoopNoSandboxWarns(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 1)
+	h.req.Print, h.req.VerifyNoSandbox = true, true
+	resp := h.run(t)
+	if !slices.ContainsFunc(resp.Warnings, func(w string) bool { return strings.HasPrefix(w, "--no-sandbox: ") }) {
+		t.Errorf("warnings = %q, want the --no-sandbox warning", resp.Warnings)
+	}
+}
+
+// TestLoopStopsWhenTheSandboxIsUnavailable proves the default sandbox fails
+// closed: a host without it stops the loop at the first verify, naming the
+// opt-outs, instead of recording the same refusal every round.
+func TestLoopStopsWhenTheSandboxIsUnavailable(t *testing.T) {
+	t.Parallel()
+	h := newHarness(t, 3)
+	h.script.gate[1], h.script.declared = false, true
+	h.script.verifyRef = &Refusal{Code: "sandbox-unavailable", Message: "sandbox unavailable: no sandbox-exec"}
+	resp := h.run(t)
+	if resp.Data.Stop != StopRefused || resp.Data.Refusal == nil || resp.Data.Refusal.Code != "sandbox-unavailable" ||
+		!strings.Contains(resp.Data.Refusal.Message, "--sandbox-network-only or --no-sandbox") || len(resp.Data.Rounds) != 1 {
+		t.Fatalf("stop=%s refusal=%+v rounds=%d, want refused in round 1 naming the opt-outs",
+			resp.Data.Stop, resp.Data.Refusal, len(resp.Data.Rounds))
 	}
 }
 
@@ -940,5 +988,23 @@ func TestLoopOneRoundStillResolvesTheAgent(t *testing.T) {
 	}
 	if len(h.script.calls) != 0 {
 		t.Errorf("calls = %q, want none", h.script.calls)
+	}
+}
+
+// TestVerifyPostureIsSandboxedByDefault pins the posture the verify service
+// receives: the full sandbox unless the operator opted out.
+func TestVerifyPostureIsSandboxedByDefault(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		req                  Request
+		sandbox, networkOnly bool
+	}{
+		{req: Request{}, sandbox: true},
+		{req: Request{VerifySandboxNetworkOnly: true}, networkOnly: true},
+		{req: Request{VerifyNoSandbox: true}},
+	} {
+		if sandbox, networkOnly := verifyPosture(&tc.req); sandbox != tc.sandbox || networkOnly != tc.networkOnly {
+			t.Errorf("posture(%+v) = %v, %v; want %v, %v", tc.req, sandbox, networkOnly, tc.sandbox, tc.networkOnly)
+		}
 	}
 }

@@ -184,12 +184,64 @@ func TestDiscoveryPassThroughSuppressesTheRestriction(t *testing.T) {
 	t.Run("operator pi short flag", func(t *testing.T) {
 		checkRestriction(t, pi, []string{"-t", "read,bash"}, false, nil)
 	})
-	t.Run("operator bob groups", func(t *testing.T) {
-		checkRestriction(t, bob, []string{"--disable-tool-groups", "mcp"}, false, nil)
+	t.Run("operator pi tool set replaces it", func(t *testing.T) {
+		checkRestriction(t, pi, []string{"--no-tools"}, false, nil)
+	})
+	t.Run("operator bob groups carry the merged denial", func(t *testing.T) {
+		checkRestriction(t, bob, mergeDenials(bob, []string{"--disable-tool-groups", "mcp"}, false), false, nil)
 	})
 	t.Run("unrelated pass-through keeps it", func(t *testing.T) {
 		checkRestriction(t, claude, []string{"--model", "opus"}, false, kept)
 	})
+}
+
+// TestMergeDenialsKeepsTheShellDenial pins the additive denylist: the
+// operator's own spelling of the restriction's flag carries the restriction's
+// value too, in the spaced, inline, and short forms, every position kept; an
+// operand that only looks like the flag, --allow-shell, and a row without a
+// mergeable restriction are left as they are.
+func TestMergeDenialsKeepsTheShellDenial(t *testing.T) {
+	t.Parallel()
+	pi, bob, claude := launchRow(t, "pi"), launchRow(t, "bob"), launchRow(t, "claude")
+	for _, tc := range []struct {
+		def        *agentcatalog.Launch
+		pass, want []string
+		allowShell bool
+	}{
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: []string{"--exclude-tools", "bash,powershell,markdown"}},
+		{def: pi, pass: []string{"--model", "m", "-xt=grep"}, want: []string{"--model", "m", "-xt=bash,powershell,grep"}},
+		{def: bob, pass: []string{"--disable-tool-groups", "mcp"}, want: []string{"--disable-tool-groups", "execute,mcp,mcp"}},
+		{def: pi, pass: []string{"--append-system-prompt", "--exclude-tools"}, want: []string{"--append-system-prompt", "--exclude-tools"}},
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: []string{"--exclude-tools", "markdown"}, allowShell: true},
+		{def: claude, pass: []string{"--disallowedTools", "WebFetch"}, want: []string{"--disallowedTools", "WebFetch"}},
+	} {
+		if got := mergeDenials(tc.def, tc.pass, tc.allowShell); !slices.Equal(got, tc.want) {
+			t.Errorf("%s %q (allow-shell %v) = %q, want %q", tc.def.Name, tc.pass, tc.allowShell, got, tc.want)
+		}
+	}
+}
+
+// TestPiDenylistLaunchKeepsTheShellDenial proves the launch end to end: pi
+// with the operator's own --exclude-tools still excludes bash and powershell,
+// once, at the operator's position.
+func TestPiDenylistLaunchKeepsTheShellDenial(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
+	req := request(root, cmdr)
+	req.Agent = "pi"
+	req.PassThrough = []string{"--exclude-tools", "markdown"}
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("run refused: %v", ref)
+	}
+	argv := cmdr.cmd.Argv
+	if want := []string{"pi", "-p", "--exclude-tools", "bash,powershell,markdown"}; !slices.Equal(argv[:4], want) {
+		t.Errorf("argv = %q, want the prefix %q", argv[:len(argv)-1], want)
+	}
+	if n := countArg(argv, "--exclude-tools"); n != 1 {
+		t.Errorf("argv carries --exclude-tools %d times, want once", n)
+	}
 }
 
 // launchRow resolves one shipped launch definition, failing on a name the

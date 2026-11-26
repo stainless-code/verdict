@@ -686,6 +686,34 @@ func IsFile(path string) bool {
 	return err == nil && fi.Mode().IsRegular()
 }
 
+// CodeArtifactUnsafe is the refusal for a symlink at a bundle path an agent
+// or verdict is about to write.
+const CodeArtifactUnsafe = "artifact-path-unsafe"
+
+// RefuseArtifactLinks refuses when any of names under dir is a symlink. Each
+// is a path verdict or its agent writes or reads back inside the bundle; a
+// checked-in link there (`review.json -> ../../../src/main.go`) would carry
+// the agent's scoped write onto the file it names. An absent path is fine:
+// the writer creates it.
+func RefuseArtifactLinks(dir string, names ...string) *core.RefusalError {
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		if info, err := os.Lstat(path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+			return &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("%s is a symlink; "+
+				"verdict and its agent write that path, and the link would carry the write to the file it "+
+				"names — remove it, then re-run", path)}
+		}
+	}
+	return nil
+}
+
+// IsRegularNoFollow reports a regular file at path without following a
+// final symlink.
+func IsRegularNoFollow(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.Mode().IsRegular()
+}
+
 const (
 	checkoutHeadTimeout = 30 * time.Second
 	checkoutHeadCap     = 4 << 10

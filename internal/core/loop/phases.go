@@ -268,6 +268,9 @@ func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []st
 func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
+	if ref := readcommon.RefuseArtifactLinks(dir, patchFile, fixCostFile); ref != nil {
+		return ref
+	}
 	req := p.req.Flow.RunRequest(b, launch, nil)
 	req.PassThrough = p.req.fixArgs()
 	p.measuring(req)
@@ -339,7 +342,7 @@ func knownAmount(obj *jq.Obj) (string, bool) {
 
 // declared reports whether the fix agent declared a verify command.
 func (p *flowPhases) declared(dir string) bool {
-	return readcommon.IsFile(filepath.Join(dir, patchFile))
+	return readcommon.IsRegularNoFollow(filepath.Join(dir, patchFile))
 }
 
 // verify runs `verdict verify` on the bundle the fix agent declared a command
@@ -350,19 +353,26 @@ func (p *flowPhases) verify(ctx context.Context, b *reviewflow.Bundle, timeout s
 	read.Runtime = &core.Runtime{
 		Env: read.Env, Now: read.Now, Progress: read.Progress, Commander: p.req.Flow.AgentCommander,
 	}
+	sandbox, networkOnly := verifyPosture(p.req)
 	resp, ref := verifycore.Run(ctx, &verifycore.Request{
 		ReadRequest:        read,
 		TimeoutRaw:         timeout,
 		Environ:            p.req.Flow.Environ,
 		JSONMode:           p.req.Flow.JSONMode,
-		Sandbox:            p.req.VerifySandbox,
-		SandboxNetworkOnly: p.req.VerifySandboxNetworkOnly,
+		Sandbox:            sandbox,
+		SandboxNetworkOnly: networkOnly,
 	})
 	if ref != nil {
 		return &Verify{Refusal: asRefusal(ref)}, ref.Warnings
 	}
 	exit := resp.Exit
 	return &Verify{Exit: &exit, TimedOut: resp.TimedOut}, resp.Warnings
+}
+
+// verifyPosture is the verify step's sandbox: the full one by default, the
+// network-only one or none only when the operator opted out.
+func verifyPosture(req *Request) (sandbox, networkOnly bool) {
+	return !req.VerifyNoSandbox && !req.VerifySandboxNetworkOnly, req.VerifySandboxNetworkOnly
 }
 
 // cost reads one round bundle's own receipts, whatever their month: the

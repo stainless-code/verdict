@@ -142,6 +142,7 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
+	st.mergeDenials(&def)
 	timeout, ref := st.timeout()
 	if ref != nil {
 		return nil, ref
@@ -194,6 +195,9 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	if ref := st.refuseLinkedPaths(&target); ref != nil {
+		return nil, ref
+	}
 	args.grant = st.grantFor(def, target.output)
 	args.coverage = st.req.RequireCoverage && target.artifact == reviewFile
 	args.usage = st.usageArgs(def)
@@ -205,6 +209,29 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.argv = argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, args.prompt)
 	return args, nil
+}
+
+// mergeDenials rewrites the request's pass-through once, before any launch
+// is composed or sealed, so every launch, the recorded argv, and the resume
+// fingerprint read the same merged denylist.
+func (st *state) mergeDenials(def *agentcatalog.Launch) {
+	merged := mergeDenials(def, st.req.PassThrough, st.req.AllowShell)
+	if slices.Equal(merged, st.req.PassThrough) {
+		return
+	}
+	req := *st.req
+	req.PassThrough = merged
+	st.req = &req
+}
+
+// refuseLinkedPaths refuses a launch whose artifact, launcher record, or
+// output log is a symlink: the agent's scoped write, or verdict's read back,
+// would follow it out of the bundle. A render writes nothing and is spared.
+func (st *state) refuseLinkedPaths(target *launchTarget) *core.RefusalError {
+	if st.req.Print {
+		return nil
+	}
+	return readcommon.RefuseArtifactLinks(target.output, target.artifact, launcherFile, runOutputFile)
 }
 
 // grantFor is the row's review-write grant for a launch writing into dir. A
@@ -1198,7 +1225,9 @@ type artifactState struct {
 // not "written by this agent".
 func inspectArtifact(path string, launched time.Time) artifactState {
 	art := artifactState{launched: launched}
-	info, err := os.Stat(path)
+	// No-follow: a link the agent left reads as not regular, never as the
+	// file it names.
+	info, err := os.Lstat(path)
 	if err != nil {
 		return art
 	}

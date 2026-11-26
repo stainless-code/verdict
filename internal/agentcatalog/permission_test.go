@@ -109,6 +109,8 @@ type discoveryRow struct {
 	args      []string
 	citation  string
 	overrides []string
+	// merges are the restriction's own denylist spellings run merges into.
+	merges []string
 }
 
 // TestDiscoveryRestrictionsCiteAgentDocs pins the discovery-phase tool
@@ -124,9 +126,9 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 	}
 	want := map[string]discoveryRow{
 		"bob": {
-			args:      []string{"--disable-tool-groups", "execute,mcp"},
-			citation:  docBobShell,
-			overrides: []string{"--disable-tool-groups"},
+			args:     []string{"--disable-tool-groups", "execute,mcp"},
+			citation: docBobShell,
+			merges:   []string{"--disable-tool-groups"},
 		},
 		"claude": {
 			args:      []string{"--disallowedTools=Bash,PowerShell"},
@@ -136,8 +138,9 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 		"pi": {
 			args:     []string{"--exclude-tools", "bash,powershell"},
 			citation: docPiCLI,
+			merges:   []string{"--exclude-tools", "-xt"},
 			overrides: []string{
-				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 		},
 	}
@@ -147,7 +150,8 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 			continue
 		}
 		declared++
-		checkDiscoveryRow(t, string(raw), agent, want[agent.Name])
+		row := want[agent.Name]
+		checkDiscoveryRow(t, string(raw), agent, &row)
 	}
 	if declared != len(want) {
 		t.Fatalf("rows declaring a discovery restriction = %d; want the %d documented ones", declared, len(want))
@@ -156,7 +160,7 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 
 // checkDiscoveryRow pins one row's discovery restriction to its citation and to
 // the manual table that documents it.
-func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want discoveryRow) {
+func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want *discoveryRow) {
 	t.Helper()
 	launch := agent.Launch
 	if !slices.Equal(launch.DiscoveryArgs, want.args) {
@@ -167,6 +171,9 @@ func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want discoveryR
 	}
 	if !slices.Equal(launch.DiscoveryOverrideFlags, want.overrides) {
 		t.Errorf("%s discovery override flags = %q, want %q", agent.Name, launch.DiscoveryOverrideFlags, want.overrides)
+	}
+	if !slices.Equal(launch.DiscoveryMergeFlags, want.merges) {
+		t.Errorf("%s discovery merge flags = %q, want %q", agent.Name, launch.DiscoveryMergeFlags, want.merges)
 	}
 	checkDiscoveryManualRow(t, manual, agent)
 }

@@ -96,11 +96,65 @@ func argvPrefixLen(def *agentcatalog.Launch, model string, restriction []string)
 // `--` (DiscoveryOverrideFlags). An additive or tightening flag sits beside the
 // restriction instead: dropping the shell denial for it would hand the shell
 // back to a review of untrusted content.
+//
+// An operator spelling of the restriction's own denylist flag
+// (DiscoveryMergeFlags) is additive: mergeDenials folds the restriction's
+// value into it before any launch is composed, so that pass-through already
+// carries the denial and the restriction is not repeated beside it.
 func discoveryRestriction(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
-	if allowShell || len(def.DiscoveryArgs) == 0 || operatorSpells(passthrough, def.DiscoveryOverrideFlags) {
+	if allowShell || len(def.DiscoveryArgs) == 0 ||
+		operatorSpells(passthrough, slices.Concat(def.DiscoveryOverrideFlags, def.DiscoveryMergeFlags)) {
 		return nil
 	}
 	return slices.Clone(def.DiscoveryArgs)
+}
+
+// mergeDenials folds the row's restriction value into every operator
+// spelling of the restriction's own denylist flag: pi's `--exclude-tools
+// markdown` becomes `--exclude-tools bash,powershell,markdown`, so an additive
+// denylist sits beside the shell denial instead of replacing it. Every other
+// argument, and every position, is kept, so the recorded argv's redaction
+// stays aligned. --allow-shell and a row without a mergeable restriction
+// leave the pass-through as it is.
+func mergeDenials(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
+	if allowShell || len(def.DiscoveryArgs) != 2 || len(def.DiscoveryMergeFlags) == 0 {
+		return passthrough
+	}
+	merged := slices.Clone(passthrough)
+	for i, arg := range merged {
+		if strings.HasPrefix(arg, optionPrefix) && (i == 0 || !bareOption(merged[i-1])) {
+			mergeAt(def.DiscoveryMergeFlags, def.DiscoveryArgs[1], merged, i)
+		}
+	}
+	return merged
+}
+
+// optionPrefix starts every option spelling; inlineValue joins an option to
+// its value in the `--flag=value` spelling.
+const (
+	optionPrefix = "-"
+	inlineValue  = "="
+)
+
+// mergeAt folds ours into the option at merged[i] when it spells one of
+// flags: its inline value, or the value argument after it.
+func mergeAt(flags []string, ours string, merged []string, i int) {
+	name, value, inline := strings.Cut(merged[i], inlineValue)
+	switch {
+	case !slices.Contains(flags, name):
+	case inline:
+		merged[i] = name + inlineValue + joinDenials(ours, value)
+	case i+1 < len(merged) && !strings.HasPrefix(merged[i+1], optionPrefix):
+		merged[i+1] = joinDenials(ours, merged[i+1])
+	}
+}
+
+// joinDenials appends the operator's denylist to the restriction's.
+func joinDenials(ours, theirs string) string {
+	if theirs == "" {
+		return ours
+	}
+	return ours + "," + theirs
 }
 
 // operatorSpells reports whether the operator's pass-through spells one of
@@ -110,10 +164,10 @@ func discoveryRestriction(def *agentcatalog.Launch, passthrough []string, allowS
 // never as a flag: the doubt keeps verdict's own restriction and grant.
 func operatorSpells(passthrough, flags []string) bool {
 	for i, arg := range passthrough {
-		if !strings.HasPrefix(arg, "-") || (i > 0 && bareOption(passthrough[i-1])) {
+		if !strings.HasPrefix(arg, optionPrefix) || (i > 0 && bareOption(passthrough[i-1])) {
 			continue
 		}
-		if name, _, _ := strings.Cut(arg, "="); slices.Contains(flags, name) {
+		if name, _, _ := strings.Cut(arg, inlineValue); slices.Contains(flags, name) {
 			return true
 		}
 	}
@@ -123,7 +177,7 @@ func operatorSpells(passthrough, flags []string) bool {
 // bareOption reports an option spelled without an inline value, which may
 // take the next argument as its value.
 func bareOption(arg string) bool {
-	return len(arg) > 1 && strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=")
+	return len(arg) > 1 && strings.HasPrefix(arg, optionPrefix) && !strings.Contains(arg, inlineValue)
 }
 
 // reviewGrant is the row's scoped review-write grant for one launch whose
@@ -236,37 +290,36 @@ func EditArgs(name string, agents []config.PersonalAgent) []string {
 	return slices.Clone(def.EditArgs)
 }
 
-// bypassSpellings are option-name fragments that decide what any agent may
-// write or run, whatever its row documents: permission modes, sandboxes,
-// approval bypasses, allow lists, and extra writable directories.
-var bypassSpellings = []string{
-	"dangerous", "yolo", "skip-permission", "bypass", "full-auto", "unrestricted", "auto-approve",
-	"approval", "permission-mode", "sandbox", "allowedtools", "allowed-tools", "add-dir",
-}
-
-// PermissionArg is the first of args that decides the named agent's
-// permissions — one of its row's PermissionFlags or any bypassSpellings
-// fragment — or "" when none does. Every option-shaped argument counts,
-// operands included: the self-review loop refuses on it, and a false match
-// only refuses.
-func PermissionArg(name string, agents []config.PersonalAgent, args []string) string {
+// LoopArgs checks the self-review loop's `--` tail against its allowlist:
+// only the named agent's documented model flag, each with one value, in the
+// spaced or the `=` form. That tail reaches the review of untrusted content,
+// so a denylist of permission spellings would always miss one; anything else
+// is refused. bad is the first argument outside the list ("" when every one
+// is allowed), and allowed names the flags that are.
+func LoopArgs(name string, agents []config.PersonalAgent, args []string) (bad string, allowed []string) {
 	st := &state{defs: agents}
 	def, _ := st.lookupAgent(name)
-	for _, arg := range args {
-		if !strings.HasPrefix(arg, "-") {
-			continue
-		}
-		flag, _, _ := strings.Cut(arg, "=")
-		if slices.Contains(def.PermissionFlags, flag) || containsAny(strings.ToLower(flag), bypassSpellings) {
-			return arg
+	if def.ModelFlag != "" {
+		allowed = []string{def.ModelFlag}
+	}
+	for i := 0; i < len(args); i++ {
+		flag, value, inline := strings.Cut(args[i], inlineValue)
+		switch {
+		case !slices.Contains(allowed, flag):
+			return args[i], allowed
+		case inline && safeValue(value):
+		case !inline && i+1 < len(args) && safeValue(args[i+1]):
+			i++
+		default:
+			return args[i], allowed
 		}
 	}
-	return ""
+	return "", allowed
 }
 
-// containsAny reports whether s holds any of parts.
-func containsAny(s string, parts []string) bool {
-	return slices.ContainsFunc(parts, func(p string) bool { return strings.Contains(s, p) })
+// safeValue reports a flag value that cannot read as another option.
+func safeValue(v string) bool {
+	return v != "" && !strings.HasPrefix(v, optionPrefix)
 }
 
 // knownAgents renders the known-name list for a refusal message.

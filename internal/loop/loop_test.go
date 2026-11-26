@@ -106,12 +106,15 @@ func TestParseFlagsUsage(t *testing.T) {
 func TestRunRefusesBadLimits(t *testing.T) {
 	t.Parallel()
 	for name, args := range map[string][]string{
-		"rounds":     {"--agent", "claude", "--max-rounds", "0"},
-		"rounds pad": {"--agent", "claude", "--max-rounds", "03"},
-		"timeout":    {"--agent", "claude", "--timeout", "soon"},
-		"cost":       {"--agent", "claude", "--max-cost-usd", "-2"},
-		"prompt":     {"--agent", "claude", "--fix-prompt", "/no/such/file.md"},
-		"sandboxes":  {"--agent", "claude", "--sandbox", "--sandbox-network-only"},
+		"rounds":              {"--agent", "claude", "--max-rounds", "0"},
+		"rounds pad":          {"--agent", "claude", "--max-rounds", "03"},
+		"timeout":             {"--agent", "claude", "--timeout", "soon"},
+		"cost":                {"--agent", "claude", "--max-cost-usd", "-2"},
+		"prompt":              {"--agent", "claude", "--fix-prompt", "/no/such/file.md"},
+		"sandboxes":           {"--agent", "claude", "--sandbox", "--sandbox-network-only"},
+		"opt-outs":            {"--agent", "claude", "--no-sandbox", "--sandbox-network-only"},
+		"confirm and opt out": {"--agent", "claude", "--sandbox", "--no-sandbox"},
+		"tool set":            {"--agent", "claude", "--", "--tools", "Bash"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

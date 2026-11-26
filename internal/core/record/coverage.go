@@ -45,10 +45,22 @@ func (st *state) evaluateCoverage() error {
 		return ref //nolint:wrapcheck // typed refusal passes through unchanged
 	}
 	st.coverage = &sum
-	if sum.Chunked || !st.requireCoverage {
+	if !st.requireCoverage {
 		return nil
 	}
-	return st.coverageGate(&sum)
+	return st.requiredCoverage(&sum)
+}
+
+// requiredCoverage is the opt-in gate on one evaluated summary: chunks[] on
+// a chunked bundle, the line attestation everywhere else.
+func (st *state) requiredCoverage(sum *coverage.Summary) error {
+	if !sum.Chunked {
+		return st.coverageGate(sum)
+	}
+	if gate := chunkGate(sum); gate != nil {
+		return gate
+	}
+	return nil
 }
 
 // CoverageGate is record --require-coverage's refusal for one bundle and its
@@ -69,7 +81,7 @@ func CoverageGate(dir string, review []byte) *core.RefusalError {
 		return ref
 	}
 	if sum.Chunked {
-		return chunkGate(obj, &sum)
+		return chunkGate(&sum)
 	}
 	if err := (&state{}).coverageGate(&sum); err != nil {
 		if gate, ok := errors.AsType[*core.RefusalError](err); ok {
@@ -79,12 +91,13 @@ func CoverageGate(dir string, review []byte) *core.RefusalError {
 	return nil
 }
 
-// chunkGate is the chunked bundle's half of CoverageGate: chunks[] is its
-// attestation, and the default gate fails a bundle whose review carries none.
-// A partial chunks[] is already a shape error (checkChunks), so only absence
-// is raised here.
-func chunkGate(review *jq.Obj, sum *coverage.Summary) *core.RefusalError {
-	if _, ok := review.Get(coverage.FieldChunks); ok || sum.Chunks == 0 {
+// chunkGate is the chunked bundle's half of the coverage requirement:
+// chunks[] is its attestation, and the default gate fails a bundle whose
+// review attests no chunk — the key absent, false, empty, or no array at all.
+// A partial chunks[] is already a shape error (checkChunks), so only an
+// attestation that names nothing is raised here.
+func chunkGate(sum *coverage.Summary) *core.RefusalError {
+	if sum.Chunks == 0 || sum.ChunksAttested > 0 {
 		return nil
 	}
 	return &core.RefusalError{Code: coverage.CodeIncomplete, Message: core.Msgf(msgChunksAbsent, sum.Chunks)}

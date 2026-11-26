@@ -96,6 +96,12 @@ Cause: a binding `APPROVE` is refused while findings stand open (triage has not 
 
 Fix: triage the findings or re-run with `--force`.
 
+## `artifact-path-unsafe`
+
+Cause: a path a launch writes or reads back inside the bundle (`review.json`, `verdicts.json`, `drain.replies.json`, `launcher.json`, `.run.out`, or the loop's `patch.json` and `fix-cost.json`) is a symlink. The agent's scoped write, or verdict's read, would follow it to the file it names — a checked-in `review.json -> ../../../src/main.go` would aim the review's write at source.
+
+Fix: remove the named symlink from the bundle, then re-run.
+
 ## `auth-missing`
 
 Cause: the credential the host call needs is not exported.

@@ -375,17 +375,18 @@ func usageText() string {
 		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
 		"        [--max-severity <critical|important|informational, default important>]\n" +
 		"        [--timeout <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
-		"        [--sandbox | --sandbox-network-only] [--print] [-- <agent args>...] [--json]\n" +
+		"        [--sandbox | --sandbox-network-only | --no-sandbox] [--print] [-- <model flag> <m>] [--json]\n" +
 		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
 		"    fresh local bundle, run (review only, one finder, --require-coverage), record\n" +
 		"    --require-coverage, and gate (open findings at or above --max-severity; informational ones\n" +
 		"    still show; coverage required, live checks skipped). A failed gate starts the fix\n" +
 		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
 		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
-		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
+		"    (sandboxed by default, --sandbox confirming it; --sandbox-network-only or --no-sandbox, which\n" +
+		"    warns, opt out; no sandbox on the host refuses sandbox-unavailable).\n" +
 		"    The fix spawn carries the row's documented edit grant (claude --permission-mode acceptEdits\n" +
 		"    with the shell still denied, codex --sandbox workspace-write, none elsewhere); arguments after\n" +
-		"    '--' reach every spawn after that grant and may not decide permissions (bad-flags). The next\n" +
+		"    '--' reach every spawn and take only the agent's model flag (anything else: bad-flags). The next\n" +
 		"    round re-fetches and re-reviews the fixes. --agent takes any\n" +
 		"    agent table row or settings.json agent. Stops: pass, max-rounds, timeout (--timeout bounds\n" +
 		"    every phase and spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +

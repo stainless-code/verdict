@@ -239,6 +239,9 @@ func (r *launcherResume) wire() *jq.Obj {
 	if r.AgentSource != "" {
 		obj.Set(keyAgentSource, r.AgentSource)
 	}
+	if r.RequireCoverage != "" {
+		obj.Set(keyRequireCov, r.RequireCoverage)
+	}
 	if r.PriorStatus != "" {
 		obj.Set("prior_status", r.PriorStatus)
 	}
@@ -297,6 +300,7 @@ func launcherResumeOf(manifest *jq.Obj) *launcherResume {
 		PassThroughSHA256: jq.StrOf(readcommon.FieldOf(block, keyPassThrough)),
 		Finders:           int(readcommon.NumOr(readcommon.FieldOf(block, keyFinders))),
 		FinderSource:      jq.StrOf(readcommon.FieldOf(block, keyFinderSource)),
+		RequireCoverage:   jq.StrOf(readcommon.FieldOf(block, keyRequireCov)),
 	}
 	if record.ExecutionID == "" || record.Fingerprint == "" {
 		return nil

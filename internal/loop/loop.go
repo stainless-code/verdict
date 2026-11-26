@@ -51,6 +51,8 @@ const (
 	flagOutput    = "--output"
 	flagFixPrompt = "--fix-prompt"
 	flagPrint     = "--print"
+	// flagNoSandbox opts the verify step out of its default sandbox.
+	flagNoSandbox = "--no-sandbox"
 	// flagSandbox and flagSandboxNet pass verify's own sandbox flags to the
 	// fix phase's verify step.
 	flagSandbox    = "--sandbox"
@@ -66,7 +68,7 @@ const (
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
 		"--max-severity <critical|important|informational>, " +
 		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
-		"--sandbox-network-only, --print, -- <agent args>, --json)"
+		"--sandbox-network-only, --no-sandbox, --print, -- <agent args>, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
@@ -85,6 +87,7 @@ type flags struct {
 	print      bool
 	sandbox    bool
 	sandboxNet bool
+	noSandbox  bool
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
@@ -139,6 +142,10 @@ func exitFor(d *loopcore.Data) int {
 // loopRequest resolves the parsed flags into the service request: the limits,
 // the fix prompt's text, the receipts directory, and the prefs-defined agents.
 func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Request, *core.RefusalError) {
+	if postures := countTrue(f.sandbox, f.sandboxNet, f.noSandbox); postures > 1 {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "--sandbox, --sandbox-network-only, and " +
+			"--no-sandbox are mutually exclusive (verify runs sandboxed unless you pick one opt-out)"}
+	}
 	rounds, ref := parseRounds(f.maxRounds)
 	if ref != nil {
 		return nil, ref
@@ -174,8 +181,8 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 		MaxSeverity: f.severity,
 		Print:       f.print,
 
-		VerifySandbox:            f.sandbox,
 		VerifySandboxNetworkOnly: f.sandboxNet,
+		VerifyNoSandbox:          f.noSandbox,
 	}, nil
 }
 
@@ -223,6 +230,17 @@ func parseTimeout(raw string) (time.Duration, *core.RefusalError) {
 			"--timeout must be a positive duration (600, 600s, 10m), got '%s'", raw)}
 	}
 	return d, nil
+}
+
+// countTrue counts the set flags.
+func countTrue(flags ...bool) int {
+	n := 0
+	for _, f := range flags {
+		if f {
+			n++
+		}
+	}
+	return n
 }
 
 func digitsOnly(s string) bool {
@@ -337,6 +355,8 @@ func boolFlag(f *flags, arg string) *bool {
 		return &f.sandbox
 	case flagSandboxNet:
 		return &f.sandboxNet
+	case flagNoSandbox:
+		return &f.noSandbox
 	}
 	return nil
 }

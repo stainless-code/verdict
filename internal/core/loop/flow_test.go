@@ -379,8 +379,11 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 		Agent:       agentBinary,
 		MaxRounds:   3,
 		MaxSeverity: "informational",
-		Timeout:     5 * time.Minute,
-		Output:      filepath.Join(t.TempDir(), "receipts"),
+		// The integration agent's verify command is the test's own; a CI
+		// host without the platform sandbox would otherwise refuse it.
+		VerifyNoSandbox: true,
+		Timeout:         5 * time.Minute,
+		Output:          filepath.Join(t.TempDir(), "receipts"),
 	}
 }
 
@@ -514,19 +517,23 @@ func assertEverySpawnCarries(t *testing.T, agent *agentCommander, arg string) {
 	}
 }
 
-// assertSpawnGrants proves the edit grant rides the fix spawn alone and the
-// scoped bundle grant every review spawn alone.
+// assertSpawnGrants proves the edit grant rides the fix spawn alone, the
+// scoped bundle grant every review spawn alone, and every spawn keeps the
+// shell denial.
 func assertSpawnGrants(t *testing.T, agent *agentCommander) {
 	t.Helper()
 	for i, argv := range agent.argvs {
 		edits := slices.Contains(argv, "--permission-mode")
 		grant := slices.ContainsFunc(argv, func(a string) bool { return strings.HasPrefix(a, "--allowedTools=Edit(") })
-		if fix := agent.spawns[i] == "fix"; edits != fix || grant == fix {
-			t.Errorf("%s argv = %q, want the edit grant only on the fix and the bundle grant only on reviews",
-				agent.spawns[i], argv[:len(argv)-1])
+		if fix := agent.spawns[i] == "fix"; edits != fix || grant == fix || !slices.Contains(argv, shellDenial) {
+			t.Errorf("%s argv = %q, want the edit grant only on the fix, the bundle grant only on reviews, "+
+				"and the shell denial on every spawn", agent.spawns[i], argv[:len(argv)-1])
 		}
 	}
 }
+
+// shellDenial is claude's restriction every loop spawn carries.
+const shellDenial = "--disallowedTools=Bash,PowerShell"
 
 // TestLoopPassesAtImportantWithAnInformationalFinding proves --max-severity
 // reaches the gate: an informational finding stays open and shown, and the
@@ -805,5 +812,28 @@ func TestLoopRetriesAnAgentThatRejectsTheUsageFlag(t *testing.T) {
 	}
 	if flagged != 1 {
 		t.Errorf("%d spawns carried the rejected flag, want only the first: %q", flagged, agent.argvs)
+	}
+}
+
+// TestLoopFixRefusesALinkedPatchFile proves the fix spawn never starts over a
+// symlinked patch.json or fix-cost.json in the round bundle: verdict reads
+// both back, and a link would point that read, and the agent's write, at the
+// file it names.
+func TestLoopFixRefusesALinkedPatchFile(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(dir, patchFile)); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	agent := &agentCommander{t: t}
+	repo := t.TempDir()
+	p := &flowPhases{req: flowRequest(t, repo, agent)}
+	b := &reviewflow.Bundle{Dir: repo, Repo: "acme/app", Pr: "local-x"}
+	ref := p.fix(t.Context(), b, reviewflow.Launch{Agent: agentBinary, TimeoutRaw: "60"}, "fix", dir, "id")
+	if ref == nil || ref.Code != "artifact-path-unsafe" {
+		t.Fatalf("ref = %v, want artifact-path-unsafe", ref)
+	}
+	if len(agent.spawns) != 0 {
+		t.Errorf("spawns = %q, want none", agent.spawns)
 	}
 }

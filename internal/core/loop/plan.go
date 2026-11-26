@@ -93,15 +93,16 @@ func (lp *loop) reviewArgv(repo, local, timeout string) []string {
 	return argv
 }
 
-// verifyArgv is the verify step's CLI equivalent, with the sandbox the
-// operator passed through.
+// verifyArgv is the verify step's CLI equivalent, with its sandbox: the full
+// one unless the operator opted out.
 func (lp *loop) verifyArgv(repo, local string) []string {
 	argv := []string{verbName, "verify", repo, local, "--timeout", strconv.Itoa(min(verifyCapS, lp.data.TimeoutS))}
 	switch {
-	case lp.req.VerifySandbox:
-		argv = append(argv, "--sandbox")
+	case lp.req.VerifyNoSandbox:
 	case lp.req.VerifySandboxNetworkOnly:
 		argv = append(argv, "--sandbox-network-only")
+	default:
+		argv = append(argv, "--sandbox")
 	}
 	return argv
 }

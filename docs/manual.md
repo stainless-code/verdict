@@ -1768,7 +1768,9 @@ merge gate (`--coverage warn` reports the same shortfall without failing). That 
 by default — `post` and `record` keep the warning posture below.
 
 `--require-coverage` on `post` and `record` turns absence or a gap into a
-`coverage-incomplete` refusal that names the unattested ranges. `--force` does
+`coverage-incomplete` refusal that names the unattested ranges; on a chunked
+bundle a `chunks[]` that names no chunk (absent, `false`, or empty) refuses the
+same way, the shortfall `gate` grades as unknown. `--force` does
 not bypass it: this is a read receipt, not a security boundary, but a require
 flag a force flag can ignore is not a contract. The refusal is raised before
 any store write, so a refused run leaves the prior `findings.json` untouched —
@@ -4016,7 +4018,8 @@ in the bundle's `.run.rounds/` files.
 
 `--require-coverage` carries `record --require-coverage` into the launch, with
 the same meaning: an absent or partial diff-coverage attestation on a
-non-chunked bundle — or, on a chunked bundle, an absent `chunks[]`, which the
+non-chunked bundle — or, on a chunked bundle, a `chunks[]` that names no chunk
+(absent, `false`, or empty), which the
 default `gate` fails on — is a `coverage-incomplete` problem in the round's fix
 list, so the agent gets a repair round for it, and the directive states the
 requirement up front so a first attempt usually carries it. A run that ends
@@ -4190,19 +4193,24 @@ Only rows whose CLI documents the exact spelling carry one; a row without one is
 launched unchanged. `--allow-shell` restores the row's own tool set, and a
 pass-through spelling of a flag below — one that replaces the row's whole tool
 set — suppresses the restriction instead of sitting beside it. An additive or
-tightening flag sits beside it: `claude` merges allow and deny lists, so
-`--disallowedTools WebFetch` or `--allowedTools mcp__x` keeps the shell denial,
-and only `--tools` replaces it. An argument right after a bare option is read
-as that option's value (`--append-system-prompt "--tools"` is no override), so
-a doubt keeps the restriction.
+tightening flag keeps the shell denial: `claude` merges allow and deny lists,
+so `--disallowedTools WebFetch` or `--allowedTools mcp__x` sits beside it, and
+an operator spelling of the restriction's own denylist flag (pi
+`--exclude-tools`/`-xt`, bob `--disable-tool-groups`) gets the restriction's
+value merged into it — `--exclude-tools markdown` launches as
+`--exclude-tools bash,powershell,markdown`, at your position, once. Only a
+flag that replaces the whole tool set (the third column) or `--allow-shell`
+drops the denial. An argument right after a bare option is read as that
+option's value (`--append-system-prompt "--tools"` is no override), so a doubt
+keeps the restriction.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                     | Flags that decide the same question                              | Source                                                                                     |
-| -------- | ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`                                          | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | `--tools`                                                        | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `--tools`, `--no-builtin-tools`, `--no-tools` | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                     | Flags that replace the tool set                              | Source                                                                                     |
+| -------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | none (`--disable-tool-groups` merges)                        | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | `--tools`                                                    | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--tools`, `--no-builtin-tools`, `--no-tools` (`-xt` merges) | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
@@ -4224,7 +4232,13 @@ else: a review of an untrusted change still cannot edit source.
 
 The grant never widens past that directory. `run` refuses a bundle whose
 `.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,
-as `record` and `post` do), and the rule path is built from the resolved
+as `record` and `post` do), and a symlink at any path the launch writes or
+reads back — the artifact (`review.json`, `verdicts.json`,
+`drain.replies.json`), `launcher.json`, `.run.out` — refuses
+`artifact-path-unsafe` before any agent starts (a checked-in
+`review.json -> ../../../src/main.go` would aim the agent's write at that
+source file); after the agent exits the artifact is inspected without
+following links, and the rule path is built from the resolved
 directory, which must lie strictly under the resolved `.verdict/state` and
 must not hold the agent's working directory. A directory that fails that, or
 whose path holds a character the rule syntax reads as syntax (a space, a
@@ -7660,10 +7674,14 @@ working tree. When the fix declares a command in the bundle's `patch.json`
 (`{"verifyCmd": "..."}`), the loop runs `verdict verify` on it, so the fix
 carries the tool's receipt rather than the agent's word; the receipt is
 recorded, never a stop, except a cancel, which stops the loop in that round.
-The command is the agent's own proposal: `--sandbox` or
-`--sandbox-network-only` runs that verify step under `verify`'s enforced
-sandbox (off by default, as for `verify` itself; the two are mutually
-exclusive). Every phase runs under the `--timeout` deadline, and the review's
+The command is the agent's own proposal, and the tests it runs execute code
+the agent just edited, so the loop runs that verify step under `verify
+--sandbox` by default (sandbox-exec on macOS, bwrap on Linux; `--sandbox`
+confirms it). A host without the sandbox stops the loop at that verify with
+`sandbox-unavailable`, naming the opt-outs — it never runs the command
+unwrapped on its own. `--sandbox-network-only` is the network-only sandbox,
+and `--no-sandbox` runs the command unsandboxed, as you, with a warning; the
+three are mutually exclusive. Every phase runs under the `--timeout` deadline, and the review's
 two launch-to-check attempts each get half the time that remains. The next
 round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
@@ -7682,12 +7700,15 @@ shell commands, sandboxed to the working tree). Every other row carries none
 never used as one). The review spawn needs no edit grant: it carries `run`'s
 own scoped review-write grant. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
-grant. They also reach the review of untrusted content, so they may not
-decide the agent's permissions: the row's permission flags
-(`--permission-mode`, `--allowedTools`, `--add-dir`, `--sandbox`/`-s`,
-`--ask-for-approval`/`-a`, …) and any agent's bypass spellings (`--yolo`,
-`--dangerously-*`, `--full-auto`, `--auto-approve`, …) refuse `bad-flags`
-before anything runs. `--print` renders each grant in the exact argv.
+grant. They also reach the review of untrusted content, so they are an
+allowlist, not a denylist: only the agent row's model flag with one value
+(`--model opus` or `--model=opus`) is accepted, and any other argument — a
+tool set, a permission mode, a sandbox, an approval bypass, a config override
+— refuses `bad-flags` before anything runs, naming what is allowed. (`verdict
+run --` keeps passing your arguments as they are: there you own them.) A
+symlink at `patch.json` or `fix-cost.json` in the round bundle refuses
+`artifact-path-unsafe` before the fix spawns. `--print` renders each grant in
+the exact argv.
 
 The loop stops on the first of:
 

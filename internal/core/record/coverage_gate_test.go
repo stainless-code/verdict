@@ -189,6 +189,20 @@ func TestMergeCoverageGateRefusesAbsentAttestation(t *testing.T) {
 	}
 }
 
+// TestMergeCoverageGateRefusesAnEmptyChunkAttestation proves the opt-in gate
+// grades a chunked bundle on chunks[]: an attestation that names no chunk —
+// the key false — refuses coverage-incomplete instead of passing the gate it
+// would fail.
+func TestMergeCoverageGateRefusesAnEmptyChunkAttestation(t *testing.T) {
+	coverageBundle(t, coverageDiff, coverageReview("notes.txt", `"chunks":false,`))
+	testkit.WriteFile(t, ".verdict/state/"+coverageSlug+"/chunks/manifest.json", `{"chunks":[{"name":"chunk-01"}]}`)
+	_, _, err := mergeCoverage(t, true)
+	ref := coverageRefusal(t, err)
+	if !strings.Contains(ref.Message, "no chunks[] attestation") {
+		t.Errorf("message = %q, want it to name the missing chunk attestation", ref.Message)
+	}
+}
+
 // TestMergeCoverageGateRefusesPartialAttestation pins criterion 2's refusal
 // half: a partial attestation refuses and names the unattested ranges, so the
 // operator can act without another verb. Duplicate entries for one file union
@@ -503,10 +517,12 @@ func TestCoverageGateRequiresTheChunkAttestation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "chunks", "manifest.json"), []byte(manifest), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[]}`))
 	want := "coverage-incomplete: no chunks[] attestation in review.json on a chunked bundle (2 chunk(s))"
-	if ref == nil || ref.Code != "coverage-incomplete" || ref.Message != want {
-		t.Fatalf("ref = %v, want %q", ref, want)
+	for _, attest := range []string{``, `,"chunks":false`, `,"chunks":[]`} {
+		ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[]`+attest+`}`))
+		if ref == nil || ref.Code != "coverage-incomplete" || ref.Message != want {
+			t.Errorf("attestation %q: ref = %v, want %q", attest, ref, want)
+		}
 	}
 	if ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[],"chunks":["chunk-01","chunk-02"]}`)); ref != nil {
 		t.Errorf("attested chunks refused: %v", ref)

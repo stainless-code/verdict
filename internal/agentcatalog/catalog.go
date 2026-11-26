@@ -46,9 +46,16 @@ type Launch struct {
 	// EditCitation is the doc that states EditArgs.
 	EditCitation string
 	// ReviewWriteCitation is the doc that states ReviewWriteArgs' rule syntax.
-	ReviewWriteCitation    string
-	ProbeArgs              []string
-	DiscoveryArgs          []string
+	ReviewWriteCitation string
+	ProbeArgs           []string
+	DiscoveryArgs       []string
+	// DiscoveryMergeFlags are the spellings of the restriction's own
+	// denylist flag (DiscoveryArgs is that flag and its comma-separated
+	// value). An operator spelling of one after `--` is additive, so run
+	// merges the restriction's value into the operator's instead of letting
+	// the operator's replace it; DiscoveryOverrideFlags are the flags that
+	// replace the whole tool set and so drop the restriction.
+	DiscoveryMergeFlags    []string
 	ResumeArgs             []string
 	DiscoveryOverrideFlags []string
 	Args                   []string
@@ -233,10 +240,10 @@ var catalog = []Agent{
 			Args:      []string{argsRun},
 			ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: flagDisableToolGroups,
 			// The execute group is the shell; the write path stays open.
-			DiscoveryArgs:          []string{flagDisableToolGroups, "execute,mcp"},
-			DiscoveryCitation:      docBobShell,
-			DiscoveryOverrideFlags: []string{flagDisableToolGroups},
-			Install:                "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
+			DiscoveryArgs:       []string{flagDisableToolGroups, "execute,mcp"},
+			DiscoveryCitation:   docBobShell,
+			DiscoveryMergeFlags: []string{flagDisableToolGroups},
+			Install:             "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 		},
 	},
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
@@ -749,10 +756,11 @@ var catalog = []Agent{
 			ResumeCitation: docPiQuickstart,
 			// A denylist, so read/edit/write stay and only the two shell tools
 			// go: `bash` on Unix, `powershell` on Windows.
-			DiscoveryArgs:     []string{"--exclude-tools", "bash,powershell"},
-			DiscoveryCitation: docPiCLI,
+			DiscoveryArgs:       []string{"--exclude-tools", "bash,powershell"},
+			DiscoveryCitation:   docPiCLI,
+			DiscoveryMergeFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
-				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 			Install: "curl -fsSL https://pi.dev/install.sh | sh",
 		},
@@ -875,6 +883,7 @@ func All() []Agent {
 			v.ProbeArgs = slices.Clone(v.ProbeArgs)
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
+			v.DiscoveryMergeFlags = slices.Clone(v.DiscoveryMergeFlags)
 			v.EditArgs = slices.Clone(v.EditArgs)
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)

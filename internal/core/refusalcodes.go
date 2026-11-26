@@ -40,6 +40,7 @@ var refusalCodes = []string{
 	"ambiguous-patch-match",
 	"ambiguous-sig",
 	"approve-blocked",
+	"artifact-path-unsafe",
 	"auth-missing",
 	"backtest-failed",
 	"backtest-row-stale",

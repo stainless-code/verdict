@@ -334,18 +334,45 @@ func TestTwoFindersRequireCoverageAcceptsTheUnion(t *testing.T) {
 	}
 }
 
-// TestResumeDetectsRequireCoverageDrift proves --require-coverage is sealed:
-// continuing an interrupted execution with the flag flipped is a different
-// run, refused before any agent starts.
-func TestResumeDetectsRequireCoverageDrift(t *testing.T) {
+// TestResumeSealsRequireCoverage proves --require-coverage is sealed in the
+// launcher record: resuming with the flag as it was continues, and flipping it
+// either way is a different run, refused resume-drift before any agent starts.
+func TestResumeSealsRequireCoverage(t *testing.T) {
 	t.Parallel()
+	for _, tc := range []struct {
+		name          string
+		first, second bool
+		drift         bool
+	}{
+		{name: "both on", first: true, second: true},
+		{name: "on then off", first: true, drift: true},
+		{name: "off then on", second: true, drift: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkResumeSeal(t, tc.first, tc.second, tc.drift)
+		})
+	}
+}
+
+// checkResumeSeal interrupts one execution launched with first, resumes it
+// with second, and checks the resume drifts exactly when drift says.
+func checkResumeSeal(t *testing.T, first, second, drift bool) {
+	t.Helper()
 	req, commander := resumeFixture(t, "local-resume-coverage")
+	commander.attests = map[string]bool{"x-finder-1": true, "x-finder-2": true}
+	req.RequireCoverage = first
 	interruptRun(t, req, commander, "x-finder-2")
 	path := filepath.Join(commander.dir, launcherFile)
 	before := readFixtureFile(t, path)
-	req.RequireCoverage = true
-	req.Resume = true
-	assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "--require-coverage")
+	req.RequireCoverage, req.Resume = second, true
+	if drift {
+		assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "--require-coverage")
+		return
+	}
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("resume with the same flag refused: %v", ref)
+	}
 }
 
 // TestRunRefusesBundleSymlink proves a launch never writes through a symlinked
@@ -463,5 +490,49 @@ func TestStageRenderStatesTheCoverageRequirement(t *testing.T) {
 	prompt := resp.Data.Argv[len(resp.Data.Argv)-1]
 	if !strings.Contains(prompt, coverageParagraph) || !strings.Contains(prompt, `"coverage": []`) {
 		t.Errorf("stage render lacks the coverage requirement:\n%s", prompt)
+	}
+}
+
+// TestRunRefusesASymlinkedReviewArtifact is the round-2 repro: a change that
+// checks in .verdict/state/42/review.json as a link to ../../../src/main.go
+// would aim claude's scoped write at that source file. run refuses before any
+// agent starts, and the source file is untouched.
+func TestRunRefusesASymlinkedReviewArtifact(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	source := filepath.Join(root, "src", "main.go")
+	writeUnder(t, root, filepath.Join("src", "main.go"), "package main\n")
+	if err := os.Symlink(filepath.Join("..", "..", "..", "src", "main.go"), filepath.Join(bundleDir(root), reviewFile)); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	cmdr := perCall(t, root, coveredReviewDoc)
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &collector{}))
+	if ref == nil || ref.Code != "artifact-path-unsafe" {
+		t.Fatalf("ref = %v, want artifact-path-unsafe", ref)
+	}
+	assertSpawns(t, cmdr, 0)
+	if got, err := os.ReadFile(source); err != nil || string(got) != "package main\n" {
+		t.Errorf("source = %q (%v), want it untouched", got, err)
+	}
+}
+
+// TestRunNeverReadsAReviewThroughALink proves the post-exit check does not
+// follow a link the launch left behind: a review.json that is a symlink to a
+// well-formed review elsewhere is not an artifact, so the run refuses instead
+// of grading bytes from outside the bundle.
+func TestRunNeverReadsAReviewThroughALink(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	outside := filepath.Join(t.TempDir(), "review.json")
+	cmdr := &sequenced{write: func(int) {
+		if err := os.WriteFile(outside, []byte(coveredReviewDoc), 0o600); err != nil {
+			t.Error(err)
+		}
+		if err := os.Symlink(outside, filepath.Join(bundleDir(root), reviewFile)); err != nil {
+			t.Error(err)
+		}
+	}}
+	if _, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &collector{})); ref == nil {
+		t.Fatal("run graded a review read through a symlink")
 	}
 }
