@@ -66,6 +66,23 @@ func Parse(raw []byte) (*core.Config, *core.RefusalError) {
 	return buildConfig(root)
 }
 
+// ParseFile parses one repository configuration read from name, naming that
+// file in any refusal so the operator knows which document to fix.
+func ParseFile(name string, raw []byte) (*core.Config, *core.RefusalError) {
+	cfg, ref := Parse(raw)
+	return cfg, namedRefusal(name, ref)
+}
+
+// namedRefusal prefixes a parse refusal with the file it read. The suffix is
+// unchanged, so IsUnknownField and every code check still match.
+func namedRefusal(name string, ref *core.RefusalError) *core.RefusalError {
+	if ref == nil {
+		return nil
+	}
+	ref.Message = core.Msgf("%s: %s", name, core.Trusted(ref.Message))
+	return ref
+}
+
 // decodeStrict maps the shared decoder's positioned fault to bad-config, so a
 // configuration and a recipe refuse through one decoder with their own codes.
 func decodeStrict(raw []byte) (any, *core.RefusalError) {

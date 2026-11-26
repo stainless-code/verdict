@@ -484,10 +484,10 @@ func TestRunMissingTool(t *testing.T) {
 	if len(cmdr.calls) != 0 {
 		t.Errorf("calls fired before the need gate: %q", cmdr.calls)
 	}
-	// The bundle dir lands before the need gate (like the old preamble),
-	// but nothing is written into it and no progress streams.
-	if entries, err := os.ReadDir(".verdict/state/7"); err != nil || len(entries) != 0 {
-		t.Errorf("bundle files written on missing tool: %v %v", entries, err)
+	// The bundle dir lands before the need gate (like the old preamble), and
+	// the refused run removes it again: nothing is left and no progress streams.
+	if _, err := os.Lstat(".verdict/state/7"); !os.IsNotExist(err) {
+		t.Errorf("missing-tool run left .verdict/state/7 behind (stat err %v)", err)
 	}
 	if human.String() != "" || diag.String() != "" {
 		t.Errorf("streams = %q %q, want silence", human.String(), diag.String())

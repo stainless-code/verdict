@@ -312,7 +312,10 @@ func localStateDir(ctx2 *fetchRunCtx, req *LocalRequest) *core.RefusalError {
 	if ctx2.preview {
 		return nil
 	}
-	return ensureBundleState(req.RepoRootPath())
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return ref
+	}
+	return ctx2.claimBundleDir(req.RepoRootPath(), ctx2.dir)
 }
 
 // localPreviewDir resolves where a fetch-local run stages its reads: the

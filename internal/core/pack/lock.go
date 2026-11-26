@@ -518,7 +518,7 @@ func orgPinFromSnapshot(snap *controls.Snapshot) (*OrgPin, *core.RefusalError) {
 	if !ok {
 		return nil, nil
 	}
-	cfg, ref := config.Parse(raw)
+	cfg, ref := config.ParseFile(config.ConfigPath, raw)
 	if ref != nil {
 		return nil, ref
 	}

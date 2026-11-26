@@ -1260,9 +1260,20 @@ ledger, so a scan holding its lock never blocks one.
 The recall manifest `.verdict/state/<bundle>/kb-recall.json` mirrors the note
 machine-readably: a JSON array in rank order, each entry
 `{id, score, hits, judged}` where `score` is the ranker's `0.5` for unjudged
-rules else `hits/judged`. It is written together with `kb.txt` (clean trees
+rules else `hits/judged`; a pack rule's entry adds its `severity` and its
+`source` (`pack:<name>@<version>`). It is written together with `kb.txt` (clean trees
 leave neither file) and never changes `kb.txt` bytes; readers tolerate its
 absence, so bundles fetched before the manifest still read fine.
+
+A finding's `kb` cite is known when the store holds the rule active, or when
+the store has no row for it and the bundle's manifest lists it as a pack rule
+(the rules `kb.txt` handed the agent, such as the built-in `sec-injection`):
+`record` keeps either cite, with or without `.verdict/kb.jsonl`. Any other id
+warns `ignoring unknown kb rule` and drops. When the bundle has a `kb.txt`
+but its manifest is missing or unreadable, pack rules cannot be recognized:
+the first cite that falls through to unknown also warns that the manifest is
+missing (once per run); re-fetch the bundle to restore it. A pack rule carries no counters, so
+a flip of a finding citing one credits nothing and warns nothing.
 
 Credit: flipping a finding to `addressed` credits cited rules `hits+1`, to
 `false-positive` credits `false_hits+1` (`judged+1` either way) — staged with
@@ -1411,7 +1422,12 @@ any threshold. `fetch`/`fetch-local` read it from the base commit (or
 the reviewed worktree for local runs) through the same trusted read; unknown
 fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
 typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
-before any provider call. Layer order is flags, environment
+before any provider call. A parse refusal names the file it read
+(`.verdict/config.json: <field>: …`, or `settings file <path>: …` for the
+personal layer). A refused `fetch` or `fetch-local` removes the bundle
+directory the run created, so no half-written bundle is left. A refused
+re-fetch keeps the bundle directory that was already there; files the run
+wrote into it before the refusal stay as written. Layer order is flags, environment
 (`REVIEW_BUDGET_USD` and friends), repository scopes and shared defaults,
 personal review settings, built-ins. The personal layer lives in the operator
 settings file and carries only a spend ceiling, privacy exclusions, and review

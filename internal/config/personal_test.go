@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -122,6 +123,20 @@ func TestParsePersonalPacks(t *testing.T) {
 	checkPersonalRefusal(t, `{"packs":"org"}`, CodeBadConfig, "packs")
 	checkPersonalRefusal(t, `{"packs":[""]}`, CodeBadConfig, "packs[0]")
 	checkPersonalRefusal(t, `{"packs":[1]}`, CodeBadConfig, "packs[0]")
+}
+
+// TestLoadPersonalRefusalNamesFile proves a settings parse refusal names the
+// settings file it read, so the operator knows which document to fix.
+func TestLoadPersonalRefusalNamesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if err := os.WriteFile(path, []byte(`[]`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := LoadPersonal(path)
+	want := "settings file " + path + ": $: want a JSON object, got array"
+	if ref == nil || ref.Code != CodeBadConfig || ref.Message != want {
+		t.Fatalf("LoadPersonal = %v, want bad-config: %q", ref, want)
+	}
 }
 
 // TestLoadPersonalAbsent pins the no-create rule: a missing settings file

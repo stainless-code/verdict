@@ -124,7 +124,7 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 	if ref := resolvePublishFile(path, obj, eff); ref != nil {
 		return nil, ref
 	}
-	if ref := validatePersonalSections(obj); ref != nil {
+	if ref := validatePersonalSections(path, obj); ref != nil {
 		return nil, ref
 	}
 	return &PrefsResult{Effective: *eff, Path: path}, nil
@@ -257,10 +257,11 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 // validatePersonalSections validates the review/spend/privacy sections
 // of the settings file through the typed personal parser, so the
 // loader and the fetch-time personal read share one contract. A
-// section violation refuses with its typed configuration code.
-func validatePersonalSections(obj map[string]any) error {
+// section violation refuses with its typed configuration code, naming the
+// settings file like every other loader refusal.
+func validatePersonalSections(path string, obj map[string]any) error {
 	if ref := config.ValidatePersonalSections(obj); ref != nil {
-		return &RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
+		return &RefusalError{Code: ref.Code, Message: core.Msgf("settings file %s: %s", path, core.Trusted(ref.Message))}
 	}
 	return nil
 }

@@ -874,7 +874,7 @@ func rootWeights(root string) (core.SeverityWeights, error) {
 	if err != nil {
 		return core.SeverityWeights{}, jq.NewErrf("weights: %s", err)
 	}
-	policy, ref := config.Parse(raw)
+	policy, ref := config.ParseFile(reviewConfig, raw)
 	if ref != nil {
 		return core.SeverityWeights{}, jq.NewErrf("weights: %s", ref)
 	}
