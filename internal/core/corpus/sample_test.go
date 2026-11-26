@@ -33,7 +33,7 @@ func TestSamplePinsWeightsAndRecordedZero(t *testing.T) {
 func TestSamplingRefusesBundleWithoutRecord(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "corpus-old")
 	_, ref := LoadSample(dir, evaluateAll(&core.CorpusCase{ID: "clean", Kind: "control"}, nil))
-	want := "corpus bundle " + dir + " has no corpus_run.json: an older bench runner wrote it " +
+	want := "corpus bundle " + filepath.ToSlash(dir) + " has no corpus_run.json: an older bench runner wrote it " +
 		"(re-run the benchmark with the current bench/runner to rebuild it)"
 	if ref == nil || ref.Code != "bundle-outdated" || ref.Message != want {
 		t.Fatalf("LoadSample without corpus_run.json = %v, want bundle-outdated %q", ref, want)

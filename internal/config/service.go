@@ -393,7 +393,7 @@ func noRunStateFiles(dir string) *core.RefusalError {
 	}
 	return refuse(CodeBundleOutdated, "bundle %s has no %s: an older verdict, an interrupted "+
 		"fetch, or something other than fetch wrote it (re-fetch the bundle with `verdict fetch`, "+
-		"or `verdict fetch-local`, then re-run)", dir, runStateFileName)
+		"or `verdict fetch-local`, then re-run)", filepath.ToSlash(dir), runStateFileName)
 }
 
 func capturedFileInputs(rs *RunState) []FileInput {

@@ -287,7 +287,7 @@ func bindRunState(dir string, rs *RunState) (*RunState, *core.RefusalError) {
 func outdatedState(path string) *stateError {
 	return &stateError{
 		code: CodeBundleOutdated, operator: true,
-		msg: path + " was written by an older verdict and carries no integrity binding " +
+		msg: filepath.ToSlash(path) + " was written by an older verdict and carries no integrity binding " +
 			"(re-fetch the bundle with `verdict fetch`, or `verdict fetch-local`, then re-run)",
 	}
 }

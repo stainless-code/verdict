@@ -281,7 +281,7 @@ func checkOutdatedRunState(t *testing.T, mutate func(*RunState)) string {
 	t.Helper()
 	root, dir := verifiedRunBundle(t)
 	path := rewriteRunStateRaw(t, dir, mutate)
-	want := path + " was written by an older verdict and carries no integrity binding " +
+	want := filepath.ToSlash(path) + " was written by an older verdict and carries no integrity binding " +
 		"(re-fetch the bundle with `verdict fetch`, or `verdict fetch-local`, then re-run)"
 	if _, found, serr := ReadRunState(dir); serr == nil || found || serr.Error() != want {
 		t.Fatalf("ReadRunState = found %v, %v; want %q", found, serr, want)

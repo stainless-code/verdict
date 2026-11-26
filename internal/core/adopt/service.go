@@ -280,6 +280,11 @@ func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
 	if err != nil {
 		return nil, st.refuse("corrupt-store", fmt.Sprintf(msgCorruptStore, fromDir))
 	}
+	// A store an older verdict wrote refuses here, before adopt copies its
+	// unreadable shape into the target bundle.
+	if ref := readcommon.OutdatedEntries(fromDir, entries); ref != nil {
+		return nil, st.refuse(ref.Code, ref.Message)
+	}
 	return entries, nil
 }
 

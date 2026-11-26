@@ -30,3 +30,19 @@ func TestScanPatchTwinsRefusesAStoreItCannotList(t *testing.T) {
 		t.Errorf("message = %q; want it to name the store", ref.Message)
 	}
 }
+
+// TestLoadFromEntriesRefusesOutdatedStore pins the shared store gate on the
+// source side: a findings.json an older verdict wrote (a bare verification
+// array) refuses bundle-outdated before adopt copies it into the target.
+func TestLoadFromEntriesRefusesOutdatedStore(t *testing.T) {
+	dir := t.TempDir()
+	old := `[{"sig":"c111","status":"open","verification":[{"model":"a","verdict":"refuted"}]}]`
+	if err := os.WriteFile(dir+"/findings.json", []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := &state{req: autoRequest("auto")}
+	_, ref := st.loadFromEntries(dir)
+	if ref == nil || ref.Code != "bundle-outdated" {
+		t.Fatalf("loadFromEntries = %v, want bundle-outdated", ref)
+	}
+}

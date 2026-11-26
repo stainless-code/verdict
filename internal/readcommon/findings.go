@@ -3,6 +3,7 @@ package readcommon
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -62,7 +63,7 @@ func OutdatedEntries(dir string, entries []any) *core.RefusalError {
 	}
 	return &core.RefusalError{Code: codeBundleOutdated, Message: fmt.Sprintf(
 		"findings store %s/findings.json was written by an older verdict (a finding's "+
-			"verification is a bare array) — re-run the review and record to rebuild it", dir)}
+			"verification is a bare array) — re-run the review and record to rebuild it", filepath.ToSlash(dir))}
 }
 
 // arrayVerification reports whether one store entry carries the bare panel

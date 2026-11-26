@@ -157,7 +157,7 @@ var hintRules = []HintRule{
 	{
 		codes: []string{"bundle-outdated"},
 		hint: "try: re-create the bundle with this verdict — re-fetch a review bundle (verdict fetch, " +
-			"or verdict fetch-local), re-run a benchmark bundle — then re-run",
+			"or verdict fetch-local), re-run the review and record, re-run a benchmark bundle — then re-run",
 	},
 	{
 		codes: []string{"bundle-unreadable"},
