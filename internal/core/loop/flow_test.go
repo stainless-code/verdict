@@ -381,13 +381,16 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 // month-to-date scan priced: the review from its prompt-shaped (undated,
 // schema-2) cost.json, the fix from its fix-cost.json report — so a loop
 // with --max-cost-usd proceeds past round 1 with the review counted.
+// The agent attests coverage only because the bundle's procedure.md asks for
+// it, so the pass also proves the handoff asks for what the default gate
+// requires.
 //
 // fetch-local reads the process working directory, so the test chdirs and
 // cannot run in parallel.
 func TestLoopThroughTheShippedServices(t *testing.T) {
 	repo := flowRepo(t)
 	t.Chdir(repo)
-	agent := &agentCommander{t: t, reportFixCost: true}
+	agent := &agentCommander{t: t, reportFixCost: true, followsProcedure: true}
 	req := flowRequest(t, repo, agent)
 	req.MaxCostUSD = "5"
 	resp, ref := Run(t.Context(), req)
@@ -493,18 +496,6 @@ func assertSpawnGrants(t *testing.T, agent *agentCommander) {
 			t.Errorf("%s argv = %q, want the edit grant only on the fix and the bundle grant only on reviews",
 				agent.spawns[i], argv[:len(argv)-1])
 		}
-	}
-}
-
-// TestLoopPassesWithAnAgentFollowingTheProcedure proves the handoff asks for
-// the attestation the default gate requires: an agent that attests only what
-// its procedure.md asks for fixes the finding and passes, where a procedure
-// that never names coverage[] stops the loop refused coverage-incomplete.
-func TestLoopPassesWithAnAgentFollowingTheProcedure(t *testing.T) {
-	resp, _ := flowLoop(t, &agentCommander{t: t, followsProcedure: true, reportFixCost: true}, "")
-	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
-		t.Fatalf("stop=%s rounds=%d refusal=%+v, want a pass in round 2",
-			resp.Data.Stop, len(resp.Data.Rounds), resp.Data.Refusal)
 	}
 }
 
