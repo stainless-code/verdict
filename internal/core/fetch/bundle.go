@@ -391,7 +391,13 @@ type fetchRunCtx struct { //nolint:govet // field grouping documents the run sta
 	stagedDiff *string
 	// scratch is the throwaway directory a preview stages its reads in; the
 	// run removes it on every path, so a preview leaves no bundle behind.
-	scratch           string
+	scratch string
+	// createdDir records that the bundle directory did not exist before this
+	// run, so a refusal removes it instead of leaving a half-written bundle.
+	// A re-fetch over an existing bundle never removes it.
+	createdDir bool
+	// bundleRoot is the repository root the bundle leaf was created under.
+	bundleRoot        string
 	noDefaultExcludes bool
 	preview           bool
 	receiptLoaded     bool

@@ -83,6 +83,16 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 		preview: req.Flags.Preview,
 	}
 	defer ctx2.cleanScratch()
+	resp, err := st.build(ctx, ctx2, s, req, f)
+	if err != nil {
+		return nil, st.discardRefused(ctx2, err)
+	}
+	return resp, nil
+}
+
+// build runs one remote fetch after the provider resolves; dispatch owns the
+// cleanup a refusal needs.
+func (st *state) build(ctx context.Context, ctx2 *fetchRunCtx, s *session, req *Request, f *Flags) (*Response, error) {
 	files, err := collectContextInputs(f.Context, f.Spec)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
@@ -173,6 +183,16 @@ func RunLocal(ctx context.Context, req *LocalRequest) (*Response, error) {
 		preview: req.Flags.Preview,
 	}
 	defer ctx2.cleanScratch()
+	resp, err := st.buildLocal(ctx, ctx2, s, req)
+	if err != nil {
+		return nil, st.discardRefused(ctx2, err)
+	}
+	return resp, nil
+}
+
+// buildLocal runs one fetch-local after the session exists; RunLocal owns the
+// cleanup a refusal needs.
+func (st *state) buildLocal(ctx context.Context, ctx2 *fetchRunCtx, s *session, req *LocalRequest) (*Response, error) {
 	files, err := collectContextInputs(req.Flags.Context, req.Flags.Spec)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)

@@ -117,12 +117,12 @@ func checkBasePolicy(snap *controls.Snapshot) *core.RefusalError {
 }
 
 func parseBaseTrigger(raw []byte) (*core.ConfigTrigger, *core.RefusalError) {
-	cfg, ref := config.Parse(raw)
+	cfg, ref := config.ParseFile(config.ConfigPath, raw)
 	if ref == nil {
 		return cfg.Trigger, nil
 	}
 	if config.IsUnknownField(ref) {
 		return nil, ref
 	}
-	return nil, triggerFailure("could not parse the base "+config.ConfigPath, ref)
+	return nil, triggerFailure("could not parse the base policy", ref)
 }
