@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -107,7 +108,8 @@ func (st *state) liveAlreadyPosted() *core.RefusalError {
 			postedAt = unknownTime
 		}
 		return &core.RefusalError{Code: codeAlreadyPosted, Message: fmt.Sprintf(msgAlreadyPosted,
-			readcommon.ShortSHA(st.commitID), postedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.commitID))}
+			untrusted.Line(readcommon.ShortSHA(st.commitID)), untrusted.Line(postedAt), st.req.Repo, st.req.Pr,
+			untrusted.Line(readcommon.ShortSHA(st.commitID)))}
 	}
 	return nil
 }

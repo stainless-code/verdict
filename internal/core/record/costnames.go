@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Refusal codes for the cost-name repair. The family is closed: every code
@@ -90,14 +91,26 @@ func NameCostModels(dir string, panel []string, dryRun bool) (named, entries int
 // merge, then applies after it, so a cost-name refusal never leaves findings
 // behind.
 func PlanCostNames(dir string, panel []string) ([]CostNamePlan, int, bool, *core.RefusalError) {
-	return planCostNames(dir, panel)
+	plans, entries, found, ref := planCostNames(dir, panel)
+	return plans, entries, found, oneLine(ref)
 }
 
 // ApplyCostNames performs planned rewrites, or counts them on a dry run. It is
 // the only half that writes, so every refusal it can raise is a write failure
 // mid-pass and says which files are already on disk.
 func ApplyCostNames(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
-	return writePlans(plans, dryRun)
+	named, ref := writePlans(plans, dryRun)
+	return named, oneLine(ref)
+}
+
+// oneLine folds a whole cost refusal: every sentence of this pass is one line,
+// and the file names it quotes come from the chunk manifest and the chunks
+// directory, which the agent writes.
+func oneLine(ref *core.RefusalError) *core.RefusalError {
+	if ref != nil {
+		ref.Message = untrusted.Line(ref.Message)
+	}
+	return ref
 }
 
 // writtenFiles lists what a failed pass already rewrote, so the refusal can
@@ -508,7 +521,7 @@ func (st *svc) planCostNames(dir string) (*costNamePass, *core.RefusalError) {
 		if conflict != "" {
 			return nil, &core.RefusalError{
 				Code: codeCostPanelUnresolved,
-				Message: "no single panel to name the cost entries from: " + conflict +
+				Message: "no single panel to name the cost entries from: " + untrusted.Line(conflict) +
 					" — pass --cost-names with the panel that ran, one list for every record",
 			}
 		}

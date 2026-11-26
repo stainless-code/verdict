@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/retry"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const postJQFilter = "{id, state, html_url, submitted_at}"
@@ -481,7 +482,7 @@ func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalEr
 	return &core.RefusalError{Code: codePostFailed, RetryAt: retryAt, Message: fmt.Sprintf(
 		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; "+
 			"re-run skips parts already posted, and --force reposts part 1 as a duplicate)",
-		k, n, reviewID(posted))}
+		k, n, untrusted.Line(reviewID(posted)))}
 }
 
 func reviewID(posted string) string {

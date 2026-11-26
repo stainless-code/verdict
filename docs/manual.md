@@ -1934,9 +1934,14 @@ U+2066–U+2069) as lowercase `\uXXXX`, so a consumer that prints an envelope
 string to a terminal gets no live control. A warning is also one line: a newline inside
 an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
 space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
-Files verdict writes to disk are not folded, and neither is a field of the
-`--json` envelope: gate `detail` and error `message` carry the stored value
-verbatim, and the human renderers fold it. `show`'s human form and `pr-wait`'s
+An `error:` line keeps the breaks its own message lays out, so a `record`,
+`post`, or thread-write refusal folds the line breaks of a value it quotes (a
+`review.json` `schema_version`, a changed file's path, a host's PR state) before
+the value enters the message. Files verdict writes to disk are not folded, and
+neither is a field of the `--json` envelope: gate `detail` and error `message`
+carry the stored value verbatim, and the human renderers fold it — except a
+value a refusal folded as above, which reads the same in both modes.
+`show`'s human form and `pr-wait`'s
 human-mode snapshots are JSON-shaped, so the fold touches only the bidi
 marks (U+061C, U+200E, U+200F) Go's encoder leaves unescaped, replacing each
 with a space; use `--json` when a machine consumes them.

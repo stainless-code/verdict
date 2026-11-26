@@ -7,6 +7,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Messages for the coverage surface. The percentage and the gap list are
@@ -71,7 +72,7 @@ func coverageGapMessage(sum *coverage.Summary) string {
 	if sum.Percent != nil {
 		percent = *sum.Percent
 	}
-	return fmt.Sprintf(msgCoverageGap, percent, sum.Attested, sum.Total, gapList(sum, msgGapCap))
+	return fmt.Sprintf(msgCoverageGap, percent, sum.Attested, sum.Total, untrusted.Line(gapList(sum, msgGapCap)))
 }
 
 // gapList renders "src/a.ts:1-2, src/b.ts:9" from the summary's gaps, naming at
