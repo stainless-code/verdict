@@ -551,13 +551,29 @@ func (c *coordinator) mergeDiscovery(ctx context.Context, outcomes []discoveryOu
 		c.st.replay(outcomes[i].worker)
 	}
 	if ref := canceledRefusal(ctx, c.st); ref != nil {
-		return ref
+		return mergeFatal(ref, c.persistFinished(outcomes, skipped))
 	}
 	fatal := c.recordDiscoveries(outcomes, skipped)
 	if fatal != nil {
 		return fatal
 	}
 	return c.check()
+}
+
+// persistFinished publishes what a canceled discovery finished before the
+// cancel: each finder that ended on its own, bound or failed, so --resume
+// reuses a completed finder instead of paying for it again. A finder the
+// cancel interrupted ended fatal and bound nothing, so it is left out and a
+// resume relaunches it.
+func (c *coordinator) persistFinished(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
+	for i := range outcomes {
+		if skipped[i] || outcomes[i].fatal {
+			continue
+		}
+		c.reviews[i] = outcomes[i].review
+		c.resolveFailure(finderPhase(i), outcomes[i].failure, outcomes[i].cause)
+	}
+	return c.persistProgress()
 }
 
 // recordDiscoveries folds the launched finders' outcomes in index order and

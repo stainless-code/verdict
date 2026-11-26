@@ -798,6 +798,49 @@ func TestCanceledExecutionIsResumable(t *testing.T) {
 	}
 }
 
+// cancelOnWarn cancels the run at its first replayed warning: the coordinator
+// replays the finders' buffered warnings after both have ended and before it
+// reads the cancel, so the cancel lands after every finder finished its phase.
+type cancelOnWarn struct {
+	cancel context.CancelFunc
+}
+
+func (p *cancelOnWarn) Human(string) {}
+func (p *cancelOnWarn) Diag(string)  {}
+func (p *cancelOnWarn) Warn(string)  { p.cancel() }
+
+// TestCanceledDiscoveryKeepsTheFinishedFinder proves a discovery canceled
+// after finder-1 finished publishes finder-1's binding beside finder-2's
+// failure, so the resume reuses finder-1 instead of paying for it twice and
+// relaunches only finder-2.
+func TestCanceledDiscoveryKeepsTheFinishedFinder(t *testing.T) {
+	t.Parallel()
+	req, commander := resumeFixture(t, "local-resume-cancel-merge")
+	commander.outputDir, commander.failPhase = true, "x-finder-2"
+	ctx, cancel := context.WithCancel(t.Context())
+	req.Progress = &cancelOnWarn{cancel: cancel}
+	if _, ref := Run(ctx, req); ref == nil || ref.Code != codeCanceled {
+		t.Fatalf("canceled attempt refusal = %v", ref)
+	}
+	manifest := resumeManifest(t, commander.dir)
+	if boundDigest(manifest, "x-finder-1/review.json") == "" {
+		t.Fatalf("canceled attempt bound no digest for the finished finder: %s", jq.Compact(manifest))
+	}
+	req.Progress = nil
+	commander.outputDir, commander.failPhase = false, ""
+	commander.reset()
+	req.Resume = true
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("resume refusal = %v", ref)
+	}
+	if got := commander.phaseCalls("x-finder-1"); got != 0 {
+		t.Fatalf("resume relaunched the finished finder %d time(s): %v", got, commander.launched())
+	}
+	if got := commander.phaseCalls("x-finder-2"); got != 1 {
+		t.Fatalf("resume launched the failed finder %d time(s), want 1: %v", got, commander.launched())
+	}
+}
+
 // assertInProgressBindings proves one killed attempt left the two finished
 // finders sealed in a record that is still in progress, so the next attempt can
 // reuse them instead of spending the agent again.
