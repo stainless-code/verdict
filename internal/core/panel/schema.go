@@ -50,9 +50,18 @@ type DirectedCheck struct {
 }
 
 // ExecutionSource preserves exact finder origins for one union signature.
+// Merged names the finding a cross checker's same_as folded into this one.
 type ExecutionSource struct {
+	Merged  *SourceMerge   `json:"merged,omitempty" nonnull:"true"`
 	Sig     string         `json:"sig"`
-	Origins []FinderOrigin `json:"origins" maxItems:"2" minItems:"1"`
+	Origins []FinderOrigin `json:"origins"          maxItems:"2"   minItems:"1"`
+}
+
+// SourceMerge is one folded duplicate: the signature that folded into the
+// source and the checker whose same_as named the pair.
+type SourceMerge struct {
+	Sig     string `json:"sig"`
+	Checker string `enum:"finder-1|finder-2" json:"checker"`
 }
 
 // FinderOrigin binds a source index to the original finder claim.

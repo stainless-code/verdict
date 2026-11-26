@@ -1475,6 +1475,7 @@ func panelDefinitions(receipt bool) []definition {
 		{typ: reflect.TypeFor[panelcore.DirectedCheck](), name: "directedCheck", closed: true},
 		{typ: reflect.TypeFor[panelcore.ExecutionSource](), name: "executionSource", closed: true},
 		{typ: reflect.TypeFor[panelcore.FinderOrigin](), name: "finderOrigin", closed: true},
+		{typ: reflect.TypeFor[panelcore.SourceMerge](), name: "sourceMerge", closed: true},
 		{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"},
 		{typ: reflect.TypeFor[panelcore.Finding](), name: "finding"},
 		{typ: reflect.TypeFor[panelcore.Totals](), name: "totals"},
