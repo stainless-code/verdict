@@ -85,7 +85,7 @@ func (s htmlSnapshot) refusal(route string, view *query.View, err error) error {
 	if !ok {
 		return exportFailure(fmt.Errorf("compose %s: %w", route, err))
 	}
-	problem := jq.NewObj("code", ref.Code, "message", ref.Message+"\n"+core.HintFor(ref.Code))
+	problem := jq.NewObj("code", ref.Code, "message", ref.Message+"\n"+core.RefusalHint(ref))
 	at, pr := core.NowUTC(time.Unix(0, 0)), ""
 	if view != nil {
 		at, pr = view.At, view.Pr

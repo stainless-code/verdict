@@ -666,7 +666,7 @@ func (c *coordinator) sealedCross(plan *resumePlan, index int) *core.RefusalErro
 	if ref != nil || raw == nil || bound == "" {
 		return ref
 	}
-	if _, valid := c.checkCross(raw, checker, batch); !valid {
+	if _, problems := c.checkCross(raw, checker, batch); len(problems) > 0 {
 		return c.driftRefusal(artifact + " no longer passes the cross-check validation")
 	}
 	plan.crossBytes[index], plan.reuseCross[index] = raw, true
@@ -975,8 +975,8 @@ func (c *coordinator) crossReuse(index int, checker string, batch []any) ([]any,
 	if ref := c.sealedBytes(plan.crossBytes[index], artifact); ref != nil {
 		return nil, false, ref
 	}
-	rows, valid := c.checkCross(plan.crossBytes[index], checker, batch)
-	if !valid {
+	rows, problems := c.checkCross(plan.crossBytes[index], checker, batch)
+	if len(problems) > 0 {
 		return nil, false, c.driftRefusal(artifact + " no longer passes the cross-check validation")
 	}
 	return rows, true, nil

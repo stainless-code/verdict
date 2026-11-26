@@ -31,7 +31,7 @@ func (s *Server) writeEnvelope(w http.ResponseWriter, env *jq.Obj) {
 // writeRefusal writes a product refusal as a 200 envelope: data null, the
 // typed error object, and the hint the CLI's own refusal carries.
 func (s *Server) writeRefusal(w http.ResponseWriter, verb, pr string, ref *core.RefusalError) {
-	message := ref.Message + "\n" + core.HintFor(ref.Code)
+	message := ref.Message + "\n" + core.RefusalHint(ref)
 	errObj := jq.NewObj("code", ref.Code, "message", message)
 	env := core.RenderEnvelope(verb, "", pr, s.at(), "", ref.Warnings, nil, errObj)
 	s.writeEnvelope(w, env)

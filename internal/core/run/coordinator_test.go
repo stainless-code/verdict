@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -32,6 +34,7 @@ type phaseCommander struct {
 	// test can deny the finding finder-2's same_as names.
 	firstCheckerVerdict string
 	calls               map[string]int
+	prompts             map[string][]string
 	// attests names the finder phases whose review carries a whole-diff
 	// coverage[] attestation.
 	attests     map[string]bool
@@ -45,6 +48,8 @@ type phaseCommander struct {
 	repair      bool
 	crossRepair bool
 	crossBroken bool
+	crossSide   bool // x-cross-1's first attempt quotes side "new"
+	crossText   bool // x-cross-1's first attempt quotes text the diff does not carry
 	tamper      bool
 	distinct    bool
 	empty       bool // finders find nothing, so no cross check is dispatched
@@ -64,7 +69,7 @@ func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 		p.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{ExitCode: 2}, nil
 	}
-	attempt := p.record(phase)
+	attempt := p.record(phase, cmd.Argv[len(cmd.Argv)-1])
 	if p.cancelOn == phase && attempt == 1 {
 		p.cancel()
 		return core.Result{ExitCode: 7}, nil
@@ -72,14 +77,16 @@ func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 	return p.writePhase(phase, attempt, cmd), nil
 }
 
-// record logs one launch and reports how many times that phase has launched.
-func (p *phaseCommander) record(phase string) int {
+// record logs one launch and its directive, and reports how many times that
+// phase has launched.
+func (p *phaseCommander) record(phase, prompt string) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.calls == nil {
-		p.calls = map[string]int{}
+		p.calls, p.prompts = map[string]int{}, map[string][]string{}
 	}
 	p.calls[phase]++
+	p.prompts[phase] = append(p.prompts[phase], prompt)
 	p.phases = append(p.phases, phase)
 	return p.calls[phase]
 }
@@ -211,7 +218,7 @@ func (p *phaseCommander) crossReview(phase string, attempt int) string {
 	for _, candidate := range candidates {
 		finding := readcommon.FieldOf(candidate, "finding")
 		p.assertCrossCandidate(phase, finding)
-		results = append(results, p.crossRow(phase, request, candidate))
+		results = append(results, p.crossRow(phase, request, candidate, attempt))
 	}
 	if p.crossBroken || (p.crossRepair && phase == "x-cross-1" && attempt == 1) {
 		return `{"results":[]}`
@@ -222,17 +229,32 @@ func (p *phaseCommander) crossReview(phase string, attempt int) string {
 // crossRow is one scripted verdict on a candidate: confirmed unless the test
 // set finder-1's verdict, and naming finder-2's first own finding when the test
 // asked for a same_as.
-func (p *phaseCommander) crossRow(phase string, request *jq.Obj, candidate any) *jq.Obj {
+func (p *phaseCommander) crossRow(phase string, request *jq.Obj, candidate any, attempt int) *jq.Obj {
 	verdict := "confirmed"
 	if phase == "x-cross-1" && p.firstCheckerVerdict != "" {
 		verdict = p.firstCheckerVerdict
 	}
+	side, text := p.crossQuote(phase, attempt)
 	row := jq.NewObj("sig", readcommon.FieldOf(candidate, "sig"), "verdict", verdict,
-		"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", "RIGHT", "line", 1, "text", "new line 1"))
+		"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", side, "line", 1, "text", text))
 	if own := jq.Elements(readcommon.FieldOf(request, "own_findings")); p.sameAs && phase == "x-cross-2" && len(own) > 0 {
 		row.Set("same_as", readcommon.FieldOf(own[0], "sig"))
 	}
 	return row
+}
+
+// crossQuote is the side and text a cross row quotes: the diff's own line,
+// unless a test breaks x-cross-1's first attempt.
+func (p *phaseCommander) crossQuote(phase string, attempt int) (side, text string) {
+	side, text = "RIGHT", "new line 1"
+	first := phase == "x-cross-1" && attempt == 1
+	if first && p.crossSide {
+		side = "new"
+	}
+	if first && p.crossText {
+		text = "a line the diff never carried"
+	}
+	return side, text
 }
 
 func coordinatorFixture(t *testing.T) (*core.RunRequest, *phaseCommander) {
@@ -403,6 +425,135 @@ func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
 		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2"})
 }
 
+// TestCoordinatorRepairsCrossQuoteSide proves a cross answer quoting a side the
+// evidence check does not accept is repaired, not exhausted: the first
+// directive names both sides, the repair round names the field, its code and
+// the accepted values, and the second attempt completes the execution.
+func TestCoordinatorRepairsCrossQuoteSide(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossSide = true
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	prompts := commander.prompts["x-cross-1"]
+	if len(prompts) != 2 {
+		t.Fatalf("x-cross-1 launched %d times, want 2", len(prompts))
+	}
+	sides := "RIGHT (a line on the new side of the diff) or LEFT (a deleted line on the old side)"
+	if !strings.Contains(prompts[0], "where side is "+sides+".") {
+		t.Errorf("first directive does not name the sides:\n%s", prompts[0])
+	}
+	for _, want := range []string{
+		`{"path":"$.results[0].quote.side","code":"bad-enum","level":"error",` +
+			`"message":"unknown quote side \"new\"","fix":"use ` + sides + `"}`,
+	} {
+		if !strings.Contains(prompts[1], want) {
+			t.Errorf("repair prompt lacks %s:\n%s", want, prompts[1])
+		}
+	}
+	manifest := readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))
+	if failures := jq.Elements(readcommon.FieldOf(manifest, "failures")); len(failures) != 0 {
+		t.Fatalf("failures = %v, want none", failures)
+	}
+}
+
+// TestCoordinatorCrossRepairNamesEveryProblemAtOnce proves one repair round
+// carries every problem a row has: a bad side does not hide quote text the
+// pinned diff does not carry, so the one repair round can fix both.
+func TestCoordinatorCrossRepairNamesEveryProblemAtOnce(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossSide, commander.crossText = true, true
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	prompts := commander.prompts["x-cross-1"]
+	if len(prompts) != 2 {
+		t.Fatalf("x-cross-1 launched %d times, want 2", len(prompts))
+	}
+	for _, want := range []string{
+		`{"path":"$.results[0].quote.side","code":"bad-enum","level":"error","message":"unknown quote side \"new\""`,
+		`{"path":"$.results[0].quote","code":"quote-mismatch","level":"error",` +
+			`"message":"quote does not match full.diff at \"a.go\":1 (text-differs)"`,
+	} {
+		if !strings.Contains(prompts[1], want) {
+			t.Errorf("repair prompt lacks %s:\n%s", want, prompts[1])
+		}
+	}
+}
+
+// TestCrossQuoteSideHasNoDefault proves the cross check refuses a quote with
+// no side, as the receipt parser every later reader uses does: an absent side
+// is not quietly the new side.
+func TestCrossQuoteSideHasNoDefault(t *testing.T) {
+	t.Parallel()
+	quote := jq.NewObj("path", "a.go", "line", json.Number("1"), "text", "new line 1")
+	problems := crossQuoteProblems(evidence.IndexDiff(nil), "$.results[0].quote", "confirmed", quote)
+	if len(problems) != 1 || problems[0].Code != "wrong-type" || problems[0].Path != "$.results[0].quote" {
+		t.Fatalf("problems = %+v, want one wrong-type quote problem", problems)
+	}
+}
+
+// TestCrossQuoteNamesUnknownKeysWithTheSide proves a quote with a bad side
+// and a key the receipt parser refuses names both in the first round, so the
+// round that fixes the side is not refused again for the key.
+func TestCrossQuoteNamesUnknownKeysWithTheSide(t *testing.T) {
+	t.Parallel()
+	quote := jq.NewObj("path", "a.go", "side", "new", "line", json.Number("1"), "text", "x", "note", "y")
+	problems := crossQuoteProblems(evidence.IndexDiff(nil), "$.results[0].quote", "insufficient", quote)
+	got := make([]string, 0, len(problems))
+	for _, p := range problems {
+		got = append(got, p.Path+" "+p.Code)
+	}
+	want := []string{`$.results[0].quote["note"] unknown-field`, "$.results[0].quote.side bad-enum"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("problems = %q, want %q", got, want)
+	}
+}
+
+// TestCrossRowNamesEveryIdentityProblem proves a row with a wrong checker and
+// a same_as that is not a string names both at once, and answers its
+// signature, so no missing-row problem joins them.
+func TestCrossRowNamesEveryIdentityProblem(t *testing.T) {
+	t.Parallel()
+	row := jq.NewObj("sig", "s", "checker", "finder-1", "same_as", json.Number("7"))
+	problems := assignCrossRows([]any{row}, "finder-2", []any{jq.NewObj("sig", "s")})
+	got := make([]string, 0, len(problems))
+	for _, p := range problems {
+		got = append(got, p.Path+" "+p.Code)
+	}
+	want := []string{"$.results[0].checker bad-enum", "$.results[0].same_as wrong-type"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("problems = %q, want %q", got, want)
+	}
+}
+
+// TestCoordinatorCrossRepairNamesTheMissingRow proves an answer that drops a
+// requested signature is repaired with that signature named, not with a
+// generic request to return every row.
+func TestCoordinatorCrossRepairNamesTheMissingRow(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossRepair = true
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	prompts := commander.prompts["x-cross-1"]
+	if len(prompts) != 2 {
+		t.Fatalf("x-cross-1 launched %d times, want 2", len(prompts))
+	}
+	want := `{"path":"$.results","code":"missing-field","level":"error",` +
+		`"message":"no row answers requested signature \"b02621c6e34339ac215c21bbc73527b558e69185\"",` +
+		`"fix":"add one row for that signature from request.json"}`
+	if !strings.Contains(prompts[1], want) {
+		t.Errorf("repair prompt lacks %s:\n%s", want, prompts[1])
+	}
+}
+
 func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
@@ -414,6 +565,41 @@ func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 	}
 	assertPhaseGroups(t, commander.launched(),
 		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2", "x-cross-2"})
+}
+
+// TestCoordinatorIncompleteExecutionNamesTheResume proves an execution left
+// incomplete by exhausted cross checks names each failed phase and the
+// recovery that continues it, and marks the response resumable so the adapter
+// re-enters with --resume.
+func TestCoordinatorIncompleteExecutionNamesTheResume(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossBroken = true
+	resp, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "review-insufficient" || len(ref.Problems) != 0 {
+		t.Fatalf("refusal = %v", ref)
+	}
+	want := "execution: execution manifest is incomplete; failed: x-cross-1 cross-incomplete; x-cross-2 cross-incomplete; " +
+		"continue it with --resume: the phases that passed are reused and only the failed ones launch again"
+	if ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
+	}
+	if resp == nil || !resp.Resumable {
+		t.Fatalf("response = %+v, want resumable", resp)
+	}
+}
+
+// TestCauseLinesNeverResumeAnExecutionResumeRefuses proves a failed phase
+// whose execution cannot be resumed — a missing diff or manifest, a binding
+// mismatch — points at a fresh run instead of a --resume that would refuse.
+func TestCauseLinesNeverResumeAnExecutionResumeRefuses(t *testing.T) {
+	t.Parallel()
+	c := &coordinator{failures: []any{jq.NewObj(keyPhase, "x-cross-1", "code", "cross-incomplete")}}
+	want := "; failed: x-cross-1 cross-incomplete; it cannot be resumed, so re-run without --resume to start a fresh execution"
+	if got := c.causeLines(); got != want {
+		t.Fatalf("causeLines = %q, want %q", got, want)
+	}
 }
 
 // TestCoordinatorDetectsChangedCompletedFinder proves a bound finder artifact

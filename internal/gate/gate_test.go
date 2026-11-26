@@ -533,6 +533,47 @@ func TestGateHintNamesReRunOnce(t *testing.T) {
 	}
 }
 
+// TestGateHintResumesAnIncompleteExecution pins the recovery for a gate over
+// an execution that stopped before it finished: continuing the run, not
+// editing review.json, named once although the findings and evidence
+// dimensions both fail on it, and named in a gate that asked only for the
+// head. A dimension with a cause of its own keeps its recovery.
+func TestGateHintResumesAnIncompleteExecution(t *testing.T) {
+	const resume = "finish the incomplete execution with the same verdict run command plus --resume, then re-run record"
+	for _, tc := range []struct {
+		name string
+		want string
+		dims []core.GateDimension
+	}{
+		{"findings and risk", resume + ", then resolve the open findings that raise the reported risk, " +
+			"or re-record a lower risk claim, then re-run gate", []core.GateDimension{
+			{ID: "findings", Status: statusUnknown}, {ID: "risk", Status: statusFail}, {ID: "evidence", Status: statusFail},
+		}},
+		{"head only", resume + ", then re-run gate", []core.GateDimension{
+			{ID: "head", Status: statusPass}, {ID: "evidence", Status: statusFail},
+		}},
+	} {
+		gate := &core.ReportGate{Dimensions: tc.dims, Resume: true}
+		if got := gateHint(gate); got != tc.want {
+			t.Errorf("%s: gateHint = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestGateHintRestartsAnExecutionResumeRefuses pins the recovery for a gate
+// over an execution that stopped short in a way --resume refuses: a fresh run,
+// naming the gap, once for both the findings and evidence dimensions.
+func TestGateHintRestartsAnExecutionResumeRefuses(t *testing.T) {
+	gate := &core.ReportGate{Restart: "execution manifest binding mismatch: plan_sha256", Dimensions: []core.GateDimension{
+		{ID: "findings", Status: statusUnknown}, {ID: "evidence", Status: statusFail},
+	}}
+	want := "re-run the same verdict run command without --resume (the execution cannot be resumed: " +
+		"execution manifest binding mismatch: plan_sha256), then re-run record, then re-run gate"
+	if got := gateHint(gate); got != want {
+		t.Errorf("gateHint = %q, want %q", got, want)
+	}
+}
+
 // TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
 // failing dimension is compliance used to publish "none — every requested
 // dimension passed" next to a FAIL verdict, with no recovery line at all.

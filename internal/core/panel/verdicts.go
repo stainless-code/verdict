@@ -21,8 +21,10 @@ const (
 	fieldModel      = "model"
 	fieldEvidence   = "evidence"
 	maxReceiptBytes = 32 * 1024 * 1024
-	minEvidence     = 10
-	maxEvidence     = 500
+	// MinEvidence is the shortest evidence a result carries, in characters.
+	MinEvidence = 10
+	// MaxEvidence is the longest evidence a result carries, in characters.
+	MaxEvidence = 500
 	// CodeBad identifies malformed or unresolvable verifier results.
 	CodeBad = "bad-panel"
 	// CodeStale identifies results for a different bundle head.
@@ -187,7 +189,7 @@ func parseResult(item any, findings []any, warnings *[]string) (Result, error) {
 func validResult(r *Result) bool {
 	n := utf8.RuneCountInString(r.Evidence)
 	return strings.TrimSpace(r.Sig) != "" && strings.TrimSpace(r.Checker) != "" &&
-		slices.Contains([]string{confirmed, refuted, insufficient}, r.Verdict) && n >= minEvidence && n <= maxEvidence
+		slices.Contains([]string{confirmed, refuted, insufficient}, r.Verdict) && n >= MinEvidence && n <= MaxEvidence
 }
 
 func checkHead(doc map[string]any, head string) error {

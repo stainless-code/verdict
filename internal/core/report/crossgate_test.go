@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -54,7 +56,7 @@ func crossBundleBase(t *testing.T, entry string) {
 	t.Chdir(t.TempDir())
 	writeFile(t, crossStore+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+storeHeadSHA+`","baseRefOid":"`+crossBase+`"}`)
-	writeFile(t, crossStore+"/findings.json", "["+entry+"]")
+	writeFile(t, crossStore+"/findings.json", "["+entry+"]") // an empty entry is an empty store
 	writeRecordWithEvidence(t, &core.EvidenceReceipt{
 		Head:       storeHeadSHA,
 		DiffSHA256: digestOf(crossDiff),
@@ -99,6 +101,205 @@ func crossBundle(t *testing.T, entry string) {
 		Execution: &core.ExecutionReference{ID: "execution-A", Finders: 2},
 		Finders:   2,
 	})
+}
+
+// incompleteBundle writes the live two-finder bundle as a run leaves it when
+// its cross check exhausted its rounds: the manifest is partial and names the
+// failed phase, and the receipt holds no row for the finding.
+func incompleteBundle(t *testing.T, entry string) {
+	t.Helper()
+	crossBundleBase(t, entry)
+	writeFile(t, crossStore+"/full.diff", crossDiff)
+	writeFile(t, crossStore+"/review.json", crossReview)
+	plan := `{"checks":[{"sig":"` + crossSig + `","origin":"finder-1","checker":"finder-2"}]}`
+	writeFile(t, crossStore+"/verification/plan.json", plan)
+	bindings := `"head_sha":"` + storeHeadSHA + `","diff_sha256":"` + digestOf(crossDiff) + `",` +
+		`"review_sha256":"` + digestOf(crossReview) + `","plan_sha256":"` + digestOf(plan) + `"`
+	writeFile(t, crossStore+"/launcher.json",
+		`{"schema_version":"2","execution_id":"execution-A","status":"partial",`+bindings+`,`+
+			`"failures":[{"phase":"x-cross-2","code":"cross-incomplete"}]}`)
+	writeFile(t, crossStore+"/verification/verdicts.json",
+		`{"schema_version":"2","execution_id":"execution-A",`+bindings+`,"results":[]}`)
+	writeCrossCapture(t, &config.RunState{
+		Execution: &core.ExecutionReference{ID: "execution-A", Finders: 2},
+		Finders:   2,
+	})
+}
+
+// TestCrossGateIncompleteExecutionNeverReadsAsNoFindings proves an open
+// in-tier finding an incomplete execution left unchecked is counted by the
+// findings dimension as unknown, never reported as absent, while the evidence
+// dimension still fails and names the incomplete execution.
+func TestCrossGateIncompleteExecutionNeverReadsAsNoFindings(t *testing.T) {
+	incompleteBundle(t, crossEntryJSON("important", ""))
+	resp := runCross(t)
+	if !resp.GateFailed {
+		t.Fatalf("GateFailed = false, want true\n%s", dimSummary(resp))
+	}
+	findings := dimOf(t, resp, "findings")
+	wantFindings := "1 open finding(s) at-or-above important await the cross checks of an incomplete " +
+		"execution (execution manifest is incomplete) — unknown, never a pass"
+	if findings.Status != "unknown" || findings.Count == nil || *findings.Count != 1 || findings.Detail != wantFindings {
+		t.Fatalf("findings = %+v, want unknown 1 %q", findings, wantFindings)
+	}
+	evidence := findEvidenceDim(t, resp)
+	if evidence.Status != "fail" || evidence.Detail != crossLine+" (the execution is incomplete)" {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
+// TestCrossGateIncompleteExecutionResumesInEveryMode proves any execution that
+// stopped before it finished leaves the gate failed and marked for `run
+// --resume`, whichever dimensions were asked for: a finding below the tier,
+// outside the category, or absent from the store still reads unknown rather
+// than absent, a missing aggregate plan or panel receipt is the same stopped
+// run, and a gate on the head alone still names the recovery.
+func TestCrossGateIncompleteExecutionResumesInEveryMode(t *testing.T) {
+	tier := reportcore.Flags{Check: "important", Live: "skip"}
+	for _, tc := range []struct {
+		prepare  func(t *testing.T)
+		name     string
+		entry    string
+		flags    reportcore.Flags
+		findings bool
+	}{
+		{name: "below the tier", entry: crossEntryJSON("informational", ""), flags: tier, findings: true},
+		{
+			name: "outside the category", entry: crossEntryJSON("important", ""), findings: true,
+			flags: reportcore.Flags{Check: "important", Category: "security", Live: "skip"},
+		},
+		{name: "absent", flags: tier, findings: true},
+		{
+			name: "plan missing", entry: crossEntryJSON("important", ""), flags: tier, findings: true,
+			prepare: func(t *testing.T) { t.Helper(); removeFile(t, crossStore+"/verification/plan.json") },
+		},
+		{
+			name: "receipt missing", entry: crossEntryJSON("important", ""), flags: tier, findings: true,
+			prepare: func(t *testing.T) { t.Helper(); removeFile(t, crossStore+"/verification/verdicts.json") },
+		},
+		{name: "head only", entry: crossEntryJSON("important", ""), flags: reportcore.Flags{Completeness: true, Live: "skip"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			incompleteBundle(t, tc.entry)
+			if tc.prepare != nil {
+				tc.prepare(t)
+			}
+			assertResumeGate(t, &tc.flags, tc.findings)
+		})
+	}
+}
+
+// assertResumeGate runs the gate over the stopped execution the bundle holds
+// and requires it failed, marked for resume, and — when the gate asked for
+// findings — reading them unknown.
+func assertResumeGate(t *testing.T, flags *reportcore.Flags, findings bool) {
+	t.Helper()
+	req := crossRequest()
+	req.Flags = *flags
+	resp, ref := reportcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !resp.GateFailed || resp.Gate == nil || !resp.Gate.Resume {
+		t.Fatalf("gate = %+v, want failed and marked for resume\n%s", resp.Gate, dimSummary(resp))
+	}
+	if !findings {
+		return
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// TestCrossGatePartialExecutionResumeRefusesNeverPasses proves a stopped
+// execution whose gap --resume refuses — here a manifest whose plan binding no
+// longer matches — still reads its findings unknown, never "no open findings",
+// and marks the gate for a fresh run naming the gap instead of a resume.
+func TestCrossGatePartialExecutionResumeRefusesNeverPasses(t *testing.T) {
+	incompleteBundle(t, crossEntryJSON("informational", ""))
+	tamperManifest(t, `"plan_sha256":"`)
+	resp := runCross(t)
+	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Resume ||
+		resp.Gate.Restart != "execution manifest binding mismatch: plan_sha256" {
+		t.Fatalf("gate = %+v, want failed and marked for a fresh run\n%s", resp.Gate, dimSummary(resp))
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// TestCrossGateStoppedExecutionGapsAreNamed proves a stopped manifest reads
+// partial whatever else is missing, and that a missing plan is resumable only
+// while the manifest's other bindings hold: a missing diff, or a missing plan
+// beside a binding mismatch, marks the gate for a fresh run naming the gap,
+// with findings unknown, never a pass.
+func TestCrossGateStoppedExecutionGapsAreNamed(t *testing.T) {
+	for _, tc := range []struct {
+		prepare func(t *testing.T)
+		name    string
+		restart string
+	}{
+		{name: "diff missing", restart: "execution manifest or diff missing", prepare: func(t *testing.T) {
+			t.Helper()
+			removeFile(t, crossStore+"/full.diff")
+		}},
+		{
+			name: "plan missing beside a binding mismatch", restart: "execution manifest binding mismatch: review_sha256",
+			prepare: func(t *testing.T) {
+				t.Helper()
+				removeFile(t, crossStore+"/verification/plan.json")
+				tamperManifest(t, `"review_sha256":"`)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			incompleteBundle(t, crossEntryJSON("informational", ""))
+			tc.prepare(t)
+			assertRestartGate(t, tc.restart)
+		})
+	}
+}
+
+// assertRestartGate requires the gate failed, marked for a fresh run naming
+// gap rather than a resume, with its findings unknown.
+func assertRestartGate(t *testing.T, gap string) {
+	t.Helper()
+	resp := runCross(t)
+	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Resume || resp.Gate.Restart != gap {
+		t.Fatalf("gate = %+v, want failed with restart %q\n%s", resp.Gate, gap, dimSummary(resp))
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// tamperManifest breaks one binding the manifest records, so it no longer
+// matches the bundle it names.
+func tamperManifest(t *testing.T, key string) {
+	t.Helper()
+	launcher := crossStore + "/launcher.json"
+	raw, err := os.ReadFile(launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, launcher, strings.Replace(string(raw), key, key+"0", 1))
+}
+
+// TestCrossGateCompleteExecutionNeverResumes proves the resume marker belongs
+// to a stopped run alone: the finished execution the other cross tests use
+// gates without it.
+func TestCrossGateCompleteExecutionNeverResumes(t *testing.T) {
+	crossBundle(t, crossEntryJSON("important", ""))
+	if resp := runCross(t); resp.Gate == nil || resp.Gate.Resume {
+		t.Fatalf("gate = %+v, want no resume marker", resp.Gate)
+	}
+}
+
+func removeFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // recordedBundle writes the same finding with no live capture at all, but the

@@ -32,6 +32,37 @@ func TestVerdictRefusals(t *testing.T) {
 	}
 }
 
+// TestVerdictQuoteSideIsRequired proves the receipt parser reads a checker
+// quote's side exactly as the cross check does: RIGHT or LEFT, never empty
+// and never absent, so neither reader verifies a quote the other refused.
+func TestVerdictQuoteSideIsRequired(t *testing.T) {
+	row := `{"sig":"abc","model":"m","checker":"m","verdict":"confirmed","evidence":"ten letters here","quote":%s}`
+	for quote, want := range map[string]string{
+		`{"path":"a.go","side":"RIGHT","line":1,"text":"x"}`: "",
+		`{"path":"a.go","side":"LEFT","line":1,"text":"x"}`:  "",
+		`{"path":"a.go","side":"","line":1,"text":"x"}`:      "bad-panel",
+		`{"path":"a.go","line":1,"text":"x"}`:                "bad-panel",
+		`{"path":"a.go","side":"new","line":1,"text":"x"}`:   "bad-panel",
+	} {
+		raw := `{"schema_version":"2","head_sha":"head","results":[` + strings.Replace(row, "%s", quote, 1) + `]}`
+		_, _, err := Parse([]byte(raw), "head", []any{jq.NewObj("sig", "abcdef")})
+		if got := refusalCode(err); got != want {
+			t.Errorf("quote %s: code %q (err %v), want %q", quote, got, err, want)
+		}
+	}
+}
+
+// refusalCode is err's refusal code, or "" for no error at all.
+func refusalCode(err error) string {
+	if err == nil {
+		return ""
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return ref.Code
+	}
+	return err.Error()
+}
+
 func TestVerdictPrefixAndExtras(t *testing.T) {
 	file, warnings, err := Parse([]byte(`{"schema_version":"2","head_sha":"head","extra":true,"results":[{"sig":"abc","model":"m","checker":"m","verdict":"refuted","evidence":"This branch is unreachable.","extra":true}]}`), "head", []any{jq.NewObj("sig", "abcdef")})
 	if err != nil {

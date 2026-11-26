@@ -186,7 +186,7 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	}
 	r.refusal = ref.Code
 	code = ExitFor(ref, code)
-	msg := ref.Message + "\n" + HintFor(ref.Code)
+	msg := ref.Message + "\n" + core.RefusalHint(ref)
 	if !r.JSONMode {
 		r.emitRefusalWarnings(ref.Warnings)
 	}
@@ -198,7 +198,7 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	case len(ref.Problems) > 0:
 		r.writeErrorLine(ref.Message)
 		writeProblems(r.Diag, ref)
-		fmt.Fprintln(r.Diag, HintFor(ref.Code))
+		fmt.Fprintln(r.Diag, core.RefusalHint(ref))
 	default:
 		r.writeErrorLine(msg)
 	}
@@ -359,11 +359,6 @@ func (r *Runner) ReportUsage(err *UsageError) int {
 // RefusalCode returns the refusal code rendered through [Runner.RefuseExit],
 // or "" when no refusal was rendered.
 func (r *Runner) RefusalCode() string { return r.refusal }
-
-// HintFor returns the remediation hint for a refusal code. The table
-// lives in core so every transport renders the same hints (see
-// [core.HintFor]).
-func HintFor(code string) string { return core.HintFor(code) }
 
 // SortedKeys returns the sorted keys of m (jq `keys[]` order).
 func SortedKeys(m map[string]any) []string {

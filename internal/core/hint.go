@@ -371,6 +371,20 @@ func ExactRefusalCodes() []string {
 	return slices.Compact(codes)
 }
 
+// hintGapUnlisted is the review-insufficient hint when the refusal lists no
+// evidence problem: the message itself names the one gap, so a hint pointing
+// at a list would send the reader looking for problems that are not there.
+const hintGapUnlisted = "try: address the gap the message above names, then re-run"
+
+// RefusalHint returns the remediation hint for one refusal: [HintFor] its
+// code, except a review-insufficient refusal that lists no evidence problems.
+func RefusalHint(ref *RefusalError) string {
+	if ref.Code == CodeReviewInsufficient && len(ref.Problems) == 0 {
+		return hintGapUnlisted
+	}
+	return HintFor(ref.Code)
+}
+
 // HintFor returns the remediation hint for a refusal code.
 func HintFor(code string) string {
 	for _, rule := range hintRules {

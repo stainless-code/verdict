@@ -18,15 +18,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/argvshape"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/budget"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -72,7 +75,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return code
 	}
 	r.Rentry = rentry(&req, &flags, r.JSONMode)
-	if code, done := r.Canceled(ctx, "run"); done {
+	if code, done := r.Canceled(ctx, verbRun); done {
 		return code
 	}
 	agents, policy, ref := personalAgents(req.Env)
@@ -83,8 +86,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	request.SpendPolicy = policy
 	resp, ref := runcore.WithAgents(ctx, request, agents)
 	if ref != nil {
-		addPermissionHint(ref, &req, &flags)
-		return refuse(r, resp, ref)
+		return refuseRun(r, &req, &flags, request, resp, ref)
 	}
 	r.Warnings = resp.Warnings
 	if flags.print && !r.JSONMode {
@@ -92,7 +94,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return cli.ExitOK
 	}
 	if r.JSONMode {
-		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope("run", resp.Repo, resp.Pr, resp.At,
+		fmt.Fprint(r.Out, jq.PrettyOrdered(core.RenderEnvelope(verbRun, resp.Repo, resp.Pr, resp.At,
 			resp.Next, resp.Warnings, resp.Data.Wire(), nil)))
 	}
 	return cli.ExitOK
@@ -109,8 +111,42 @@ func personalAgents(env map[string]string) ([]config.PersonalAgent, *spend.Polic
 // as the process exit; every other refusal exits with verdict's own code.
 const codeAgentFailed = "agent-failed"
 
+// verbRun is the verb's name in its envelope and its re-run lines.
+const verbRun = "run"
+
+// refuseRun renders the service's refusal with the re-entry line that answers
+// it ([refusalReentry]).
+func refuseRun(r *cli.Runner, req *readcommon.Request, f *flags, request *core.RunRequest,
+	resp *core.RunResponse, ref *core.RefusalError,
+) int {
+	r.Rentry = refusalReentry(req, f, r.JSONMode, request.Environ, resp, ref)
+	addPermissionHint(ref, req, f)
+	return refuse(r, resp, ref)
+}
+
+// codesRefusingResume are the refusals that say --resume cannot continue the
+// execution, so the line that answers them starts a fresh one.
+var codesRefusingResume = []string{"resume-drift", "cannot-resume"}
+
+// refusalReentry is the re-entry line a refusal prints: with --resume among
+// verdict's own flags for an execution the refusal says to continue, without
+// it for a --resume the refusal says cannot continue, and as typed otherwise.
+func refusalReentry(req *readcommon.Request, f *flags, jsonMode bool, environ []string,
+	resp *core.RunResponse, ref *core.RefusalError,
+) string {
+	resume := f.resume
+	switch {
+	case resp != nil && resp.Resumable:
+		resume = true
+	case slices.Contains(codesRefusingResume, ref.Code):
+		resume = false
+	}
+	return reentry(req, f, jsonMode, resume, environ)
+}
+
 // refuse renders a run refusal, preserving the agent's own exit code when the
 // service reports one (only the agent-failed refusal carries it).
+
 func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 	code := cli.ExitRefused
 	if resp != nil && resp.Exit != 0 && ref.Code == codeAgentFailed {
@@ -290,45 +326,97 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	return next, 0, false
 }
 
-// rentry rebuilds the exact re-run command after flag parsing. The
-// pass-through tail is not reproduced: its quoting belongs to whatever shell
-// the operator used.
+// rentry rebuilds the exact re-run command after flag parsing.
 func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
-	s := "verdict run " + req.Repo + argSep + req.Pr + flagTail(f)
-	if f.consent {
-		s += " --consent-over-budget"
-	}
-	if jsonMode {
-		s += " --json"
-	}
-	return s
+	return reentry(req, f, jsonMode, f.resume, os.Environ())
 }
 
-// flagTail rebuilds the flags the operator typed, each one only when the
-// invocation actually asked for it. The stage operand is quoted: it reaches
-// this line exactly as typed — a refusal names the value it could not read —
-// and the line exists to be pasted back into a shell.
-func flagTail(f *flags) string {
-	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f) + allowShellTail(f) + coverageTail(f)
-	if f.agent != "" {
-		s += " --agent " + f.agent
+// redactedNote tells the operator what a redacted agent argument needs: the
+// line stays pasteable, since a shell reads the note as a comment.
+const redactedNote = "  # replace each '" + argvshape.RedactedValue + "' with the agent argument you passed"
+
+// reentry renders the re-run command as argv through [RenderCommand], so no
+// operand the operator typed reaches the line unquoted. resume puts --resume
+// before the `--` separator for an execution the refusal says to continue. The
+// agent arguments after `--` keep their shape — flag names stay, since
+// --resume refuses a different list — but every value is redacted, model and
+// budget values included: the line is a recovery hint that lands in terminal
+// and CI logs, and any value can be a credential. It is also scrubbed of the
+// environment's credentials and token shapes argument by argument, before
+// quoting, and a line that redacts anything carries the note asking for the
+// values back.
+func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ []string) string {
+	argv := append([]string{"verdict", verbRun, req.Repo, req.Pr}, flagArgv(f, resume)...)
+	if f.consent {
+		argv = append(argv, "--consent-over-budget")
 	}
-	if f.recipe != "" {
-		s += " --recipe " + f.recipe
+	if jsonMode {
+		argv = append(argv, "--json")
 	}
-	if f.timeout != DefaultTimeoutS {
-		s += " --timeout " + f.timeout
+	secrets := argvshape.SecretValues(environ)
+	line := RenderCommand(scrubArgs(argv, secrets))
+	if len(f.pass) > 0 {
+		line += " -- " + RenderCommand(scrubArgs(passShape(f.pass), secrets))
 	}
-	if f.rounds != DefaultRounds && f.rounds != "" {
-		s += " --rounds " + f.rounds
+	if strings.Contains(line, argvshape.RedactedValue) {
+		line += redactedNote
 	}
-	if f.print {
-		s += " --print"
+	return line
+}
+
+// scrubArgs scrubs each argument of the environment's credentials and token
+// shapes before it is rendered: shell quoting rewrites a value that holds a
+// quote or a space, so a scrub of the rendered line would miss it.
+func scrubArgs(args, secrets []string) []string {
+	out := make([]string, len(args))
+	for i, arg := range args {
+		out[i] = envsecret.ScrubShapes(envsecret.ScrubValues(arg, secrets))
 	}
-	if f.stage != "" {
-		s += " --stage " + quoteArg(f.stage)
+	return out
+}
+
+// passShape keeps each agent argument's flag name and redacts every value: a
+// bare long flag (`--name`) or short flag (`-x`) stays, `--name=value` keeps
+// its name, and anything else — a flag's operand, a positional, a short flag
+// with its value attached — is redacted whole.
+func passShape(pass []string) []string {
+	shape := make([]string, len(pass))
+	for i, arg := range pass {
+		name, _, inline := strings.Cut(arg, "=")
+		long := strings.HasPrefix(arg, "--") && len(name) > 2
+		switch {
+		case long && inline:
+			shape[i] = name + "=" + argvshape.RedactedValue
+		case long, len(arg) == 2 && arg[0] == '-' && arg[1] != '-':
+			shape[i] = arg
+		default:
+			shape[i] = argvshape.RedactedValue
+		}
 	}
-	return s
+	return shape
+}
+
+// flagArgv rebuilds the flags the operator typed, each one only when the
+// invocation actually asked for it, in the order the line has always used.
+func flagArgv(f *flags, resume bool) []string {
+	var argv []string
+	add := func(on bool, args ...string) {
+		if on {
+			argv = append(argv, args...)
+		}
+	}
+	add(f.finders != "", findersFlag, f.finders)
+	add(f.budget != "", budgetFlag, f.budget)
+	add(resume, "--resume")
+	add(f.allowShell, allowShellFlag)
+	add(f.requireCoverage, coverageFlag)
+	add(f.agent != "", "--agent", f.agent)
+	add(f.recipe != "", recipeFlag, f.recipe)
+	add(f.timeout != DefaultTimeoutS, "--timeout", f.timeout)
+	add(f.rounds != DefaultRounds && f.rounds != "", roundsFlag, f.rounds)
+	add(f.print, "--print")
+	add(f.stage != "", stageFlag, f.stage)
+	return argv
 }
 
 // shellSafeChars are the argument bytes a POSIX shell passes through unquoted:
@@ -361,10 +449,10 @@ func quoteArg(arg string) string {
 
 // addPermissionHint names the row's documented permission flag when the agent
 // wrote no review. A row that carries a scoped review-write grant already
-// had it on this launch (no `--` tail can have dropped it here), so its
-// broader flag would grant edits the review never needed: no hint.
-// (A checkout path the rule syntax cannot spell launches without it; the
-// operator's own `-- --allowedTools=...` covers that case.)
+// had it on this launch, so its broader flag would grant edits the review
+// never needed: no hint. (A checkout path the rule syntax cannot spell
+// launches without it and says so in a warning; the operator's own
+// `-- --allowedTools=...` covers that case.)
 func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags) {
 	if ref.Code != "no-review-artifact" || len(f.pass) != 0 {
 		return
@@ -373,7 +461,7 @@ func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags
 	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" || len(row.Launch.ReviewWriteArgs) != 0 {
 		return
 	}
-	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
+	command := RenderCommand([]string{"verdict", verbRun, req.Repo, req.Pr, "--agent", f.agent})
 	command += findersTail(f.finders)
 	ref.Message += core.Msgf("\nre-run with: %s -- %s", command, row.Launch.PermissionHint)
 }
@@ -388,33 +476,6 @@ func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	}
 	f.finders = value
 	return next, 0, false
-}
-
-// coverageTail renders --require-coverage for the re-entry line when the
-// invocation asked for it.
-func coverageTail(f *flags) string {
-	if !f.requireCoverage {
-		return ""
-	}
-	return " " + coverageFlag
-}
-
-// resumeTail renders --resume for the re-entry line when the invocation asked
-// to continue an execution.
-func resumeTail(f *flags) string {
-	if !f.resume {
-		return ""
-	}
-	return " --resume"
-}
-
-// allowShellTail renders --allow-shell for the re-entry line when the
-// invocation opted out of the discovery restriction.
-func allowShellTail(f *flags) string {
-	if !f.allowShell {
-		return ""
-	}
-	return " " + allowShellFlag
 }
 
 func findersTail(raw string) string {
@@ -437,11 +498,4 @@ func parseBudgetFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, b
 	}
 	f.budget = value
 	return next, 0, false
-}
-
-func budgetTail(raw string) string {
-	if raw == "" {
-		return ""
-	}
-	return argSep + budgetFlag + argSep + quoteArg(raw)
 }
