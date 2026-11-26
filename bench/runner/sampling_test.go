@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSampleSpreadZeroHalfOneMedianHalf(t *testing.T) {
 	zero, half, one := 0.0, 0.5, 1.0
@@ -17,6 +20,15 @@ func TestSamplingFlagsThreeRepeats(t *testing.T) {
 	}
 	if cfg.K != 3 || cfg.Runs != 3 {
 		t.Fatalf("k=%d repeats=%d; want 3,3", cfg.K, cfg.Runs)
+	}
+}
+
+// TestRemovedRunsFlagIsUnknown pins the dropped `-runs` spelling of
+// `-repeats`: it is a plain undefined flag, with no alias left behind.
+func TestRemovedRunsFlagIsUnknown(t *testing.T) {
+	_, err := parseFlags([]string{"-model", "fixture", "-agent", "true", "-runs", "3"})
+	if err == nil || !strings.Contains(err.Error(), "flag provided but not defined: -runs") {
+		t.Fatalf("-runs = %v; want the undefined-flag error", err)
 	}
 }
 

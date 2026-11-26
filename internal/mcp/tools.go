@@ -226,7 +226,7 @@ func allTools(rule posture.Rule) []*tool {
 				"bundle's findings store (from: sarif). Call after a scanner run to merge results " +
 				"with review findings; results the pinned diff cannot anchor come back in skipped[]. " +
 				"Writes findings.json; no network.",
-			required: []string{argRepo, argPr, "sarif"},
+			required: []string{argRepo, argPr, "from", "sarif"},
 			meta:     toolMeta{title: "Ingest SARIF findings", mutates: localWrites, idempotent: true},
 		}, toolDeps{}, decodeIngest, wireIngest, ingestcore.Run,
 			func(resp *ingestcore.Response) *jq.Obj { return wireData(resp.Data) }),

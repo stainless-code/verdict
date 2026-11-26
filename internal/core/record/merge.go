@@ -838,10 +838,14 @@ func loadPrior(dir string) ([]any, error) {
 	if doc == nil || doc == false {
 		return nil, nil
 	}
-	if arr, ok := doc.([]any); ok {
-		return arr, nil
+	arr, ok := doc.([]any)
+	if !ok {
+		return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
-	return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
+	if ref := readcommon.OutdatedEntries(dir, arr); ref != nil {
+		return nil, ref //nolint:wrapcheck // typed refusal passes through unchanged
+	}
+	return arr, nil
 }
 
 func indexBySig(entries []any) map[string]*jq.Obj {

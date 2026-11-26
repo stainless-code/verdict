@@ -113,7 +113,7 @@ func TestRuntimeIngestEnvelopeValidates(t *testing.T) {
 		`"results":[{"ruleId":"test.rule","level":"error","message":{"text":"avoid issue"},` +
 		`"locations":[{"physicalLocation":{"artifactLocation":{"uri":"notes.txt"},"region":{"startLine":2}}}]}]}]}`
 	writeFixture(t, "scan.sarif", sarifPayload)
-	req := &ingestcore.Request{SARIF: "scan.sarif"}
+	req := &ingestcore.Request{From: ingestcore.SourceSARIF, SARIF: "scan.sarif"}
 	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "4312"}
 	resp, ref := ingestcore.Run(context.Background(), req)
 	if ref != nil {

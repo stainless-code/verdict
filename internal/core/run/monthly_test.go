@@ -37,9 +37,7 @@ func writeRunJSON(t *testing.T, dir, execID, monthlyCap string) {
 		body = `{"schema_version":"1","execution":{"id":"` + execID + `","finders":2},"resolved":{"spend":{"monthly_budget_usd":` +
 			monthlyCap + `,"monthly_repo_cap":` + monthlyCap + `}}}`
 	}
-	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCapture(t, dir, body)
 }
 
 // writeMTDReceipts seeds one month-to-date receipt ledger in the bundle

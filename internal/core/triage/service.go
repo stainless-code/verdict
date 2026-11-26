@@ -266,6 +266,10 @@ func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
 	if err != nil {
 		return nil, corruptStore(dir)
 	}
+	// A store an older verdict wrote refuses before triage mutates it.
+	if ref := readcommon.OutdatedEntries(dir, entries); ref != nil {
+		return nil, ref
+	}
 	return entries, nil
 }
 

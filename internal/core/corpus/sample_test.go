@@ -26,6 +26,20 @@ func TestSamplePinsWeightsAndRecordedZero(t *testing.T) {
 	}
 }
 
+// TestSamplingRefusesBundleWithoutRecord pins the removed k=1 fallback: a
+// corpus bundle without corpus_run.json was written by an older bench runner,
+// so it refuses bundle-outdated naming the re-run instead of scoring as an
+// independent single sample with weights read from the repository config.
+func TestSamplingRefusesBundleWithoutRecord(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "corpus-old")
+	_, ref := LoadSample(dir, evaluateAll(&core.CorpusCase{ID: "clean", Kind: "control"}, nil))
+	want := "corpus bundle " + filepath.ToSlash(dir) + " has no corpus_run.json: an older bench runner wrote it " +
+		"(re-run the benchmark with the current bench/runner to rebuild it)"
+	if ref == nil || ref.Code != "bundle-outdated" || ref.Message != want {
+		t.Fatalf("LoadSample without corpus_run.json = %v, want bundle-outdated %q", ref, want)
+	}
+}
+
 func TestSamplingRefusesInvalidEvidence(t *testing.T) {
 	for _, raw := range []string{
 		`{"run_id":"r","k":0,"repeats":3,"sample":1,"severity_weights":{"critical":25,"important":5,"informational":1}}`,

@@ -83,7 +83,7 @@ func TestCapturedSingleFinderDefault(t *testing.T) {
 	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	writeUnder(t, dir, "run.json", `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
+	writeCapture(t, dir, `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, commander)
 	req.FindersRaw = ""
@@ -93,10 +93,29 @@ func TestCapturedSingleFinderDefault(t *testing.T) {
 	}
 }
 
+// TestOutdatedCaptureRefusesBundleOutdated pins the removed unverified-capture
+// read: a run.json an older verdict wrote, without the integrity binding,
+// refuses bundle-outdated with its re-fetch fix, never the record failure whose
+// hint sends the operator to the bundle directory's permissions.
+func TestOutdatedCaptureRefusesBundleOutdated(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	writeUnder(t, dir, "run.json", `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1}}}}`)
+	commander := &scripted{write: func() { writeReview(t, dir) }}
+	req := request(root, commander)
+	req.FindersRaw = ""
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != "bundle-outdated" || commander.calls != 0 ||
+		!strings.Contains(ref.Message, "run.json was written by an older verdict and carries no integrity binding") {
+		t.Fatalf("outdated capture: calls=%d ref=%v; want bundle-outdated before any launch", commander.calls, ref)
+	}
+}
+
 func TestFinderFlagOverridesCapturedDefault(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
-	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
+	writeCapture(t, commander.dir, `{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
 	req.FindersRaw = "2"
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatal(ref)

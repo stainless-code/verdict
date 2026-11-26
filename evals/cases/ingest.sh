@@ -320,7 +320,7 @@ run_review gate acme/app "$PR" --max-severity critical --live skip --coverage wa
 assert_exit "gate fails on the ingested critical finding" 1
 assert_file_grep "gate names the ingested finding" "$EVAL_OUT" "1 open finding(s) at-or-above critical"
 
-# Refusals: unsupported source, missing source, malformed, wrong version,
+# Refusals: unsupported source, the removed --sarif spelling, missing source, malformed, wrong version,
 # oversize stdin, symlinked path. Nothing above wrote through any of them.
 run_review ingest acme/app "$PR" --from yaml "$sarif1" --json
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" = "bad-from" ]; then
@@ -328,6 +328,10 @@ if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" 
 else
   bad "bad --from gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT")'"
 fi
+
+run_review ingest acme/app "$PR" --sarif "$sarif1" --json
+assert_exit "the removed --sarif spelling is a usage error" 2
+assert_file_grep "--sarif is a plain unknown flag" "$EVAL_ERR" "unknown flag '--sarif' for ingest (want --from, --json)"
 
 run_review ingest acme/app "$PR" --json
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT")" = "missing-sarif" ]; then

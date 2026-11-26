@@ -109,7 +109,7 @@ func (cfg *Config) applyDefaults() {
 func (cfg *Config) validateNumbers() error {
 	switch {
 	case cfg.Runs < 1:
-		return jq.NewErrf("-runs must be at least 1, got %d", cfg.Runs)
+		return jq.NewErrf("-repeats must be at least 1, got %d", cfg.Runs)
 	case cfg.Loop < 0:
 		return jq.NewErrf("-loop must be at least 1, got %d", cfg.Loop)
 	case cfg.Loop > loopMaxRounds:
@@ -704,7 +704,12 @@ func (r *runner) writeLoopBundle(ctx context.Context, cr *caseRun, bundle string
 	if err != nil {
 		return err
 	}
+	sampling, err := r.samplingRecord(cr)
+	if err != nil {
+		return err
+	}
 	files := []bundleFile{
+		{samplingName, sampling},
 		{fullDiffName, cr.corpus.diff},
 		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
 		{corpusJSONName, cr.corpus.manifest},
@@ -721,10 +726,11 @@ func (r *runner) writeLoopBundle(ctx context.Context, cr *caseRun, bundle string
 		return err
 	}
 	req := &controls.Request{BundleDir: bundle, BaseSHA: base, AllowHead: true}
-	if _, ref := controls.Resolve(ctx, nil, req); ref != nil {
+	snap, ref := controls.Resolve(ctx, nil, req)
+	if ref != nil {
 		return jq.NewErrf("controls snapshot: %s", ref)
 	}
-	return nil
+	return r.writeRunState(bundle, base, snap)
 }
 
 // runAgent runs the operator's command under the watchdog: the run dir is the

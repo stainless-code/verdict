@@ -9,10 +9,10 @@ type ReadCompliance struct {
 	Conflicts []PrivacyConflict
 	Pending   []CheckObservation
 	// HasPolicy is true when the capture states a repository requirement;
-	// an absent policy invents nothing for legacy bundles.
+	// an absent policy invents nothing.
 	HasPolicy bool
-	// Unverified marks a capture whose provenance cannot be verified; its
-	// unmet checks stay unknown, never passing.
+	// Unverified marks a capture whose integrity check refused; its unmet
+	// checks stay unknown, never passing.
 	Unverified bool
 }
 
@@ -25,10 +25,7 @@ func EvaluateReadCompliance(rs *RunState, head string, findings []FindingView) R
 	if rs == nil || rs.Resolved == nil {
 		return ReadCompliance{}
 	}
-	out := ReadCompliance{
-		HasPolicy:  hasCapturedPolicy(rs),
-		Unverified: !rs.Verified(),
-	}
+	out := ReadCompliance{HasPolicy: hasCapturedPolicy(rs)}
 	out.Blockers = CheckCompliance(rs.Resolved, rs.Root.Clauses, findings)
 	out.Conflicts = PrivacyConflicts(rs)
 	scopes := CheckScopes(rs.Resolved.Plan, &rs.Root)

@@ -467,7 +467,8 @@ func TestClientPostMinSeverityParity(t *testing.T) {
 }
 
 // TestClientIngest proves SARIF 2.1.0 ingest through the SDK: inline payload
-// anchoring, store metadata, and the missing-sarif refusal.
+// anchoring, store metadata, and the missing-sarif refusal for an unnamed
+// format and for a missing source.
 func TestClientIngest(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writePRBundle(t, "4312")
@@ -479,6 +480,7 @@ func TestClientIngest(t *testing.T) {
 		`"locations":[{"physicalLocation":{"artifactLocation":{"uri":"notes.txt"},"region":{"startLine":2}}}]}]}]}`
 	resp, err := c.Ingest(t.Context(), &verdict.IngestRequest{
 		Invocation: sdkInvocation("4312"),
+		From:       verdict.SourceSARIF,
 		SARIFData:  []byte(payload),
 	})
 	requireNoError(t, err)
@@ -493,8 +495,17 @@ func TestClientIngest(t *testing.T) {
 		t.Errorf("findings.json = %s, want tool metadata", store)
 	}
 
+	// From is required: the same payload with no format named refuses, and
+	// nothing is ingested on the format's behalf.
 	_, err = c.Ingest(t.Context(), &verdict.IngestRequest{
 		Invocation: sdkInvocation("4312"),
+		SARIFData:  []byte(payload),
+	})
+	requireRefusal(t, err, "missing-sarif", "try: pass an existing SARIF 2.1.0 file with --from sarif <file|->")
+
+	_, err = c.Ingest(t.Context(), &verdict.IngestRequest{
+		Invocation: sdkInvocation("4312"),
+		From:       verdict.SourceSARIF,
 	})
 	requireRefusal(t, err, "missing-sarif", "try: pass an existing SARIF 2.1.0 file with --from sarif <file|->")
 }

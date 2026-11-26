@@ -18,7 +18,8 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// LoadSample loads evidence; legacy bundles are independent k=1 runs.
+// LoadSample loads one bundle's sampling evidence; a bundle without
+// corpus_run.json was written by an older bench runner and refuses.
 func LoadSample(dir string, report *Report) (Sample, *core.RefusalError) {
 	s := Sample{
 		Report: report, CaseID: report.Case.ID, Bugs: len(report.Case.Bugs),
@@ -57,7 +58,9 @@ func loadSampling(dir string) (Sampling, *core.RefusalError) {
 	path := filepath.Join(dir, "corpus_run.json")
 	raw, err := jq.CappedFile(path, maxManifestBytes)
 	if errors.Is(err, os.ErrNotExist) {
-		return legacySampling(dir)
+		return Sampling{}, &core.RefusalError{Code: config.CodeBundleOutdated, Message: core.Msgf(
+			"corpus bundle %s has no corpus_run.json: an older bench runner wrote it "+
+				"(re-run the benchmark with the current bench/runner to rebuild it)", filepath.ToSlash(dir))}
 	}
 	if err != nil {
 		return Sampling{}, invalid(path, "unreadable sampling")
@@ -89,24 +92,6 @@ func validateMeasurementEvidence(m Sampling, path string) *core.RefusalError {
 		return invalid(path, "latency_s must be finite and nonnegative")
 	}
 	return nil
-}
-
-func legacySampling(dir string) (Sampling, *core.RefusalError) {
-	m := Sampling{RunID: filepath.Base(dir), K: 1, Repeats: 1, Sample: 1, Weights: config.SeverityWeights(nil)}
-	path := filepath.Join(filepath.Dir(filepath.Dir(dir)), "config.json")
-	raw, err := jq.CappedFile(path, config.MaxConfigBytes)
-	if errors.Is(err, os.ErrNotExist) {
-		return m, nil
-	}
-	if err != nil {
-		return m, invalid(path, "unreadable benchmark policy")
-	}
-	cfg, ref := config.Parse(raw)
-	if ref != nil {
-		return m, ref
-	}
-	m.Weights = config.SeverityWeights(cfg)
-	return m, nil
 }
 
 const maxWeight = 1000000

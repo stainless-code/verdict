@@ -60,7 +60,7 @@ func newReadReq(repoRoot, pr string) core.ReadRequest {
 
 func runIngestFile(t *testing.T, repoRoot, pr, sarifPath string) *Response {
 	t.Helper()
-	req := Request{ReadRequest: newReadReq(repoRoot, pr), SARIF: sarifPath}
+	req := Request{ReadRequest: newReadReq(repoRoot, pr), From: SourceSARIF, SARIF: sarifPath}
 	resp, ref := Run(context.Background(), &req)
 	if ref != nil {
 		t.Fatalf("unexpected refusal: %+v", ref)
@@ -71,6 +71,7 @@ func runIngestFile(t *testing.T, repoRoot, pr, sarifPath string) *Response {
 func runIngestBytes(repoRoot, pr string, body []byte) (*Response, *core.RefusalError) {
 	req := Request{
 		ReadRequest: newReadReq(repoRoot, pr),
+		From:        SourceSARIF,
 		SARIFData:   body,
 		SARIFInline: true,
 	}
@@ -428,6 +429,18 @@ func assertPreservedModelAndClampedTool(t *testing.T, dir string) {
 	}
 }
 
+// TestRun_UnnamedFormatRefuses pins the removed `--sarif <file>` shape: a
+// source with no format named (an MCP call without `from`) refuses instead of
+// implying sarif.
+func TestRun_UnnamedFormatRefuses(t *testing.T) {
+	repoRoot, _ := setupBundle(t, "50", "abc1234")
+	unnamed := Request{ReadRequest: newReadReq(repoRoot, "50"), SARIF: filepath.Join(repoRoot, "scan.sarif")}
+	if _, ref := Run(context.Background(), &unnamed); ref == nil || ref.Code != "missing-sarif" ||
+		ref.Message != "--from sarif <file|-> is required" {
+		t.Fatalf("unnamed format = %+v, want missing-sarif naming --from sarif", ref)
+	}
+}
+
 func TestRun_MissingSARIFAndBundleRefusals(t *testing.T) {
 	validMinimal := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"t"}},"results":[]}]}`
 
@@ -456,7 +469,7 @@ func TestRun_OversizeRefusal(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "big.sarif")
 	mustWriteTestFile(t, p, string(oversize))
 
-	req := Request{ReadRequest: newReadReq(repoRoot, "51"), SARIF: p}
+	req := Request{ReadRequest: newReadReq(repoRoot, "51"), From: SourceSARIF, SARIF: p}
 	if _, ref := Run(context.Background(), &req); ref == nil || ref.Code != "sarif-too-large" {
 		t.Fatalf("got %+v, want sarif-too-large", ref)
 	}
@@ -475,7 +488,7 @@ func TestRun_SymlinkRefusal(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
-	linkReq := Request{ReadRequest: newReadReq(repoRoot, "51"), SARIF: link}
+	linkReq := Request{ReadRequest: newReadReq(repoRoot, "51"), From: SourceSARIF, SARIF: link}
 	if _, ref := Run(context.Background(), &linkReq); ref == nil || ref.Code != "bad-sarif" {
 		t.Fatalf("got %+v, want bad-sarif", ref)
 	}

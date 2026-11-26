@@ -696,7 +696,7 @@ func TestRunAgentFailureCarriesTheAgentsOwnError(t *testing.T) {
 func TestRunTwoFinderPermissionRefusalKeepsClaudeHint(t *testing.T) {
 	f := newFixture(t)
 	f.plantAs(t, "claude", "silent")
-	writeFile(t, filepath.Join(f.dir, "run.json"), `{"schema_version":"1"}`)
+	seedControls(t, f)
 	writeFile(t, filepath.Join(f.dir, "PR.json"), `{"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}`)
 	writeFile(t, filepath.Join(f.dir, "procedure.md"), "authoritative procedure")
 	code, out, diag := runVerb(t, f, "--finders", "2", "--agent", "claude", "--rounds", "1")

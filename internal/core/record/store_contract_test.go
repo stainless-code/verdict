@@ -170,6 +170,10 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 		{"prior-non-object-element", "findings.json", `[42]`, "corrupt-store", "corrupt or not a JSON list"},
 		{"prior-non-string-sig", "findings.json", `[{"sig":42,"body":"x"}]`, "corrupt-store", "corrupt or not a JSON list"},
 		{"prior-container-severity", "findings.json", `[{"sig":"c111","severity":{"a":1}}]`, "corrupt-store", "corrupt or not a JSON list"},
+		{
+			"prior-array-verification", "findings.json", `[{"sig":"c111","status":"open","verification":[{"model":"a","verdict":"refuted"}]}]`,
+			"bundle-outdated", "was written by an older verdict (a finding's verification is a bare array) — re-run the review and record to rebuild it",
+		},
 	}
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {

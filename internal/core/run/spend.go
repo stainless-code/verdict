@@ -37,7 +37,7 @@ func (st *state) authorizeSpend(ctx context.Context, dir string, rounds int) *co
 	}
 	captured, _, err := config.ReadRunState(dir)
 	if err != nil {
-		return st.unreadableSpendCapture(dir, err.Error())
+		return st.unreadableSpendCapture(dir, err)
 	}
 	if captured == nil || captured.Execution == nil {
 		if st.req.SpendPlan != nil {
@@ -48,9 +48,23 @@ func (st *state) authorizeSpend(ctx context.Context, dir string, rounds int) *co
 	return st.authorizeSpendPlan(ctx, dir, captured, rounds)
 }
 
-func (st *state) unreadableSpendCapture(dir, message string) *core.RefusalError {
-	if st.req.SpendPlan != nil || panelcore.CheckExecution(dir, nil).Active {
-		return st.refuse(codeRecordFailed, message)
+// captureRefusal maps an unreadable run.json to the run's refusal: a capture
+// an older verdict wrote keeps its bundle-outdated code and re-fetch fix, and
+// any other read failure is the record failure it always was.
+func captureRefusal(err error) *core.RefusalError {
+	if ref := config.RefusalOf(err); ref != nil && ref.Code == config.CodeBundleOutdated {
+		return ref
+	}
+	return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("%v", err)}
+}
+
+// unreadableSpendCapture refuses a capture an older verdict wrote, and any
+// other unreadable capture only when the run depends on it: a spend plan or an
+// active execution.
+func (st *state) unreadableSpendCapture(dir string, err error) *core.RefusalError {
+	ref := captureRefusal(err)
+	if ref.Code == config.CodeBundleOutdated || st.req.SpendPlan != nil || panelcore.CheckExecution(dir, nil).Active {
+		return ref
 	}
 	return nil
 }

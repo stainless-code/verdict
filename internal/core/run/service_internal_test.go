@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -655,6 +656,31 @@ func writeUnder(t *testing.T, root, name, content string) {
 	}
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// writeCapture writes run.json in the shape fetch persists: the body decodes
+// into the run state, WriteRunState seals the integrity binding, and the
+// controls snapshot beside it lets VerifyRunState hold. A hand-written
+// run.json without the binding is the shape an older verdict wrote, which
+// every read now refuses bundle-outdated.
+func writeCapture(t *testing.T, dir, body string) {
+	t.Helper()
+	var rs config.RunState
+	if err := json.Unmarshal([]byte(body), &rs); err != nil {
+		t.Fatalf("capture body: %v", err)
+	}
+	if rs.BaseSHA == "" {
+		rs.BaseSHA = "abc123" // a headless snapshot verifies only for a local bundle
+	}
+	if err := config.WriteRunState(dir, &rs); err != nil {
+		t.Fatalf("WriteRunState: %v", err)
+	}
+	root := filepath.Dir(filepath.Dir(filepath.Dir(dir)))
+	if _, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: dir, Root: root, BaseSHA: rs.BaseSHA, AllowHead: true,
+	}); ref != nil {
+		t.Fatalf("controls.Resolve: %v", ref)
 	}
 }
 

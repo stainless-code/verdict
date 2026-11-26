@@ -236,6 +236,8 @@ func TestLoadFindings(t *testing.T) {
 		{"numeric-body", `[{"sig":"s","body":42}]`, "corrupt-store"},
 		{"non-object", `[42]`, "corrupt-store"},
 		{"array-severity", `[{"sig":"s","severity":[1]}]`, "corrupt-store"},
+		{"array-verification", `[{"sig":"s","status":"open","verification":[{"model":"a","verdict":"refuted"}]}]`, "bundle-outdated"},
+		{"object-verification", `[{"sig":"s","status":"open","verification":{"quote":"unverified","panel":[]}}]`, ""},
 		{"clean", `[` + entry + `]`, ""},
 		{"null-entry", `[null]`, ""},
 	}

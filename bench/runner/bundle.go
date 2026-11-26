@@ -35,21 +35,12 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 	if err != nil {
 		return err
 	}
-	sampling,
-		err := json.Marshal(corpuscore.Sampling{
-		RunID:    runID(r.cfg),
-		K:        r.cfg.K,
-		Repeats:  r.cfg.Runs,
-		Sample:   cr.index,
-		Weights:  r.cfg.Weights,
-		LatencyS: &cr.wall,
-	},
-	)
+	sampling, err := r.samplingRecord(cr)
 	if err != nil {
-		return jq.NewErrf("sampling: %s", err)
+		return err
 	}
 	files := []bundleFile{
-		{"corpus_run.json", sampling},
+		{samplingName, sampling},
 		{fullDiffName, cr.corpus.diff},
 		{hunksTSVName, []byte(hunks.Snapshot(string(cr.corpus.diff)))},
 		{corpusJSONName, cr.corpus.manifest},
@@ -70,6 +61,25 @@ func (r *runner) writeBundle(ctx context.Context, cr *caseRun, bundle string, so
 		return jq.NewErrf("controls snapshot: %s", ref)
 	}
 	return r.writeRunState(bundle, base, snap)
+}
+
+// samplingRecord is the bundle's corpus_run.json: the run identity, sample
+// index, k, repeats, and resolved weights calibrate and trend read. Every
+// bundle the runner writes, the loop's final bundle included, carries one;
+// a corpus bundle without it refuses bundle-outdated.
+func (r *runner) samplingRecord(cr *caseRun) ([]byte, error) {
+	raw, err := json.Marshal(corpuscore.Sampling{
+		RunID:    runID(r.cfg),
+		K:        r.cfg.K,
+		Repeats:  r.cfg.Runs,
+		Sample:   cr.index,
+		Weights:  r.cfg.Weights,
+		LatencyS: &cr.wall,
+	})
+	if err != nil {
+		return nil, jq.NewErrf("sampling: %s", err)
+	}
+	return raw, nil
 }
 
 // writeRunState records the typed capture the later verbs verify. The bench

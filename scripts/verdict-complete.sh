@@ -36,7 +36,7 @@ _verdict_flags() { # $1 = verb
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add sync test check --dir --json;;
     adopt) printf '%s\n' --from --json;;
-    ingest) printf '%s\n' --from --sarif --json;;
+    ingest) printf '%s\n' --from --json;;
     fix) printf '%s\n' --sig --all --selected --recipe --min-severity --verify-cmd --paths --test --commit --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
     ready) printf '%s\n' --json --check --filter --wait-for --timeout;;

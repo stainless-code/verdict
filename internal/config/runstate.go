@@ -26,8 +26,8 @@ import (
 // Outcomes): an outcome append leaves it stable, while any edit of the
 // captured inputs moves it. Inventory pins the trusted-base support
 // bytes by path. RequiresEvidence marks bundles written by the typed
-// fetch: readers enforce the binding, while older artifacts without it
-// report unavailable provenance instead of claiming verified policy.
+// fetch: a run.json without it, or without InputsSHA256, was written by
+// an older verdict and refuses bundle-outdated on every read.
 type RunState struct {
 	Superseded       string                   `json:"superseded,omitempty"`
 	FinderSource     string                   `json:"finder_source,omitempty"`
@@ -125,9 +125,9 @@ func ifEmpty(root string) string {
 }
 
 // ReadRunState loads the persisted run bundle at dir/run.json: absent
-// reads (nil, false, nil) so legacy runs degrade to no repository policy
-// instead of refusing. Present but malformed state refuses loudly: the
-// operator re-fetches or removes it.
+// reads (nil, false, nil) — a bare bundle directory carries no repository
+// policy. Present but malformed state refuses loudly, and a run.json without
+// the integrity binding refuses bundle-outdated: the operator re-fetches it.
 func ReadRunState(dir string) (*RunState, bool, *stateError) {
 	path := filepath.Join(dir, runStateFileName)
 	raw, err := os.ReadFile(path)
@@ -145,14 +145,17 @@ func ReadRunState(dir string) (*RunState, bool, *stateError) {
 		msg := path + " has schema_version " + rs.SchemaVersion
 		return nil, false, &stateError{msg: msg + " (want 1; re-fetch to rebuild it)", operator: true}
 	}
+	if !rs.RequiresEvidence || rs.InputsSHA256 == "" {
+		return nil, false, outdatedState(path)
+	}
 	return &rs, true, nil
 }
 
 // AppendOutcome records one observed check execution on an existing run
 // bundle, preserving every captured input byte-for-byte. Absent run
-// state appends nothing (false, nil): legacy runs carry no typed policy,
-// and inventing one from an outcome would reconstruct inputs the fetch
-// never captured. The error return is the sealed state error as an
+// state appends nothing (false, nil): a bare bundle carries no typed
+// policy, and inventing one from an outcome would reconstruct inputs the
+// fetch never captured. The error return is the sealed state error as an
 // error so verb packages can warn without naming the type.
 func AppendOutcome(dir string, obs *CheckObservation) (bool, error) {
 	if _, serr := os.Stat(dir); os.IsNotExist(serr) {
@@ -230,27 +233,28 @@ func AppendTrigger(dir string, decision *TriggerDecision) (bool, error) {
 // controls snapshot beside it, refusing controls-stale on any drift: a
 // deleted or corrupt bundle, edited captured inputs, or support bytes
 // that no longer hash to the captured values. A bare bundle directory
-// that predates typed evidence reads legacy (nil, nil): older artifacts
-// report unavailable provenance instead of claiming verified policy. A
-// bundle directory carrying the controls snapshot without its run bundle
-// refuses: that pairing means deletion, not legacy.
-// Callers gate record and post on the refusal and warn on unavailable
-// provenance; Verified reports whether the full binding held.
+// with no typed evidence reads (nil, nil): it carries no repository
+// policy. A bundle directory carrying the controls snapshot without its
+// run bundle refuses: that pairing means deletion. A run.json an older
+// verdict wrote, without the integrity binding, refuses bundle-outdated.
 func VerifyRunState(dir string) (*RunState, *core.RefusalError) {
 	rs, found, serr := ReadRunState(dir)
 	if serr != nil {
+		if serr.code == CodeBundleOutdated {
+			return nil, serr.Refusal()
+		}
 		return nil, stale(dir, "run bundle is unreadable")
 	}
 	if !found {
 		return missingRunState(dir)
 	}
-	if rs.InputsSHA256 != "" && inputsDigest(rs) != rs.InputsSHA256 {
+	if inputsDigest(rs) != rs.InputsSHA256 {
 		return nil, stale(dir, "captured inputs changed under the bundle")
 	}
 	return bindRunState(dir, rs)
 }
 
-// missingRunState reads an absent run bundle: a bare directory predates
+// missingRunState reads an absent run bundle: a bare directory carries no
 // typed evidence (nil, nil), while a directory carrying the controls
 // snapshot alone means the bundle was deleted.
 func missingRunState(dir string) (*RunState, *core.RefusalError) {
@@ -277,11 +281,15 @@ func bindRunState(dir string, rs *RunState) (*RunState, *core.RefusalError) {
 	return rs, nil
 }
 
-// Verified reports whether the loaded bundle carries the full integrity
-// binding: bundles predating it enforce their stored policy but report
-// unavailable provenance instead of claiming verified evidence.
-func (rs *RunState) Verified() bool {
-	return rs != nil && rs.RequiresEvidence && rs.InputsSHA256 != ""
+// outdatedState refuses a run.json an older verdict wrote: it carries no
+// integrity binding, so no verb can prove its captured policy. Re-fetching
+// rebuilds it in the current shape.
+func outdatedState(path string) *stateError {
+	return &stateError{
+		code: CodeBundleOutdated, operator: true,
+		msg: filepath.ToSlash(path) + " was written by an older verdict and carries no integrity binding " +
+			"(re-fetch the bundle with `verdict fetch`, or `verdict fetch-local`, then re-run)",
+	}
 }
 
 // stale refuses with the snapshot-drift code: the typed evidence changed

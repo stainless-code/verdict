@@ -26,6 +26,10 @@ const (
 	// nothing to explain. Preview without a bundle resolves the
 	// no-policy layers instead of refusing.
 	CodeNoBundle = "config-no-bundle"
+	// CodeBundleOutdated refuses a bundle an older verdict wrote in a shape
+	// this build no longer reads: the fix is to re-create it, never a
+	// degraded read.
+	CodeBundleOutdated = "bundle-outdated"
 	// CodeCanceled refuses a canceled read before it touches the bundle:
 	// the shared vocabulary's cancellation code, mapped to the broke exit.
 	CodeCanceled = "canceled"
