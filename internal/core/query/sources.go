@@ -51,7 +51,13 @@ func (l *Layer) inventory(root Root, bundle, dir string) inventoryReport {
 	}
 	walkBundle(collector, bundle, dir, "")
 	for _, fragment := range overrideFragments {
-		collector.add("", filepath.Join(root.Path, filepath.FromSlash(fragment)))
+		path := filepath.Join(root.Path, filepath.FromSlash(fragment))
+		// A fragment linked out of the repository is refused by the override
+		// validation; its target's digest and size are never ledgered either.
+		if readcommon.FragmentEscapes(path) {
+			continue
+		}
+		collector.add("", path)
 	}
 	slices.SortFunc(collector.sources, func(a, b Source) int {
 		return strings.Compare(a.Path, b.Path)

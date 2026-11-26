@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -78,15 +79,24 @@ func fixtureRoot(t *testing.T) string {
 	return root
 }
 
-// checkout is an empty directory that reads as a git checkout (it carries a
-// .git entry, which is all the root guard looks for).
+// checkout is an empty git checkout: the root guard looks for its .git
+// entry, and the query layer's trust gate asks git about its index, which
+// a bare .git directory cannot answer (it would fail closed).
 func checkout(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	gitInit(t, dir)
 	return dir
+}
+
+// gitInit makes dir an empty git checkout.
+func gitInit(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", "init", "-q")
+	cmd.Dir, cmd.Env, cmd.WaitDelay = dir, testenv.Base(nil), time.Minute
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
 }
 
 // logs returns the window/logMessage texts among frames.

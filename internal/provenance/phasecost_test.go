@@ -48,3 +48,57 @@ func TestPhaseSpendReadsTierFromPhasedRecords(t *testing.T) {
 		})
 	}
 }
+
+// TestPhaseSpendFooterReadsMeasuredReceipt proves the footer prices a
+// two-finder bundle from the spend its spawns measured, rounded the way
+// every money line prints, before any agent-written phase record.
+func TestPhaseSpendFooterReadsMeasuredReceipt(t *testing.T) {
+	dir := writeBundle(t, map[string]string{
+		"run.json": `{"execution":{"id":"execution-A","finders":2}}`,
+		"budget.json": `[{"at":"2026-11-24T10:00:00Z","execution_id":"execution-A","scope":"invocation",` +
+			`"invocation_id":"execution-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"}]`,
+		"x-finder-1/cost.json": phasedRecord("finder-1", "finder-1-discovery-1", "standard", "0.3"),
+	})
+	tier, cost := provenance.Spend(dir)
+	if tier != "standard" || cost != "$1.306" {
+		t.Fatalf("spend = %s %s; want standard $1.306", tier, cost)
+	}
+}
+
+// TestPhaseSpendFooterReadsOnlyTheCurrentExecution proves the footer prices
+// the execution run.json captured, not an earlier execution's receipt, and
+// not one still waiting on an unsettled invocation.
+func TestPhaseSpendFooterReadsOnlyTheCurrentExecution(t *testing.T) {
+	ledger := `[{"at":"2026-11-24T09:00:00Z","execution_id":"execution-old","scope":"invocation",` +
+		`"invocation_id":"execution-old@1","projected_usd":5,"priced_by":"measured"},` +
+		`{"at":"2026-11-24T10:00:00Z","execution_id":"execution-A","scope":"invocation",` +
+		`"invocation_id":"execution-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"}`
+	dir := writeBundle(t, map[string]string{
+		"run.json":    `{"execution":{"id":"execution-A","finders":2}}`,
+		"budget.json": ledger + "]",
+	})
+	if _, cost := provenance.Spend(dir); cost != "$1.306" {
+		t.Errorf("spend = %s; want the current execution's $1.306", cost)
+	}
+	pending := writeBundle(t, map[string]string{
+		"run.json": `{"execution":{"id":"execution-A","finders":2}}`,
+		"budget.json": ledger + `,{"at":"2026-11-24T11:00:00Z","execution_id":"execution-A","scope":"invocation",` +
+			`"invocation_id":"execution-A@2","projected_usd":null}]`,
+	})
+	if _, cost := provenance.Spend(pending); cost != "unrecorded" {
+		t.Errorf("spend with an unsettled invocation = %s; want unrecorded", cost)
+	}
+}
+
+// TestSpendFooterReadsMeasuredSpawnReceipts proves a bundle whose spawns the
+// loop receipted, with no priced self-report, prices from those receipts
+// instead of reading unrecorded.
+func TestSpendFooterReadsMeasuredSpawnReceipts(t *testing.T) {
+	dir := writeBundle(t, map[string]string{
+		"budget.json": `[{"at":"2026-11-24T10:00:00Z","execution_id":"loop-1-review","scope":"spawn",` +
+			`"agent":"claude","model":"","projected_usd":0.40000000000000002,"priced_by":"measured"}]`,
+	})
+	if tier, cost := provenance.Spend(dir); tier != "standard" || cost != "$0.4" {
+		t.Errorf("spend = %s %s; want standard $0.4", tier, cost)
+	}
+}

@@ -1480,9 +1480,9 @@ Fix: narrow the `--spec` file under 150 checklist items or split the PR, then re
 
 ## `spend-capped`
 
-Cause: the projected run cost exceeds the personal spend ceiling.
+Cause: the projected run cost exceeds the personal spend ceiling (`spend.budget_usd`, checked by `fetch`), or month-to-date spend plus the pending projection exceeds the monthly ceiling (`monthly_budget_usd`, checked by `run`). The message names which.
 
-Fix: re-run with `--consent-over-budget` once the spend is approved, or raise the personal spend ceiling (`spend.budget_usd`) in the operator settings, then re-run.
+Fix: re-run with `--consent-over-budget` once the spend is approved, or raise the ceiling the message names, then re-run. The monthly ceiling is the lower of `spend.monthly_budget_usd` in the operator settings and `defaults.monthly_budget_usd` in `.verdict/config.json`, so raise the lower one.
 
 ## `stale-review-artifact`
 

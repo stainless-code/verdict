@@ -3,6 +3,7 @@ package fetchcore
 import (
 	"errors"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -248,5 +249,254 @@ func TestBudgetGateBuiltinEffortKeepsNoBudgetBehaviour(t *testing.T) {
 	}
 	if budget.estRuns != 0 || budget.estUSD != "" || budget.estTier != "" {
 		t.Errorf("a plain run measured history: runs=%d usd=%q tier=%q", budget.estRuns, budget.estUSD, budget.estTier)
+	}
+}
+
+// TestCostEstimateReadsMeasuredSpendReceipts proves a settled two-finder
+// spend receipt is a comparable past run, priced by what its spawns measured,
+// and that it replaces the same execution's self-reported cost record.
+func TestCostEstimateReadsMeasuredSpendReceipts(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "local-claude", `[{"execution_id":"exec-A","est_usd":99}]`)
+	ledger := `[{"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation",` +
+		`"invocation_id":"exec-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"},` +
+		`{"at":"2026-11-24T11:00:00Z","execution_id":"exec-B","scope":"invocation",` +
+		`"invocation_id":"exec-B@1","projected_usd":null}]`
+	if err := os.WriteFile(filepath.Join(root, ".verdict", "state", "local-claude", "budget.json"),
+		[]byte(ledger), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var human strings.Builder
+	r := &session{repoRoot: root, Human: &human, warnings: new([]string)}
+	var st budgetState
+	if err := costEstimate(r, &st, nil); err != nil {
+		t.Fatalf("costEstimate: %v", err)
+	}
+	if st.estTier != "standard" || st.estUSD != "1.306" || st.estRuns != 1 || st.estBasis != "measured" {
+		t.Fatalf("estimate = tier %q usd %q runs %d basis %q; want standard 1.306 1 measured",
+			st.estTier, st.estUSD, st.estRuns, st.estBasis)
+	}
+	if strings.Contains(human.String(), "no comparable past runs") {
+		t.Fatalf("estimate line = %q, want the measured run", human.String())
+	}
+}
+
+// writeLedger writes one bundle's budget.json under the run's root.
+func writeLedger(t *testing.T, root, bundle, body string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "state", bundle, "budget.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// estimateFor runs the estimator over root and returns its state.
+func estimateFor(t *testing.T, root string) budgetState {
+	t.Helper()
+	r := &session{repoRoot: root, Human: io.Discard, warnings: new([]string)}
+	var st budgetState
+	if err := costEstimate(r, &st, nil); err != nil {
+		t.Fatalf("costEstimate: %v", err)
+	}
+	return st
+}
+
+// invocationRow renders one settled or unsettled invocation receipt.
+func invocationRow(inv, at, usd, pricedBy string) string {
+	exec, _, _ := strings.Cut(inv, "@")
+	row := `{"at":"` + at + `","execution_id":"` + exec + `","scope":"invocation","invocation_id":"` + inv +
+		`","projected_usd":` + usd
+	if pricedBy != "" {
+		row += `,"priced_by":"` + pricedBy + `"`
+	}
+	return row + "}"
+}
+
+// TestCostEstimateCountsAResumedExecutionOnce proves every invocation of a
+// resumed execution prices one run: the sample is their sum, not two runs at
+// half the price each.
+func TestCostEstimateCountsAResumedExecutionOnce(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "0.8", "measured")+"]")
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "1.3" {
+		t.Fatalf("estimate = %d run(s) at %q, want 1 run at 1.3", st.estRuns, st.estUSD)
+	}
+}
+
+// TestCostEstimateKeepsAPartlySettledExecutionUnknown proves an execution
+// with an unsettled invocation is a run whose measured part is only a lower
+// bound, never a fully priced sample.
+func TestCostEstimateKeepsAPartlySettledExecutionUnknown(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	st := estimateFor(t, root)
+	if st.estUSD != "" || st.estLowerBound == nil || st.estLowerBound.Cmp(big.NewRat(1, 2)) != 0 {
+		t.Fatalf("estimate = %q lower bound %v, want unknown with lower bound 0.5", st.estUSD, st.estLowerBound)
+	}
+}
+
+// TestCostEstimateDropsAnUnidentifiedSelfReportItsReceiptOwns proves a
+// cost.json record naming no execution, written after a measured invocation
+// receipt, is that run's self-report and is not sampled a second time.
+func TestCostEstimateDropsAnUnidentifiedSelfReportItsReceiptOwns(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "local-a", `[{"at":"2026-11-24T12:00:00Z","est_usd":0.01}]`)
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "1.30604299999999994", "measured")+"]")
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "1.306" {
+		t.Fatalf("estimate = %d run(s) at %q, want the 1 measured run at 1.306", st.estRuns, st.estUSD)
+	}
+}
+
+// TestCostEstimateIgnoresLoopSpawnReceipts proves a loop's per-spawn
+// receipts are single launches, not comparable review runs.
+func TestCostEstimateIgnoresLoopSpawnReceipts(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":2}]`)
+	writeLedger(t, root, "loop-1", `[{"at":"2026-11-24T10:00:00Z","execution_id":"loop-1-review",`+
+		`"scope":"spawn","agent":"claude","model":"","projected_usd":7,"priced_by":"measured"}]`)
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "2" {
+		t.Fatalf("estimate = %d run(s) at %q, want only the cost.json run at 2", st.estRuns, st.estUSD)
+	}
+}
+
+// TestNearCapEstimateRefusesExactly proves the guards compare the exact mean,
+// not its four-decimal display: 1.00004 rounds to 1 but still exceeds a $1
+// budget and a $1 personal ceiling, and the refusal prints it rounded up.
+func TestNearCapEstimateRefusesExactly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":1.00004}]`)
+	st := estimateFor(t, root)
+	if st.estUSD != "1" {
+		t.Fatalf("display estimate = %q, want the rounded 1", st.estUSD)
+	}
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "1", "REVIEW_BUDGET_USD"
+	err := gateOrdinaryBudget(&st, false)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "budget-exceeded" || !strings.Contains(ref.Message, "~$1.0001 exceeds budget $1") {
+		t.Fatalf("ordinary guard = %v, want budget-exceeded naming ~$1.0001", err)
+	}
+	limit := 1.0
+	res := &config.Resolved{Spend: config.SpendView{PersonalLimit: &limit}}
+	if !errors.As(gatePersonalCeiling(&st, res), &ref) || ref.Code != "spend-capped" ||
+		!strings.Contains(ref.Message, "~$1.0001 exceeds the personal spend ceiling $1") {
+		t.Fatalf("personal ceiling = %v, want spend-capped naming ~$1.0001", ref)
+	}
+}
+
+// TestPartlySettledExecutionOwnsItsCostRecord proves a cost.json written
+// after a partly settled execution, with or without its execution_id, is that
+// execution's self-report: the run counts once, at least its measured $0.50,
+// so the lower bound still breaks a $0.40 budget instead of halving to $0.25.
+func TestPartlySettledExecutionOwnsItsCostRecord(t *testing.T) {
+	t.Parallel()
+	for name, record := range map[string]string{
+		"named":   `[{"at":"2026-11-24T12:00:00Z","execution_id":"exec-A"}]`,
+		"unnamed": `[{"at":"2026-11-24T12:00:00Z"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeLedger(t, root, "local-a", "["+
+				invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+				invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+			costState(t, root, "local-a", record)
+			st := estimateFor(t, root)
+			st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.4", "REVIEW_BUDGET_USD"
+			err := gateHistoricalLowerBound(&st, nil, false)
+			var ref *core.RefusalError
+			if st.estRuns != 1 || !errors.As(err, &ref) || ref.Code != "budget-exceeded" ||
+				!strings.Contains(ref.Message, "at least $0.5 ") {
+				t.Fatalf("runs %d, gate = %v; want 1 run refused budget-exceeded at least $0.5", st.estRuns, err)
+			}
+		})
+	}
+}
+
+// TestLowerBoundComparesExactly proves the known lower bound stays exact:
+// $0.1 and $0.2 average exactly $0.15, which does not break a $0.15 budget,
+// where float64 summed them to 0.15000000000000002 and refused.
+func TestLowerBoundComparesExactly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.1", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	writeLedger(t, root, "local-b", "["+
+		invocationRow("exec-B@1", "2026-11-24T10:00:00Z", "0.2", "measured")+","+
+		invocationRow("exec-B@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.15", "REVIEW_BUDGET_USD"
+	if err := gateHistoricalLowerBound(&st, nil, false); err != nil {
+		t.Fatalf("lower bound exactly at the $0.15 budget = %v, want no refusal", err)
+	}
+}
+
+// TestBreachPrintsMoneyForALongExactMean proves a mean whose exact fraction
+// is too long to print as a literal still reads as rounded-up money in the
+// refusal, never as a raw num/denom fraction.
+func TestBreachPrintsMoneyForALongExactMean(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":1.00000000000000000000000000000000001}]`)
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "1", "REVIEW_BUDGET_USD"
+	err := gateOrdinaryBudget(&st, false)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || !strings.Contains(ref.Message, "~$1.0001 exceeds budget $1") {
+		t.Fatalf("ordinary guard = %v, want budget-exceeded naming ~$1.0001", err)
+	}
+}
+
+// TestMeasuredRunWithoutReadableTimeOwnsItsCostRecord proves a measured
+// invocation whose at is missing or unreadable still owns its execution's
+// cost.json, named or not: the run counts once, at least its measured $0.50,
+// and the lower bound still breaks a $0.40 budget.
+func TestMeasuredRunWithoutReadableTimeOwnsItsCostRecord(t *testing.T) {
+	t.Parallel()
+	for atName, at := range map[string]string{"missing": "", "invalid": `"at":"yesterday",`} {
+		for name, record := range map[string]string{
+			"named":   `[{"at":"2026-11-24T12:00:00Z","execution_id":"exec-A"}]`,
+			"unnamed": `[{"at":"2026-11-24T12:00:00Z"}]`,
+		} {
+			t.Run(atName+"/"+name, func(t *testing.T) {
+				t.Parallel()
+				assertUntimedRunOwnsRecord(t, at, record)
+			})
+		}
+	}
+}
+
+// assertUntimedRunOwnsRecord seeds a measured invocation carrying at (empty
+// for none) beside a cost record and proves the run counts once.
+func assertUntimedRunOwnsRecord(t *testing.T, at, record string) {
+	t.Helper()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", `[{`+at+`"execution_id":"exec-A","scope":"invocation",`+
+		`"invocation_id":"exec-A@1","projected_usd":0.5,"priced_by":"measured"},`+
+		invocationRow("exec-A@2", "2026-11-24T13:00:00Z", "null", "")+"]")
+	costState(t, root, "local-a", record)
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.4", "REVIEW_BUDGET_USD"
+	err := gateHistoricalLowerBound(&st, nil, false)
+	var ref *core.RefusalError
+	if st.estRuns != 1 || !errors.As(err, &ref) || ref.Code != "budget-exceeded" {
+		t.Fatalf("runs %d, gate = %v; want 1 run refused budget-exceeded", st.estRuns, err)
 	}
 }

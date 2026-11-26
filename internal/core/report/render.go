@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/spend"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
@@ -261,6 +262,10 @@ func costFromObj(cost *jq.Obj) *core.ReportCost {
 	if receipts, ok := jqVal(cost, "receipts").([]any); ok {
 		c.Receipts = receipts
 	}
+	if usd, ok := readcommon.NumVal(jqVal(cost, readcommon.KeyMeasuredUSD)); ok {
+		c.MeasuredUSD = &usd
+		c.MeasuredReceipts = jqInt(cost, readcommon.KeyMeasuredReceipts)
+	}
 	return c
 }
 
@@ -481,15 +486,16 @@ func costHuman(st *state) []string {
 	if runs == strZero {
 		lines := []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
 			st.dir, readcommon.CostFile)}
+		lines = appendMeasured(lines, cost)
 		if st.mtd != nil {
 			lines = append(lines, mtdHuman(st.mtd))
 		}
 		return lines
 	}
 	lines := []string{fmt.Sprintf("cost: %s run(s), %s with records — in=%s out=%s total=%s est_usd=%s cached=%s",
-		runs, jqStr(cost, "runs_with_cost"), jqStr(cost, "input_tokens"),
-		jqStr(cost, "output_tokens"), jqStr(cost, "total_tokens"),
-		orNA(jqVal(cost, "est_usd")), jqStr(cost, "cached_input_tokens"))}
+		runs, jqStr(cost, "runs_with_cost"), orNA(jqVal(cost, "input_tokens")),
+		orNA(jqVal(cost, "output_tokens")), orNA(jqVal(cost, "total_tokens")),
+		orNA(jqVal(cost, "est_usd")), orNA(jqVal(cost, "cached_input_tokens")))}
 	byTier, _ := cost.Get("by_tier")
 	tierObj, ok := byTier.(*jq.Obj)
 	if !ok {
@@ -497,45 +503,69 @@ func costHuman(st *state) []string {
 	}
 	lines = append(lines, fmt.Sprintf("tiers: cheap=%s standard=%s deep=%s",
 		tierRuns(tierObj, "cheap"), tierRuns(tierObj, "standard"), tierRuns(tierObj, "deep")))
-	if st.receipts != nil {
-		latest := st.receipts[len(st.receipts)-1]
+	if consented := consentedReceipts(st.receipts); len(consented) > 0 {
+		latest := consented[len(consented)-1]
 		lines = append(lines, fmt.Sprintf("receipts: %d consented over-budget run(s) (latest projected $%s %s vs budget $%s @ %s)",
-			len(st.receipts), receiptField(latest, "projected_usd"),
+			len(consented), spend.DisplayUSD(receiptField(latest, "projected_usd")),
 			receiptField(latest, "projected_tier"), receiptField(latest, "budget_usd"), receiptField(latest, "at")))
 	}
+	lines = appendMeasured(lines, cost)
 	if st.mtd != nil {
 		lines = append(lines, mtdHuman(st.mtd))
 	}
 	return lines
 }
 
+// appendMeasured adds the bundle's measured spend line when any receipt the
+// agent CLIs priced exists.
+func appendMeasured(lines []string, cost *jq.Obj) []string {
+	usd, ok := jqVal(cost, readcommon.KeyMeasuredUSD).(jq.Number)
+	if !ok {
+		return lines
+	}
+	return append(lines, fmt.Sprintf("measured: $%s from %s spend receipt(s) the agent CLIs priced",
+		spend.DisplayUSD(usd.String()), jqStr(cost, readcommon.KeyMeasuredReceipts)))
+}
+
 func mtdHuman(mtd *core.ReportMTD) string {
-	spend := mtdSpend(mtd)
 	counts := fmt.Sprintf("(%d priced, %d unknown)", mtd.KnownCount, mtd.UnknownCount)
 	if mtd.MonthlyCapUSD == nil {
-		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, spend, counts)
+		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, mtdSpend(mtd, ""), counts)
 	}
 	ceiling := strconv.FormatFloat(*mtd.MonthlyCapUSD, 'f', -1, mtdFloatBits)
+	known := mtdSpend(mtd, ceiling)
 	if mtd.RemainingUSD != nil {
-		rem := strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits)
+		rem := visibleUSD(strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits), "")
 		return fmt.Sprintf(
 			"mtd: %s %s of $%s ceiling, remaining $%s %s",
-			mtd.Month, spend, ceiling, rem, counts)
+			mtd.Month, known, ceiling, rem, counts)
 	}
-	return fmt.Sprintf("mtd: %s %s of $%s ceiling %s", mtd.Month, spend, ceiling, counts)
+	return fmt.Sprintf("mtd: %s %s of $%s ceiling %s", mtd.Month, known, ceiling, counts)
 }
 
 // mtdSpend renders the month's known leg: a dollar amount when spend is
 // known, "unknown" when unpriced receipts exist, and $0 when nothing was
 // recorded.
-func mtdSpend(mtd *core.ReportMTD) string {
+func mtdSpend(mtd *core.ReportMTD, ceiling string) string {
 	if mtd.KnownUSD != nil {
-		return "known $" + strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits)
+		return "known $" + visibleUSD(strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits), ceiling)
 	}
 	if mtd.UnknownCount > 0 {
 		return "known unknown"
 	}
 	return "known $" + strZero
+}
+
+// visibleUSD rounds an amount for a person without letting the rounding hide
+// what matters: a breach of ceiling (when one is set) or a nonzero amount
+// both round up rather than read as within the ceiling or as zero.
+func visibleUSD(amount, ceiling string) string {
+	if ceiling != "" {
+		if shown := spend.DisplayBreach(amount, ceiling); shown != strZero {
+			return shown
+		}
+	}
+	return spend.DisplayBreach(amount, strZero)
 }
 
 func jqStr(obj *jq.Obj, key string) string {
@@ -564,6 +594,23 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 	return jqStr(obj, keyRuns)
 }
 
+// consentedReceipts keeps the ledger rows an operator's
+// --consent-over-budget wrote. run settles a spend receipt into the same
+// ledger for every two-finder execution, consented or not, and those are
+// spend, not consent.
+func consentedReceipts(receipts []any) []any {
+	var out []any
+	for _, row := range receipts {
+		if consent := receiptField(row, "consent"); consent != fieldAbsent && consent != "" {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+// fieldAbsent stands in for a receipt field the row does not carry.
+const fieldAbsent = "?"
+
 func receiptField(latest any, key string) string {
 	if m, ok := latest.(map[string]any); ok {
 		return receiptFieldFromMap(m, key)
@@ -574,7 +621,7 @@ func receiptField(latest any, key string) string {
 func receiptFieldFromMap(m map[string]any, key string) string {
 	v, ok := m[key]
 	if !ok || v == nil || v == false {
-		return "?"
+		return fieldAbsent
 	}
 	return jq.Str(v)
 }
@@ -582,11 +629,11 @@ func receiptFieldFromMap(m map[string]any, key string) string {
 func receiptFieldFromObj(latest any, key string) string {
 	om, ok := latest.(*jq.Obj)
 	if !ok {
-		return "?"
+		return fieldAbsent
 	}
 	v, _ := om.Get(key)
 	if v == nil || v == false {
-		return "?"
+		return fieldAbsent
 	}
 	return jq.Str(v)
 }

@@ -11,6 +11,7 @@ by category: untagged 6
 cost: 1 run(s), 1 with records — in=120 out=55 total=175 est_usd=0.05 cached=40
 tiers: cheap=0 standard=1 deep=0
 receipts: 1 consented over-budget run(s) (latest projected $9.5 standard vs budget $10 @ 0000-00-00T00:00:00Z)
+measured: $1.306 from 1 spend receipt(s) the agent CLIs priced
 next: address open threads
 --- stderr ---
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors

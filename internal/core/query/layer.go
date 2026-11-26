@@ -283,8 +283,17 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 	if ref != nil {
 		return "", false, ref
 	}
+	if ref := rootTrust(root); ref != nil {
+		return "", false, ref
+	}
+	if storeOutside(root) {
+		return "", false, outsideRoot(bundle)
+	}
 	if !names[bundle] {
 		return "", false, nil
+	}
+	if !insideRoot(root.Path, dir) {
+		return "", false, outsideRoot(bundle)
 	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
 	if dir != want {
@@ -295,6 +304,50 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 		}
 	}
 	return dir, true, nil
+}
+
+// outsideRoot refuses a bundle whose directory resolves outside the served
+// root: a committed .verdict or .verdict/state symlink must not let one
+// repository serve another's bundles.
+func outsideRoot(bundle string) *core.RefusalError {
+	return &core.RefusalError{
+		Code:    config.CodeBadConfig,
+		Message: core.Msgf("serve: bundle %q resolves outside this served root — refusing to read through it", bundle),
+	}
+}
+
+// storeOutsideError is readStore's refusal of a home outside the served root.
+type storeOutsideError struct{}
+
+func (storeOutsideError) Error() string { return "resolves outside this served root" }
+
+// errStoreOutside is the one storeOutsideError value [errors.Is] matches.
+var errStoreOutside error = storeOutsideError{}
+
+// readStore lists a root's bundle home. It is the one gate every reader of
+// the home passes (the listing, the watcher), so none can follow a committed
+// .verdict or .verdict/state symlink out of the root.
+func (l *Layer) readStore(root Root) ([]os.DirEntry, error) {
+	if ref := rootTrust(root); ref != nil {
+		return nil, ref
+	}
+	if storeOutside(root) {
+		return nil, errStoreOutside
+	}
+	return l.readDir(readcommon.StateDir(root.Path))
+}
+
+// storeOutside reports a bundle home that exists but resolves outside the
+// served root, so every name addressed through it refuses typed instead of
+// reading as not found. An absent home is not outside: it serves nothing.
+// Threat model: committed symlinks are refused here; one swapped in after
+// this check needs a live local writer who can already read the target.
+func storeOutside(root Root) bool {
+	state := readcommon.StateDir(root.Path)
+	if _, err := os.Lstat(filepath.FromSlash(state)); err != nil {
+		return false
+	}
+	return !insideRoot(root.Path, state)
 }
 
 // compose runs the report service with the offline posture the spec fixes.
@@ -352,7 +405,13 @@ func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
 	if !info.IsDir() {
 		return nil, false, corruptRoot(root, readcommon.NotADirectory(state).Error())
 	}
-	entries, err := l.readDir(state)
+	entries, err := l.readStore(root)
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return nil, false, []ErrRow{errRow(root, "", ref.Code, ref.Message)}
+	}
+	if errors.Is(err, errStoreOutside) {
+		return nil, false, corruptRoot(root, core.Msgf("%s %v", state, err))
+	}
 	if err != nil {
 		return nil, false, corruptRoot(root, readcommon.UnreadableStore(state).Error())
 	}

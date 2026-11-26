@@ -481,15 +481,15 @@ func confinedBaselineRoots(t *testing.T) (dir, outsidePath, corruptPath string) 
 		filepath.Join(corrupt, ".verdict", "state", "local-broken")
 }
 
-// TestCompareRefusesASymlinkedBaselineOutsideTheRoot proves a bundle whose
-// physical directory lies outside the served root refuses bad-baseline before
-// any comparison is composed. The escape arrives through the served root's
-// own state directory (a directly-symlinked bundle directory is skipped by
-// bundle discovery instead, so it never reaches the boundary check): the
-// outside store below composes cleanly when read, and its baseline findings
-// are corrupt on purpose, so a composition attempt would answer
-// corrupt-compare-bundle instead of the boundary refusal — a bad-baseline
-// answer with no view proves nothing outside was read.
+// TestCompareRefusesASymlinkedBaselineOutsideTheRoot proves a store whose
+// physical directory lies outside the served root refuses before any
+// comparison is composed. The escape arrives through the served root's own
+// state directory (a directly-symlinked bundle directory is skipped by bundle
+// discovery instead). Every name addressed through that store refuses
+// bad-config, the reported bundle first; the outside baseline findings are
+// corrupt on purpose, so a composition attempt would answer
+// corrupt-compare-bundle instead — a refusal with no view proves nothing
+// outside was read.
 func TestCompareRefusesASymlinkedBaselineOutsideTheRoot(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -514,7 +514,7 @@ func TestCompareRefusesASymlinkedBaselineOutsideTheRoot(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, ".verdict", "state"), filepath.Join(root, ".verdict", "state")); err != nil {
 		t.Skipf("symlinks are unavailable: %v", err)
 	}
-	assertCompareRefusal(t, newLayer(root), RootID(mustAbs(t, root)), "local-link", "bad-baseline")
+	assertCompareRefusal(t, newLayer(root), RootID(mustAbs(t, root)), "local-link", "bad-config")
 }
 
 // TestCompareCacheTracksTheBaselineBundle proves the cached composition is
@@ -611,5 +611,60 @@ func TestCompareListsAWithheldRowWithoutACopy(t *testing.T) {
 	}
 	if _, err := layer.Copy(context.Background(), rootID, "1234", sigCrit); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Copy of the withheld row = %v, want ErrNotFound", err)
+	}
+}
+
+// TestReadsRefuseStoreOutsideRoot proves a committed .verdict or
+// .verdict/state symlink into another checkout serves none of its bundles:
+// the listing reports the store as corrupt, and a name the caller already
+// holds refuses rather than reading through the link.
+func TestReadsRefuseStoreOutsideRoot(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks are unavailable in this Windows test environment")
+	}
+	for _, link := range []string{".verdict/state", ".verdict"} {
+		t.Run(link, func(t *testing.T) {
+			t.Parallel()
+			assertStoreLinkServesNothing(t, link)
+		})
+	}
+}
+
+// linkStore links root's link (".verdict" or ".verdict/state") at the same
+// path of outside, creating only the link's parent so the link itself lands.
+func linkStore(t *testing.T, root, outside, link string) {
+	t.Helper()
+	dst := filepath.Join(root, filepath.FromSlash(link))
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, filepath.Join(outside, filepath.FromSlash(link)), dst)
+}
+
+// assertStoreLinkServesNothing links link inside a fresh root at the same
+// path of another checkout and proves no read reaches through it.
+func assertStoreLinkServesNothing(t *testing.T, link string) {
+	t.Helper()
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{
+		".verdict/state/1234/PR.json":       prDoc(),
+		".verdict/state/1234/full.diff":     fullDiff,
+		".verdict/state/1234/findings.json": "[" + finding(cmpNew, "open", "important", "pointed") + "]",
+	})
+	root := t.TempDir()
+	linkStore(t, root, outside, link)
+	layer := newLayer(root)
+	served, ok := layer.rootByID(RootID(mustAbs(t, root)))
+	if !ok {
+		t.Fatal("served root missing")
+	}
+	names, _, errs := layer.listBundles(served)
+	if len(names) != 0 || len(errs) != 1 || errs[0].Code != "corrupt-store" {
+		t.Errorf("listBundles = %v, %v; want no names and one corrupt-store row", names, errs)
+	}
+	_, found, ref := resolveAmong(served, "1234", map[string]bool{"1234": true})
+	if found || ref == nil || ref.Code != "bad-config" {
+		t.Errorf("resolveAmong = found %v, %v; want the bad-config refusal", found, ref)
 	}
 }

@@ -352,10 +352,57 @@ func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int
 	return st.probe(ctx, args)
 }
 
+// warnLaunch names the row's launch hazard, unless the operator's own args
+// after `--` already carry the row's approval bypass: that is the fix the
+// warning asks for, so repeating it is noise.
 func (st *state) warnLaunch(def *agentcatalog.Launch) {
-	if def.LaunchWarning != "" {
-		st.warn(def.LaunchWarning)
+	if def.LaunchWarning == "" || carriesHint(def, st.req.PassThrough) {
+		return
 	}
+	st.warn(def.LaunchWarning)
+}
+
+// carriesHint reports whether the operator's args set the row's permission
+// hint as an option: its tokens adjacent and in order, or a two-token hint
+// spelled `--flag=value`. The operand of a value-taking option (the model,
+// the prompt, the usage request) is a value, not an option, and a bare `--`
+// ends the options, so neither can pass for the bypass.
+func carriesHint(def *agentcatalog.Launch, pass []string) bool {
+	want := strings.Fields(def.PermissionHint)
+	if len(want) == 0 {
+		return false
+	}
+	valued := valueFlags(def)
+	for i := 0; i < len(pass); i++ {
+		arg := pass[i]
+		switch {
+		case arg == "--":
+			return false
+		case i+len(want) <= len(pass) && slices.Equal(pass[i:i+len(want)], want):
+			return true
+		case len(want) == 2 && arg == want[0]+"="+want[1]:
+			return true
+		case valued[arg]:
+			i++
+		}
+	}
+	return false
+}
+
+// valueFlags are the options of a row that take the next argument as their
+// value.
+func valueFlags(def *agentcatalog.Launch) map[string]bool {
+	flags := map[string]bool{modelFlag: true, "-m": true}
+	if def.ModelFlag != "" {
+		flags[def.ModelFlag] = true
+	}
+	if def.PromptFlag != "" {
+		flags[def.PromptFlag] = true
+	}
+	if def.Usage != nil && len(def.Usage.Args) > 1 {
+		flags[usageFlag(def.Usage.Args)] = true
+	}
+	return flags
 }
 
 // printRoundsRefusal refuses a render asked for a repair loop it cannot run: a

@@ -424,6 +424,8 @@ export interface ReportCost {
   est_usd: number | null;
   by_tier: CostTiers;
   receipts?: unknown[];
+  measured_usd?: number | null;
+  measured_receipts?: number;
   mtd?: ReportMTD | null;
   [key: string]: unknown;
 }
