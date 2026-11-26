@@ -204,7 +204,7 @@ func resolveCandidatePolicy(
 	if err != nil {
 		return nil, config.RequirementSet{}, replayRefusal("cannot read candidate policy " + path)
 	}
-	cfg, ref := config.Parse(raw)
+	cfg, ref := config.ParseFile(path, raw)
 	if ref != nil {
 		return nil, config.RequirementSet{}, ref
 	}

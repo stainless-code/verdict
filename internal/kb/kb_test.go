@@ -91,3 +91,42 @@ func checkBrokenEmpty(t *testing.T, entry func(any, bool) *jq.Obj) {
 		t.Errorf("broken-store kb = %#v; want []", got)
 	}
 }
+
+// TestCreditSkipsBundledPackRuleQuietly proves a flip of a finding citing a
+// bundled pack rule stages no credit and warns nothing (pack rules carry no
+// counters), while a cite with no store row and no bundle listing still warns.
+func TestCreditSkipsBundledPackRuleQuietly(t *testing.T) {
+	dir := t.TempDir()
+	writeKB(t, dir, `{"id":"rec-rule","status":"active"}`)
+	var warns []string
+	c := kb.New(func(m string) { warns = append(warns, m) })
+	c.Root = dir
+	c.Bundled = map[string]bool{"sec-injection": true}
+	entry := jq.NewObj("sig", "s1", "kb", []any{"sec-injection", "nope-missing"})
+	c.ApplyCredit([]any{entry}, "s1", "addressed", "human", "triage", "t", true)
+	if len(c.Staged) != 0 {
+		t.Errorf("staged = %v, want none", c.Staged)
+	}
+	want := []string{"kb credit skipped: rule 'nope-missing' not active in " + filepath.ToSlash(filepath.Join(dir, ".verdict/kb.jsonl"))}
+	if strings.Join(warns, "\n") != strings.Join(want, "\n") {
+		t.Errorf("warns = %q, want %q", warns, want)
+	}
+}
+
+// TestBundledRulesReadsPackRowsOnly proves only manifest rows fetch rendered
+// from a pack rule count as bundled: a store row must still pass the store.
+func TestBundledRulesReadsPackRowsOnly(t *testing.T) {
+	dir := t.TempDir()
+	manifest := `[{"id":"store-rule","score":0.5,"hits":0,"judged":0},` +
+		`{"id":"sec-injection","score":0.5,"hits":0,"judged":0,"severity":"critical","source":"pack:verdict/security@1.1.0"}]`
+	if err := os.WriteFile(filepath.Join(dir, "kb-recall.json"), []byte(manifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := kb.BundledRules(dir)
+	if len(got) != 1 || !got["sec-injection"] {
+		t.Errorf("BundledRules = %v, want only sec-injection", got)
+	}
+	if got := kb.BundledRules(t.TempDir()); len(got) != 0 {
+		t.Errorf("BundledRules without a manifest = %v, want empty", got)
+	}
+}

@@ -117,7 +117,7 @@ func checkBasePolicy(snap *controls.Snapshot) *core.RefusalError {
 }
 
 func parseBaseTrigger(raw []byte) (*core.ConfigTrigger, *core.RefusalError) {
-	cfg, ref := config.Parse(raw)
+	cfg, ref := config.ParseFile(config.ConfigPath, raw)
 	if ref == nil {
 		return cfg.Trigger, nil
 	}

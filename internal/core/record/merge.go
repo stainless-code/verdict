@@ -125,6 +125,7 @@ func (st *state) validateAndMerge() error {
 	st.kb.Policy = kb.PolicyFrom(st.kbThresholds())
 	st.kb.Broken = false
 	st.kb.QuietShape = st.inputChecked
+	st.kb.Bundled = kb.BundledRules(st.dir)
 	st.loadKB()
 	readcommon.WarnContextSources(st.dir, st.review, st.warn)
 	st.kb.Staged = []map[string]any{}

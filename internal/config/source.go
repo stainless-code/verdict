@@ -70,5 +70,5 @@ func ParseBase(found *BaseConfig) (*core.Config, *core.RefusalError) {
 	if found == nil || !found.Present {
 		return nil, nil
 	}
-	return Parse(found.Raw)
+	return ParseFile(ConfigPath, found.Raw)
 }

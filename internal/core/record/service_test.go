@@ -2,6 +2,7 @@ package recordcore_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"slices"
 	"strings"
@@ -202,6 +203,60 @@ func TestRunRecordKBCite(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(c2.Warnings, "\n"), "ignoring unknown kb rule 'nope-missing'") {
 		t.Errorf("warns = %v", c2.Warnings)
+	}
+}
+
+// TestRunRecordKBBundledPackCite proves a pack rule fetch recalled into the
+// bundle's kb.txt is a known cite: it stays on the finding with no warning,
+// with or without a store, while an id the bundle never listed still warns.
+func TestRunRecordKBBundledPackCite(t *testing.T) {
+	const manifest = `[{"id":"sec-injection","score":0.5,"hits":0,"judged":0,` +
+		`"severity":"critical","source":"pack:verdict/security@1.1.0"}]` + "\n"
+	for _, tc := range []struct {
+		name  string
+		store string
+	}{
+		{"no store", ""},
+		{"store without the rule", `{"id":"rec-rule","status":"active"}` + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle(t, "local-kbp", reviewJSON(`,"kb":["sec-injection","nope-missing"]`))
+			testkit.WriteFile(t, ".verdict/state/local-kbp/kb-recall.json", manifest)
+			if tc.store != "" {
+				testkit.WriteFile(t, ".verdict/kb.jsonl", tc.store)
+			}
+			checkBundledPackCite(t)
+		})
+	}
+}
+
+// checkBundledPackCite records local-kbp and pins the outcome: the bundled
+// pack cite is kept without a warning, the unknown cite warns.
+func checkBundledPackCite(t *testing.T) {
+	t.Helper()
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kbp")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	raw, err := os.ReadFile(".verdict/state/local-kbp/findings.json")
+	if err != nil {
+		t.Fatalf("read findings.json: %v", err)
+	}
+	var entries []struct {
+		KB []string `json:"kb"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) != 1 {
+		t.Fatalf("findings.json = %s (%v), want one entry", raw, err)
+	}
+	if got := strings.Join(entries[0].KB, ","); got != "sec-injection" {
+		t.Errorf("finding kb = %q, want sec-injection", got)
+	}
+	warns := strings.Join(c.Warnings, "\n")
+	if strings.Contains(warns, "sec-injection") {
+		t.Errorf("bundled pack cite warned: %v", c.Warnings)
+	}
+	if !strings.Contains(warns, "ignoring unknown kb rule 'nope-missing'") {
+		t.Errorf("unknown cite did not warn: %v", c.Warnings)
 	}
 }
 

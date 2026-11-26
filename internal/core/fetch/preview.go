@@ -1,6 +1,8 @@
 package fetchcore
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -25,6 +27,23 @@ func (c *fetchRunCtx) cleanScratch() {
 		return
 	}
 	_ = os.RemoveAll(c.scratch)
+}
+
+// bundleAbsent reports that nothing exists at dir yet, so this run owns
+// whatever it creates there.
+func bundleAbsent(dir string) bool {
+	_, err := os.Lstat(dir)
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+// discardCreatedBundle removes the bundle directory a refused run created,
+// so a refusal leaves no bundle without its source.json. A bundle that
+// existed before the run is kept as it is.
+func (c *fetchRunCtx) discardCreatedBundle() {
+	if !c.createdDir || c.preview || c.dir == "" {
+		return
+	}
+	_ = os.RemoveAll(c.dir)
 }
 
 // previewStage is the directory a preview stages host work in, creating it on
