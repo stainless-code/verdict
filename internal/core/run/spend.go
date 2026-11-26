@@ -216,12 +216,13 @@ func (st *state) checkMonthlyExceeds(policy spend.Policy, mtd spend.MTD, project
 func monthlyExceedsMessage(policy spend.Policy, mtd spend.MTD, projected, combined string) string {
 	if projected == "" {
 		return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
-			"$" + displayOrZero(mtd.KnownUSD) + " exceeds it alone, with the pending projection unknown — " +
+			"$" + spend.DisplayBreach(displayOrZeroExact(mtd.KnownUSD), policy.MonthlyCap) +
+			" exceeds it alone, with the pending projection unknown — " +
 			"pass run --consent-over-budget for this invocation or " + raiseMonthlyCeiling
 	}
 	return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
 		"$" + displayOrZero(mtd.KnownUSD) + " plus projected $" + displayOrZero(projected) +
-		" = $" + spend.DisplayUSD(combined) + " — pass run --consent-over-budget for this invocation " +
+		" = $" + spend.DisplayBreach(combined, policy.MonthlyCap) + " — pass run --consent-over-budget for this invocation " +
 		"or " + raiseMonthlyCeiling
 }
 
@@ -263,13 +264,18 @@ func sumExact(a, b string) string {
 	return spend.FormatRat(sumRat)
 }
 
-// displayOrZero renders an exact month-to-date amount for a person: "0" when
-// nothing is known, else rounded the way every money line prints.
-func displayOrZero(s string) string {
+// displayOrZeroExact is the exact amount, "0" when nothing is known.
+func displayOrZeroExact(s string) string {
 	if s == "" {
 		return "0"
 	}
-	return spend.DisplayUSD(s)
+	return s
+}
+
+// displayOrZero renders an exact month-to-date amount for a person: "0" when
+// nothing is known, else rounded the way every money line prints.
+func displayOrZero(s string) string {
+	return spend.DisplayUSD(displayOrZeroExact(s))
 }
 
 // warnMonthlyUnknown names the unknown legs it enforced against: the

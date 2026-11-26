@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core/query"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const (
@@ -657,4 +659,80 @@ func TestQueryServesRepoNotInstallRoot(t *testing.T) {
 	frames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
 	checkQueryResourceRead(t, "verdict://findings/1234", frames["1"])
+}
+
+// TestQueryServesGitTopLevelFromSubdirectory proves a server started inside
+// a subdirectory of a real checkout serves the checkout's top-level store,
+// the root git names, not the working directory.
+func TestQueryServesGitTopLevelFromSubdirectory(t *testing.T) {
+	queryFixture(t)
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.CommandContext(t.Context(), "git", "init", "-q", "-b", "main")
+	cmd.Dir = top
+	cmd.Env = testenv.Base(nil)
+	cmd.WaitDelay = gitWaitDelay
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	writeFile(t, "src/deep/keep.txt", "x")
+	t.Chdir(filepath.Join(top, "src", "deep"))
+	cfg := testConfig()
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	rows, ok := data["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("query-bundles from a subdirectory = %v, want the top-level store's 2 bundles", data["rows"])
+	}
+}
+
+// TestQueryRootFailureRefusesTyped proves a repository root that will not
+// resolve answers the same typed refusal on a tool and on a resource.
+func TestQueryRootFailureRefusesTyped(t *testing.T) {
+	broken := t.TempDir()
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: missing\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(broken)
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query-bundles","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"verdict://bundles"}}`)
+	assertToolRefusalCode(t, "1", frames["1"], "not-a-repo")
+	got := frames["2"].Error
+	if got == nil || got.Code != codeInvalidParams || !strings.HasPrefix(got.Message, "not-a-repo: ") {
+		t.Fatalf("resources/read verdict://bundles error = %+v, want invalid params naming not-a-repo", got)
+	}
+}
+
+// TestQueryRefusesStoreSymlinkedOutsideRepo proves a committed
+// .verdict/state symlink into another checkout serves none of its bundles
+// through the MCP query tools or resources.
+func TestQueryRefusesStoreSymlinkedOutsideRepo(t *testing.T) {
+	queryFixture(t)
+	other, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, ".verdict", "keep"), "")
+	if err := os.Symlink(filepath.Join(other, ".verdict", "state"), filepath.Join(repo, ".verdict", "state")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	t.Chdir(repo)
+	cfg := testConfig()
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	if rows, ok := data["rows"].([]any); !ok || len(rows) != 0 {
+		t.Errorf("query-bundles through an outside store = %v, want no rows", data["rows"])
+	}
+	findings := queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`)
+	if !findings.IsError {
+		t.Errorf("query-findings through an outside store = %s, want a refusal", findings.Content[0].Text)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	if frames["1"].Error == nil {
+		t.Errorf("verdict://findings/1234 through an outside store = %s, want an error", frames["1"].Result)
+	}
 }

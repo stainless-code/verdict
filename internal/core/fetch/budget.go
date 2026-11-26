@@ -3,6 +3,7 @@ package fetchcore
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"path/filepath"
 	"slices"
@@ -25,13 +26,16 @@ const floatBitSize = 64
 const codeSpendCapped = "spend-capped"
 
 type budgetState struct {
-	estimateJSON  any
-	budgetJSON    any
-	groupSpend    *groupSpendState
-	budgetUSD     string
-	budgetSrc     string
-	estTier       string
-	estUSD        string
+	estimateJSON any
+	budgetJSON   any
+	groupSpend   *groupSpendState
+	budgetUSD    string
+	budgetSrc    string
+	estTier      string
+	estUSD       string
+	// estExact is the projection guards compare: the exact mean, never the
+	// four-decimal estUSD a person reads.
+	estExact      string
 	estLowerBound string
 	estBasis      string
 	estHarness    []string
@@ -152,7 +156,7 @@ func recordEstimate(st *budgetState, consent bool) {
 // run with no budget has nothing to exceed, and a consented hit arms a receipt
 // instead of refusing.
 func gateOrdinaryBudget(st *budgetState, consent bool) error {
-	if !st.hasBudget || spend.Authorize(spendProjection(st.estUSD), spend.Policy{Budget: st.budgetUSD}, false).Code == "" {
+	if !st.hasBudget || !spend.Exceeds(st.estExact, st.budgetUSD) {
 		return nil
 	}
 	if consent {
@@ -194,7 +198,7 @@ func refuseUnsupportedCap(res *config.Resolved) *core.RefusalError {
 func budgetExceeded(st *budgetState) error {
 	return &core.RefusalError{Code: "budget-exceeded", Message: core.Msgf(
 		"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
-		st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+		st.estTier, spend.DisplayBreach(st.estExact, st.budgetUSD), st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
 }
 
 // gatePersonalCeiling reports the operator's authorization limit: a
@@ -206,7 +210,7 @@ func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
 		return nil
 	}
 	limit := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
-	if spend.Authorize(spendProjection(st.estUSD), spend.Policy{Personal: limit}, false).Code != "" {
+	if spend.Exceeds(st.estExact, limit) {
 		return personalCeilingError(st, limit)
 	}
 	return nil
@@ -219,7 +223,7 @@ func personalCeilingError(st *budgetState, limit string) error {
 		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (spend.budget_usd in the operator settings) from %d "+
 			"comparable run(s) — consent before this run starts, or raise the ceiling in settings and "+
 			"narrow the run",
-		st.estTier, st.estUSD, st.basisNote(), limit, st.estRuns)}
+		st.estTier, spend.DisplayBreach(st.estExact, limit), st.basisNote(), limit, st.estRuns)}
 }
 
 // gateUnknownEstimate handles a set budget with no usable projection:
@@ -290,7 +294,7 @@ func (st *budgetState) basisNote() string {
 // deeper tier). Unknown history reads unknown, never blocking. Handed usage
 // records price the runs they bracket; a broken handoff refuses typed.
 func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
-	st.estUSD, st.estRuns, st.estTier, st.tierRuns = "", 0, "", 0
+	st.estUSD, st.estExact, st.estRuns, st.estTier, st.tierRuns = "", "", 0, "", 0
 	usage, err := measuredUsage(r)
 	if err != nil {
 		return err
@@ -315,7 +319,7 @@ func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
 		reportUnknownProjection(r, st, tier, tierRuns)
 		return nil
 	}
-	st.estUSD = stat.mean
+	st.estUSD, st.estExact = stat.mean, stat.exact.RatString()
 	fmt.Fprintln(r.Human, core.Msgf("%s%s", estimateLine(st, tier), st.basisNote()))
 	return nil
 }
@@ -341,11 +345,15 @@ func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns 
 // estimateLine renders a known projection, comparing it against the ordinary
 // guard only when the run carries one.
 func estimateLine(st *budgetState, tier string) string {
-	line := core.Msgf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
+	shown := st.estUSD
+	if st.hasBudget {
+		shown = spend.DisplayBreach(st.estExact, st.budgetUSD)
+	}
+	line := core.Msgf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, shown, st.estRuns)
 	if !st.hasBudget {
 		return line
 	}
-	if overBudget(st.estUSD, st.budgetUSD) {
+	if overBudget(st.estExact, st.budgetUSD) {
 		return line + core.Msgf(" — OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	}
 	return line + core.Msgf(" — within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
@@ -368,7 +376,7 @@ func (st *budgetState) recordBasis(stat *tierStat) {
 }
 
 type costRec struct {
-	measured    *float64
+	measured    *big.Rat
 	subtotal    *float64
 	tier        string
 	usageSource string
@@ -377,8 +385,8 @@ type costRec struct {
 }
 
 // readCostRecs reads one cost file's records and, index for index, the
-// execution each names ("" when none).
-func readCostRecs(path string) ([]costRec, []string, bool) {
+// identity each carries.
+func readCostRecs(path string) ([]costRec, []costIdent, bool) {
 	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, nil, false
@@ -394,13 +402,13 @@ func readCostRecs(path string) ([]costRec, []string, bool) {
 		items = []any{doc}
 	}
 	out := make([]costRec, 0, len(items))
-	executions := make([]string, 0, len(items))
+	idents := make([]costIdent, 0, len(items))
 	for _, it := range items {
 		out = append(out, costRecord(it))
 		m, _ := jq.AsMap(it)
-		executions = append(executions, jq.StrOf(m["execution_id"]))
+		idents = append(idents, costIdent{at: m["at"], execution: jq.StrOf(m["execution_id"])})
 	}
-	return out, executions, true
+	return out, idents, true
 }
 
 func costRecord(it any) costRec {
@@ -455,6 +463,7 @@ func estNumber(v any) (string, bool) {
 // tierStat accumulates one tier's run count and priced mean plus the
 // measured-sample split behind it.
 type tierStat struct {
+	exact      *big.Rat
 	mean       string
 	lowerBound string
 	harness    []string
@@ -507,7 +516,7 @@ func pickEstimateTier(recs []costRec, want string, explicit bool) (tier string, 
 // mean (-1 with no priced runs, so unpriced tiers still compete on runs).
 // A handed usage record prices that run and names its source.
 func tierStats(recs []costRec, t string) tierStat {
-	var st tierStat
+	st := tierStat{exact: new(big.Rat)}
 	var sum float64
 	for _, r := range recs {
 		if r.tier == t {
@@ -517,6 +526,7 @@ func tierStats(recs []costRec, t string) tierStat {
 	st.meanVal = -1.0
 	if st.priced > 0 {
 		st.meanVal, st.mean = spend.MeanUSD(sum, st.priced)
+		st.exact.Quo(st.exact, big.NewRat(int64(st.priced), 1))
 	}
 	if st.subtotal > 0 {
 		st.lowerBound = strconv.FormatFloat((sum+st.subtotal)/float64(st.runs), 'f', -1, floatBitSize)
@@ -538,7 +548,7 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	}
 	slices.Sort(files)
 	for _, f := range files {
-		fileRecs, executions, ok := readCostRecs(f)
+		fileRecs, idents, ok := readCostRecs(f)
 		if !ok {
 			// The warning is user-visible: glob returns OS separators,
 			// so Windows would print `.verdict\state\2\cost.json` where every
@@ -547,7 +557,7 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 			continue
 		}
 		joinMeasured(fileRecs, usage, f)
-		recs = append(recs, unmeasuredRecs(fileRecs, executions, filepath.Dir(f))...)
+		recs = append(recs, unownedRecs(fileRecs, idents, filepath.Dir(f))...)
 	}
 	if len(bad) > 0 {
 		r.Warn(fmt.Sprintf("cost history unreadable — skipped from estimate: %s ", strings.Join(bad, " ")))
@@ -555,10 +565,13 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	return append(recs, measuredRunRecs(r.repoRoot)...)
 }
 
-// measuredRunRecs reads every bundle's settled two-finder spend receipts as
-// comparable runs: one review run each, priced by the agent CLIs' own output.
-// A receipt names no effort tier, so it reads standard, as a cost record
-// without one does.
+// measuredRunRecs reads every bundle's two-finder invocation receipts as
+// comparable runs, one per execution however many invocations a resume took.
+// A fully settled execution is priced by what its spawns measured; one with
+// an unsettled invocation is a run whose measured part is only a known lower
+// bound. A receipt names no effort tier, so it reads standard, as a cost
+// record without one does. Loop spawn receipts are single launches, not runs,
+// and stay out.
 func measuredRunRecs(repoRoot string) []costRec {
 	dirs, err := filepath.Glob(filepath.Join(repoRoot, ".verdict", "state", "*"))
 	if err != nil {
@@ -567,37 +580,33 @@ func measuredRunRecs(repoRoot string) []costRec {
 	slices.Sort(dirs)
 	var recs []costRec
 	for _, dir := range dirs {
-		for _, row := range invocationRows(dir) {
-			usd, _ := row.USD.Float64()
-			recs = append(recs, costRec{tier: tierStandard, measured: &usd, has: true})
+		for _, run := range spend.InvocationRuns(dir) {
+			if !run.Complete {
+				lower, _ := run.USD.Float64()
+				recs = append(recs, costRec{tier: tierStandard, subtotal: &lower})
+				continue
+			}
+			recs = append(recs, costRec{tier: tierStandard, measured: run.USD})
 		}
 	}
 	return recs
 }
 
-func invocationRows(dir string) []spend.MeasuredRow {
-	var rows []spend.MeasuredRow
-	for _, row := range spend.BundleMeasuredRows(dir) {
-		if row.Scope == spend.ScopeInvocation {
-			rows = append(rows, row)
-		}
-	}
-	return rows
+// costIdent is the identity a cost record carries for ownership: the
+// execution it names and when it was written.
+type costIdent struct {
+	at        any
+	execution string
 }
 
-// unmeasuredRecs drops the cost records of an execution whose spend receipt
-// was measured: the receipt counts that run, and no self-report outranks it.
-func unmeasuredRecs(recs []costRec, executions []string, dir string) []costRec {
-	measured := map[string]bool{}
-	for _, row := range invocationRows(dir) {
-		measured[row.Execution] = true
-	}
-	if len(measured) == 0 {
-		return recs
-	}
+// unownedRecs drops the self-reported records a measured invocation receipt
+// already counts, by the month-to-date scan's ownership rule: no self-report
+// outranks measured spend, and one run is never sampled twice.
+func unownedRecs(recs []costRec, idents []costIdent, dir string) []costRec {
+	owned := spend.InvocationOwner(dir)
 	kept := make([]costRec, 0, len(recs))
 	for i := range recs {
-		if executions[i] == "" || !measured[executions[i]] {
+		if !owned(idents[i].execution, idents[i].at) {
 			kept = append(kept, recs[i])
 		}
 	}
@@ -624,15 +633,19 @@ func joinMeasured(fileRecs []costRec, usage []readcommon.ContractUsage, path str
 	if match == nil || match.USD == nil {
 		return
 	}
+	usd, ok := spend.ParseAmount(strconv.FormatFloat(*match.USD, 'f', -1, floatBitSize))
+	if !ok {
+		return
+	}
 	last := len(fileRecs) - 1
-	fileRecs[last].measured = match.USD
+	fileRecs[last].measured = usd
 	fileRecs[last].usageSource = match.Source
 }
 
 // addTierSample folds one same-tier record into the accumulator.
 func addTierSample(r costRec, sum float64, st *tierStat) float64 {
 	st.runs++
-	sum, st.priced = tierPriced(r, sum, st.priced)
+	sum, st.priced = tierPriced(r, sum, st.exact, st.priced)
 	if r.measured == nil {
 		if !r.has && r.subtotal != nil {
 			st.subtotal += *r.subtotal
@@ -647,13 +660,19 @@ func addTierSample(r costRec, sum float64, st *tierStat) float64 {
 }
 
 // tierPriced handles one priced record: the handed usage cost wins,
-// else the self-reported usd parses into the sum.
-func tierPriced(r costRec, sum float64, priced int) (float64, int) {
+// else the self-reported usd parses into the sum. exact accumulates the same
+// samples without float rounding, for the guards to compare.
+func tierPriced(r costRec, sum float64, exact *big.Rat, priced int) (float64, int) {
 	if r.measured != nil {
-		return sum + *r.measured, priced + 1
+		exact.Add(exact, r.measured)
+		f, _ := r.measured.Float64()
+		return sum + f, priced + 1
 	}
 	if r.has {
-		if f, err := strconv.ParseFloat(r.usd, numBitSize); err == nil {
+		f, err := strconv.ParseFloat(r.usd, numBitSize)
+		rat, ok := new(big.Rat).SetString(r.usd)
+		if err == nil && ok {
+			exact.Add(exact, rat)
 			return sum + f, priced + 1
 		}
 	}

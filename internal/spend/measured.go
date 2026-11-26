@@ -2,6 +2,7 @@ package spend
 
 import (
 	"math/big"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -45,12 +46,14 @@ func MeasuredRows(ledger []any) []MeasuredRow {
 	var rows []MeasuredRow
 	for _, row := range ledger {
 		obj, ok := row.(*jq.Obj)
-		if !ok || !settledMeasured(obj) || isDuplicate(obj, seen) {
+		if !ok || !settledMeasured(obj) {
 			continue
 		}
+		// The amount is checked before the dedupe key is spent, so an
+		// unreadable row cannot hide a later readable copy of itself.
 		projected, _ := obj.Get("projected_usd")
 		usd, ok := ratOfJSONNumber(projected)
-		if !ok {
+		if !ok || isDuplicate(obj, seen) {
 			continue
 		}
 		rows = append(rows, MeasuredRow{
@@ -86,6 +89,144 @@ func DisplayUSD(lit string) string {
 	num, den := scaled.Num(), scaled.Denom()
 	quo, rem := new(big.Int).QuoRem(num, den, new(big.Int))
 	if new(big.Int).Mul(rem, big.NewInt(mtdBigTwo)).Cmp(den) >= 0 {
+		quo.Add(quo, big.NewInt(1))
+	}
+	return FormatRat(new(big.Rat).SetFrac(quo, big.NewInt(decimalPrecision)))
+}
+
+// InvocationRun is one two-finder execution as its invocation receipts price
+// it: the measured spend summed over every invocation, and whether every
+// invocation settled. A resumed execution is one run, however many
+// invocations it took.
+type InvocationRun struct {
+	USD       *big.Rat
+	Execution string
+	Complete  bool
+}
+
+// InvocationRuns groups a bundle's invocation receipts by execution, in
+// ledger order, keeping only executions with at least one measured or
+// token-priced invocation. An execution with any invocation still unsettled
+// is not Complete: its USD is a known lower bound, not its price.
+func InvocationRuns(bundleDir string) []InvocationRun {
+	acc := runAccumulator{seen: map[string]bool{}, index: map[string]int{}}
+	for _, row := range readLedger(bundleDir) {
+		if obj, ok := row.(*jq.Obj); ok {
+			acc.add(obj)
+		}
+	}
+	out := acc.runs[:0]
+	for i := range acc.runs {
+		if acc.priced[i] {
+			out = append(out, acc.runs[i])
+		}
+	}
+	return out
+}
+
+// runAccumulator folds invocation rows into one run per execution.
+type runAccumulator struct {
+	seen   map[string]bool
+	index  map[string]int
+	runs   []InvocationRun
+	priced []bool
+}
+
+func (a *runAccumulator) add(obj *jq.Obj) {
+	if stringFieldOf(obj, "scope") != ScopeInvocation || isDuplicate(obj, a.seen) {
+		return
+	}
+	i := a.slot(stringFieldOf(obj, fieldExecutionID))
+	usd, settled := settledAmount(obj)
+	switch {
+	case !settled:
+		a.runs[i].Complete = false
+	case stringFieldOf(obj, "priced_by") != PricedNotStarted:
+		a.runs[i].USD.Add(a.runs[i].USD, usd)
+		a.priced[i] = true
+	}
+}
+
+// slot is the run index of exec, opening a run on its first invocation.
+func (a *runAccumulator) slot(exec string) int {
+	if i, ok := a.index[exec]; ok {
+		return i
+	}
+	a.index[exec] = len(a.runs)
+	a.runs = append(a.runs, InvocationRun{USD: new(big.Rat), Execution: exec, Complete: true})
+	a.priced = append(a.priced, false)
+	return len(a.runs) - 1
+}
+
+// settledAmount reads one invocation row's settled amount: measured,
+// token-priced, or a launch that never started (zero).
+func settledAmount(obj *jq.Obj) (*big.Rat, bool) {
+	if !settledMeasured(obj) && stringFieldOf(obj, "priced_by") != PricedNotStarted {
+		return nil, false
+	}
+	projected, _ := obj.Get("projected_usd")
+	return ratOfJSONNumber(projected)
+}
+
+// InvocationOwner reports, for one bundle, whether a measured invocation
+// receipt already counts a self-reported cost record of an execution written
+// at a given time. It is the month-to-date scan's ownership rule: the latest
+// invocation row at or before the record, of its execution (any, when it
+// names none), was priced from the agent CLI's own output. A record with no
+// readable time is owned when any measured invocation row of its execution
+// (any, when unnamed) exists: a self-report that cannot be ordered never
+// outranks measured spend.
+func InvocationOwner(bundleDir string) func(exec string, at any) bool {
+	owners := invocationOwners(bundleDir)
+	meta := &recordedMeta{maxAt: map[string]time.Time{}, owners: owners}
+	return func(exec string, at any) bool {
+		if when, ok := atTimeOf(at); ok {
+			return meta.measuredOwner(exec, when)
+		}
+		return anyMeasuredOwner(owners, exec)
+	}
+}
+
+// invocationOwners is the bundle's invocation rows as ownership candidates.
+func invocationOwners(bundleDir string) []ledgerOwner {
+	var owners []ledgerOwner
+	for _, row := range readLedger(bundleDir) {
+		obj, ok := row.(*jq.Obj)
+		if !ok || stringFieldOf(obj, "scope") != ScopeInvocation {
+			continue
+		}
+		if owner, ok := ledgerOwnerOf(obj); ok {
+			owners = append(owners, owner)
+		}
+	}
+	return owners
+}
+
+// anyMeasuredOwner reports a measured owner of exec (any, when unnamed).
+func anyMeasuredOwner(owners []ledgerOwner, exec string) bool {
+	for i := range owners {
+		if owners[i].measured && (exec == unidentifiedExecID || owners[i].exec == exec) {
+			return true
+		}
+	}
+	return false
+}
+
+// DisplayBreach renders an exact amount compared against limit for a person:
+// DisplayUSD, except that an amount over the limit whose rounding would read
+// at or under it rounds up instead, so a printed breach is always visible.
+func DisplayBreach(amount, limit string) string {
+	shown := DisplayUSD(amount)
+	if !Exceeds(amount, limit) || Exceeds(shown, limit) {
+		return shown
+	}
+	rat, ok := new(big.Rat).SetString(amount)
+	if !ok {
+		return amount
+	}
+	scaled := new(big.Rat).Mul(rat, big.NewRat(decimalPrecision, 1))
+	quo, rem := new(big.Int).QuoRem(scaled.Num(), scaled.Denom(), new(big.Int))
+	if rem.Sign() != 0 {
 		quo.Add(quo, big.NewInt(1))
 	}
 	return FormatRat(new(big.Rat).SetFrac(quo, big.NewInt(decimalPrecision)))

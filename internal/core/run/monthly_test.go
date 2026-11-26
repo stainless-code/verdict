@@ -615,3 +615,19 @@ func TestMonthlyCapRefusalRoundsAndNamesKeys(t *testing.T) {
 		t.Fatalf("message = %q\nwant      %q", ref.Message, want)
 	}
 }
+
+// TestMonthlyCapRefusalNeverPrintsUnderTheCeiling proves a breach that
+// four-decimal rounding would hide prints rounded up, on both the
+// known-projection and the unknown-projection branch.
+func TestMonthlyCapRefusalNeverPrintsUnderTheCeiling(t *testing.T) {
+	t.Parallel()
+	policy := spend.Policy{MonthlyCap: "1"}
+	alone := monthlyExceedsMessage(policy, spend.MTD{KnownUSD: "1.00004"}, "", "1.00004")
+	if !strings.Contains(alone, "month-to-date $1.0001 exceeds it alone, with the pending projection unknown") {
+		t.Errorf("unknown-projection message = %q, want month-to-date $1.0001", alone)
+	}
+	summed := monthlyExceedsMessage(policy, spend.MTD{KnownUSD: "0.5"}, "0.50004", "1.00004")
+	if !strings.Contains(summed, "= $1.0001 —") {
+		t.Errorf("summed message = %q, want the total rounded up to $1.0001", summed)
+	}
+}

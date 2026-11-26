@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
@@ -1697,5 +1698,37 @@ func TestRunFailureMessageScrubsAControlCarryingArgumentSecret(t *testing.T) {
 	}
 	if strings.Contains(ref.Message, "9876543") {
 		t.Fatalf("failure message leaks the argument secret: %q", ref.Message)
+	}
+}
+
+// TestCarriesHintReadsOptionsNotValues proves only an option spelling of the
+// row's permission hint counts: an option's value, an operand after a bare
+// `--`, or a split hint does not, while `--flag=value` does.
+func TestCarriesHintReadsOptionsNotValues(t *testing.T) {
+	t.Parallel()
+	agy, _ := agentcatalog.Lookup("agy")
+	claude, _ := agentcatalog.Lookup("claude")
+	cases := []struct {
+		def  *agentcatalog.Launch
+		name string
+		pass []string
+		want bool
+	}{
+		{agy.Launch, "bare bypass", []string{"--dangerously-skip-permissions"}, true},
+		{agy.Launch, "after a model value", []string{"--model", "x", "--dangerously-skip-permissions"}, true},
+		{agy.Launch, "as the model's value", []string{"--model", "--dangerously-skip-permissions"}, false},
+		{agy.Launch, "as -m's value", []string{"-m", "--dangerously-skip-permissions"}, false},
+		{agy.Launch, "as the prompt's value", []string{"-p", "--dangerously-skip-permissions"}, false},
+		{agy.Launch, "after end of options", []string{"--", "--dangerously-skip-permissions"}, false},
+		{claude.Launch, "two tokens", []string{"--permission-mode", "acceptEdits"}, true},
+		{claude.Launch, "inline value", []string{"--permission-mode=acceptEdits"}, true},
+		{claude.Launch, "other inline value", []string{"--permission-mode=plan"}, false},
+		{claude.Launch, "flag eaten by the model", []string{"--model", "--permission-mode", "acceptEdits"}, false},
+		{claude.Launch, "usage value", []string{"--output-format", "--permission-mode", "acceptEdits"}, false},
+	}
+	for _, tc := range cases {
+		if got := carriesHint(tc.def, tc.pass); got != tc.want {
+			t.Errorf("%s: carriesHint(%q) = %v, want %v", tc.name, tc.pass, got, tc.want)
+		}
 	}
 }

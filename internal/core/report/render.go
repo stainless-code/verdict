@@ -528,14 +528,14 @@ func appendMeasured(lines []string, cost *jq.Obj) []string {
 }
 
 func mtdHuman(mtd *core.ReportMTD) string {
-	known := mtdSpend(mtd)
 	counts := fmt.Sprintf("(%d priced, %d unknown)", mtd.KnownCount, mtd.UnknownCount)
 	if mtd.MonthlyCapUSD == nil {
-		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, known, counts)
+		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, mtdSpend(mtd, ""), counts)
 	}
 	ceiling := strconv.FormatFloat(*mtd.MonthlyCapUSD, 'f', -1, mtdFloatBits)
+	known := mtdSpend(mtd, ceiling)
 	if mtd.RemainingUSD != nil {
-		rem := strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits)
+		rem := visibleUSD(strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits), "")
 		return fmt.Sprintf(
 			"mtd: %s %s of $%s ceiling, remaining $%s %s",
 			mtd.Month, known, ceiling, rem, counts)
@@ -546,14 +546,26 @@ func mtdHuman(mtd *core.ReportMTD) string {
 // mtdSpend renders the month's known leg: a dollar amount when spend is
 // known, "unknown" when unpriced receipts exist, and $0 when nothing was
 // recorded.
-func mtdSpend(mtd *core.ReportMTD) string {
+func mtdSpend(mtd *core.ReportMTD, ceiling string) string {
 	if mtd.KnownUSD != nil {
-		return "known $" + strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits)
+		return "known $" + visibleUSD(strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits), ceiling)
 	}
 	if mtd.UnknownCount > 0 {
 		return "known unknown"
 	}
 	return "known $" + strZero
+}
+
+// visibleUSD rounds an amount for a person without letting the rounding hide
+// what matters: a breach of ceiling (when one is set) or a nonzero amount
+// both round up rather than read as within the ceiling or as zero.
+func visibleUSD(amount, ceiling string) string {
+	if ceiling != "" {
+		if shown := spend.DisplayBreach(amount, ceiling); shown != strZero {
+			return shown
+		}
+	}
+	return spend.DisplayBreach(amount, strZero)
 }
 
 func jqStr(obj *jq.Obj, key string) string {
@@ -589,7 +601,7 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 func consentedReceipts(receipts []any) []any {
 	var out []any
 	for _, row := range receipts {
-		if receiptField(row, "consent") != fieldAbsent {
+		if consent := receiptField(row, "consent"); consent != fieldAbsent && consent != "" {
 			out = append(out, row)
 		}
 	}

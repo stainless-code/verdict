@@ -146,7 +146,7 @@ func Spend(dir string) (tier, cost string) {
 	if rollup.Phased {
 		return phaseSpend(dir, rollup.Cost)
 	}
-	tier, cost = tierStandard, unrecorded
+	tier, cost = tierStandard, measuredOr(dir, unrecorded)
 	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
 		return tier, cost
@@ -154,9 +154,21 @@ func Spend(dir string) (tier, cost string) {
 	tier = readcommon.CostTier(records[len(records)-1])
 	sum, n := sumEstimates(records)
 	if n == 0 {
-		return tier, unrecorded
+		return tier, cost
 	}
-	return tier, "$" + jqTostring(readcommon.Round4(sum))
+	return tier, dollar + jqTostring(readcommon.Round4(sum))
+}
+
+// dollar prefixes every footer amount.
+const dollar = "$"
+
+// measuredOr prices a bundle no self-report priced from the receipts the
+// agent CLIs priced (the self-review loop's spawns), else falls back.
+func measuredOr(dir, fallback string) string {
+	if measured := spend.MeasuredSpend(dir); measured.Rows > 0 {
+		return dollar + spend.DisplayUSD(measured.USD)
+	}
+	return fallback
 }
 
 func sumEstimates(records []any) (float64, int) {
@@ -418,16 +430,20 @@ func phaseSpend(dir string, cost *jq.Obj) (string, string) {
 		tier = phasedTier(cost)
 	}
 	// A two-finder execution settles the spend its spawns measured onto its
-	// budget.json receipt; no agent-written record outranks that.
-	if measured := spend.MeasuredSpend(dir); measured.Rows > 0 {
-		return tier, "$" + spend.DisplayUSD(measured.USD)
+	// invocation receipts; once every invocation of the bundle's current
+	// execution settled, no agent-written record outranks that sum.
+	current := readcommon.CostExecution(dir)
+	for _, run := range spend.InvocationRuns(dir) {
+		if run.Execution == current && run.Complete {
+			return tier, dollar + spend.DisplayUSD(spend.FormatRat(run.USD))
+		}
 	}
 	value, _ := cost.Get("est_usd")
 	amount, known := readcommon.NumVal(value)
 	if !known {
 		return tier, unrecorded
 	}
-	return tier, "$" + jqTostring(readcommon.Round4(amount))
+	return tier, dollar + jqTostring(readcommon.Round4(amount))
 }
 
 // phasedTier names the effort tier the phase records priced. A bundle that

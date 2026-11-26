@@ -58,3 +58,23 @@ func TestMeasuredSpendSumsAgentPricedRows(t *testing.T) {
 		t.Fatalf("MeasuredSpend(no ledger) = %+v, want zero", empty)
 	}
 }
+
+// TestMeasuredRowsSkipsAnUnreadableCopyWithoutSpendingItsKey proves an
+// unreadable amount does not consume its invocation's dedupe key, so the
+// readable copy of the same invocation still counts.
+func TestMeasuredRowsSkipsAnUnreadableCopyWithoutSpendingItsKey(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ledger := `[
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
+   "projected_usd":"oops","priced_by":"measured"},
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
+   "projected_usd":0.5,"priced_by":"measured"}
+]`
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := spend.MeasuredSpend(dir); got.USD != "0.5" || got.Rows != 1 {
+		t.Fatalf("MeasuredSpend = %+v, want 0.5 over 1 row", got)
+	}
+}

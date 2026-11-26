@@ -364,7 +364,8 @@ func TestCostShowsMeasuredSpendNotConsent(t *testing.T) {
 	writeCostless(t, dir, "run.json", `{"execution":{"id":"exec-A","finders":2}}`)
 	writeCostless(t, dir, "budget.json", `[
   {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
-   "projected_usd":1.30604299999999994,"priced_by":"measured","budget_usd":null}
+   "projected_usd":1.30604299999999994,"priced_by":"measured","budget_usd":null},
+  {"at":"2026-11-24T11:00:00Z","projected_usd":3,"consent":""}
 ]`)
 	st := &state{dir: dir, flags: Flags{Cost: true}, req: newRequest(dir, time.Now())}
 	loadStateCost(st)
@@ -381,5 +382,37 @@ func TestCostShowsMeasuredSpendNotConsent(t *testing.T) {
 	data := buildData(st)
 	if data.Cost.MeasuredUSD == nil || *data.Cost.MeasuredUSD != 1.30604299999999994 || data.Cost.MeasuredReceipts != 1 {
 		t.Fatalf("envelope measured = %v over %d, want 1.30604299999999994 over 1", data.Cost.MeasuredUSD, data.Cost.MeasuredReceipts)
+	}
+}
+
+// TestMTDHumanRoundsWithoutHiding pins the mtd: line's money: the agent
+// CLI's float noise rounds away, while a breach of the ceiling and a tiny
+// nonzero remainder stay visible instead of rounding to the ceiling or to 0.
+func TestMTDHumanRoundsWithoutHiding(t *testing.T) {
+	noisy, ceiling, roomy := 1.30604299999999994, 10.0, 8.69395700000000006
+	breach, one, none := 1.00004, 1.0, 0.0
+	tiny, rest := 0.99999, 0.00001
+	cases := []struct {
+		name string
+		mtd  *core.ReportMTD
+		want string
+	}{
+		{
+			"noise", &core.ReportMTD{Month: "2026-11", KnownUSD: &noisy, MonthlyCapUSD: &ceiling, RemainingUSD: &roomy, KnownCount: 1},
+			"mtd: 2026-11 known $1.306 of $10 ceiling, remaining $8.694 (1 priced, 0 unknown)",
+		},
+		{
+			"breach", &core.ReportMTD{Month: "2026-11", KnownUSD: &breach, MonthlyCapUSD: &one, RemainingUSD: &none, KnownCount: 1},
+			"mtd: 2026-11 known $1.0001 of $1 ceiling, remaining $0 (1 priced, 0 unknown)",
+		},
+		{
+			"tiny remainder", &core.ReportMTD{Month: "2026-11", KnownUSD: &tiny, MonthlyCapUSD: &one, RemainingUSD: &rest, KnownCount: 1},
+			"mtd: 2026-11 known $1 of $1 ceiling, remaining $0.0001 (1 priced, 0 unknown)",
+		},
+	}
+	for _, tc := range cases {
+		if got := mtdHuman(tc.mtd); got != tc.want {
+			t.Errorf("%s: mtdHuman = %q, want %q", tc.name, got, tc.want)
+		}
 	}
 }

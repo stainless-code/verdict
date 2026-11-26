@@ -280,3 +280,121 @@ func TestCostEstimateReadsMeasuredSpendReceipts(t *testing.T) {
 		t.Fatalf("estimate line = %q, want the measured run", human.String())
 	}
 }
+
+// writeLedger writes one bundle's budget.json under the run's root.
+func writeLedger(t *testing.T, root, bundle, body string) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "state", bundle, "budget.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// estimateFor runs the estimator over root and returns its state.
+func estimateFor(t *testing.T, root string) budgetState {
+	t.Helper()
+	r := &session{repoRoot: root, Human: io.Discard, warnings: new([]string)}
+	var st budgetState
+	if err := costEstimate(r, &st, nil); err != nil {
+		t.Fatalf("costEstimate: %v", err)
+	}
+	return st
+}
+
+// invocationRow renders one settled or unsettled invocation receipt.
+func invocationRow(inv, at, usd, pricedBy string) string {
+	exec, _, _ := strings.Cut(inv, "@")
+	row := `{"at":"` + at + `","execution_id":"` + exec + `","scope":"invocation","invocation_id":"` + inv +
+		`","projected_usd":` + usd
+	if pricedBy != "" {
+		row += `,"priced_by":"` + pricedBy + `"`
+	}
+	return row + "}"
+}
+
+// TestCostEstimateCountsAResumedExecutionOnce proves every invocation of a
+// resumed execution prices one run: the sample is their sum, not two runs at
+// half the price each.
+func TestCostEstimateCountsAResumedExecutionOnce(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "0.8", "measured")+"]")
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "1.3" {
+		t.Fatalf("estimate = %d run(s) at %q, want 1 run at 1.3", st.estRuns, st.estUSD)
+	}
+}
+
+// TestCostEstimateKeepsAPartlySettledExecutionUnknown proves an execution
+// with an unsettled invocation is a run whose measured part is only a lower
+// bound, never a fully priced sample.
+func TestCostEstimateKeepsAPartlySettledExecutionUnknown(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	st := estimateFor(t, root)
+	if st.estUSD != "" || st.estLowerBound != "0.5" {
+		t.Fatalf("estimate = %q lower bound %q, want unknown with lower bound 0.5", st.estUSD, st.estLowerBound)
+	}
+}
+
+// TestCostEstimateDropsAnUnidentifiedSelfReportItsReceiptOwns proves a
+// cost.json record naming no execution, written after a measured invocation
+// receipt, is that run's self-report and is not sampled a second time.
+func TestCostEstimateDropsAnUnidentifiedSelfReportItsReceiptOwns(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "local-a", `[{"at":"2026-11-24T12:00:00Z","est_usd":0.01}]`)
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "1.30604299999999994", "measured")+"]")
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "1.306" {
+		t.Fatalf("estimate = %d run(s) at %q, want the 1 measured run at 1.306", st.estRuns, st.estUSD)
+	}
+}
+
+// TestCostEstimateIgnoresLoopSpawnReceipts proves a loop's per-spawn
+// receipts are single launches, not comparable review runs.
+func TestCostEstimateIgnoresLoopSpawnReceipts(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":2}]`)
+	writeLedger(t, root, "loop-1", `[{"at":"2026-11-24T10:00:00Z","execution_id":"loop-1-review",`+
+		`"scope":"spawn","agent":"claude","model":"","projected_usd":7,"priced_by":"measured"}]`)
+	st := estimateFor(t, root)
+	if st.estRuns != 1 || st.estUSD != "2" {
+		t.Fatalf("estimate = %d run(s) at %q, want only the cost.json run at 2", st.estRuns, st.estUSD)
+	}
+}
+
+// TestNearCapEstimateRefusesExactly proves the guards compare the exact mean,
+// not its four-decimal display: 1.00004 rounds to 1 but still exceeds a $1
+// budget and a $1 personal ceiling, and the refusal prints it rounded up.
+func TestNearCapEstimateRefusesExactly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":1.00004}]`)
+	st := estimateFor(t, root)
+	if st.estUSD != "1" {
+		t.Fatalf("display estimate = %q, want the rounded 1", st.estUSD)
+	}
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "1", "REVIEW_BUDGET_USD"
+	err := gateOrdinaryBudget(&st, false)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "budget-exceeded" || !strings.Contains(ref.Message, "~$1.0001 exceeds budget $1") {
+		t.Fatalf("ordinary guard = %v, want budget-exceeded naming ~$1.0001", err)
+	}
+	limit := 1.0
+	res := &config.Resolved{Spend: config.SpendView{PersonalLimit: &limit}}
+	if !errors.As(gatePersonalCeiling(&st, res), &ref) || ref.Code != "spend-capped" ||
+		!strings.Contains(ref.Message, "~$1.0001 exceeds the personal spend ceiling $1") {
+		t.Fatalf("personal ceiling = %v, want spend-capped naming ~$1.0001", ref)
+	}
+}

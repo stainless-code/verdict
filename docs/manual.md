@@ -2600,7 +2600,8 @@ journal entries) and are served in every mode, including `--read-only`; like
 the ACP extension methods they never write the disk, spawn a process, or call
 the network. Bundle names resolve inside the served root through the same
 guard every verb shares, so a traversal name refuses `bad-flags` and a missing
-bundle refuses `not-found`. The same reads are addressable as resources:
+bundle refuses `not-found`; a `.verdict` or `.verdict/state` that resolves
+outside the served root (a committed symlink) serves no bundles at all. The same reads are addressable as resources:
 `resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
 and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
 offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,
@@ -4648,16 +4649,26 @@ with no newer invocation of that execution in between, is not counted. Receipts
 count per invocation, settled or not, so a resumed execution's spend is counted
 for every invocation that spent.
 
-Every read surface shows that measured spend. `report --cost` adds a
-`measured: $<usd> from <n> spend receipt(s)` line (`measured_usd` and
+`report --cost`, the publish footer, and the `fetch` estimate show that
+measured spend; the dashboard cost rollup (`query-cost`, `verdict://cost`,
+`serve`) still reads agent-written `cost.json` records only. `report --cost`
+adds a `measured: $<usd> from <n> spend receipt(s)` line (`measured_usd` and
 `measured_receipts` in the JSON cost object) summing the bundle's `measured`
 and `tokens` receipts, and its `receipts:` line counts only the rows an
 operator's `--consent-over-budget` wrote. The publish footer prices a
-two-finder bundle from the same sum before any agent-written phase record. The
-`fetch` estimate reads each settled two-finder receipt as one comparable
-standard-tier run (a receipt names no effort), in place of any `cost.json`
-record of the same execution. Every printed amount is rounded to four decimals
-with trailing zeros trimmed; receipts keep the agent CLI's exact figure.
+two-finder bundle from its current execution once every invocation of it
+settled, before any agent-written phase record, and a bundle no self-report
+priced from its measured spawn receipts. The `fetch` estimate reads each
+two-finder execution as one comparable standard-tier run (a receipt names no
+effort), however many invocations a resume took: every invocation settled
+prices it, and any unsettled one leaves its measured part a known lower bound.
+A `cost.json` record that a measured invocation receipt owns — the latest
+invocation row at or before it, of its execution or of any when it names
+none — is not sampled again. Spend guards compare the exact mean, never the
+rounded one. Every printed amount is rounded to four decimals with trailing
+zeros trimmed, except that an amount over the ceiling it is compared with, or
+a nonzero amount, rounds up rather than read as within the ceiling or as zero;
+receipts keep the agent CLI's exact figure.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 

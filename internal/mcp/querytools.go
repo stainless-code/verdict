@@ -108,10 +108,16 @@ func wireQueryHealth(ctx context.Context, b *bindings, req *queryHealthRequest) 
 // ACP and LSP serve and the target-taking tools read. Config.Root is the
 // binary's install root (embedded skill and version reads): for an installed
 // binary it holds no bundles, so serving it would answer every query empty.
+//
+// A root that will not resolve refuses typed, so a tool and a resource
+// answer the same code: canceled when the call was, else not-a-repo.
 func servedQueryLayer(ctx context.Context, version string, now func() time.Time) (*query.Layer, string, error) {
 	root, err := readcommon.RepoRoot(ctx)
 	if err != nil {
-		return nil, "", jq.Sealed("resolve repository root", err)
+		if ctx.Err() != nil {
+			return nil, "", &core.RefusalError{Code: "canceled", Message: "canceled before the repository root resolved"}
+		}
+		return nil, "", rootResolutionRefusal(jq.Sealed("resolve repository root", err))
 	}
 	layer, id := queryLayerFor(root, version, now)
 	return layer, id, nil

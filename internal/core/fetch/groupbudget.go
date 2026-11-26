@@ -72,7 +72,7 @@ func gateSoleGroupWholeRun(r *session, st *budgetState, res *config.Resolved, co
 	if st.estUSD == "" {
 		return gateUnknownEstimate(r, st, res, consent)
 	}
-	if over := config.SpendExceeds(st.estUSD, group.GuardUSD); over {
+	if over := config.SpendExceeds(st.estExact, group.GuardUSD); over {
 		if !consent {
 			return budgetExceeded(st)
 		}
@@ -85,7 +85,7 @@ func gateSoleGroupWholeRun(r *session, st *budgetState, res *config.Resolved, co
 // projection, exactly like the group guard.
 func gateSoleGroupPersonal(st *budgetState, res *config.Resolved, consent bool) error {
 	limit := personalLimitLiteral(res)
-	if !config.SpendExceeds(st.estUSD, limit) {
+	if !config.SpendExceeds(st.estExact, limit) {
 		return nil
 	}
 	if !consent {
