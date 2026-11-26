@@ -2617,10 +2617,17 @@ the ACP extension methods they never write the disk, spawn a process, or call
 the network. Bundle names resolve inside the served root through the same
 guard every verb shares, so a traversal name refuses `bad-flags` and a missing
 bundle refuses `not-found`; a `.verdict` or `.verdict/state` that resolves
-outside the served root (a committed symlink) serves no bundles at all, and a
-bundle holding any link that resolves outside it (a linked `findings.json`,
-diff, cost record, or a directory leading to one) refuses `bad-config` before
-any of its files is read. A linked `threads.json` still reads as absent. The same reads are addressable as resources:
+outside the served root serves no bundles at all. In a git checkout, any symlink
+or gitlink the repository commits at or under `.verdict` (checked once per
+served root against `git ls-files -s -- .verdict`, cached by the index file's
+mtime and size) refuses that root's verdict data everywhere: the listing, every
+bundle read, overrides, sources, and the `serve` watcher, which emits nothing
+for it. The refusal is `bad-config` and names the tracked link. A root inside a
+checkout whose git call fails refuses the same way, naming the git error. A link
+the operator made locally (untracked, or in a root with no git checkout) is the
+operator's own and keeps serving; a link swapped in after the check needs a live
+local writer and is out of scope. A linked `threads.json` reads as absent, and
+an override fragment linked out of its repository refuses `bad-override`. The same reads are addressable as resources:
 `resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
 and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
 offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,

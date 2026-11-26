@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -73,16 +74,12 @@ func newWatchState(ctx context.Context, layer *Layer) *watchState {
 }
 
 func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
+	if rootTrust(root) != nil {
+		return rootWatch{bundles: map[string]bundleWatch{}}
+	}
 	stateDir := readcommon.StateDir(root.Path)
 	state := rootWatch{state: w.statMark(stateDir), bundles: map[string]bundleWatch{}}
-	if names, err := w.bundleNames(root); err == nil {
-		for _, name := range names {
-			if ctx.Err() != nil {
-				return state
-			}
-			state.bundles[name] = w.primeBundle(root, name)
-		}
-	}
+	w.primeBundles(ctx, root, state.bundles)
 	if ctx.Err() != nil {
 		return state
 	}
@@ -90,6 +87,20 @@ func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
 	state.overrides = w.statMark(overridesDir)
 	state.contents = w.directoryFingerprint(overridesDir, false)
 	return state
+}
+
+// primeBundles snapshots every listed bundle until ctx is canceled.
+func (w *watchState) primeBundles(ctx context.Context, root Root, bundles map[string]bundleWatch) {
+	names, err := w.bundleNames(root)
+	if err != nil {
+		return
+	}
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		bundles[name] = w.primeBundle(root, name)
+	}
 }
 
 func (w *watchState) primeBundle(root Root, name string) bundleWatch {
@@ -115,7 +126,8 @@ func (w *watchState) statMark(path string) dirMark {
 func (w *watchState) bundleNames(root Root) ([]string, error) {
 	entries, err := w.layer.readStore(root)
 	if err != nil {
-		if errorsIsNotExist(err) || errors.Is(err, errStoreOutside) {
+		if _, refused := errors.AsType[*core.RefusalError](err); refused || errorsIsNotExist(err) ||
+			errors.Is(err, errStoreOutside) {
 			return nil, nil
 		}
 		return nil, err
@@ -140,6 +152,9 @@ func (w *watchState) Tick() []Change {
 }
 
 func (w *watchState) tickRoot(root Root) []Change {
+	if rootTrust(root) != nil {
+		return nil
+	}
 	old := w.roots[root.ID]
 	stateDir := readcommon.StateDir(root.Path)
 	newState, removed := w.refreshBundles(root, stateDir, old)
@@ -230,6 +245,9 @@ func (w *watchState) Sweep() []Change {
 }
 
 func (w *watchState) sweepRoot(root Root) []Change {
+	if rootTrust(root) != nil {
+		return nil
+	}
 	old := w.roots[root.ID]
 	stateDir := readcommon.StateDir(root.Path)
 	names, err := w.bundleNames(root)

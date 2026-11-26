@@ -512,3 +512,25 @@ func assertEmptyScanReceipt(t *testing.T, data map[string]any) {
 		}
 	}
 }
+
+// TestPrecisionReadsALinkedFeedAsAbsent proves the precision path reads
+// threads.json the way the detail view does: a link, even one the operator
+// made locally, reads as absent and its target's bytes never shape the view.
+func TestPrecisionReadsALinkedFeedAsAbsent(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	dir := aggregateBundle(t, root, "101", "acme/one", "2026-11-12T12:00:00Z", "", precisionFinding(), "")
+	outside := filepath.Join(t.TempDir(), "threads.json")
+	if err := os.WriteFile(outside, []byte(precisionFeed("2026-11-11T12:00:00Z", true)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, outside, filepath.Join(dir, "threads.json"))
+	view, err := newLayer(root).Precision(context.Background(), "category")
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := asMap(t, wireMap(t, view.Data)["precision"])
+	if profile["as_of"] != nil || profile["stale"] == true {
+		t.Fatalf("precision through a linked feed = %v, want the feed read as absent", profile)
+	}
+}

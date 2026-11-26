@@ -3,12 +3,15 @@ package main
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/lsp"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestLSPDispatchShape pins the registries the transport needs: lsp is a
@@ -110,9 +113,13 @@ func TestLSPStartRefusals(t *testing.T) {
 		!strings.Contains(out, "is not inside a git checkout") {
 		t.Fatalf("lsp --root <non-checkout> = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
+	// A real checkout: the query layer's trust gate asks git about its index,
+	// which a bare .git directory cannot answer.
 	repo := t.TempDir()
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
+	cmd := exec.CommandContext(t.Context(), "git", "init", "-q")
+	cmd.Dir, cmd.Env, cmd.WaitDelay = repo, testenv.Base(nil), time.Minute
+	if gitOut, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, gitOut)
 	}
 	code, out, derr = runCapture(t, []string{"lsp", "--root", repo, "--bundle", "local-nope", "--json"})
 	if code != cli.ExitRefused || !strings.Contains(out, `"code": "missing-bundle"`) ||

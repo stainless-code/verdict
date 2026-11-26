@@ -484,14 +484,14 @@ func TestCacheStampCoversBundleInputs(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedStore proves the stamp follows a
-// symlinked findings.json to the bytes the report reader opens. The target
-// sits inside the served root: a link out of it refuses the bundle
-// (TestReadsRefuseBundleLinkOutsideRoot).
+// symlinked findings.json to the bytes the report reader opens.
 func TestCacheInvalidatesThroughSymlinkedStore(t *testing.T) {
 	t.Parallel()
 	dir, files := fixture(t)
-	writeFiles(t, dir, map[string]string{"linked-store/findings.json": files[".verdict/state/1234/findings.json"]})
-	store := filepath.Join(dir, "linked-store", "findings.json")
+	store := filepath.Join(t.TempDir(), "findings.json")
+	if err := os.WriteFile(store, []byte(files[".verdict/state/1234/findings.json"]), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(dir, ".verdict/state/1234/findings.json")
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
@@ -527,12 +527,11 @@ func TestCacheInvalidatesThroughSymlinkedStore(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedChunks proves a linked chunks directory
-// is recursed into by both the stamp and the inventory. The target sits
-// inside the served root: a link out of it refuses the bundle.
+// is recursed into by both the stamp and the inventory.
 func TestCacheInvalidatesThroughSymlinkedChunks(t *testing.T) {
 	t.Parallel()
 	dir, _ := fixture(t)
-	store := filepath.Join(dir, "linked-chunks")
+	store := t.TempDir()
 	cost := filepath.Join(store, "chunks", "chunk-a.cost.json")
 	if err := os.MkdirAll(filepath.Dir(cost), 0o755); err != nil {
 		t.Fatal(err)
@@ -562,17 +561,14 @@ func TestCacheInvalidatesThroughSymlinkedChunks(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedOverride proves a linked override
-// fragment's target edit re-composes instead of serving the old stamp.
+// fragment's target edit re-composes instead of serving the old stamp. The
+// target sits in the repository: a fragment linked out of it refuses
+// (TestOverrideLinkedOutsideRepoRefuses).
 func TestCacheInvalidatesThroughSymlinkedOverride(t *testing.T) {
 	t.Parallel()
 	dir, _ := fixture(t)
-	target := filepath.Join(t.TempDir(), "preamble.md")
-	if err := os.WriteFile(target, []byte("A preamble.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, ".verdict", "overrides"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFiles(t, dir, map[string]string{"linked-overrides/preamble.md": "A preamble.\n", ".verdict/overrides/.keep": ""})
+	target := filepath.Join(dir, "linked-overrides", "preamble.md")
 	symlinkOrSkip(t, target, filepath.Join(dir, ".verdict", "overrides", "preamble.md"))
 
 	layer := newLayer(dir)
@@ -1629,6 +1625,36 @@ func assertInventoryReceipt(t *testing.T, view *View) {
 	for key, want := range map[string]any{"truncated": true, "truncation_reason": "scan_cap", "returned": json.Number("64"), "total": nil, "next_offset": nil} {
 		if got := data[key]; got != want {
 			t.Errorf("inventory receipt %s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestOverrideLinkedOutsideRepoRefuses proves an override fragment linked out
+// of the repository refuses the composition, and its target's digest and size
+// never reach the served source inventory.
+func TestOverrideLinkedOutsideRepoRefuses(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	target := filepath.Join(t.TempDir(), "preamble.md")
+	if err := os.WriteFile(target, []byte("A preamble.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, dir, map[string]string{".verdict/overrides/.keep": ""})
+	symlinkOrSkip(t, target, filepath.Join(dir, ".verdict", "overrides", "preamble.md"))
+	layer := newLayer(dir)
+	_, err := layer.Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Errorf("Detail through an outside override link = %v, want bad-override", err)
+	}
+	served, ok := layer.rootByID(RootID(mustAbs(t, dir)))
+	if !ok {
+		t.Fatal("served root missing")
+	}
+	inv := layer.inventory(served, "1234", filepath.Join(dir, ".verdict", "state", "1234"))
+	for _, source := range inv.sources {
+		if strings.HasSuffix(source.Path, "preamble.md") {
+			t.Errorf("inventory ledgered the outside override target: %+v", source)
 		}
 	}
 }

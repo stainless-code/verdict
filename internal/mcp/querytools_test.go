@@ -670,13 +670,7 @@ func TestQueryServesGitTopLevelFromSubdirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.CommandContext(t.Context(), "git", "init", "-q", "-b", "main")
-	cmd.Dir = top
-	cmd.Env = testenv.Base(nil)
-	cmd.WaitDelay = gitWaitDelay
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v\n%s", err, out)
-	}
+	gitIn(t, top, "init", "-q", "-b", "main")
 	writeFile(t, "src/deep/keep.txt", "x")
 	t.Chdir(filepath.Join(top, "src", "deep"))
 	cfg := testConfig()
@@ -737,14 +731,18 @@ func TestQueryRefusesStoreSymlinkedOutsideRepo(t *testing.T) {
 	}
 }
 
-// TestQueryRefusesBundleFileLinkedOutsideRepo proves a committed findings.json
-// link inside an in-repo bundle reaches no outside bytes through the MCP
-// query tools or resources.
-func TestQueryRefusesBundleFileLinkedOutsideRepo(t *testing.T) {
+// TestQueryRefusesATrackedLinkInTheCheckout proves a symlink the checkout
+// commits under .verdict refuses the MCP query tools and resources typed,
+// and its target's bytes never reach a result.
+func TestQueryRefusesATrackedLinkInTheCheckout(t *testing.T) {
 	queryFixture(t)
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const canary = "c0ffee0000000000000000000000000000000000"
 	outside := filepath.Join(t.TempDir(), "findings.json")
-	const outsideSig = "e555555555555555555555555555555555555555"
-	writeFile(t, outside, "["+queryFinding(outsideSig, "open", "critical")+"]")
+	writeFile(t, outside, "["+queryFinding(canary, "open", "critical")+"]")
 	link := filepath.Join(".verdict", "state", "1234", "findings.json")
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
@@ -752,14 +750,26 @@ func TestQueryRefusesBundleFileLinkedOutsideRepo(t *testing.T) {
 	if err := os.Symlink(outside, link); err != nil {
 		t.Skipf("symlinks are unavailable: %v", err)
 	}
+	gitIn(t, top, "init", "-q")
+	gitIn(t, top, "add", "-f", "--", link)
 	cfg := testConfig()
 	findings := queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`)
-	if !findings.IsError || strings.Contains(findings.Content[0].Text, outsideSig) {
-		t.Errorf("query-findings through a linked store = %s, want a refusal", findings.Content[0].Text)
+	if text := findings.Content[0].Text; !findings.IsError || !strings.Contains(text, "bad-config") || strings.Contains(text, canary) {
+		t.Errorf("query-findings through a tracked link = %s, want a bad-config refusal", text)
 	}
 	frames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
-	if frames["1"].Error == nil || strings.Contains(string(frames["1"].Result), outsideSig) {
-		t.Errorf("verdict://findings/1234 through a linked store = %s, want an error", frames["1"].Result)
+	if got := frames["1"].Error; got == nil || !strings.HasPrefix(got.Message, "bad-config: ") {
+		t.Errorf("verdict://findings/1234 through a tracked link = %+v, want bad-config", got)
+	}
+}
+
+// gitIn runs one git command in dir with the test environment.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir, cmd.Env, cmd.WaitDelay = dir, testenv.Base(nil), gitWaitDelay
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }

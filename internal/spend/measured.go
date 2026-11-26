@@ -7,6 +7,9 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
+// fieldScope is the ledger field naming a row's receipt scope.
+const fieldScope = "scope"
+
 // ScopeInvocation marks the ledger row one `run` invocation writes when it
 // authorizes a two-finder execution; the run settles it in place with the
 // spend its spawns measured.
@@ -57,7 +60,7 @@ func MeasuredRows(ledger []any) []MeasuredRow {
 			continue
 		}
 		rows = append(rows, MeasuredRow{
-			USD: usd, Execution: stringFieldOf(obj, fieldExecutionID), Scope: stringFieldOf(obj, "scope"),
+			USD: usd, Execution: stringFieldOf(obj, fieldExecutionID), Scope: stringFieldOf(obj, fieldScope),
 		})
 	}
 	return rows
@@ -147,7 +150,7 @@ type runAccumulator struct {
 // invocation's dedupe key, so an unreadable or unsettled copy cannot hide a
 // later settled one; an invocation no copy settled is resolved at the end.
 func (a *runAccumulator) add(obj *jq.Obj) {
-	if stringFieldOf(obj, "scope") != ScopeInvocation {
+	if stringFieldOf(obj, fieldScope) != ScopeInvocation {
 		return
 	}
 	i := a.slot(stringFieldOf(obj, fieldExecutionID))
@@ -215,21 +218,37 @@ func settledAmount(obj *jq.Obj) (*big.Rat, bool) {
 // record carries no readable time) belongs to one. A self-report is never an
 // extra run beside measured spend of the same execution.
 func InvocationOwner(bundleDir string) func(exec string, at any) bool {
-	owners := invocationOwners(bundleDir)
-	measured := map[string]bool{}
-	for i := range owners {
-		if owners[i].measured {
-			measured[owners[i].exec] = true
+	ledger := readLedger(bundleDir)
+	measured, untimed := measuredExecutions(ledger)
+	o := ownership{owners: invocationOwners(ledger), measured: measured, untimed: untimed}
+	return o.owns
+}
+
+// measuredExecutions names every execution with a measured invocation row,
+// whatever the row's timestamp: a measured run is counted from its receipts
+// even when its time cannot be read, so its self-report is never a second run.
+// untimed reports a measured row whose time does not read.
+func measuredExecutions(ledger []any) (measured map[string]bool, untimed bool) {
+	measured = map[string]bool{}
+	for _, row := range ledger {
+		obj, ok := row.(*jq.Obj)
+		if !ok || stringFieldOf(obj, fieldScope) != ScopeInvocation || !settledMeasured(obj) {
+			continue
+		}
+		measured[stringFieldOf(obj, fieldExecutionID)] = true
+		at, _ := obj.Get("at")
+		if _, timed := atTimeOf(at); !timed {
+			untimed = true
 		}
 	}
-	o := ownership{owners: owners, measured: measured}
-	return o.owns
+	return measured, untimed
 }
 
 // ownership answers InvocationOwner for one bundle's invocation rows.
 type ownership struct {
 	measured map[string]bool
 	owners   []ledgerOwner
+	untimed  bool
 }
 
 func (o ownership) owns(exec string, at any) bool {
@@ -241,15 +260,22 @@ func (o ownership) owns(exec string, at any) bool {
 		return len(o.measured) > 0
 	}
 	latest := latestOwnerAt(o.owners, when)
-	return latest != nil && o.measured[latest.exec]
+	if latest == nil {
+		// No timed row precedes the record; a measured row with no readable
+		// time cannot be ordered against it, so it owns the record rather
+		// than leave its run counted twice.
+		return o.untimed
+	}
+	return o.measured[latest.exec]
 }
 
-// invocationOwners is the bundle's invocation rows as ownership candidates.
-func invocationOwners(bundleDir string) []ledgerOwner {
+// invocationOwners is the bundle's timed invocation rows, the candidates the
+// latest-row match orders.
+func invocationOwners(ledger []any) []ledgerOwner {
 	var owners []ledgerOwner
-	for _, row := range readLedger(bundleDir) {
+	for _, row := range ledger {
 		obj, ok := row.(*jq.Obj)
-		if !ok || stringFieldOf(obj, "scope") != ScopeInvocation {
+		if !ok || stringFieldOf(obj, fieldScope) != ScopeInvocation {
 			continue
 		}
 		if owner, ok := ledgerOwnerOf(obj); ok {

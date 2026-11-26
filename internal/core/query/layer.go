@@ -283,6 +283,9 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 	if ref != nil {
 		return "", false, ref
 	}
+	if ref := rootTrust(root); ref != nil {
+		return "", false, ref
+	}
 	if storeOutside(root) {
 		return "", false, outsideRoot(bundle)
 	}
@@ -291,9 +294,6 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 	}
 	if !insideRoot(root.Path, dir) {
 		return "", false, outsideRoot(bundle)
-	}
-	if ref := bundleLinkRefusal(root, bundle, dir); ref != nil {
-		return "", false, ref
 	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
 	if dir != want {
@@ -328,6 +328,9 @@ var errStoreOutside error = storeOutsideError{}
 // the home passes (the listing, the watcher), so none can follow a committed
 // .verdict or .verdict/state symlink out of the root.
 func (l *Layer) readStore(root Root) ([]os.DirEntry, error) {
+	if ref := rootTrust(root); ref != nil {
+		return nil, ref
+	}
 	if storeOutside(root) {
 		return nil, errStoreOutside
 	}
@@ -403,6 +406,9 @@ func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
 		return nil, false, corruptRoot(root, readcommon.NotADirectory(state).Error())
 	}
 	entries, err := l.readStore(root)
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		return nil, false, []ErrRow{errRow(root, "", ref.Code, ref.Message)}
+	}
 	if errors.Is(err, errStoreOutside) {
 		return nil, false, corruptRoot(root, core.Msgf("%s %v", state, err))
 	}

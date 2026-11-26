@@ -463,3 +463,40 @@ func TestBreachPrintsMoneyForALongExactMean(t *testing.T) {
 		t.Fatalf("ordinary guard = %v, want budget-exceeded naming ~$1.0001", err)
 	}
 }
+
+// TestMeasuredRunWithoutReadableTimeOwnsItsCostRecord proves a measured
+// invocation whose at is missing or unreadable still owns its execution's
+// cost.json, named or not: the run counts once, at least its measured $0.50,
+// and the lower bound still breaks a $0.40 budget.
+func TestMeasuredRunWithoutReadableTimeOwnsItsCostRecord(t *testing.T) {
+	t.Parallel()
+	for atName, at := range map[string]string{"missing": "", "invalid": `"at":"yesterday",`} {
+		for name, record := range map[string]string{
+			"named":   `[{"at":"2026-11-24T12:00:00Z","execution_id":"exec-A"}]`,
+			"unnamed": `[{"at":"2026-11-24T12:00:00Z"}]`,
+		} {
+			t.Run(atName+"/"+name, func(t *testing.T) {
+				t.Parallel()
+				assertUntimedRunOwnsRecord(t, at, record)
+			})
+		}
+	}
+}
+
+// assertUntimedRunOwnsRecord seeds a measured invocation carrying at (empty
+// for none) beside a cost record and proves the run counts once.
+func assertUntimedRunOwnsRecord(t *testing.T, at, record string) {
+	t.Helper()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", `[{`+at+`"execution_id":"exec-A","scope":"invocation",`+
+		`"invocation_id":"exec-A@1","projected_usd":0.5,"priced_by":"measured"},`+
+		invocationRow("exec-A@2", "2026-11-24T13:00:00Z", "null", "")+"]")
+	costState(t, root, "local-a", record)
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.4", "REVIEW_BUDGET_USD"
+	err := gateHistoricalLowerBound(&st, nil, false)
+	var ref *core.RefusalError
+	if st.estRuns != 1 || !errors.As(err, &ref) || ref.Code != "budget-exceeded" {
+		t.Fatalf("runs %d, gate = %v; want 1 run refused budget-exceeded", st.estRuns, err)
+	}
+}
