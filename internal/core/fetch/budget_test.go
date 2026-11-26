@@ -3,6 +3,7 @@ package fetchcore
 import (
 	"errors"
 	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
@@ -340,8 +341,8 @@ func TestCostEstimateKeepsAPartlySettledExecutionUnknown(t *testing.T) {
 		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
 		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
 	st := estimateFor(t, root)
-	if st.estUSD != "" || st.estLowerBound != "0.5" {
-		t.Fatalf("estimate = %q lower bound %q, want unknown with lower bound 0.5", st.estUSD, st.estLowerBound)
+	if st.estUSD != "" || st.estLowerBound == nil || st.estLowerBound.Cmp(big.NewRat(1, 2)) != 0 {
+		t.Fatalf("estimate = %q lower bound %v, want unknown with lower bound 0.5", st.estUSD, st.estLowerBound)
 	}
 }
 
@@ -396,5 +397,69 @@ func TestNearCapEstimateRefusesExactly(t *testing.T) {
 	if !errors.As(gatePersonalCeiling(&st, res), &ref) || ref.Code != "spend-capped" ||
 		!strings.Contains(ref.Message, "~$1.0001 exceeds the personal spend ceiling $1") {
 		t.Fatalf("personal ceiling = %v, want spend-capped naming ~$1.0001", ref)
+	}
+}
+
+// TestPartlySettledExecutionOwnsItsCostRecord proves a cost.json written
+// after a partly settled execution, with or without its execution_id, is that
+// execution's self-report: the run counts once, at least its measured $0.50,
+// so the lower bound still breaks a $0.40 budget instead of halving to $0.25.
+func TestPartlySettledExecutionOwnsItsCostRecord(t *testing.T) {
+	t.Parallel()
+	for name, record := range map[string]string{
+		"named":   `[{"at":"2026-11-24T12:00:00Z","execution_id":"exec-A"}]`,
+		"unnamed": `[{"at":"2026-11-24T12:00:00Z"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			root := t.TempDir()
+			writeLedger(t, root, "local-a", "["+
+				invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.5", "measured")+","+
+				invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+			costState(t, root, "local-a", record)
+			st := estimateFor(t, root)
+			st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.4", "REVIEW_BUDGET_USD"
+			err := gateHistoricalLowerBound(&st, nil, false)
+			var ref *core.RefusalError
+			if st.estRuns != 1 || !errors.As(err, &ref) || ref.Code != "budget-exceeded" ||
+				!strings.Contains(ref.Message, "at least $0.5 ") {
+				t.Fatalf("runs %d, gate = %v; want 1 run refused budget-exceeded at least $0.5", st.estRuns, err)
+			}
+		})
+	}
+}
+
+// TestLowerBoundComparesExactly proves the known lower bound stays exact:
+// $0.1 and $0.2 average exactly $0.15, which does not break a $0.15 budget,
+// where float64 summed them to 0.15000000000000002 and refused.
+func TestLowerBoundComparesExactly(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	writeLedger(t, root, "local-a", "["+
+		invocationRow("exec-A@1", "2026-11-24T10:00:00Z", "0.1", "measured")+","+
+		invocationRow("exec-A@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	writeLedger(t, root, "local-b", "["+
+		invocationRow("exec-B@1", "2026-11-24T10:00:00Z", "0.2", "measured")+","+
+		invocationRow("exec-B@2", "2026-11-24T11:00:00Z", "null", "")+"]")
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "0.15", "REVIEW_BUDGET_USD"
+	if err := gateHistoricalLowerBound(&st, nil, false); err != nil {
+		t.Fatalf("lower bound exactly at the $0.15 budget = %v, want no refusal", err)
+	}
+}
+
+// TestBreachPrintsMoneyForALongExactMean proves a mean whose exact fraction
+// is too long to print as a literal still reads as rounded-up money in the
+// refusal, never as a raw num/denom fraction.
+func TestBreachPrintsMoneyForALongExactMean(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "2", `[{"est_usd":1.00000000000000000000000000000000001}]`)
+	st := estimateFor(t, root)
+	st.hasBudget, st.budgetUSD, st.budgetSrc = true, "1", "REVIEW_BUDGET_USD"
+	err := gateOrdinaryBudget(&st, false)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || !strings.Contains(ref.Message, "~$1.0001 exceeds budget $1") {
+		t.Fatalf("ordinary guard = %v, want budget-exceeded naming ~$1.0001", err)
 	}
 }

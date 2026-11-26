@@ -631,6 +631,17 @@ func TestReadsRefuseStoreOutsideRoot(t *testing.T) {
 	}
 }
 
+// linkStore links root's link (".verdict" or ".verdict/state") at the same
+// path of outside, creating only the link's parent so the link itself lands.
+func linkStore(t *testing.T, root, outside, link string) {
+	t.Helper()
+	dst := filepath.Join(root, filepath.FromSlash(link))
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, filepath.Join(outside, filepath.FromSlash(link)), dst)
+}
+
 // assertStoreLinkServesNothing links link inside a fresh root at the same
 // path of another checkout and proves no read reaches through it.
 func assertStoreLinkServesNothing(t *testing.T, link string) {
@@ -642,10 +653,7 @@ func assertStoreLinkServesNothing(t *testing.T, link string) {
 		".verdict/state/1234/findings.json": "[" + finding(cmpNew, "open", "important", "pointed") + "]",
 	})
 	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".verdict"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	symlinkOrSkip(t, filepath.Join(outside, filepath.FromSlash(link)), filepath.Join(root, filepath.FromSlash(link)))
+	linkStore(t, root, outside, link)
 	layer := newLayer(root)
 	served, ok := layer.rootByID(RootID(mustAbs(t, root)))
 	if !ok {

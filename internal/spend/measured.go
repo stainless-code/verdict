@@ -85,10 +85,19 @@ func DisplayUSD(lit string) string {
 	if !ok {
 		return lit
 	}
+	return roundUSD(rat, false)
+}
+
+// roundUSD renders an exact amount at four decimals, half away from zero, or
+// up to the next ten-thousandth when up is set.
+func roundUSD(rat *big.Rat, up bool) string {
 	scaled := new(big.Rat).Mul(rat, big.NewRat(decimalPrecision, 1))
 	num, den := scaled.Num(), scaled.Denom()
 	quo, rem := new(big.Int).QuoRem(num, den, new(big.Int))
-	if new(big.Int).Mul(rem, big.NewInt(mtdBigTwo)).Cmp(den) >= 0 {
+	switch {
+	case up && rem.Sign() != 0:
+		quo.Add(quo, big.NewInt(1))
+	case !up && new(big.Int).Mul(rem, big.NewInt(mtdBigTwo)).Cmp(den) >= 0:
 		quo.Add(quo, big.NewInt(1))
 	}
 	return FormatRat(new(big.Rat).SetFrac(quo, big.NewInt(decimalPrecision)))
@@ -168,23 +177,41 @@ func settledAmount(obj *jq.Obj) (*big.Rat, bool) {
 	return ratOfJSONNumber(projected)
 }
 
-// InvocationOwner reports, for one bundle, whether a measured invocation
-// receipt already counts a self-reported cost record of an execution written
-// at a given time. It is the month-to-date scan's ownership rule: the latest
-// invocation row at or before the record, of its execution (any, when it
-// names none), was priced from the agent CLI's own output. A record with no
-// readable time is owned when any measured invocation row of its execution
-// (any, when unnamed) exists: a self-report that cannot be ordered never
-// outranks measured spend.
+// InvocationOwner reports, for one bundle, whether a measured two-finder
+// execution already counts a self-reported cost record. An execution with any
+// measured invocation is counted once from its receipts (at least its
+// measured sum), so the record is owned when it names such an execution, or,
+// naming none, when the latest invocation row at or before it (any, when the
+// record carries no readable time) belongs to one. A self-report is never an
+// extra run beside measured spend of the same execution.
 func InvocationOwner(bundleDir string) func(exec string, at any) bool {
 	owners := invocationOwners(bundleDir)
-	meta := &recordedMeta{maxAt: map[string]time.Time{}, owners: owners}
-	return func(exec string, at any) bool {
-		if when, ok := atTimeOf(at); ok {
-			return meta.measuredOwner(exec, when)
+	measured := map[string]bool{}
+	for i := range owners {
+		if owners[i].measured {
+			measured[owners[i].exec] = true
 		}
-		return anyMeasuredOwner(owners, exec)
 	}
+	o := ownership{owners: owners, measured: measured}
+	return o.owns
+}
+
+// ownership answers InvocationOwner for one bundle's invocation rows.
+type ownership struct {
+	measured map[string]bool
+	owners   []ledgerOwner
+}
+
+func (o ownership) owns(exec string, at any) bool {
+	if exec != unidentifiedExecID {
+		return o.measured[exec]
+	}
+	when, timed := atTimeOf(at)
+	if !timed {
+		return len(o.measured) > 0
+	}
+	latest := latestOwnerAt(o.owners, when)
+	return latest != nil && o.measured[latest.exec]
 }
 
 // invocationOwners is the bundle's invocation rows as ownership candidates.
@@ -202,32 +229,45 @@ func invocationOwners(bundleDir string) []ledgerOwner {
 	return owners
 }
 
-// anyMeasuredOwner reports a measured owner of exec (any, when unnamed).
-func anyMeasuredOwner(owners []ledgerOwner, exec string) bool {
+// latestOwnerAt is the latest invocation row written at or before when.
+func latestOwnerAt(owners []ledgerOwner, when time.Time) *ledgerOwner {
+	var latest *ledgerOwner
 	for i := range owners {
-		if owners[i].measured && (exec == unidentifiedExecID || owners[i].exec == exec) {
-			return true
+		row := &owners[i]
+		if !row.at.After(when) && (latest == nil || row.at.After(latest.at)) {
+			latest = row
 		}
 	}
-	return false
+	return latest
 }
 
-// DisplayBreach renders an exact amount compared against limit for a person:
-// DisplayUSD, except that an amount over the limit whose rounding would read
-// at or under it rounds up instead, so a printed breach is always visible.
+// DisplayBreach renders an exact amount literal compared against limit for a
+// person; see DisplayBreachRat. A literal that does not parse is returned
+// unchanged.
 func DisplayBreach(amount, limit string) string {
-	shown := DisplayUSD(amount)
-	if !Exceeds(amount, limit) || Exceeds(shown, limit) {
-		return shown
-	}
-	rat, ok := new(big.Rat).SetString(amount)
+	rat, ok := ParseAmount(amount)
 	if !ok {
 		return amount
 	}
-	scaled := new(big.Rat).Mul(rat, big.NewRat(decimalPrecision, 1))
-	quo, rem := new(big.Int).QuoRem(scaled.Num(), scaled.Denom(), new(big.Int))
-	if rem.Sign() != 0 {
-		quo.Add(quo, big.NewInt(1))
+	return DisplayBreachRat(rat, limit)
+}
+
+// DisplayBreachRat renders an exact amount compared against limit for a
+// person: four decimals half away from zero, except that an amount over the
+// limit whose rounding would read at or under it rounds up instead, so a
+// printed breach is always visible. It formats from the rational itself, so a
+// mean whose fraction is too long to print as a literal still reads as money.
+func DisplayBreachRat(amount *big.Rat, limit string) string {
+	shown := roundUSD(amount, false)
+	if !ExceedsRat(amount, limit) || Exceeds(shown, limit) {
+		return shown
 	}
-	return FormatRat(new(big.Rat).SetFrac(quo, big.NewInt(decimalPrecision)))
+	return roundUSD(amount, true)
+}
+
+// ExceedsRat compares an exact amount with the decimal literal the operator
+// provided, as Exceeds does.
+func ExceedsRat(amount *big.Rat, limit string) bool {
+	l, ok := new(big.Rat).SetString(limit)
+	return amount != nil && ok && amount.Sign() >= 0 && l.Sign() >= 0 && amount.Cmp(l) > 0
 }

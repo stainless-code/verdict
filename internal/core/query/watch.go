@@ -75,7 +75,7 @@ func newWatchState(ctx context.Context, layer *Layer) *watchState {
 func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
 	stateDir := readcommon.StateDir(root.Path)
 	state := rootWatch{state: w.statMark(stateDir), bundles: map[string]bundleWatch{}}
-	if names, err := w.bundleNames(root, stateDir); err == nil {
+	if names, err := w.bundleNames(root); err == nil {
 		for _, name := range names {
 			if ctx.Err() != nil {
 				return state
@@ -110,10 +110,12 @@ func (w *watchState) statMark(path string) dirMark {
 	return dirMark{mtime: info.ModTime().UnixNano(), ok: true}
 }
 
-func (w *watchState) bundleNames(root Root, dir string) ([]string, error) {
-	entries, err := w.layer.readDir(dir)
+// bundleNames lists the root's bundles through the layer's confined store
+// gate: a home outside the served root watches no bundles at all.
+func (w *watchState) bundleNames(root Root) ([]string, error) {
+	entries, err := w.layer.readStore(root)
 	if err != nil {
-		if errorsIsNotExist(err) {
+		if errorsIsNotExist(err) || errors.Is(err, errStoreOutside) {
 			return nil, nil
 		}
 		return nil, err
@@ -166,7 +168,7 @@ func (w *watchState) refreshBundles(root Root, stateDir string, old rootWatch) (
 	if stateStamp == old.state {
 		return newState, nil
 	}
-	names, err := w.bundleNames(root, stateDir)
+	names, err := w.bundleNames(root)
 	if err != nil {
 		newState.state = old.state
 		return newState, nil
@@ -230,7 +232,7 @@ func (w *watchState) Sweep() []Change {
 func (w *watchState) sweepRoot(root Root) []Change {
 	old := w.roots[root.ID]
 	stateDir := readcommon.StateDir(root.Path)
-	names, err := w.bundleNames(root, stateDir)
+	names, err := w.bundleNames(root)
 	if err != nil {
 		return nil
 	}

@@ -313,9 +313,29 @@ func outsideRoot(bundle string) *core.RefusalError {
 	}
 }
 
+// storeOutsideError is readStore's refusal of a home outside the served root.
+type storeOutsideError struct{}
+
+func (storeOutsideError) Error() string { return "resolves outside this served root" }
+
+// errStoreOutside is the one storeOutsideError value [errors.Is] matches.
+var errStoreOutside error = storeOutsideError{}
+
+// readStore lists a root's bundle home. It is the one gate every reader of
+// the home passes (the listing, the watcher), so none can follow a committed
+// .verdict or .verdict/state symlink out of the root.
+func (l *Layer) readStore(root Root) ([]os.DirEntry, error) {
+	if storeOutside(root) {
+		return nil, errStoreOutside
+	}
+	return l.readDir(readcommon.StateDir(root.Path))
+}
+
 // storeOutside reports a bundle home that exists but resolves outside the
 // served root, so every name addressed through it refuses typed instead of
 // reading as not found. An absent home is not outside: it serves nothing.
+// Threat model: committed symlinks are refused here; one swapped in after
+// this check needs a live local writer who can already read the target.
 func storeOutside(root Root) bool {
 	state := readcommon.StateDir(root.Path)
 	if _, err := os.Lstat(filepath.FromSlash(state)); err != nil {
@@ -379,12 +399,10 @@ func (l *Layer) listBundles(root Root) ([]string, bool, []ErrRow) {
 	if !info.IsDir() {
 		return nil, false, corruptRoot(root, readcommon.NotADirectory(state).Error())
 	}
-	// The store must be physically inside the root: a symlinked .verdict or
-	// .verdict/state would otherwise list another repository's bundles.
-	if storeOutside(root) {
-		return nil, false, corruptRoot(root, core.Msgf("%s resolves outside this served root", state))
+	entries, err := l.readStore(root)
+	if errors.Is(err, errStoreOutside) {
+		return nil, false, corruptRoot(root, core.Msgf("%s %v", state, err))
 	}
-	entries, err := l.readDir(state)
 	if err != nil {
 		return nil, false, corruptRoot(root, readcommon.UnreadableStore(state).Error())
 	}

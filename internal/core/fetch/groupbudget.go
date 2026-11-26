@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // groupSpendState is the grouped evaluation the gate records for receipts: the
@@ -72,7 +73,7 @@ func gateSoleGroupWholeRun(r *session, st *budgetState, res *config.Resolved, co
 	if st.estUSD == "" {
 		return gateUnknownEstimate(r, st, res, consent)
 	}
-	if over := config.SpendExceeds(st.estExact, group.GuardUSD); over {
+	if over := spend.ExceedsRat(st.estExact, group.GuardUSD); over {
 		if !consent {
 			return budgetExceeded(st)
 		}
@@ -85,7 +86,7 @@ func gateSoleGroupWholeRun(r *session, st *budgetState, res *config.Resolved, co
 // projection, exactly like the group guard.
 func gateSoleGroupPersonal(st *budgetState, res *config.Resolved, consent bool) error {
 	limit := personalLimitLiteral(res)
-	if !config.SpendExceeds(st.estExact, limit) {
+	if !spend.ExceedsRat(st.estExact, limit) {
 		return nil
 	}
 	if !consent {
@@ -205,7 +206,7 @@ func groupOverGuardError(sum *config.GroupSpendReport) error {
 			worst = *group
 		}
 	}
-	return &core.RefusalError{Code: "budget-exceeded", Message: core.Msgf(
+	return &core.RefusalError{Code: codeBudgetExceeded, Message: core.Msgf(
 		"projected %s effort for group %s ~$%s exceeds its budget $%s%s — consent required before this run starts",
 		worst.Effort, worst.GroupID, worst.Projection, worst.GuardUSD, groupBasisNote(sum))}
 }

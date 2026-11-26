@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -291,4 +292,46 @@ func rootWithOverridesOnly(t *testing.T) string {
 		}
 	}
 	return root
+}
+
+// TestWatchIgnoresStoreOutsideRoot proves the watcher reads the bundle home
+// through the same confinement as the listing: a committed .verdict or
+// .verdict/state symlink into another checkout primes no bundles, and an
+// edit there names none in a tick or a sweep.
+func TestWatchIgnoresStoreOutsideRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks are unavailable in this Windows test environment")
+	}
+	for _, link := range []string{".verdict/state", ".verdict"} {
+		t.Run(link, func(t *testing.T) { assertWatchIgnoresLink(t, link) })
+	}
+}
+
+// assertWatchIgnoresLink proves one store link shape primes and reports no
+// outside bundle.
+func assertWatchIgnoresLink(t *testing.T, link string) {
+	t.Helper()
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{".verdict/state/1234/post.json": `{"status":"before"}`})
+	root := t.TempDir()
+	linkStore(t, root, outside, link)
+	layer := New(Snapshot{Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}}, Options{
+		MaxBundles: 10, Stat: os.Stat, ReadDir: os.ReadDir, Clock: fixedNow,
+	})
+	state := newWatchState(t.Context(), layer)
+	for id, watched := range state.roots {
+		if len(watched.bundles) != 0 {
+			t.Fatalf("root %s primed %d outside bundle(s), want none", id, len(watched.bundles))
+		}
+	}
+	path := filepath.Join(outside, ".verdict", "state", "1234", "post.json")
+	if err := os.WriteFile(path, []byte(`{"edited":"with a different byte count"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changes := append(state.Tick(), state.Sweep()...)
+	for _, change := range changes {
+		if slices.Contains(change.Changed, "1234") {
+			t.Fatalf("watcher named the outside bundle: %#v", change)
+		}
+	}
 }

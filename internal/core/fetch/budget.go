@@ -22,6 +22,9 @@ import (
 // floatBitSize is the bit size of the float64 the budget values parse into.
 const floatBitSize = 64
 
+// codeBudgetExceeded is the refusal code for an ordinary spend guard hit.
+const codeBudgetExceeded = "budget-exceeded"
+
 // codeSpendCapped is the refusal code for a personal-ceiling hit.
 const codeSpendCapped = "spend-capped"
 
@@ -33,10 +36,10 @@ type budgetState struct {
 	budgetSrc    string
 	estTier      string
 	estUSD       string
-	// estExact is the projection guards compare: the exact mean, never the
-	// four-decimal estUSD a person reads.
-	estExact      string
-	estLowerBound string
+	// estExact and estLowerBound are what the guards compare: the exact mean
+	// and the exact known lower bound, never a rounded display figure.
+	estExact      *big.Rat
+	estLowerBound *big.Rat
 	estBasis      string
 	estHarness    []string
 	estRuns       int
@@ -113,14 +116,10 @@ func gateWholeRunBudget(r *session, st *budgetState, res *config.Resolved, conse
 }
 
 func gateHistoricalLowerBound(st *budgetState, res *config.Resolved, consent bool) error {
-	if st.estLowerBound == "" {
+	if st.estLowerBound == nil {
 		return nil
 	}
-	policy := spend.Policy{Budget: st.budgetUSD}
-	if res != nil && res.Spend.PersonalLimit != nil {
-		policy.Personal = strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
-	}
-	code := spend.Authorize(spendProjection(st.estLowerBound), policy, false).Code
+	code, limit := lowerBoundBreach(st, res)
 	if code == "" {
 		return nil
 	}
@@ -130,7 +129,22 @@ func gateHistoricalLowerBound(st *budgetState, res *config.Resolved, consent boo
 	}
 	return &core.RefusalError{Code: code, Message: core.Msgf(
 		"known subtotal of comparable %s runs averages at least $%s and exceeds a spend guard — consent required",
-		st.estTier, st.estLowerBound)}
+		st.estTier, spend.DisplayBreachRat(st.estLowerBound, limit))}
+}
+
+// lowerBoundBreach compares the exact known lower bound with the personal
+// ceiling, then the ordinary budget, naming the code and the limit it broke.
+func lowerBoundBreach(st *budgetState, res *config.Resolved) (code, limit string) {
+	if res != nil && res.Spend.PersonalLimit != nil {
+		personal := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
+		if spend.ExceedsRat(st.estLowerBound, personal) {
+			return codeSpendCapped, personal
+		}
+	}
+	if spend.ExceedsRat(st.estLowerBound, st.budgetUSD) {
+		return codeBudgetExceeded, st.budgetUSD
+	}
+	return "", ""
 }
 
 // hasPlanGroups reports whether the resolution carries resolved plan groups,
@@ -156,7 +170,7 @@ func recordEstimate(st *budgetState, consent bool) {
 // run with no budget has nothing to exceed, and a consented hit arms a receipt
 // instead of refusing.
 func gateOrdinaryBudget(st *budgetState, consent bool) error {
-	if !st.hasBudget || !spend.Exceeds(st.estExact, st.budgetUSD) {
+	if !st.hasBudget || !spend.ExceedsRat(st.estExact, st.budgetUSD) {
 		return nil
 	}
 	if consent {
@@ -196,9 +210,9 @@ func refuseUnsupportedCap(res *config.Resolved) *core.RefusalError {
 // budgetExceeded reports a known projection over the resolved budget, naming
 // the source and the comparable runs the projection rests on.
 func budgetExceeded(st *budgetState) error {
-	return &core.RefusalError{Code: "budget-exceeded", Message: core.Msgf(
+	return &core.RefusalError{Code: codeBudgetExceeded, Message: core.Msgf(
 		"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
-		st.estTier, spend.DisplayBreach(st.estExact, st.budgetUSD), st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
+		st.estTier, spend.DisplayBreachRat(st.estExact, st.budgetUSD), st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
 }
 
 // gatePersonalCeiling reports the operator's authorization limit: a
@@ -210,7 +224,7 @@ func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
 		return nil
 	}
 	limit := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
-	if spend.Exceeds(st.estExact, limit) {
+	if spend.ExceedsRat(st.estExact, limit) {
 		return personalCeilingError(st, limit)
 	}
 	return nil
@@ -223,7 +237,7 @@ func personalCeilingError(st *budgetState, limit string) error {
 		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (spend.budget_usd in the operator settings) from %d "+
 			"comparable run(s) — consent before this run starts, or raise the ceiling in settings and "+
 			"narrow the run",
-		st.estTier, spend.DisplayBreach(st.estExact, limit), st.basisNote(), limit, st.estRuns)}
+		st.estTier, spend.DisplayBreachRat(st.estExact, limit), st.basisNote(), limit, st.estRuns)}
 }
 
 // gateUnknownEstimate handles a set budget with no usable projection:
@@ -294,7 +308,7 @@ func (st *budgetState) basisNote() string {
 // deeper tier). Unknown history reads unknown, never blocking. Handed usage
 // records price the runs they bracket; a broken handoff refuses typed.
 func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
-	st.estUSD, st.estExact, st.estRuns, st.estTier, st.tierRuns = "", "", 0, "", 0
+	st.estUSD, st.estExact, st.estLowerBound, st.estRuns, st.estTier, st.tierRuns = "", nil, nil, 0, "", 0
 	usage, err := measuredUsage(r)
 	if err != nil {
 		return err
@@ -319,7 +333,7 @@ func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
 		reportUnknownProjection(r, st, tier, tierRuns)
 		return nil
 	}
-	st.estUSD, st.estExact = stat.mean, stat.exact.RatString()
+	st.estUSD, st.estExact = stat.mean, stat.exact
 	fmt.Fprintln(r.Human, core.Msgf("%s%s", estimateLine(st, tier), st.basisNote()))
 	return nil
 }
@@ -347,13 +361,13 @@ func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns 
 func estimateLine(st *budgetState, tier string) string {
 	shown := st.estUSD
 	if st.hasBudget {
-		shown = spend.DisplayBreach(st.estExact, st.budgetUSD)
+		shown = spend.DisplayBreachRat(st.estExact, st.budgetUSD)
 	}
 	line := core.Msgf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, shown, st.estRuns)
 	if !st.hasBudget {
 		return line
 	}
-	if overBudget(st.estExact, st.budgetUSD) {
+	if spend.ExceedsRat(st.estExact, st.budgetUSD) {
 		return line + core.Msgf(" — OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	}
 	return line + core.Msgf(" — within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
@@ -377,7 +391,7 @@ func (st *budgetState) recordBasis(stat *tierStat) {
 
 type costRec struct {
 	measured    *big.Rat
-	subtotal    *float64
+	subtotal    *big.Rat
 	tier        string
 	usageSource string
 	usd         string
@@ -432,7 +446,9 @@ func priceCostRecord(rec costRec, m map[string]any) costRec {
 		if !valid {
 			return rec
 		}
-		rec.subtotal = projection.KnownSubtotal
+		if projection.KnownSubtotal != nil {
+			rec.subtotal, _ = spend.ParseAmount(strconv.FormatFloat(*projection.KnownSubtotal, 'f', -1, floatBitSize))
+		}
 		if projection.Total != nil {
 			rec.usd = strconv.FormatFloat(*projection.Total, 'f', -1, floatBitSize)
 			rec.has = true
@@ -464,11 +480,11 @@ func estNumber(v any) (string, bool) {
 // measured-sample split behind it.
 type tierStat struct {
 	exact      *big.Rat
+	lowerBound *big.Rat
+	subtotal   *big.Rat
 	mean       string
-	lowerBound string
 	harness    []string
 	meanVal    float64
-	subtotal   float64
 	runs       int
 	priced     int
 	measured   int
@@ -516,20 +532,21 @@ func pickEstimateTier(recs []costRec, want string, explicit bool) (tier string, 
 // mean (-1 with no priced runs, so unpriced tiers still compete on runs).
 // A handed usage record prices that run and names its source.
 func tierStats(recs []costRec, t string) tierStat {
-	st := tierStat{exact: new(big.Rat)}
+	st := tierStat{exact: new(big.Rat), subtotal: new(big.Rat)}
 	var sum float64
 	for _, r := range recs {
 		if r.tier == t {
 			sum = addTierSample(r, sum, &st)
 		}
 	}
+	if st.subtotal.Sign() > 0 {
+		lower := new(big.Rat).Add(st.exact, st.subtotal)
+		st.lowerBound = lower.Quo(lower, big.NewRat(int64(st.runs), 1))
+	}
 	st.meanVal = -1.0
 	if st.priced > 0 {
 		st.meanVal, st.mean = spend.MeanUSD(sum, st.priced)
 		st.exact.Quo(st.exact, big.NewRat(int64(st.priced), 1))
-	}
-	if st.subtotal > 0 {
-		st.lowerBound = strconv.FormatFloat((sum+st.subtotal)/float64(st.runs), 'f', -1, floatBitSize)
 	}
 	slices.Sort(st.harness)
 	st.harness = slices.Compact(st.harness)
@@ -582,8 +599,7 @@ func measuredRunRecs(repoRoot string) []costRec {
 	for _, dir := range dirs {
 		for _, run := range spend.InvocationRuns(dir) {
 			if !run.Complete {
-				lower, _ := run.USD.Float64()
-				recs = append(recs, costRec{tier: tierStandard, subtotal: &lower})
+				recs = append(recs, costRec{tier: tierStandard, subtotal: run.USD})
 				continue
 			}
 			recs = append(recs, costRec{tier: tierStandard, measured: run.USD})
@@ -648,7 +664,7 @@ func addTierSample(r costRec, sum float64, st *tierStat) float64 {
 	sum, st.priced = tierPriced(r, sum, st.exact, st.priced)
 	if r.measured == nil {
 		if !r.has && r.subtotal != nil {
-			st.subtotal += *r.subtotal
+			st.subtotal.Add(st.subtotal, r.subtotal)
 		}
 		return sum
 	}
@@ -677,10 +693,6 @@ func tierPriced(r costRec, sum float64, exact *big.Rat, priced int) (float64, in
 		}
 	}
 	return sum, priced
-}
-
-func overBudget(projected, budget string) bool {
-	return spend.Exceeds(projected, budget)
 }
 
 func jsonNumber(lit string) any {
@@ -749,12 +761,4 @@ func indentPretty(pretty string) string {
 		lines[i] = "  " + lines[i]
 	}
 	return strings.Join(lines, newline)
-}
-
-func spendProjection(literal string) spend.Projection {
-	value, err := strconv.ParseFloat(literal, floatBitSize)
-	if err != nil {
-		return spend.Projection{}
-	}
-	return spend.Projection{Total: &value}
 }

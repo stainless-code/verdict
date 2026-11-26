@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -589,10 +590,15 @@ func TestCacheInvalidatesThroughSymlinkedOverride(t *testing.T) {
 }
 
 // symlinkOrSkip links target at link, skipping the test where the platform
-// refuses symlinks.
+// refuses symlinks. A link path that already exists is the fixture's own bug,
+// not a platform limit, so it fails instead of skipping the proof silently.
 func symlinkOrSkip(t *testing.T, target, link string) {
 	t.Helper()
-	if err := os.Symlink(target, link); err != nil {
+	err := os.Symlink(target, link)
+	if errors.Is(err, fs.ErrExist) {
+		t.Fatalf("symlink %s: %v", link, err)
+	}
+	if err != nil {
 		t.Skipf("symlinks are unavailable: %v", err)
 	}
 }
