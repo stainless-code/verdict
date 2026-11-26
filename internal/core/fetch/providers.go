@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func runProvider(
@@ -237,7 +238,7 @@ func gitlabReadable(r *session, payload string) string {
 
 // gitlabDiff owns the `glab mr diff` read with its raw flag.
 func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
-	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» glab mr diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.cliFetch(ctx, binGlab, "mr", gitCmdDiff, pr, flagRepo, repo, "--raw")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
@@ -271,7 +272,7 @@ func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flag
 		return nullStr, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	fmt.Fprintf(r.Human, "» glab compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» glab compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir)))
 	res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabComparePath(pid, f.BaseSHA, headSHA))
 	if err != nil {
 		return nullStr, gitlabIncrementalFail(r, dir, res.Stderr)
@@ -911,7 +912,7 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth curlauth.Cred
 }
 
 func forgejoDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, api, metaStdout string) error {
-	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» forgejo diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.curlFetch(ctx, auth, flagCurlFail, api+".diff")
 	if err != nil {
 		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
@@ -1243,7 +1244,7 @@ func bitbucketMeta(ctx context.Context, r *session, dir string, auth curlauth.Cr
 }
 
 func bitbucketDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, base string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» bitbucket diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.curlFetch(ctx, auth, flagCurlFollowFail, base+"/diff")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("%v", werr)}
@@ -1503,8 +1504,9 @@ func azureCloneInit(ctx context.Context, r *session) (string, error) {
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("azure temp clone init failed: %v", err)}
 	}
 	if res, err := r.run(ctx, "init", "-q", tmp); err != nil {
-		// No stderr redirect on the init call: git's own text leaks.
-		fmt.Fprint(r.Human, res.Stderr)
+		// No stderr redirect on the init call: git's own text reaches the
+		// terminal, each line tagged.
+		fmt.Fprint(r.Human, untrusted.Passthrough(gitTag, res.Stderr))
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "azure temp clone init failed"}
 	}
 	return tmp, nil
@@ -1831,7 +1833,7 @@ func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, w
 	if werr := atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/toc.txt: %v", ctx2.dir, werr)}
 	}
-	fmt.Fprintf(ctx2.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx2.dir)
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx2.dir))
 	paths := splitLines(withoutExcluded(ctx2, strings.Join(prFilePaths(ctx2.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx2.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", ctx2.dir, werr)}

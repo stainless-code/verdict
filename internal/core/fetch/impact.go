@@ -84,7 +84,7 @@ func discardImpact(ctx2 *fetchRunCtx) error {
 func impactDiff(ctx2 *fetchRunCtx) (raw []byte, found bool, err error) {
 	raw, err = noblock.ReadFile(ctx2.dir + suffixFullDiff)
 	if errors.Is(err, os.ErrNotExist) {
-		ctx2.runner.Warn(fmt.Sprintf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
+		ctx2.runner.Warn(core.Msgf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
 		return nil, false, nil
 	}
 	if err != nil {
@@ -104,9 +104,9 @@ func writeImpactFiles(ctx2 *fetchRunCtx, impact *indexcore.Impact) error {
 
 // impactLine names the hand-off on the human surface.
 func impactLine(ctx2 *fetchRunCtx, impact *indexcore.Impact) {
-	fmt.Fprintf(ctx2.runner.Human, "» impact: %d symbol(s), %d caller(s), %d test(s) from %s -> %s/impact.json\n",
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» impact: %d symbol(s), %d caller(s), %d test(s) from %s -> %s/impact.json\n",
 		len(impact.Data.Blast.Symbols), len(impact.Data.Blast.Callers), len(impact.Data.Blast.Tests),
-		impact.Index, ctx2.runner.display(ctx2.dir))
+		impact.Index, ctx2.runner.display(ctx2.dir)))
 }
 
 // readRequest builds the index hand-off's read request: the run's command seam

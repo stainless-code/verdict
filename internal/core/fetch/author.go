@@ -77,8 +77,8 @@ func writeAuthor(ctx2 *fetchRunCtx) error {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not write %s/author.json: %v", ctx2.dir, werr)}
 	}
-	fmt.Fprintf(ctx2.runner.Human, "» author: %s (%s confidence) from %d signal(s) -> %s/author.json\n",
-		file.Agent, file.Confidence, len(file.Evidence), ctx2.runner.display(ctx2.dir))
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» author: %s (%s confidence) from %d signal(s) -> %s/author.json\n",
+		file.Agent, file.Confidence, len(file.Evidence), ctx2.runner.display(ctx2.dir)))
 	return nil
 }
 

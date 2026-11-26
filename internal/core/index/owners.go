@@ -267,7 +267,7 @@ func (st *state) ownersAt(
 	target.OwnersSource = file.source
 	target.Owners = matchOwners(file.rules, p)
 	if file.unsupported > 0 {
-		st.warn(fmt.Sprintf(codeownersWarning, file.unsupported))
+		st.warn(core.Msgf(codeownersWarning, file.unsupported))
 	}
 	return target, nil
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // cliFileCap is the hosting CLI's file-list cap: a list arriving exactly
@@ -82,14 +83,21 @@ func githubFetch(ctx context.Context, ctx2 *fetchRunCtx, r *session, dir, repo, 
 	return pageFileList(ctx, ctx2, dir, repo, pr)
 }
 
+// ghTag and gitTag lead each line of a host CLI's stderr that reaches the
+// human stream, so none can pass for verdict's own `error:` line.
+const (
+	ghTag  = "  gh: "
+	gitTag = "  git: "
+)
+
 // githubView owns the `gh pr view` read: PR.json lands beside the
-// bundle, and gh's own stderr reaches the terminal (no redirect).
+// bundle, and gh's own stderr reaches the terminal, each line tagged.
 func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» gh pr view %s#%s\n", repo, pr)
+	fmt.Fprint(r.Human, core.Msgf("» gh pr view %s#%s\n", repo, pr))
 	viewRes, err := r.ghFetch(ctx, ghCmdPR, "view", pr, "--repo", repo,
 		flagJSON, "number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,"+
 			"files,additions,deletions,isDraft,reviewDecision,state")
-	fmt.Fprint(r.Human, viewRes.Stderr)
+	fmt.Fprint(r.Human, untrusted.Passthrough(ghTag, viewRes.Stderr))
 	if err != nil {
 		if ref := truncateEmpty(dir + suffixPRJSON); ref != nil {
 			return ref
@@ -106,9 +114,9 @@ func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 // githubDiff owns the diff read with its API fallback: the CLI diff
 // first, then the API diff, refusing only when both fail.
 func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» gh pr diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» gh pr diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.ghFetch(ctx, ghCmdPR, gitCmdDiff, pr, "--repo", repo)
-	fmt.Fprint(r.Human, diffRes.Stderr)
+	fmt.Fprint(r.Human, untrusted.Passthrough(ghTag, diffRes.Stderr))
 	if err != nil {
 		return githubAPIDiff(ctx, r, dir, repo, pr, diffRes.Stderr)
 	}
@@ -122,7 +130,7 @@ func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr string) *core.RefusalError {
 	fmt.Fprintln(r.Human, "gh pr diff failed, trying API diff")
 	apiRes, apiErr := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/pulls/"+pr, flagH, "Accept: application/vnd.github.diff")
-	fmt.Fprint(r.Human, apiRes.Stderr)
+	fmt.Fprint(r.Human, untrusted.Passthrough(ghTag, apiRes.Stderr))
 	if apiErr != nil {
 		if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 			return ref
@@ -275,7 +283,7 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f *Fla
 		return incBase, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	fmt.Fprintf(r.Human, "» compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir)))
 	res, err := r.ghFetch(ctx, ghCmdAPI, apiReposPrefix+repo+"/compare/"+f.BaseSHA+gitRange3+headSHA,
 		flagH, "Accept: application/vnd.github.diff")
 	if err != nil {
@@ -316,7 +324,8 @@ func writeIncrementalNote(r *session, dir, reason string) *core.RefusalError {
 	if werr := atomic.WriteFile(dir+"/incremental.diff.note", []byte(note+newline)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/incremental.diff.note: %v", dir, werr)}
 	}
-	fmt.Fprintln(r.Human, note)
+	// The file keeps the host's text as it came; the human line folds it.
+	fmt.Fprintln(r.Human, "incrementalUnavailable: "+untrusted.Line(strings.TrimRight(head, newline)))
 	_ = os.Remove(dir + "/incremental.diff")
 	return nil
 }

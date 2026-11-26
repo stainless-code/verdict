@@ -191,7 +191,7 @@ func (st *state) execute(
 	receipt := &core.VerifyReceipt{
 		SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now, Shared: sharedRels(st.shared),
 	}
-	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
+	st.human(core.Msgf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
 	st.reportShares(sb)
 	st.releaseSandbox(sb)
@@ -341,7 +341,7 @@ func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *s
 	// Sanitize the whole capture before cutting: a cut first could leave the
 	// unrecognizable second half of a credential at the tail's left edge.
 	tail := coreexec.TrimTail(lastBytes(sanitizeTail(combined, st.req.Environ), tailCap))
-	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
+	st.human(core.Msgf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
 	if ref := bundle.unchanged(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}

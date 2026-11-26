@@ -91,7 +91,7 @@ func parseSkillUninstallFlags(r *cli.Runner, args []string) (skillUninstallFlags
 			return f, cli.ExitOK, true
 		default:
 			return f, r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill uninstall (want --dir, --agent, --force, --dry-run, --json)", arg),
+				Message: core.Msgf("unknown flag '%s' for skill uninstall (want --dir, --agent, --force, --dry-run, --json)", arg),
 			}), true
 		}
 	}

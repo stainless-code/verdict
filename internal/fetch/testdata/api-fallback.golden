@@ -17,9 +17,9 @@ exit: 1
 --- stderr ---
 » gh pr view acme/app#4701
 » gh pr diff -> .verdict/state/4701/full.diff
-gh: diff unavailable
+  gh: gh: diff unavailable
 gh pr diff failed, trying API diff
-evals-stub-gh: network disabled (api repos/acme/app/pulls/4701 -H Accept: application/vnd.github.diff)
+  gh: evals-stub-gh: network disabled (api repos/acme/app/pulls/4701 -H Accept: application/vnd.github.diff)
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state

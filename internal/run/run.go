@@ -220,7 +220,7 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		f.print = true
 		return i, 0, false
 	default:
-		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for run (want %s)", a, verbsWanted)}), true
 	}
 }
@@ -409,7 +409,7 @@ func parseBudgetFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, b
 		return i, r.ReportUsage(usage), true
 	}
 	if !budget.ValidRequest(value) {
-		return i, r.ReportUsage(&cli.UsageError{Message: budgetFlag + " must be " + budget.Vocabulary()}), true
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(budgetFlag+" must be %s", budget.Vocabulary())}), true
 	}
 	f.budget = value
 	return next, 0, false

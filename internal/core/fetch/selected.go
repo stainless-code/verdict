@@ -46,7 +46,7 @@ func writeSelected(ctx context.Context, r *session, dir, repo, pr, inlineBody st
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not write %s: %v", path, werr)}
 	}
-	fmt.Fprintf(r.Human, "» selected: %d reacted finding(s) -> %s\n", len(sigs), r.display(path))
+	fmt.Fprint(r.Human, core.Msgf("» selected: %d reacted finding(s) -> %s\n", len(sigs), r.display(path)))
 	return nil
 }
 

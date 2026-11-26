@@ -405,7 +405,7 @@ func (f *flags) wanted() string {
 
 // usage builds the exit-2 flag error.
 func usage(msg string) *cli.UsageError {
-	return &cli.UsageError{Message: msg}
+	return &cli.UsageError{Message: core.Msgf("%s", msg)}
 }
 
 // rentry rebuilds the re-run command after flag parsing: the flags the operator

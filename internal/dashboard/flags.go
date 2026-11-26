@@ -154,5 +154,5 @@ func applyDuration(r *cli.Runner, name, value string, target *time.Duration) (in
 }
 
 func usage(r *cli.Runner, message string) int {
-	return r.ReportUsage(&cli.UsageError{Message: message})
+	return r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", message)})
 }

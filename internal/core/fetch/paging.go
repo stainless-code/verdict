@@ -51,7 +51,8 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/filesource.json: %v", dir, err)}
 	}
-	fmt.Fprintf(ctx2.runner.Human, "» file list paged past the CLI cap (%d files, provider ceiling %d)\n", len(paged), providerFileCeiling)
+	fmt.Fprint(ctx2.runner.Human, core.Msgf(
+		"» file list paged past the CLI cap (%d files, provider ceiling %d)\n", len(paged), providerFileCeiling))
 	return nil
 }
 

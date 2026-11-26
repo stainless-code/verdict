@@ -175,7 +175,7 @@ func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 	case subCheck:
 		return checkCheckArgs(r, args)
 	default:
-		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return invocation{}, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown pack subcommand '%s' (want list, add, sync, test, or check)", args[0])}), true
 	}
 }
@@ -223,8 +223,8 @@ func checkCheckArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return invocation{sub: subCheck, path: args[1]}, 0, false
 	}
 	if len(args) == checkArgCount {
-		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"pack check takes a repository-relative path, not %q\n%s", args[1], packUsage)}), true
+		return invocation{}, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
+			"pack check takes a repository-relative path, not %q\n"+packUsage, args[1])}), true
 	}
 	return packUsageError(r)
 }

@@ -281,9 +281,9 @@ func parseToken(f *flags, args []string, i int) (int, *cli.UsageError) {
 	dst := valueFlag(f, a)
 	switch {
 	case dst == nil && strings.HasPrefix(a, "-"):
-		return i, &cli.UsageError{Message: fmt.Sprintf(msgUnknownFlag, a)}
+		return i, &cli.UsageError{Message: core.Msgf(msgUnknownFlag, a)}
 	case dst == nil:
-		return i, &cli.UsageError{Message: fmt.Sprintf(msgExtraArg, a)}
+		return i, &cli.UsageError{Message: core.Msgf(msgExtraArg, a)}
 	}
 	name, _, _ := strings.Cut(a, flagAssign)
 	value, next, uerr := flagValue(args, i, name)
@@ -377,7 +377,7 @@ func render(w io.Writer, d *loopcore.Data) {
 	}
 	fmt.Fprintln(w, outcomeLine(d))
 	if d.Refusal != nil {
-		fmt.Fprintf(w, "loop: %s: %s\n", d.Refusal.Code, d.Refusal.Message)
+		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, d.Refusal.Message))
 	}
 }
 

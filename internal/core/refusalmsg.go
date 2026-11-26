@@ -7,18 +7,25 @@ import (
 )
 
 // Msgf builds a refusal message, and every [RefusalError.Message] in the tree
-// is built by it (internal/archtest holds the line). The format is verdict's
-// own text and keeps its line breaks, because some refusals lay out several
-// lines; every argument's formatted text is folded by [FoldLine], because an
-// argument may be a path, a PR title, a host's reply, or an agent's value,
-// and a line break inside one would end the `error:` line and start a second
-// that reads as verdict's own. A [Trusted] argument passes through unfolded.
+// is built by it, as is every usage error, loop refusal, and `»` progress
+// line that quotes a value (internal/archtest holds the line). The format is
+// verdict's own text and keeps its line breaks, because some refusals lay out
+// several lines; every argument's formatted text is folded by [FoldLine],
+// because an argument may be a path, a PR title, a host's reply, or an
+// agent's value, and a line break inside one would end the `error:` line and
+// start a second that reads as verdict's own. A [Trusted] argument passes
+// through unfolded.
 //
 // The arguments are wrapped in place and forwarded as they came, which is
 // what lets `go vet` see Msgf as a printf wrapper and check every call's
 // verbs; a caller that spreads a slice it reuses (`Msgf(f, xs...)`) hands
 // that slice over. Every such caller in the tree forwards its own variadic
 // parameter, a fresh slice per call.
+//
+// Two verbs do not work: %w (this is Sprintf, there is no error to wrap) and
+// a `*` width or precision (fmt reads it from an int argument, and Msgf has
+// wrapped every argument). internal/archtest refuses both in a constant
+// format, and vet cannot see the second.
 func Msgf(format string, args ...any) string {
 	for i, arg := range args {
 		if _, trusted := arg.(Trusted); !trusted {

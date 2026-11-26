@@ -50,7 +50,7 @@ func publicPullPath(repo, pr string) string {
 
 // publicMeta owns the PR read and its stderr sidecar.
 func publicMeta(ctx context.Context, r *session, dir, repo, pr, pull string) (string, error) {
-	fmt.Fprintf(r.Human, "» public API: %s#%s (no gh login)\n", repo, pr)
+	fmt.Fprint(r.Human, core.Msgf("» public API: %s#%s (no gh login)\n", repo, pr))
 	res, err := r.curlPublic(ctx, flagCurlPublicFail, pull)
 	if werr := writeErrFile(dir+suffixMetaErr, res.Stderr); werr != nil {
 		return "", werr
@@ -67,7 +67,7 @@ func publicMeta(ctx context.Context, r *session, dir, repo, pr, pull string) (st
 // publicDiff reads the diff media type into full.diff: the same artifact the
 // CLI path writes, so the cap gate, hunk index, and chunk plan are shared.
 func publicDiff(ctx context.Context, r *session, dir, pull string) error {
-	fmt.Fprintf(r.Human, "» public API: diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» public API: diff -> %s/full.diff\n", r.display(dir)))
 	res, err := r.curlPublic(ctx, flagCurlPublicFail, flagH, publicDiffAccept, pull)
 	if werr := writeErrFile(dir+suffixDiffErr, res.Stderr); werr != nil {
 		return werr

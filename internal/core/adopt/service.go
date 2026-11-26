@@ -328,10 +328,10 @@ func (st *state) finishAdopt(dir, fromDir, display string, entries []any) *core.
 		return st.refuse("adopt-failed", fmt.Sprintf("could not write %s/findings.json: %v", dir, err))
 	}
 	if st.autoPatch != "" {
-		st.human = fmt.Sprintf("» adopted %d findings from %s (patch %s) (open: %d)",
+		st.human = core.Msgf("» adopted %d findings from %s (patch %s) (open: %d)",
 			len(stamped), display, st.autoPatch, nOpen)
 	} else {
-		st.human = fmt.Sprintf(msgAdopted, len(stamped), fromDir, nOpen)
+		st.human = core.Msgf(msgAdopted, len(stamped), fromDir, nOpen)
 	}
 	st.data = &Data{
 		Dir:     dir,

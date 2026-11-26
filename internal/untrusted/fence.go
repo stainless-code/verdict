@@ -80,6 +80,38 @@ func Line(value string) string {
 	return core.FoldLine(value)
 }
 
+// Passthrough renders text another program printed (a host CLI's stderr, an
+// agent's output tail) for a stream a person reads: one output line per line
+// of text, each led by tag (`  gh: `) and folded by [Line]. A line the
+// program wrote cannot then start with verdict's own `error:`, `warn:`, or
+// `next:`, and a control byte in it cannot reach the terminal. Blank lines
+// drop; text with none left renders as "". The tag is verdict's own and must
+// not be empty.
+func Passthrough(tag, text string) string {
+	var sb strings.Builder
+	for _, line := range strings.FieldsFunc(text, isPassthroughBreak) {
+		if line = Line(line); strings.TrimSpace(line) != "" {
+			sb.WriteString(tag)
+			sb.WriteString(line)
+			sb.WriteByte('\n')
+		}
+	}
+	return sb.String()
+}
+
+// The line-ending runes beyond LF and CR, by code point.
+const (
+	nextLine           = 0x85
+	lineSeparator      = 0x2028
+	paragraphSeparator = 0x2029
+)
+
+// isPassthroughBreak names the runes that end a line of a program's output:
+// LF, CR, NEL, and the Unicode line and paragraph separators.
+func isPassthroughBreak(r rune) bool {
+	return r == '\n' || r == '\r' || r == nextLine || r == lineSeparator || r == paragraphSeparator
+}
+
 // breakComments puts a zero-width space inside an HTML comment opener, so a
 // quoted comment cannot open a real one and hide the text that follows it.
 func breakComments(body string) string {

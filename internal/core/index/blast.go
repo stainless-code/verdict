@@ -198,7 +198,7 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 	if t != nil {
 		pkgs = packageMap(t)
 	} else {
-		st.warn(fmt.Sprintf(blastNoIndexWarn, key.label()))
+		st.warn(core.Msgf(blastNoIndexWarn, key.label()))
 	}
 	st.warnHunkless(changes)
 	symbols := blastSymbols(pkgs, t, changes)
@@ -224,7 +224,7 @@ func (st *state) blastRadius(ctx context.Context) (*Response, *core.RefusalError
 func (st *state) warnHunkless(changes []blastChange) {
 	for _, ch := range changes {
 		if ch.hunkless {
-			st.warn(fmt.Sprintf(blastHunkless, ch.path))
+			st.warn(core.Msgf(blastHunkless, ch.path))
 		}
 	}
 }
@@ -341,7 +341,7 @@ func (st *state) blastTree(
 			key := treeRef{tree: tree, at: head, from: st.req.From}
 			return t, key, commit, st.headDiffers(ctx, root, tree), nil
 		}
-		st.warn(fmt.Sprintf(blastHeadWarning, head))
+		st.warn(core.Msgf(blastHeadWarning, head))
 	}
 	tree, commit, ref := st.queryRefAt(ctx, root, impactHeadRef)
 	if ref != nil {
@@ -747,7 +747,7 @@ func (st *state) blastOwners(
 		out = append(out, target)
 	}
 	if file != nil && file.unsupported > 0 {
-		st.warn(fmt.Sprintf(codeownersWarning, file.unsupported))
+		st.warn(core.Msgf(codeownersWarning, file.unsupported))
 	}
 	return out, nil
 }

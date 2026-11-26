@@ -455,7 +455,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
 		return err
 	}
-	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir)))
 	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(withoutExcluded(ctx2, listed)))); err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", dir, err)}
 	}

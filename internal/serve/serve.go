@@ -753,7 +753,7 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		code, done := applyFlag(r, opts, name, value)
 		return next, code, done
 	default:
-		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
 				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
 				"--interval, --sweep, --no-watch, --read-only, --allow-post, --json)", name)}), true
@@ -904,5 +904,5 @@ func parseNumber(value string, minimum, maximum int) (int, error) {
 
 // usage renders one argv-shape failure as exit 2.
 func usage(r *cli.Runner, message string) int {
-	return r.ReportUsage(&cli.UsageError{Message: message})
+	return r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", message)})
 }

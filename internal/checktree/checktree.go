@@ -68,7 +68,7 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 			expect = v
 			i = next + 1
 		default:
-			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return "", r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for check-tree (want --expect <prefix,...>, --json)", a)}), true
 		}
 	}

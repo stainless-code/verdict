@@ -310,7 +310,7 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []strin
 	case flagMaxSeverity, flagLive, flagCoverage, flagMaxRisk, flagCategory:
 		return parseValueFlag(r, flags, gated, args, i)
 	default:
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for gate (want --max-severity, --require-head, --max-risk, "+
 				"--category, --live, --coverage, --json)", args[i])}), true
 	}
@@ -348,7 +348,7 @@ func parseValueFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []
 
 func applyTier(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, consumed int) (int, int, bool) {
 	if !core.ValidTier(v) {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown --max-severity tier '%s' for gate (want critical|important|informational)", v)}), true
 	}
 	flags.Check = v
@@ -362,7 +362,7 @@ func applyTier(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, co
 // parseFlags refuses it there.
 func applyCategory(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
 	if !core.ValidCategory(v) {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown --category '%s' for gate (want %s)", v, categoryWant)}), true
 	}
 	flags.Category = v
@@ -373,7 +373,7 @@ func applyCategory(r *cli.Runner, flags *reportcore.Flags, v string, consumed in
 // --max-risk` used to carry alone.
 func applyMaxRisk(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, consumed int) (int, int, bool) {
 	if !risk.ValidLevel(v) {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown --max-risk level '%s' for gate (want low|medium|high|critical)", v)}), true
 	}
 	flags.MaxRisk = v
@@ -383,7 +383,7 @@ func applyMaxRisk(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string,
 
 func applyLive(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
 	if !validLive(v) {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown --live posture '%s' for gate (want auto|strict|skip)", v)}), true
 	}
 	flags.Live = v
@@ -395,7 +395,7 @@ func applyLive(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (
 // bare gate stays a usage error instead of silently gating on coverage alone.
 func applyCoverage(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
 	if !validCoverage(v) {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown --coverage posture '%s' for gate (want require|warn)", v)}), true
 	}
 	flags.Coverage = v

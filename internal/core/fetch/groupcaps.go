@@ -138,8 +138,8 @@ func checkGroupDiffSize(
 // limit, reporting whether that group armed chunking.
 func applyGroupCap(r *session, limit *groupLimit, groupBytes int64, table []fileSlice) (bool, *core.RefusalError) {
 	if limit.Source != "" && limit.Source != config.LayerBuiltIn {
-		fmt.Fprintf(r.Human, "» cap: group %s %d bytes (from %s, default 512000)\n",
-			limit.ID, limit.MaxBytes, limit.Source)
+		fmt.Fprint(r.Human, core.Msgf("» cap: group %s %d bytes (from %s, default 512000)\n",
+			limit.ID, limit.MaxBytes, limit.Source))
 	}
 	if groupBytes <= limit.MaxBytes {
 		return false, nil
@@ -154,15 +154,15 @@ func overGroupCap(r *session, limit *groupLimit, table []fileSlice, total int64)
 	eligible := limit.chunk && chunkPlanFit(table, limit.Files, limit.MaxBytes)
 	if !eligible {
 		if limit.chunk {
-			fmt.Fprintf(r.Diag, "» chunking opted in for group %s — single file over cap, keeping today's advisory "+
-				"refusal (split the range or narrow, or override the cap deliberately)\n", limit.ID)
+			fmt.Fprint(r.Diag, core.Msgf("» chunking opted in for group %s — single file over cap, keeping today's advisory "+
+				"refusal (split the range or narrow, or override the cap deliberately)\n", limit.ID))
 		}
 		ref := groupCapRefusal(limit, total, table)
 		printSplitCandidates(r, ref.Candidates)
 		return false, ref
 	}
-	fmt.Fprintf(r.Diag, "» chunking opted in for group %s — slicing that group's over-cap diff (%d bytes, cap %d)\n",
-		limit.ID, total, limit.MaxBytes)
+	fmt.Fprint(r.Diag, core.Msgf("» chunking opted in for group %s — slicing that group's over-cap diff (%d bytes, cap %d)\n",
+		limit.ID, total, limit.MaxBytes))
 	return true, nil
 }
 

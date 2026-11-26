@@ -233,7 +233,7 @@ func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *drainco
 	if fl.post {
 		nextText = postSuccessNext(req)
 	}
-	fmt.Fprintf(r.Human, "» %d pending, %d skipped -> %s/%s\n", len(plan.Pending), len(plan.Skipped), dir, draincore.KeyPlanJSON)
+	fmt.Fprint(r.Human, core.Msgf("» %d pending, %d skipped -> %s/%s\n", len(plan.Pending), len(plan.Skipped), dir, draincore.KeyPlanJSON))
 	r.Emit(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), nextText,
 		r.Warnings, plan.Wire())
 	return cli.ExitOK
@@ -293,7 +293,7 @@ func drainFailed(msg string) *core.RefusalError {
 func parseLimit(r *cli.Runner, text string) (int, int, bool) {
 	limit, err := strconv.Atoi(text)
 	if err != nil || limit < 1 || limit > draincore.MaxMaxThreads {
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"--max-threads must be 1-%d, got '%s'", draincore.MaxMaxThreads, text)}), true
 	}
 	return limit, 0, false
@@ -369,7 +369,7 @@ func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool
 	case strings.Contains(a, "=") && setEqualsFlag(fl, a):
 		return i, 0, false
 	default:
-		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for %s (want %s)", a, verbDrain, wantFlags)}), true
 	}
 }

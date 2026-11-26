@@ -211,11 +211,10 @@ func setCopyright(v string, g *GlobalForces) {
 // without its value is a known flag, never an unknown one. want names the
 // accepted values and is appended as `(want ...)`; "" omits it.
 func MissingValue(flag, want string) *UsageError {
-	msg := flag + " needs a value"
 	if want != "" {
-		msg += " (want " + want + ")"
+		return &UsageError{Message: core.Msgf("%s needs a value (want %s)", flag, want)}
 	}
-	return &UsageError{Message: msg}
+	return &UsageError{Message: core.Msgf("%s needs a value", flag)}
 }
 
 // FlagValue returns the value operand of the value flag at args[i], plus the

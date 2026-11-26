@@ -59,7 +59,7 @@ func parseUpgradeFlags(r *cli.Runner, verb string, args []string, uninstall bool
 			if uninstall {
 				want = "--dry-run, --remove-path, --json"
 			}
-			return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown argument '%s' for %s (want %s)", arg, verb, want)}), true
+			return f, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown argument '%s' for %s (want %s)", arg, verb, want)}), true
 		}
 	}
 	return f, 0, false

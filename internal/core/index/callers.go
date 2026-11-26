@@ -92,7 +92,7 @@ func (st *state) warnStale(ctx context.Context, root, tree string) bool {
 	if ref != nil || head == tree {
 		return false
 	}
-	st.warn(fmt.Sprintf("» index: built for %s, HEAD is %s", tree, head))
+	st.warn(core.Msgf("» index: built for %s, HEAD is %s", tree, head))
 	return true
 }
 

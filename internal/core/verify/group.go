@@ -238,7 +238,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 		return nil, st.withWarnings(ref)
 	}
 	defer bundle.close()
-	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
+	st.human(core.Msgf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, commandDir(run.workDir, run.sandbox),
 		st.childEnv(), run.sandbox)
@@ -254,7 +254,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	if ref := bundle.writeValidationReceipt(filepath.Base(run.receiptPath), &receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	st.human(fmt.Sprintf("» exit=%d timed_out=%t status=%s recorded into %s",
+	st.human(core.Msgf("» exit=%d timed_out=%t status=%s recorded into %s",
 		receipt.Exit, receipt.TimedOut, receipt.Status, run.receiptPath))
 	st.warnOutcomes(&receipt, runRef)
 	return st.groupResponse(dir, run.receiptPath, &receipt), nil

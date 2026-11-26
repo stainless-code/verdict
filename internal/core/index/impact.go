@@ -3,7 +3,6 @@ package indexcore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -180,9 +179,9 @@ func (st *state) impactStale(tree, head, headTree string, headKnown bool) bool {
 	case head == "":
 		return false
 	case !headKnown:
-		st.warn(fmt.Sprintf(impactUnresolved, head, tree))
+		st.warn(core.Msgf(impactUnresolved, head, tree))
 	case headTree != tree:
-		st.warn(fmt.Sprintf(impactHeadStale, tree, headTree))
+		st.warn(core.Msgf(impactHeadStale, tree, headTree))
 	default:
 		return false
 	}

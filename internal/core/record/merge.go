@@ -222,7 +222,7 @@ func (st *state) loadKB() {
 func (st *state) reportMoves() {
 	st.nKept = len(st.kept)
 	st.nMoved = len(st.moved)
-	st.human(fmt.Sprintf("» anchors: %d inline, %d moved to body", st.nKept, st.nMoved))
+	st.human(core.Msgf("» anchors: %d inline, %d moved to body", st.nKept, st.nMoved))
 	if st.nMoved == 0 {
 		return
 	}

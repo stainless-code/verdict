@@ -7,11 +7,11 @@ package verify
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -114,7 +114,7 @@ func parseToken(r *cli.Runner, args []string, i int, flags *verifyFlags) (int, i
 		flags.envAllowlist = append(flags.envAllowlist, strings.Split(v, ",")...)
 		return next, 0, false
 	}
-	return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+	return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>,"+
 			" --command <cmd>, --sandbox, --sandbox-network-only, --env-allowlist <names>, --json)", a)}), true
 }

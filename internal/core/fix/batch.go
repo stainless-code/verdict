@@ -342,7 +342,7 @@ func batchSeverity(entry any) string {
 func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify string) int {
 	ready, anchors := batchReady(rows)
 	st.printSelection()
-	st.humanf("» ledger: %s — batch of %d selected%s, %d pass(es)\n",
+	st.progressf("» ledger: %s — batch of %d selected%s, %d pass(es)\n",
 		ledgerPath, len(rows), scopeSuffix(st.req.Paths), ready)
 	for i := range rows {
 		st.printBatchRow(ledgerPath, &rows[i])
@@ -370,7 +370,7 @@ func (st *state) printSelection() {
 	if st.selection == nil {
 		return
 	}
-	st.humanf("» selection: %s — %d reacted sig(s)\n", st.selection.path, len(st.selection.sigs))
+	st.progressf("» selection: %s — %d reacted sig(s)\n", st.selection.path, len(st.selection.sigs))
 }
 
 // batchMode renders the flag that re-runs this batch. A composite

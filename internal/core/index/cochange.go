@@ -276,7 +276,7 @@ func (st *state) cacheCoChange(root, dir, path string, doc *coChangeDoc, shallow
 		st.warn(coChangeCacheWarning + "the index store is absent (run verdict index build)")
 	default:
 		if reason := writeCoChangeCache(dir, path, doc); reason != "" {
-			st.warn(coChangeCacheWarning + reason)
+			st.warn(core.Msgf(coChangeCacheWarning+"%s", reason))
 		}
 	}
 }

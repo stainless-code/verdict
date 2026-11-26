@@ -174,7 +174,7 @@ func (st *threadsRun) write(
 		return nil, st.withWarnings(ref)
 	}
 	data := summarizeThreads(dir, provider, head, at, truncated, feed)
-	st.human(fmt.Sprintf("» %s threads -> %s/threads.json", provider, dir))
+	st.human(core.Msgf("» %s threads -> %s/threads.json", provider, dir))
 	st.human(fmt.Sprintf("done: %d threads (%d open, %d outdated) -> %s/threads.json",
 		data.Threads, data.Open, data.Outdated, dir))
 	return data, nil

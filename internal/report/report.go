@@ -334,7 +334,7 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, args []string, i int) (in
 		set(flags)
 		return 1, 0, false
 	}
-	return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for report (want %s)", a, reportWantedFlags())}), true
+	return 0, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown flag '%s' for report (want %s)", a, reportWantedFlags())}), true
 }
 
 // parseReportValue consumes one report value flag and applies its validation.
@@ -406,8 +406,8 @@ func parseCategoryFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int
 	flags.Category = next
 	if !core.ValidCategory(flags.Category) {
 		return 0, r.ReportUsage(usageErr(
-			"unknown --category '%s' for report (bad-category; try: pass "+reportValueWants["--category"]+")",
-			flags.Category)), true
+			"unknown --category '%s' for report (bad-category; try: pass %s)",
+			flags.Category, reportValueWants["--category"])), true
 	}
 	return 2, 0, false
 }
@@ -422,8 +422,8 @@ func orDefault(v, dflt string) string {
 }
 
 // usageErr builds a verb usage error.
-func usageErr(format, arg string) *cli.UsageError {
-	return &cli.UsageError{Message: fmt.Sprintf(format, arg)}
+func usageErr(format string, args ...any) *cli.UsageError {
+	return &cli.UsageError{Message: core.Msgf(format, args...)}
 }
 
 // validStatus reports whether s is a known status filter.

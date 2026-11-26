@@ -80,7 +80,7 @@ func parseFlags(args []string, q *readycore.Request) *cli.UsageError {
 				return usage
 			}
 		default:
-			return &cli.UsageError{Message: "unknown ready flag: " + flag}
+			return &cli.UsageError{Message: core.Msgf("unknown ready flag: %s", flag)}
 		}
 	}
 	return nil
@@ -88,7 +88,7 @@ func parseFlags(args []string, q *readycore.Request) *cli.UsageError {
 
 func valueFlag(args []string, flag string, q *readycore.Request) ([]string, *cli.UsageError) {
 	if len(args) < 2 {
-		return nil, &cli.UsageError{Message: "missing ready flag operand: " + flag}
+		return nil, &cli.UsageError{Message: core.Msgf("missing ready flag operand: %s", flag)}
 	}
 	if flag == "--wait-for" {
 		q.WaitFor = args[1]

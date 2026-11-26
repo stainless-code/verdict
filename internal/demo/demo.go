@@ -127,7 +127,7 @@ func parseToken(
 		*positionals = append(*positionals, args[i+1:]...)
 		return len(args), 0, false
 	case strings.HasPrefix(a, "-"):
-		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(msgUnknownFlag, a)}), true
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(msgUnknownFlag, a)}), true
 	default:
 		*positionals = append(*positionals, a)
 	}
@@ -149,13 +149,13 @@ func parseValueToken(
 		// can only be the next flag. Taking it would consume that flag and
 		// report bad-timeout after a fetch instead of a usage error here.
 		if v == "" || strings.HasPrefix(v, flagSeparator) {
-			return "", i, r.ReportUsage(&cli.UsageError{Message: emptyMsg}), true
+			return "", i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", emptyMsg)}), true
 		}
 		return v, n, 0, false
 	}
 	v := strings.TrimPrefix(args[i], name+flagAssign)
 	if v == "" {
-		return "", i, r.ReportUsage(&cli.UsageError{Message: emptyMsg}), true
+		return "", i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", emptyMsg)}), true
 	}
 	return v, i, 0, false
 }
@@ -164,7 +164,7 @@ func parseValueToken(
 func finishFlags(r *cli.Runner, f *flags, positionals []string) (flags, int, bool) {
 	if len(positionals) > 1 {
 		return *f, r.ReportUsage(&cli.UsageError{
-			Message: fmt.Sprintf(msgTooMany, len(positionals), urlShape),
+			Message: core.Msgf(msgTooMany, len(positionals), urlShape),
 		}), true
 	}
 	if len(positionals) == 1 {

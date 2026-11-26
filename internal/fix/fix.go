@@ -6,7 +6,6 @@ package fix
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -46,7 +45,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	resp, ref := fixcore.Run(ctx, fixRequest(r, &req, f))
 	if ref != nil {
 		if ref.Code == core.CodeBadFlags {
-			return r.ReportUsage(&cli.UsageError{Message: ref.Message})
+			return r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", core.Trusted(ref.Message))})
 		}
 		return r.RefuseTyped(ref)
 	}
@@ -126,10 +125,10 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 		case commitFlag:
 			f.commit = true
 		default:
-			msg := fmt.Sprintf("unknown flag '%s' for fix (want %s <sig>, --all|--selected|--recipe <name> "+
-				"[%s <sig>] [%s] [%s <s>] [%s <cmd>] [%s <glob>], --json)",
-				a, sigFlag, testFlag, commitFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)
-			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
+			return f, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
+				"unknown flag '%s' for fix (want %s <sig>, --all|--selected|--recipe <name> "+
+					"[%s <sig>] [%s] [%s <s>] [%s <cmd>] [%s <glob>], --json)",
+				a, sigFlag, testFlag, commitFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)}), true
 		}
 	}
 	return f, 0, false

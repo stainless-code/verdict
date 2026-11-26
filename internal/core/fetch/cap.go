@@ -45,7 +45,7 @@ func resolveFetchCap(r *session, res *config.Resolved) fetchCap {
 		return fc
 	}
 	fc.source = origin.Source
-	fmt.Fprintf(r.Human, "» cap: %d bytes (from %s, default 512000)\n", fc.maxBytes, fc.source)
+	fmt.Fprint(r.Human, core.Msgf("» cap: %d bytes (from %s, default 512000)\n", fc.maxBytes, fc.source))
 	fc.json = jq.NewObj("bytes", fc.maxBytes, keySource, fc.source)
 	return fc
 }
@@ -121,13 +121,13 @@ func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim
 		// The opt-in notices own stderr in both modes (`>&2`).
 
 		if chunkPlanOK(fullDiff, lim.maxBytes) {
-			fmt.Fprintf(r.Diag, "» chunking opted in (from %s) — slicing over-cap diff (%d bytes, cap %d) into cap-sized chunks\n",
-				optIn.source, total, lim.maxBytes)
+			fmt.Fprint(r.Diag, core.Msgf("» chunking opted in (from %s) — slicing over-cap diff (%d bytes, cap %d) into cap-sized chunks\n",
+				optIn.source, total, lim.maxBytes))
 			return true, nil
 		}
-		fmt.Fprintf(r.Diag, "» chunking opted in (from %s) — single file over cap, keeping today's advisory refusal "+
+		fmt.Fprint(r.Diag, core.Msgf("» chunking opted in (from %s) — single file over cap, keeping today's advisory refusal "+
 			"(split the range or narrow, or override the cap deliberately)\n",
-			optIn.source)
+			optIn.source))
 	}
 	cands := suggestSplits(fullDiff, total)
 	printSplitCandidates(r, cands)

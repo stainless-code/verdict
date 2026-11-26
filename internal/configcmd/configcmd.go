@@ -153,7 +153,7 @@ func parseFlag(flags *core.ConfigFlags, args []string, i int) (int, *cli.UsageEr
 		flags.File = value
 		return next, nil
 	default:
-		return i, &cli.UsageError{Message: unknownFlagMessage(arg)}
+		return i, &cli.UsageError{Message: core.Msgf("%s", unknownFlagMessage(arg))}
 	}
 }
 

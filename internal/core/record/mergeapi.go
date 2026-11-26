@@ -326,9 +326,9 @@ func sigAt(sigs []string, i int) string {
 }
 
 func reportFindings(st *state) {
-	line := fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
+	line := core.Msgf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
 	if st.dryRun && st.cmd == recordCommand {
-		line = fmt.Sprintf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
+		line = core.Msgf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
 	}
 	st.human(line)
 	for _, e := range st.entries {

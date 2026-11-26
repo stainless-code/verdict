@@ -22,8 +22,10 @@ const Named = "x error: forged  error: crlf error: sep live"
 
 // AssertOneErrorLine renders one refusal through the CLI writer and pins
 // exactly one `error:` line that still names the value, then renders it
-// under --json and pins an error.message whose one line names it the same
-// way, ahead of the `try:` hint line verdict appends.
+// under --json and pins an error.message that names it the same way, holds
+// no CR or line separator, and has no line of its own that starts as
+// verdict's `error:` or `warn:` does: a refusal that lays out several lines
+// keeps them, and a stranger's value adds none.
 func AssertOneErrorLine(tb testing.TB, err error, named string) {
 	tb.Helper()
 	if err == nil {
@@ -59,10 +61,19 @@ func assertJSONMessage(tb testing.TB, err error, named string) {
 		tb.Fatalf("--json envelope: %v\n%s", jerr, out.String())
 	}
 	msg := env.Error.Message
-	if i := strings.LastIndex(msg, "\ntry: "); i >= 0 {
-		msg = msg[:i]
+	if strings.ContainsAny(msg, "\r\xe2\x80\xa8") || forgesLine(msg) || !strings.Contains(msg, named) {
+		tb.Errorf("--json error.message = %q, want no forged line, naming %q", env.Error.Message, named)
 	}
-	if strings.ContainsAny(msg, "\n\r\xe2\x80\xa8") || !strings.Contains(msg, named) {
-		tb.Errorf("--json error.message = %q, want one line naming %q", env.Error.Message, named)
+}
+
+// forgesLine reports a line after the first that starts as verdict's own
+// `error:` or `warn:` line does.
+func forgesLine(msg string) bool {
+	_, rest, _ := strings.Cut(msg, "\n")
+	for line := range strings.SplitSeq(rest, "\n") {
+		if strings.HasPrefix(line, "error:") || strings.HasPrefix(line, "warn:") {
+			return true
+		}
 	}
+	return false
 }

@@ -151,7 +151,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 		return roundOutcome{stop: true, ref: ref}
 	}
 	prompt := st.roundPrompt(args, rep, in, k, n)
-	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
+	st.human(core.Msgf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	if ref := st.admit(ctx, k); ref != nil {
 		return roundOutcome{stop: true, ref: ref}
 	}

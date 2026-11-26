@@ -330,7 +330,7 @@ func reportNoHistory(r *session) {
 // reportUnknownProjection explains a picked tier whose records carry no
 // est_usd, quoting the ordinary budget only when the run actually has one.
 func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns int) {
-	line := fmt.Sprintf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
+	line := core.Msgf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
 		tier, tierRuns)
 	if st.hasBudget {
 		line += fmt.Sprintf("; budget $%s (%s) unenforced on unknown", st.budgetUSD, st.budgetSrc)
@@ -341,7 +341,7 @@ func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns 
 // estimateLine renders a known projection, comparing it against the ordinary
 // guard only when the run carries one.
 func estimateLine(st *budgetState, tier string) string {
-	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
+	line := core.Msgf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
 	if !st.hasBudget {
 		return line
 	}
@@ -637,8 +637,8 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 		r.Warn(fmt.Sprintf("could not write %s/budget.json: %v", dir, err))
 		return
 	}
-	fmt.Fprintf(r.Human, "» receipt: %s recorded in %s/budget.json (%s)\n",
-		receiptKind(st), dir, receiptSummary(st))
+	fmt.Fprint(r.Human, core.Msgf("» receipt: %s recorded in %s/budget.json (%s)\n",
+		receiptKind(st), dir, receiptSummary(st)))
 }
 
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {

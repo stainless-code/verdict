@@ -133,7 +133,7 @@ func writeChunkManifest(
 	if werr := atomic.WriteFile(cdir+"/manifest.json", []byte(jq.PrettyOrdered(manifest))); werr != nil {
 		return nil, internalErrorf("could not write %s/manifest.json: %v", cdir, werr)
 	}
-	fmt.Fprintf(human, "» chunked: %d chunk(s) at or under %d bytes + %s/chunks/manifest.json\n", n, maxBytes, dir)
+	fmt.Fprint(human, core.Msgf("» chunked: %d chunk(s) at or under %d bytes + %s/chunks/manifest.json\n", n, maxBytes, dir))
 	return jq.NewObj("count", n, "manifest", dir+suffixChunkManifest, "total_bytes", total), nil
 }
 

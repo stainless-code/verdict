@@ -121,7 +121,7 @@ func parseACPFlag(r *cli.Runner, opts *acpOptions, args []string, i int) (int, i
 		code, done := applyACPFlag(r, opts, name, value)
 		return next, code, done
 	default:
-		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for acp (want --root, --check, --max-bundles, --json)", name)}), true
 	}
 }
@@ -143,7 +143,7 @@ func applyACPCheck(r *cli.Runner, opts *acpOptions, value string) (int, bool) {
 	case "critical", "important", "informational":
 		opts.check = value
 	default:
-		return r.ReportUsage(&cli.UsageError{Message: "acp: --check " + value + " wants critical|important|informational"}), true
+		return r.ReportUsage(&cli.UsageError{Message: core.Msgf("acp: --check %s wants critical|important|informational", value)}), true
 	}
 	return 0, false
 }
@@ -151,7 +151,7 @@ func applyACPCheck(r *cli.Runner, opts *acpOptions, value string) (int, bool) {
 func applyACPMaxBundles(r *cli.Runner, opts *acpOptions, value string) (int, bool) {
 	n, err := strconv.Atoi(value)
 	if err != nil || n < 1 {
-		return r.ReportUsage(&cli.UsageError{Message: "acp: --max-bundles " + value + " is not a positive count"}), true
+		return r.ReportUsage(&cli.UsageError{Message: core.Msgf("acp: --max-bundles %s is not a positive count", value)}), true
 	}
 	opts.maxBundles = n
 	return 0, false

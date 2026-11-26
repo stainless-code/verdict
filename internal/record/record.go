@@ -6,10 +6,10 @@ package record
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -84,13 +84,13 @@ func parseRecordFlags(r *cli.Runner, args []string) (recordFlags, int, bool) {
 			f.costNames = true
 			panel, ok := splitPanel(strings.TrimPrefix(arg, "--cost-names="))
 			if !ok {
-				return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+				return f, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 					"empty name in '%s': --cost-names takes one name per seat, in order "+
 						"(want --cost-names=lead,lens-1)", arg)}), true
 			}
 			f.costPanel = panel
 		default:
-			return f, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return f, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for record (want --dry-run, --strict, --cost-names, --require-coverage, --json)", arg)}), true
 		}
 	}

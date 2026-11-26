@@ -251,7 +251,7 @@ func applyLSPDuration(r *cli.Runner, opts *lspOptions, name, value string) (int,
 }
 
 func lspUsage(r *cli.Runner, message string) int {
-	return r.ReportUsage(&cli.UsageError{Message: message})
+	return r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", message)})
 }
 
 // resolveLSPRoots validates every explicit --root. With none, the session

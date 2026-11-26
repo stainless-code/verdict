@@ -830,7 +830,7 @@ func (st *state) eventLine() {
 	if rv, ok := st.review.Get("resolved"); ok {
 		resolved = len(jq.Elements(rv))
 	}
-	st.human(fmt.Sprintf("» event=%s inline=%d embedded=%d resolved_count=%d",
+	st.human(core.Msgf("» event=%s inline=%d embedded=%d resolved_count=%d",
 		st.event, st.merged.NKept, st.embedded, resolved))
 }
 

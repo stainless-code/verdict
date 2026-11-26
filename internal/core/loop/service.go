@@ -427,7 +427,7 @@ func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 // unmeasured is the refusal a cost-ceilinged loop stops with when a round's
 // spend has no known amount.
 func (lp *loop) unmeasured(n int) *Refusal {
-	return &Refusal{Code: codeBudgetUnknown, Message: fmt.Sprintf("round %d's spend could not be measured "+
+	return &Refusal{Code: codeBudgetUnknown, Message: core.Msgf("round %d's spend could not be measured "+
 		"(an agent spawn reported no cost) — --max-cost-usd %s cannot be enforced, so the loop stopped "+
 		"before spending more", n, lp.req.MaxCostUSD)}
 }
@@ -718,7 +718,7 @@ func asRefusal(ref *core.RefusalError) *Refusal {
 	if ref == nil {
 		return nil
 	}
-	return &Refusal{Code: ref.Code, Message: ref.Message}
+	return &Refusal{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
 }
 
 // decimalNumber renders an exact decimal literal as the receipt's number,

@@ -101,8 +101,8 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 			}
 			provider, i = v, next
 		default:
-			msg := fmt.Sprintf("unknown flag '%s' for doctor (want --provider <name>, --json)", a)
-			return "", r.ReportUsage(&cli.UsageError{Message: msg}), true
+			return "", r.ReportUsage(&cli.UsageError{Message: core.Msgf(
+				"unknown flag '%s' for doctor (want --provider <name>, --json)", a)}), true
 		}
 	}
 	return provider, 0, false

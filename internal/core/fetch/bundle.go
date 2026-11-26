@@ -112,7 +112,7 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/toc.txt: %v", ctx.dir, werr)}
 	}
-	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir))
+	fmt.Fprint(ctx.runner.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir)))
 	paths := splitLines(withoutExcluded(ctx, strings.Join(prFilePaths(ctx.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", ctx.dir, werr)}
@@ -221,7 +221,7 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 		if werr := atomic.WriteFile(ctx.dir+"/panel", []byte(sb.String())); werr != nil {
 			return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/panel: %v", ctx.dir, werr)}
 		}
-		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
+		fmt.Fprint(ctx.runner.Human, core.Msgf("» panel (%d from %s)\n", len(panelList), panelSrc))
 	} else if ctx.runner.Effective.Compact != strTrue {
 		fmt.Fprintln(ctx.runner.Human,
 			"» panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)")
@@ -235,8 +235,8 @@ func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
 		if raw, ok := ctx.runner.readControl(config.LearningsPath); ok {
 			// `wc -l` counts newline bytes, not lines.
-			fmt.Fprintf(ctx.runner.Human, "» learnings: %s (%d lines — read headings first, not the full file)\n",
-				ctx.runner.controls.Path(config.LearningsPath), countNewlines(string(raw)))
+			fmt.Fprint(ctx.runner.Human, core.Msgf("» learnings: %s (%d lines — read headings first, not the full file)\n",
+				ctx.runner.controls.Path(config.LearningsPath), countNewlines(string(raw))))
 		}
 	}
 	return nil

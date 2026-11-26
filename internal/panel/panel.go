@@ -140,7 +140,7 @@ func render(r *cli.Runner, req readcommon.Request, output *planned) {
 		return
 	}
 	const line = "» panel: %v verifiers · %v findings · %v dispatches -> %s/verification/dispatch.md\n"
-	fmt.Fprintf(r.Human, line, totals.Fields["verifiers"], totals.Fields["findings"], totals.Fields["dispatches"], output.dir)
+	fmt.Fprint(r.Human, core.Msgf(line, totals.Fields["verifiers"], totals.Fields["findings"], totals.Fields["dispatches"], output.dir))
 }
 
 func refuse(r *cli.Runner, err error) int {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/reverts"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
@@ -51,7 +52,7 @@ func writeRevertsNote(ctx2 *fetchRunCtx, dir, extra string) {
 		r.Warn(fmt.Sprintf("could not write %s: %v", file, werr))
 		return
 	}
-	fmt.Fprintf(r.Human, "» reverts: %d revert(s) touching this diff -> %s (%s)\n", shown, file, flag)
+	fmt.Fprint(r.Human, core.Msgf("» reverts: %d revert(s) touching this diff -> %s (%s)\n", shown, file, flag))
 }
 
 // diffReverts reads the ledger through the shared validating reader and keeps

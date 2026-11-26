@@ -1939,7 +1939,12 @@ whichever verb raises it, folds each value it quotes (a flag value, a path, a
 `review.json` field, a config key, a host's reply, a child process's stderr)
 before the value enters the message: line breaks (LF, CR, U+2028, U+2029, every
 other control) and the bidi controls become spaces, and the value is still
-named. Files verdict writes to disk are not folded, and neither is gate
+named. A usage error, a `loop` refusal, and a `»` progress line fold the values
+they name the same way. Text another program printed that verdict passes on to
+the terminal (`gh`'s or `git`'s stderr during `fetch`, an agent's output tail
+in a `run` refusal) keeps its lines, but each is folded and led by an indented
+tag (`gh:`, `git:`, `agent:`), so none can start as an `error:` or `warn:`
+line. Files verdict writes to disk are not folded, and neither is gate
 `detail` in the `--json` envelope, which carries the stored value verbatim for
 the human renderer to fold. A refusal's `error.message` carries the quoted
 values already folded, so it reads the same in both modes.

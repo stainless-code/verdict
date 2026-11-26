@@ -315,6 +315,14 @@ func (st *state) humanf(format string, args ...any) {
 	}
 }
 
+// progressf writes one `»` progress line, each value folded to that line by
+// core.Msgf: a path or a sig cannot start a line of its own.
+func (st *state) progressf(format string, args ...any) {
+	if st.req.Human != nil {
+		fmt.Fprint(st.req.Human, core.Msgf(format, args...))
+	}
+}
+
 func (st *state) humanRaw(text string) {
 	st.humanf("%s", text)
 }
@@ -475,7 +483,7 @@ func (st *state) printReadiness(dir string, entries []any) (string, int, int) {
 	now := st.req.TimeUTC()
 	st.at = now
 	fixOpen, fixOpenInline := countOpen(entries)
-	st.humanf("» readiness: %s — findings %d open (%d inline open); "+
+	st.progressf("» readiness: %s — findings %d open (%d inline open); "+
 		"threads (stored): %s; PR %s\n",
 		dir, fixOpen, fixOpenInline, storedThreads(dir), prInfo(dir))
 	return now, fixOpen, fixOpenInline
@@ -1093,7 +1101,7 @@ func (st *state) passOutput(
 	full, anchor string,
 	pass, fixOpen, fixOpenInline int,
 ) *core.RefusalError {
-	st.humanf("» ledger: %s — sig %s pass %d/3\n",
+	st.progressf("» ledger: %s — sig %s pass %d/3\n",
 		ledgerPath, readcommon.Prefix(full), pass)
 	block := readPassBlock(rec, full, anchor)
 	st.printPassBlock(block, pass, ledgerPath)

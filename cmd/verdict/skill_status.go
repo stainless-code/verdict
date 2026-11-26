@@ -85,7 +85,7 @@ func parseSkillStatusFlags(r *cli.Runner, args []string) (skillStatusFlags, int,
 			return f, cli.ExitOK, true
 		default:
 			return f, r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill status (want --dir, --agent, --detect, --diff, --json)", arg),
+				Message: core.Msgf("unknown flag '%s' for skill status (want --dir, --agent, --detect, --diff, --json)", arg),
 			}), true
 		}
 	}

@@ -130,7 +130,7 @@ func (f *rawFlags) take(args []string, i int) (int, *cli.UsageError) {
 		return f.takeAlias(args, i)
 	case isFlag(a):
 		return 0, &cli.UsageError{
-			Message: fmt.Sprintf("unknown flag '%s' for ingest (want --from, --sarif, --json)", a),
+			Message: core.Msgf("unknown flag '%s' for ingest (want --from, --sarif, --json)", a),
 		}
 	default:
 		return 0, f.takePath(a)
@@ -169,7 +169,7 @@ func (f *rawFlags) takeAlias(args []string, i int) (int, *cli.UsageError) {
 func (f *rawFlags) takePath(a string) *cli.UsageError {
 	if f.positional != "" {
 		return &cli.UsageError{
-			Message: fmt.Sprintf("unexpected argument %q for ingest (one <file|-> source)", a),
+			Message: core.Msgf("unexpected argument %q for ingest (one <file|-> source)", a),
 		}
 	}
 	f.positional = a
@@ -183,7 +183,7 @@ func (f *rawFlags) resolve() (input, *cli.UsageError) {
 		return input{}, &cli.UsageError{Message: "--from and --sarif name one source; pass one"}
 	case f.aliasSet && f.positional != "":
 		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("unexpected argument %q after --sarif; pass one <file|-> value", f.positional),
+			Message: core.Msgf("unexpected argument %q after --sarif; pass one <file|-> value", f.positional),
 		}
 	case f.aliasSet:
 		return input{Path: f.aliasPath}, nil
@@ -191,7 +191,7 @@ func (f *rawFlags) resolve() (input, *cli.UsageError) {
 		return f.resolveFrom()
 	case f.positional != "":
 		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("name the source as --from sarif %s (or --sarif %s)", f.positional, f.positional),
+			Message: core.Msgf("name the source as --from sarif %s (or --sarif %s)", f.positional, f.positional),
 		}
 	default:
 		// No source at all: the core service refuses missing-sarif with its hint.
@@ -207,7 +207,7 @@ func (f *rawFlags) resolveFrom() (input, *cli.UsageError) {
 	}
 	if f.positional == "" {
 		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("--from %s needs <file|->", strings.TrimSpace(f.fromFormat)),
+			Message: core.Msgf("--from %s needs <file|->", strings.TrimSpace(f.fromFormat)),
 		}
 	}
 	return input{Format: f.fromFormat, Path: f.positional}, nil
