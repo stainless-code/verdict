@@ -335,7 +335,7 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 		Repo:      "acme/app",
 		Agent:     agentBinary,
 		MaxRounds: 3,
-		Budget:    5 * time.Minute,
+		Timeout:   5 * time.Minute,
 		Output:    filepath.Join(t.TempDir(), "receipts"),
 	}
 }

@@ -22,18 +22,19 @@ const (
 // plan renders every command the loop can run, round by round, as its CLI
 // equivalent: the composed verbs run in-process with exactly these options,
 // and the fix phase is the agent argv itself, prompt included. A spawn's
-// watchdog is the wall budget that remains when it starts — split across the
-// review's attempts — so a rendered --timeout is the most a spawn can get.
+// watchdog is the time left before the loop's deadline when it starts — split
+// across the review's attempts — so a rendered --timeout is the most a spawn
+// can get.
 // The last round has no fix: nothing would review it.
 func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 	// The agent resolves before any step is planned, so a one-round loop —
 	// which plans no fix — still refuses an unknown agent before work starts.
-	if _, ref := lp.fixArgv(ctx, 1, strconv.Itoa(lp.data.BudgetS)); ref != nil {
+	if _, ref := lp.fixArgv(ctx, 1, strconv.Itoa(lp.data.TimeoutS)); ref != nil {
 		return nil, ref
 	}
 	steps := []PlanStep{}
-	budget := strconv.Itoa(lp.data.BudgetS)
-	reviewTimeout := strconv.Itoa(max(1, (lp.data.BudgetS+reviewAttempts-1)/reviewAttempts))
+	timeout := strconv.Itoa(lp.data.TimeoutS)
+	reviewTimeout := strconv.Itoa(max(1, (lp.data.TimeoutS+reviewAttempts-1)/reviewAttempts))
 	for n := 1; n <= lp.req.MaxRounds; n++ {
 		name := lp.name(n)
 		local := localPrefix + name
@@ -55,7 +56,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		if n == lp.req.MaxRounds {
 			continue
 		}
-		argv, ref := lp.fixArgv(ctx, n, budget)
+		argv, ref := lp.fixArgv(ctx, n, timeout)
 		if ref != nil {
 			return nil, ref
 		}
@@ -69,9 +70,9 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 
 // fixArgv resolves the fix agent's argv without spawning: the same agent
 // resolution the spawn uses, so an unknown agent refuses before any work.
-func (lp *loop) fixArgv(ctx context.Context, n int, budget string) ([]string, *core.RefusalError) {
+func (lp *loop) fixArgv(ctx context.Context, n int, timeout string) ([]string, *core.RefusalError) {
 	b := lp.bundle(n)
-	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: budget}, nil)
+	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: timeout}, nil)
 	req.Print = true
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), b.Pr)
 	// The plan is the exact argv: the fix spawn requests the CLI's
@@ -84,7 +85,7 @@ func (lp *loop) fixArgv(ctx context.Context, n int, budget string) ([]string, *c
 // verifyArgv is the verify step's CLI equivalent, with the sandbox the
 // operator passed through.
 func (lp *loop) verifyArgv(repo, local string) []string {
-	argv := []string{verbName, "verify", repo, local, "--timeout", strconv.Itoa(min(verifyCapS, lp.data.BudgetS))}
+	argv := []string{verbName, "verify", repo, local, "--timeout", strconv.Itoa(min(verifyCapS, lp.data.TimeoutS))}
 	switch {
 	case lp.req.VerifySandbox:
 		argv = append(argv, "--sandbox")

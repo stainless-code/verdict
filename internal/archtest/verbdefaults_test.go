@@ -83,7 +83,7 @@ func defaultsRows() [][]string {
 		[]string{"run", "--timeout", run.DefaultTimeoutS},
 		[]string{"run", "--rounds", run.DefaultRounds},
 		[]string{"loop", "--max-rounds", loop.DefaultMaxRounds},
-		[]string{"loop", "--budget", loop.DefaultBudget},
+		[]string{"loop", "--timeout", loop.DefaultTimeout},
 	)
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i][0] != rows[j][0] {

@@ -629,11 +629,11 @@ export interface RiskRung {
 /** loop --json data and the body of summary.json: the self-review loop's outcome, the limits it held, the planned commands, and every round's receipt. CLI-only; passed is true only when stop is pass, and a --print render carries stop planned, the plan, and no rounds. */
 export interface LoopData {
   passed: boolean;
-  /** Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print). */
+  /** Why the loop ended: pass (the last gate passed), max-rounds, timeout (the --timeout deadline passed, or a spawn's watchdog, which is the time that remained, fired), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print). */
   stop:
     | "pass"
     | "max-rounds"
-    | "wall-budget"
+    | "timeout"
     | "cost-budget"
     | "no-progress"
     | "agent-failed"
@@ -641,7 +641,7 @@ export interface LoopData {
     | "planned";
   agent: string;
   max_rounds: number;
-  budget_s: number;
+  timeout_s: number;
   max_cost_usd: number | null;
   /** The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown). */
   cost_usd: number | null;

@@ -35,13 +35,13 @@ const (
 	verb = "loop"
 	// DefaultMaxRounds is the round ceiling a bare loop runs with.
 	DefaultMaxRounds = "3"
-	// DefaultBudget is the wall budget a bare loop runs with.
-	DefaultBudget = "600s"
+	// DefaultTimeout is the wall-clock limit a bare loop runs with.
+	DefaultTimeout = "600s"
 
 	flagAgent     = "--agent"
 	flagMaxRounds = "--max-rounds"
 	flagMaxCost   = "--max-cost-usd"
-	flagBudget    = "--budget"
+	flagTimeout   = "--timeout"
 	flagOutput    = "--output"
 	flagFixPrompt = "--fix-prompt"
 	flagPrint     = "--print"
@@ -58,7 +58,7 @@ const (
 	maxFixPromptBytes = 64 << 10
 
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
-		"--max-cost-usd <usd>, --budget <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
+		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
 		"--sandbox-network-only, --print, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
@@ -68,7 +68,7 @@ type flags struct {
 	agent      string
 	maxRounds  string
 	maxCost    string
-	budget     string
+	timeout    string
 	output     string
 	fixPrompt  string
 	print      bool
@@ -77,7 +77,7 @@ type flags struct {
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
-// [--max-cost-usd <usd>] [--budget <duration>] [--output <dir>]
+// [--max-cost-usd <usd>] [--timeout <duration>] [--output <dir>]
 // [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
 // [--json]`.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
@@ -112,7 +112,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 
 // exitFor maps the outcome: a pass and a --print render exit 0; an operator
 // cancel — the refused stop carrying the canceled refusal — exits 3; every
-// other stop exits 1, including a wall-budget stop whose deadline canceled a
+// other stop exits 1, including a timeout stop whose deadline canceled a
 // phase. The receipts are written either way.
 func exitFor(d *loopcore.Data) int {
 	switch {
@@ -131,7 +131,7 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 	if ref != nil {
 		return nil, ref
 	}
-	budget, ref := parseBudget(f.budget)
+	timeout, ref := parseTimeout(f.timeout)
 	if ref != nil {
 		return nil, ref
 	}
@@ -153,7 +153,7 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 		Repo:       req.Repo,
 		Agent:      f.agent,
 		MaxRounds:  rounds,
-		Budget:     budget,
+		Timeout:    timeout,
 		MaxCostUSD: f.maxCost,
 		Output:     output,
 		FixPrompt:  prompt,
@@ -195,8 +195,9 @@ func parseRounds(raw string) (int, *core.RefusalError) {
 	return n, nil
 }
 
-// parseBudget reads --budget: bare seconds (600) or a Go duration (600s, 10m).
-func parseBudget(raw string) (time.Duration, *core.RefusalError) {
+// parseTimeout reads --timeout: bare seconds (600) or a Go duration
+// (600s, 10m).
+func parseTimeout(raw string) (time.Duration, *core.RefusalError) {
 	spelled := raw
 	if digitsOnly(raw) {
 		spelled += "s"
@@ -204,7 +205,7 @@ func parseBudget(raw string) (time.Duration, *core.RefusalError) {
 	d, err := time.ParseDuration(spelled)
 	if err != nil || d <= 0 {
 		return 0, &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
-			"--budget must be a positive duration (600, 600s, 10m), got '%s'", raw)}
+			"--timeout must be a positive duration (600, 600s, 10m), got '%s'", raw)}
 	}
 	return d, nil
 }
@@ -254,7 +255,7 @@ func outputDir(raw string) (string, *core.RefusalError) {
 // parseFlags strips loop's flags, refusing unknown ones and any positional
 // past the repo (exit 2).
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	f := flags{maxRounds: DefaultMaxRounds, budget: DefaultBudget}
+	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout}
 	for i := 0; i < len(args); i++ {
 		next, uerr := parseToken(&f, args, i)
 		if uerr != nil {
@@ -331,8 +332,8 @@ func valueFlag(f *flags, arg string) *string {
 		return &f.maxRounds
 	case flagMaxCost:
 		return &f.maxCost
-	case flagBudget:
-		return &f.budget
+	case flagTimeout:
+		return &f.timeout
 	case flagOutput:
 		return &f.output
 	case flagFixPrompt:
@@ -350,7 +351,7 @@ func operand(name string) string {
 		return "<n>"
 	case flagMaxCost:
 		return "<usd>"
-	case flagBudget:
+	case flagTimeout:
 		return "<duration>"
 	case flagOutput:
 		return "<dir>"

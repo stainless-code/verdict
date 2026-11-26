@@ -87,9 +87,10 @@ assert_exit "agent failure stops" 1
 assert_json_field "agent-failed stop" agent-failed '.stop' "$output/summary.json"
 assert_json_field "run's refusal surfaces as-is" agent-failed '.refusal.code' "$output/summary.json"
 
-loop_leg slow claude slow --budget 2
-assert_exit "wall budget stops" 1
-assert_json_field "wall-budget stop" wall-budget '.stop' "$output/summary.json"
+loop_leg slow claude slow --timeout 2
+assert_exit "the timeout stops" 1
+assert_json_field "timeout stop" timeout '.stop' "$output/summary.json"
+assert_json_field "the timeout is receipted in seconds" 2 '.timeout_s' "$output/summary.json"
 
 loop_leg cost claude cost --max-cost-usd 0.5
 assert_exit "cost budget stops" 1

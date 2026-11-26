@@ -45,8 +45,8 @@ const (
 	codeCanceled = "canceled"
 	msgCanceled  = "canceled before loop completed"
 	// codeAgentFailed and codeAgentTimeout are run's own codes: the first is
-	// the agent-failed stop, the second is the wall budget (every spawn's
-	// watchdog is the budget that remains).
+	// the agent-failed stop, the second is the timeout stop (every spawn's
+	// watchdog is the time that remains).
 	codeAgentFailed  = "agent-failed"
 	codeAgentTimeout = "agent-timeout"
 
@@ -58,7 +58,7 @@ const (
 	// three agent spawns, and the plan renders each one.
 	maxRounds = 20
 	// reviewAttempts is the review's launch-to-check rounds: run's default,
-	// passed explicitly so the per-attempt watchdog can split the budget.
+	// passed explicitly so the per-attempt watchdog can split the time left.
 	reviewAttempts = 2
 	// findersOne is the review topology: one finder per round, the same fast
 	// pass demo launches.
@@ -69,7 +69,7 @@ const (
 	gateCoverage = "require"
 	// gateLive keeps the gate offline: a local bundle has no host threads.
 	gateLive = "skip"
-	// verifyCapS bounds one verify run inside the wall budget, matching the
+	// verifyCapS bounds one verify run inside the loop's timeout, matching the
 	// verify verb's own default watchdog.
 	verifyCapS = 300
 	// namePrefix starts every round's fetch-local name; the store adds local-.
@@ -120,8 +120,8 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Agent string
 	// MaxRounds is the round ceiling (>= 1).
 	MaxRounds int
-	// Budget is the wall budget every phase and spawn shares.
-	Budget time.Duration
+	// Timeout is the wall-clock limit every phase and spawn shares.
+	Timeout time.Duration
 	// MaxCostUSD is the exact decimal ceiling on the summed round costs; ""
 	// sets none (the monthly ceiling still binds).
 	MaxCostUSD string
@@ -210,8 +210,8 @@ func validate(req *Request) *core.RefusalError {
 	case req.MaxRounds < 1 || req.MaxRounds > maxRounds:
 		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
 			"--max-rounds must be a whole number from 1 to %d", maxRounds)}
-	case req.Budget <= 0:
-		return &core.RefusalError{Code: codeBadFlags, Message: "--budget must be a positive duration"}
+	case req.Timeout <= 0:
+		return &core.RefusalError{Code: codeBadFlags, Message: "--timeout must be a positive duration"}
 	case req.VerifySandbox && req.VerifySandboxNetworkOnly:
 		return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are " +
 			"mutually exclusive (pick one sandbox for the verify step)"}
@@ -243,7 +243,7 @@ func newLoop(req *Request) *loop {
 	data := &Data{
 		Agent:      req.Agent,
 		MaxRounds:  req.MaxRounds,
-		BudgetS:    int(math.Ceil(req.Budget.Seconds())),
+		TimeoutS:   int(math.Ceil(req.Timeout.Seconds())),
 		MaxCostUSD: decimalNumber(req.MaxCostUSD),
 		Rounds:     []Round{},
 		Plan:       []PlanStep{},
@@ -251,7 +251,7 @@ func newLoop(req *Request) *loop {
 	return &loop{
 		req:      req,
 		started:  started,
-		deadline: started.Add(req.Budget),
+		deadline: started.Add(req.Timeout),
 		runID:    runID(started, output),
 		output:   output,
 		spent:    new(big.Rat),
@@ -317,14 +317,14 @@ func (lp *loop) rounds(ctx context.Context) {
 	}
 }
 
-// budgetStop reports what forbids starting another round: a cancel, the wall
-// budget, or the cost budget — reached, or unmeasurable.
+// budgetStop reports what forbids starting another round: a cancel, the
+// timeout, or the cost budget — reached, or unmeasurable.
 func (lp *loop) budgetStop(ctx context.Context) (string, *Refusal) {
 	switch {
 	case ctx.Err() != nil:
 		return StopRefused, canceledRefusal()
 	case !lp.now().Before(lp.deadline):
-		return StopWallBudget, nil
+		return StopTimeout, nil
 	case lp.overCost():
 		return StopCostBudget, nil
 	case lp.req.MaxCostUSD != "" && lp.unknown:
@@ -340,8 +340,8 @@ func (lp *loop) stop(reason string, ref *Refusal) {
 }
 
 // round runs one round's phases and reports the stop reason ("" continues).
-// Every phase runs under the wall deadline, so a fetch, record, or gate that
-// hangs stops the loop on the budget like a spawn does.
+// Every phase runs under the loop's deadline, so a fetch, record, or gate that
+// hangs stops the loop on the timeout like a spawn does.
 func (lp *loop) round(ctx context.Context, rd *Round) (string, *Refusal) {
 	dctx, cancel := context.WithTimeout(ctx, lp.deadline.Sub(lp.now()))
 	defer cancel()
@@ -386,8 +386,8 @@ func (lp *loop) passed(ctx context.Context) (string, *Refusal) {
 }
 
 // refused maps a composed verb's refusal onto the loop's stop. A cancel is
-// the operator's ^C when the loop's own context is done, and the wall budget
-// when only the round's deadline ran out.
+// the operator's ^C when the loop's own context is done, and the timeout when
+// only the round's deadline ran out.
 func (lp *loop) refused(ctx context.Context, ref *core.RefusalError) (string, *Refusal) {
 	switch {
 	case ctx.Err() != nil && ref.Code == codeCanceled:
@@ -395,15 +395,15 @@ func (lp *loop) refused(ctx context.Context, ref *core.RefusalError) (string, *R
 	case ctx.Err() != nil:
 		return StopRefused, canceledRefusal()
 	case ref.Code == codeCanceled:
-		return StopWallBudget, asRefusal(ref)
+		return StopTimeout, asRefusal(ref)
 	}
 	return refusalStop(ref), asRefusal(ref)
 }
 
 // afterFailedGate checks the stops that forbid a fix phase: no progress since
-// the previous round, the last round (nothing would review the fix), and the
-// budgets — including spend the round could not measure while a cost ceiling
-// is set, which stops the loop rather than spending blind.
+// the previous round, the last round (nothing would review the fix), the
+// timeout, and the cost budget — including spend the round could not measure
+// while a cost ceiling is set, which stops the loop rather than spending blind.
 func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 	if lp.noProgress(rd) {
 		return StopNoProgress, nil
@@ -412,7 +412,7 @@ func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 		return StopMaxRounds, nil
 	}
 	if !lp.now().Before(lp.deadline) {
-		return StopWallBudget, nil
+		return StopTimeout, nil
 	}
 	pending := lp.ph.cost(dir)
 	if lp.overCostWith(pending) {
@@ -454,14 +454,14 @@ func (lp *loop) noProgress(rd *Round) bool {
 // admits every attempt it spawns through the phase (the first launch and each
 // repair round, receipted separately); its repair loop makes up to
 // reviewAttempts launches, so each one's watchdog gets that share of the
-// remaining budget, and the round's deadline bounds the whole review either
+// remaining time, and the round's deadline bounds the whole review either
 // way.
 func (lp *loop) review(
 	ctx, dctx context.Context, n int, b *reviewflow.Bundle, dir string,
 ) (string, *Refusal) {
 	left, ok := lp.secondsLeft()
 	if !ok {
-		return StopWallBudget, nil
+		return StopTimeout, nil
 	}
 	launch := reviewflow.Launch{
 		Agent: lp.req.Agent, FindersRaw: findersOne,
@@ -498,7 +498,7 @@ func (lp *loop) admit(
 func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, dir string) (string, *Refusal) {
 	timeout, ok := lp.remaining(0)
 	if !ok {
-		return StopWallBudget, nil
+		return StopTimeout, nil
 	}
 	launch := reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: timeout}
 	launchID := lp.name(rd.Round) + "-fix"
@@ -520,7 +520,7 @@ func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, 
 func (lp *loop) verifyFix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle) (string, *Refusal) {
 	timeout, ok := lp.remaining(verifyCapS)
 	if !ok {
-		rd.Fix.Verify = &Verify{Refusal: &Refusal{Code: codeAgentTimeout, Message: "no wall budget left to run verify"}}
+		rd.Fix.Verify = &Verify{Refusal: &Refusal{Code: codeAgentTimeout, Message: "no time left under --timeout to run verify"}}
 		return "", nil
 	}
 	verify, warnings := lp.ph.verify(dctx, b, timeout)
@@ -557,9 +557,9 @@ func (lp *loop) fixDirective(n int, dir string) string {
 		filepath.Join(dir, fixCostFile), filepath.Join(dir, patchFile))
 }
 
-// remaining is the watchdog budget for the next spawn: the whole seconds the
-// wall budget has left, capped at limit when one is set. ok is false once the
-// budget is spent.
+// remaining is the watchdog limit for the next spawn: the whole seconds left
+// before the deadline, capped at limit when one is set. ok is false once the
+// deadline has passed.
 func (lp *loop) remaining(limit int) (string, bool) {
 	left, ok := lp.secondsLeft()
 	if !ok {
@@ -572,7 +572,7 @@ func (lp *loop) remaining(limit int) (string, bool) {
 	return strconv.Itoa(secs), true
 }
 
-// secondsLeft is the wall budget that remains, false once it is spent.
+// secondsLeft is the time left before the deadline, false once it has passed.
 func (lp *loop) secondsLeft() (float64, bool) {
 	left := lp.deadline.Sub(lp.now())
 	return left.Seconds(), left > 0
@@ -695,8 +695,8 @@ func next(d *Data) string {
 		return "none — the last round's gate passed; open the pull request"
 	case StopMaxRounds, StopNoProgress:
 		return "read the last round's open findings, fix or triage them, then run the loop again"
-	case StopWallBudget, StopCostBudget:
-		return "raise the budget the stop names, or fix the open findings by hand"
+	case StopTimeout, StopCostBudget:
+		return "raise the limit the stop names, or fix the open findings by hand"
 	}
 	return "resolve the refusal in summary.json, then run the loop again"
 }
@@ -707,7 +707,7 @@ func refusalStop(ref *core.RefusalError) string {
 	case codeAgentFailed:
 		return StopAgentFailed
 	case codeAgentTimeout:
-		return StopWallBudget
+		return StopTimeout
 	case codeSpendCapped, codeBudgetUnknown:
 		return StopCostBudget
 	}

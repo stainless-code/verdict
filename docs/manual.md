@@ -1367,8 +1367,8 @@ the behavior stays off until a layer above turns it on.
 | fetch, fetch-local    | defaults.panel                 | unset            |
 | gate                  | --coverage                     | require          |
 | gate                  | --live                         | auto             |
-| loop                  | --budget                       | 600s             |
 | loop                  | --max-rounds                   | 3                |
+| loop                  | --timeout                      | 600s             |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
 | record                | defaults.spec_coverage_min     | 80               |
@@ -7599,7 +7599,7 @@ still report `corrupt-store`.
 Before opening a PR, run the loop from the repository being reviewed:
 
 ```sh
-verdict loop owner/repo --agent codex --max-rounds 3 --budget 600s
+verdict loop owner/repo --agent codex --max-rounds 3 --timeout 600s
 ```
 
 `--agent` takes any row of `run`'s agent table or an operator-defined agent from
@@ -7623,8 +7623,8 @@ recorded, never a stop, except a cancel, which stops the loop in that round.
 The command is the agent's own proposal: `--sandbox` or
 `--sandbox-network-only` runs that verify step under `verify`'s enforced
 sandbox (off by default, as for `verify` itself; the two are mutually
-exclusive). Every phase runs under the wall deadline, and the review's two
-launch-to-check attempts each get half the budget that remains. The next
+exclusive). Every phase runs under the `--timeout` deadline, and the review's
+two launch-to-check attempts each get half the time that remains. The next
 round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
 phase: nothing would review it. The loop never commits, stages, pushes, posts,
@@ -7636,7 +7636,7 @@ The loop stops on the first of:
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `pass`         | the round's gate passed                                                                                                                                                                    |
 | `max-rounds`   | the last round's gate failed (`--max-rounds` 1–20, default 3)                                                                                                                              |
-| `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed — a phase or a spawn's watchdog ran out of the budget that remained                                                  |
+| `timeout`      | the `--timeout` deadline (default `600s`; `600`, `600s`, `10m`) passed — a phase or a spawn's watchdog ran out of the time that remained                                                   |
 | `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, a round's spend could not be measured while `--max-cost-usd` is set (`budget-unknown`), or the monthly spend ceiling refused a spawn |
 | `no-progress`  | no finding open after the previous round was resolved — every previous open sig is still open                                                                                              |
 | `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                                                        |
@@ -7685,7 +7685,7 @@ the fix declared no command) and `refusal` — and `summary.json` with the stop
 reason, `passed`, the limits, the summed cost, the plan, and every round. A
 phase that never ran leaves its observation `null`. `--json` prints the same
 summary as the envelope's `data` (`$defs/loopData`). Exit 0 means the last gate
-passed (or a `--print` render); 1 any other stop, a `wall-budget` stop whose
+passed (or a `--print` render); 1 any other stop, a `timeout` stop whose
 deadline canceled a phase included; 2 usage; 3 an operator cancel — a `^C`
 reported as `refused` with the `canceled` refusal, even when it lands after a
 gate passed. `--fix-prompt <file>` works spaced or as `--fix-prompt=<file>`:
@@ -7694,7 +7694,7 @@ after `loop`, the spelling is the loop's flag, not the global publish toggle.
 `--print` renders every command the loop can run, round by round, as its CLI
 equivalent, with the fix phase as the exact agent argv (prompt included), and
 runs nothing — no bundle, no receipts, no spawn. A rendered `--timeout` is the
-most that spawn can get: the whole budget, split across the review's two
+most that spawn can get: the whole `--timeout`, split across the review's two
 attempts.
 
 For a before/after benchmark, use two isolated copies of the same benchmark
@@ -7706,8 +7706,8 @@ report failures as well as passes. No benchmark numbers are claimed here.
 
 Verify the loop with `./evals/one.sh self-review`; it runs stub binaries for
 three shipped agents and one `settings.json` agent, fixing on round 2, the
-plateau, the round limit, the wall and cost budgets, an agent failure, a stale
-and an empty review, and `--print`, offline.
+plateau, the round limit, the timeout and the cost budget, an agent failure,
+a stale and an empty review, and `--print`, offline.
 
 ### Import a rule object
 
