@@ -7,6 +7,7 @@ package gate
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -44,7 +45,10 @@ const (
 	idCoverage      = "coverage"
 	idWidth         = 12 // longest dimension id: live_threads
 	actionFindings  = "address or triage the open findings"
-	actionMissing   = "review + post the fetched HEAD"
+	// actionResume continues the incomplete execution the findings await;
+	// run never records, so the record step follows it.
+	actionResume  = "finish the incomplete execution with the same verdict run command plus --resume, then re-run record"
+	actionMissing = "review + post the fetched HEAD"
 	// actionCoverage names both attestation keys: a chunked bundle ignores
 	// coverage[], so a recovery naming only that key would loop the operator.
 	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
@@ -182,9 +186,19 @@ func gateNext(gate *core.ReportGate) string {
 	return strings.Join(actions, ", then ")
 }
 
+// gateActions collects each failing dimension's recovery. An unknown findings
+// dimension means the execution is incomplete, and the evidence dimension then
+// fails on the same unsettled findings: resuming the run is the one recovery
+// for both, so the evidence dimension adds no second one.
 func gateActions(gate *core.ReportGate) []string {
 	actions := make([]string, 0, len(gate.Dimensions))
+	resumed := slices.ContainsFunc(gate.Dimensions, func(dim core.GateDimension) bool {
+		return dim.ID == idFindings && dim.Status == statusUnknown
+	})
 	for _, dim := range gate.Dimensions {
+		if resumed && dim.ID == idEvidence {
+			continue
+		}
 		if action := gateAction(dim); action != "" {
 			actions = append(actions, action)
 		}
@@ -204,8 +218,11 @@ func gateAction(dim core.GateDimension) string {
 // for; a passing dimension contributes nothing.
 var gateActionsByID = map[string]func(status string) string{
 	idFindings: func(status string) string {
-		if status == statusPass {
+		switch status {
+		case statusPass:
 			return ""
+		case statusUnknown:
+			return actionResume
 		}
 		return actionFindings
 	},

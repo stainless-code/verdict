@@ -231,7 +231,7 @@ func refusalErr(ref *core.RefusalError) error {
 	return &RefusalError{
 		Code:     ref.Code,
 		Message:  ref.Message,
-		Hint:     core.HintFor(ref.Code),
+		Hint:     core.RefusalHint(ref),
 		Warnings: append([]string{}, ref.Warnings...),
 	}
 }

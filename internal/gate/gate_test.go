@@ -533,6 +533,23 @@ func TestGateHintNamesReRunOnce(t *testing.T) {
 	}
 }
 
+// TestGateHintResumesAnIncompleteExecution pins the recovery for the findings
+// an incomplete execution left unchecked: continuing the run, not editing
+// review.json, and named once although the evidence dimension fails on the
+// same findings. A later dimension keeps its own recovery.
+func TestGateHintResumesAnIncompleteExecution(t *testing.T) {
+	gate := &core.ReportGate{Dimensions: []core.GateDimension{
+		{ID: "findings", Status: statusUnknown},
+		{ID: "evidence", Status: statusFail},
+		{ID: "risk", Status: statusFail},
+	}}
+	want := "finish the incomplete execution with the same verdict run command plus --resume, then re-run record, " +
+		"then resolve the open findings that raise the reported risk, or re-record a lower risk claim, then re-run gate"
+	if got := gateHint(gate); got != want {
+		t.Errorf("gateHint = %q, want %q", got, want)
+	}
+}
+
 // TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
 // failing dimension is compliance used to publish "none — every requested
 // dimension passed" next to a FAIL verdict, with no recovery line at all.

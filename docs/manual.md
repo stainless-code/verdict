@@ -3878,12 +3878,28 @@ coordinator merges exact signatures and dispatches each candidate to the opposit
 finder for a fresh cross-check. Duplicate findings keep both origins and receive
 both directed checks.
 
+A cross check answers each requested signature exactly once in its
+`verdicts.json`: a `verdict` (`confirmed`, `refuted`, or `insufficient`),
+10–500 characters of `evidence`, and, for `confirmed` or `refuted`, a `quote`
+`{path, side, line, text}` that matches the pinned diff. `side` is `RIGHT` for
+a line on the new side of the diff or `LEFT` for a deleted line on the old
+side; no other spelling is accepted. An answer that fails the check earns a
+repair round carrying the checker's problem list — each problem's JSONPath,
+code, and fix, in the shape `record` reports — up to the lesser of `--rounds`
+and 2 attempts. A check still failing after them records `cross-incomplete`,
+and the run refuses `review-insufficient` naming every failed phase and the
+`--resume` that continues the execution.
+
 `record`, `post`, `report`, and their MCP adapters consume the same bound receipts.
 The S3 body reports completed finders and confirmed, contested, and pending checks.
 Each finding names its origins and checker standing. A potentially blocking
 finding with missing, refuted, or unverified cross evidence does not gate as
 confirmed, and approval is insufficient — after the execution finishes and after
-its artifacts are gone, not only while it is live. Refutations remain visible as
+its artifacts are gone, not only while it is live. While the execution is
+incomplete (a phase failed), `gate` counts those in-tier findings in its
+`findings` dimension as `unknown`, never as absent, fails its `evidence`
+dimension on the same findings, and names one recovery: the same `run` with
+`--resume`, then `record`. Refutations remain visible as
 bounded quoted evidence. `verification.cross` is derived output: removing or
 forging it cannot replace the bound receipts. When no live artifact states the
 capture, the strongest remaining statement decides it: an explicit `finders: 1`
@@ -4397,7 +4413,12 @@ missing artifact) and exit status, naming every failed finder, not
 `review-insufficient`; when only one finder fails, the survivor's evidence is
 still judged and the refusal names the failed finder's cause beside the gap.
 `no-review-artifact` prints the agent's permission flag from the table above as
-a re-run line; verdict never adds it to the argv itself.
+a re-run line; verdict never adds it to the argv itself. The `re-enter:` line
+repeats the invocation with the arguments after `--` included, quoted the way
+`--print` quotes argv and with credential-shaped values redacted by the launch
+record's rule, since `--resume` refuses a different argument list. A
+`review-insufficient` refusal that lists no evidence problems names its one gap
+in the message, and its hint points there instead of at a list.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--agent`, a `--rounds` outside 1–5, `--print` with `--rounds` greater than 1, or

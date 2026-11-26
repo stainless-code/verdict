@@ -761,12 +761,22 @@ func pendingDetail(comp *config.ReadCompliance, head string) string {
 	return detail + " — unknown, never a pass"
 }
 
+// gateTierCheck counts the open findings that gate. An incomplete execution
+// leaves every finding it cross-checks unsettled, so none gates and none can
+// be said to be absent: those findings read unknown, never a pass.
 func gateTierCheck(st *state) core.GateDimension {
 	n := tierHits(readcommon.VisibleFindings(st.entries), st.flags.Check, st.flags.Category)
 	if n > 0 {
 		return core.GateDimension{
 			ID: dimFindings, Status: dimFail, Count: new(n),
 			Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s", n, st.flags.Check, inCategory(st)),
+		}
+	}
+	if pending := gatePendingCross(st); pending > 0 && st.execution.Incomplete() {
+		return core.GateDimension{
+			ID: dimFindings, Status: dimUnknown, Count: new(pending),
+			Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s await the cross checks of an incomplete "+
+				"execution — unknown, never a pass", pending, st.flags.Check, inCategory(st)),
 		}
 	}
 	return core.GateDimension{

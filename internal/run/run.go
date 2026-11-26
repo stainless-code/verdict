@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/argvshape"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -281,9 +282,9 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	return next, 0, false
 }
 
-// rentry rebuilds the exact re-run command after flag parsing. The
-// pass-through tail is not reproduced: its quoting belongs to whatever shell
-// the operator used.
+// rentry rebuilds the exact re-run command after flag parsing, the agent
+// arguments after `--` included: `--resume` refuses a different argument list,
+// so a line without them could never continue the execution it names.
 func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + argSep + req.Pr + flagTail(f)
 	if f.consent {
@@ -292,7 +293,18 @@ func rentry(req *readcommon.Request, f *flags, jsonMode bool) string {
 	if jsonMode {
 		s += " --json"
 	}
-	return s
+	return s + passTail(f.pass, os.Environ())
+}
+
+// passTail renders the agent arguments the way [RenderCommand] quotes argv,
+// with a credential-shaped value redacted by the rule the launch record uses:
+// the line lands in terminal and CI logs, and the operator re-supplies it.
+func passTail(pass, environ []string) string {
+	if len(pass) == 0 {
+		return ""
+	}
+	shape, _ := argvshape.Record(pass, "", environ)
+	return " -- " + RenderCommand(shape)
 }
 
 // flagTail rebuilds the flags the operator typed, each one only when the

@@ -195,10 +195,8 @@ func gateEvidenceCheck(st *state) core.GateDimension {
 
 // evidenceDimension is the evidence dimension's status and detail.
 func evidenceDimension(st *state) core.GateDimension {
-	if st.flags.Check != "" {
-		if pending := gatePendingCross(st); pending > 0 {
-			return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(pending), Detail: pendingCrossDetail(pending)}
-		}
+	if dim, pending := pendingCrossDimension(st); pending {
+		return dim
 	}
 	kind := evidenceMissing
 	if st.evidence != nil {
@@ -217,6 +215,23 @@ func evidenceDimension(st *state) core.GateDimension {
 		detail := evidenceMissingDetail(st.headSHA)
 		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	}
+}
+
+// pendingCrossDimension fails a gate run on the in-tier findings that still owe
+// a cross check, naming an incomplete execution as the reason when it is one.
+func pendingCrossDimension(st *state) (core.GateDimension, bool) {
+	if st.flags.Check == "" {
+		return core.GateDimension{}, false
+	}
+	pending := gatePendingCross(st)
+	if pending == 0 {
+		return core.GateDimension{}, false
+	}
+	detail := pendingCrossDetail(pending)
+	if st.execution.Incomplete() {
+		detail += " (the execution is incomplete)"
+	}
+	return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(pending), Detail: detail}, true
 }
 
 // gatePendingCross counts the visible, open findings inside the gated tier

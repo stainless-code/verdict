@@ -371,7 +371,7 @@ func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), nextText,
 			r.Warnings, plan.Wire(), &core.SchemaError{
 				Code:    ref.Code,
-				Message: ref.Message + "\n" + cli.HintFor(ref.Code),
+				Message: ref.Message + "\n" + core.RefusalHint(ref),
 			})
 		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 		r.WriteRentry()

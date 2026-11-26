@@ -293,7 +293,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	s.blockingGap(Findings(review))
 	s.specGap(review)
 	if readcommon.FieldOf(manifest, fieldStatus) != "complete" {
-		return "execution manifest is incomplete"
+		return gapIncomplete
 	}
 	return ""
 }
@@ -498,6 +498,16 @@ func (s *Execution) ApplyEvidence(receipt *core.EvidenceReceipt) {
 	receipt.Gaps = append(receipt.Gaps, "execution: "+strings.TrimSpace(s.Gap+" "+s.BlockingGap))
 }
 
+// gapIncomplete is the gap of an execution that recorded every artifact it
+// bound but still names a failed phase: `run --resume` continues it.
+const gapIncomplete = "execution manifest is incomplete"
+
+// Incomplete reports whether a two-finder execution stopped with a failed
+// phase, so its findings await cross checks a resumed run can still finish.
+func (s *Execution) Incomplete() bool {
+	return s != nil && s.CrossRequired && s.Gap == gapIncomplete
+}
+
 // Problem is the bound execution failure exposed by readiness.
 func (s *Execution) Problem() string {
 	if !s.CrossRequired {
@@ -591,7 +601,7 @@ func (s *Execution) seal(gap string) {
 	s.Gap = gap
 	if gap != "" {
 		s.Eligible = make(map[string]bool)
-		if gap != "execution manifest is incomplete" {
+		if gap != gapIncomplete {
 			s.Checked = nil
 		}
 		s.SpecViolations = nil

@@ -396,6 +396,38 @@ func assertSinglePrefsAgent(t *testing.T, defs []config.PersonalAgent) {
 	}
 }
 
+// TestReentryKeepsAgentArguments pins that the re-entry line carries the
+// arguments after `--`, quoted as --print quotes argv, after --json: a line
+// without them names a different invocation, which --resume refuses.
+func TestReentryKeepsAgentArguments(t *testing.T) {
+	r, _, _ := testRunner()
+	parsed, _, done := parseFlags(r, []string{
+		"--agent", "claude", "--resume", "--",
+		"--permission-mode", "acceptEdits", "--append-system-prompt", "it's fine",
+	})
+	if done {
+		t.Fatalf("parsed=%+v", parsed)
+	}
+	want := `verdict run acme/app 42 --resume --agent claude --json -- ` +
+		`--permission-mode acceptEdits --append-system-prompt 'it'\''s fine'`
+	if got := rentry(testReq(), &parsed, true); got != want {
+		t.Fatalf("re-entry = %s; want %s", got, want)
+	}
+}
+
+// TestReentryRedactsCredentialArguments proves the agent arguments reach the
+// re-entry line through the launch record's credential rule: a secret-shaped
+// flag's operand and an argument equal to a secret-named environment value are
+// redacted, and an ordinary argument survives.
+func TestReentryRedactsCredentialArguments(t *testing.T) {
+	t.Parallel()
+	pass := []string{"--api-key", "plain-value", "--model", "opus", "sk-ant-0123456789"}
+	got := passTail(pass, []string{"ANTHROPIC_API_KEY=sk-ant-0123456789"})
+	if want := ` -- --api-key '***REDACTED***' --model opus '***REDACTED***'`; got != want {
+		t.Fatalf("pass tail = %s; want %s", got, want)
+	}
+}
+
 func TestFindersFlagAndReentry(t *testing.T) {
 	r, _, _ := testRunner()
 	parsed, _, done := parseFlags(r, []string{"--finders", "1", "--agent", "claude"})

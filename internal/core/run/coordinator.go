@@ -447,18 +447,24 @@ func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
 	manifest.Set("budget", core.Wire(recorded))
 }
 
-// causeLines names why each failed phase failed, in phase order, so a partial
-// execution's refusal carries the agent's own error beside the evidence gap it
-// left behind.
+// causeLines names each failed phase, in phase order, with the agent's own
+// error when it left one, so a partial execution's refusal carries the cause
+// beside the evidence gap it left behind, and the recovery that continues it.
 func (c *coordinator) causeLines() string {
-	var sb strings.Builder
+	if len(c.failures) == 0 {
+		return ""
+	}
+	phases := make([]string, 0, len(c.failures))
 	for _, row := range c.failures {
 		phase := jq.StrOf(readcommon.FieldOf(row, keyPhase))
 		if cause := c.causes[phase]; cause != nil {
-			sb.WriteString("\n" + phase + " " + cause.Code + ": " + cause.Message)
+			phases = append(phases, phase+" "+cause.Code+": "+cause.Message)
+		} else {
+			phases = append(phases, phase+" "+jq.StrOf(readcommon.FieldOf(row, "code")))
 		}
 	}
-	return sb.String()
+	return "; failed: " + strings.Join(phases, "; ") + "; finish it with the same command plus --resume: " +
+		"the phases that passed are reused and only the failed ones launch again"
 }
 
 func (c *coordinator) validateAggregate() *core.RefusalError {

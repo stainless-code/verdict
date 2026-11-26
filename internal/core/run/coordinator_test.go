@@ -26,6 +26,7 @@ type phaseCommander struct {
 	stderr      string
 	silentPhase string // this phase exits 0 and writes nothing
 	calls       map[string]int
+	prompts     map[string][]string
 	phases      []string
 	mu          sync.Mutex
 	fail        bool
@@ -36,6 +37,7 @@ type phaseCommander struct {
 	repair      bool
 	crossRepair bool
 	crossBroken bool
+	crossSide   bool // x-cross-1's first attempt quotes side "new"
 	tamper      bool
 	distinct    bool
 	empty       bool // finders find nothing, so no cross check is dispatched
@@ -52,7 +54,7 @@ func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 		p.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{ExitCode: 2}, nil
 	}
-	attempt := p.record(phase)
+	attempt := p.record(phase, cmd.Argv[len(cmd.Argv)-1])
 	if p.cancelOn == phase && attempt == 1 {
 		p.cancel()
 		return core.Result{ExitCode: 7}, nil
@@ -60,14 +62,16 @@ func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 	return p.writePhase(phase, attempt, cmd), nil
 }
 
-// record logs one launch and reports how many times that phase has launched.
-func (p *phaseCommander) record(phase string) int {
+// record logs one launch and its directive, and reports how many times that
+// phase has launched.
+func (p *phaseCommander) record(phase, prompt string) int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.calls == nil {
-		p.calls = map[string]int{}
+		p.calls, p.prompts = map[string]int{}, map[string][]string{}
 	}
 	p.calls[phase]++
+	p.prompts[phase] = append(p.prompts[phase], prompt)
 	p.phases = append(p.phases, phase)
 	return p.calls[phase]
 }
@@ -184,11 +188,15 @@ func (p *phaseCommander) crossReview(phase string, attempt int) string {
 	request := readPhaseObject(p.t, filepath.Join(p.dir, phase, "request.json"))
 	candidates := jq.Elements(readcommon.FieldOf(request, "candidates"))
 	results := []any{}
+	side := "RIGHT"
+	if p.crossSide && phase == "x-cross-1" && attempt == 1 {
+		side = "new"
+	}
 	for _, candidate := range candidates {
 		finding := readcommon.FieldOf(candidate, "finding")
 		p.assertCrossCandidate(phase, finding)
 		results = append(results, jq.NewObj("sig", readcommon.FieldOf(candidate, "sig"), "verdict", "confirmed",
-			"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", "RIGHT", "line", 1, "text", "new line 1")))
+			"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", side, "line", 1, "text", "new line 1")))
 	}
 	if p.crossBroken || (p.crossRepair && phase == "x-cross-1" && attempt == 1) {
 		return `{"results":[]}`
@@ -364,6 +372,63 @@ func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
 		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2"})
 }
 
+// TestCoordinatorRepairsCrossQuoteSide proves a cross answer quoting a side the
+// evidence check does not accept is repaired, not exhausted: the first
+// directive names both sides, the repair round names the field, its code and
+// the accepted values, and the second attempt completes the execution.
+func TestCoordinatorRepairsCrossQuoteSide(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossSide = true
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	prompts := commander.prompts["x-cross-1"]
+	if len(prompts) != 2 {
+		t.Fatalf("x-cross-1 launched %d times, want 2", len(prompts))
+	}
+	sides := "RIGHT (a line on the new side of the diff) or LEFT (a deleted line on the old side)"
+	if !strings.Contains(prompts[0], "where side is "+sides+".") {
+		t.Errorf("first directive does not name the sides:\n%s", prompts[0])
+	}
+	for _, want := range []string{
+		`{"path":"$.results[0].quote.side","code":"bad-enum","level":"error",` +
+			`"message":"unknown quote side \"new\"","fix":"use ` + sides + `"}`,
+	} {
+		if !strings.Contains(prompts[1], want) {
+			t.Errorf("repair prompt lacks %s:\n%s", want, prompts[1])
+		}
+	}
+	manifest := readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))
+	if failures := jq.Elements(readcommon.FieldOf(manifest, "failures")); len(failures) != 0 {
+		t.Fatalf("failures = %v, want none", failures)
+	}
+}
+
+// TestCoordinatorCrossRepairNamesTheMissingRow proves an answer that drops a
+// requested signature is repaired with that signature named, not with a
+// generic request to return every row.
+func TestCoordinatorCrossRepairNamesTheMissingRow(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossRepair = true
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
+	prompts := commander.prompts["x-cross-1"]
+	if len(prompts) != 2 {
+		t.Fatalf("x-cross-1 launched %d times, want 2", len(prompts))
+	}
+	want := `{"path":"$.results","code":"missing-field","level":"error",` +
+		`"message":"no row answers requested signature \"b02621c6e34339ac215c21bbc73527b558e69185\"",` +
+		`"fix":"add one row for that signature from request.json"}`
+	if !strings.Contains(prompts[1], want) {
+		t.Errorf("repair prompt lacks %s:\n%s", want, prompts[1])
+	}
+}
+
 func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
@@ -375,6 +440,26 @@ func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 	}
 	assertPhaseGroups(t, commander.launched(),
 		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2", "x-cross-2"})
+}
+
+// TestCoordinatorIncompleteExecutionNamesTheResume proves an execution left
+// incomplete by exhausted cross checks names each failed phase and the
+// recovery that continues it, since no evidence problem is listed to fix.
+func TestCoordinatorIncompleteExecutionNamesTheResume(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.RoundsRaw = "2"
+	commander.crossBroken = true
+	_, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "review-insufficient" || len(ref.Problems) != 0 {
+		t.Fatalf("refusal = %v", ref)
+	}
+	want := "execution: execution manifest is incomplete; failed: x-cross-1 cross-incomplete; x-cross-2 cross-incomplete; " +
+		"finish it with the same command plus --resume: the phases that passed are reused " +
+		"and only the failed ones launch again"
+	if ref.Message != want {
+		t.Fatalf("message = %q, want %q", ref.Message, want)
+	}
 }
 
 // TestCoordinatorDetectsChangedCompletedFinder proves a bound finder artifact

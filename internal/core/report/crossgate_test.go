@@ -101,6 +101,51 @@ func crossBundle(t *testing.T, entry string) {
 	})
 }
 
+// incompleteBundle writes the live two-finder bundle as a run leaves it when
+// its cross check exhausted its rounds: the manifest is partial and names the
+// failed phase, and the receipt holds no row for the finding.
+func incompleteBundle(t *testing.T, entry string) {
+	t.Helper()
+	crossBundleBase(t, entry)
+	writeFile(t, crossStore+"/full.diff", crossDiff)
+	writeFile(t, crossStore+"/review.json", crossReview)
+	plan := `{"checks":[{"sig":"` + crossSig + `","origin":"finder-1","checker":"finder-2"}]}`
+	writeFile(t, crossStore+"/verification/plan.json", plan)
+	bindings := `"head_sha":"` + storeHeadSHA + `","diff_sha256":"` + digestOf(crossDiff) + `",` +
+		`"review_sha256":"` + digestOf(crossReview) + `","plan_sha256":"` + digestOf(plan) + `"`
+	writeFile(t, crossStore+"/launcher.json",
+		`{"schema_version":"2","execution_id":"execution-A","status":"partial",`+bindings+`,`+
+			`"failures":[{"phase":"x-cross-2","code":"cross-incomplete"}]}`)
+	writeFile(t, crossStore+"/verification/verdicts.json",
+		`{"schema_version":"2","execution_id":"execution-A",`+bindings+`,"results":[]}`)
+	writeCrossCapture(t, &config.RunState{
+		Execution: &core.ExecutionReference{ID: "execution-A", Finders: 2},
+		Finders:   2,
+	})
+}
+
+// TestCrossGateIncompleteExecutionNeverReadsAsNoFindings proves an open
+// in-tier finding an incomplete execution left unchecked is counted by the
+// findings dimension as unknown, never reported as absent, while the evidence
+// dimension still fails and names the incomplete execution.
+func TestCrossGateIncompleteExecutionNeverReadsAsNoFindings(t *testing.T) {
+	incompleteBundle(t, crossEntryJSON("important", ""))
+	resp := runCross(t)
+	if !resp.GateFailed {
+		t.Fatalf("GateFailed = false, want true\n%s", dimSummary(resp))
+	}
+	findings := dimOf(t, resp, "findings")
+	wantFindings := "1 open finding(s) at-or-above important await the cross checks of an incomplete " +
+		"execution — unknown, never a pass"
+	if findings.Status != "unknown" || findings.Count == nil || *findings.Count != 1 || findings.Detail != wantFindings {
+		t.Fatalf("findings = %+v, want unknown 1 %q", findings, wantFindings)
+	}
+	evidence := findEvidenceDim(t, resp)
+	if evidence.Status != "fail" || evidence.Detail != crossLine+" (the execution is incomplete)" {
+		t.Fatalf("evidence = %+v", evidence)
+	}
+}
+
 // recordedBundle writes the same finding with no live capture at all, but the
 // stored record still states the two finders that recorded it.
 func recordedBundle(t *testing.T, entry string) {
