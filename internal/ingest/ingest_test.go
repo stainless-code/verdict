@@ -44,7 +44,7 @@ func TestRun_StdinAndJSONEnvelope(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	sarif := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec"}},"results":[{"ruleId":"G101","level":"error","message":{"text":"Hardcoded secret"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"app.go"},"region":{"startLine":2}}}]}]}]}`
-	code := run(context.Background(), r, []string{"--sarif", "-"}, &readcommon.Request{
+	code := run(context.Background(), r, []string{"--from", "sarif", "-"}, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       "12",
 		RepoRoot: repoRoot,
@@ -80,7 +80,7 @@ func TestRun_StdinTooLargeRefused(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	oversize := make([]byte, ingestcore.MaxSARIFBytes+5)
-	code := run(context.Background(), r, []string{"--sarif", "-"}, &readcommon.Request{
+	code := run(context.Background(), r, []string{"--from", "sarif", "-"}, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       "13",
 		RepoRoot: repoRoot,
@@ -161,16 +161,16 @@ func TestRun_FromRefusals(t *testing.T) {
 		{name: "empty equals format", args: []string{"--from=", "-"}, diag: "--from needs a format", exit: cli.ExitUsage},
 		{name: "missing source", args: []string{"--from", "sarif"}, diag: "--from sarif needs <file|->", exit: cli.ExitUsage},
 		{name: "duplicate from", args: []string{"--from", "sarif", "-", "--from", "sarif", "-"}, diag: "--from was given twice", exit: cli.ExitUsage},
-		{name: "duplicate sarif", args: []string{"--sarif", "-", "--sarif", "-"}, diag: "--sarif was given twice", exit: cli.ExitUsage},
-		{name: "from then sarif", args: []string{"--from", "sarif", "--sarif", "scan.sarif"}, diag: "--from and --sarif name one source", exit: cli.ExitUsage},
-		{name: "sarif then from", args: []string{"--sarif", "scan.sarif", "--from", "sarif"}, diag: "--from and --sarif name one source", exit: cli.ExitUsage},
+		// The pre-1.0 `--sarif <file|->` spelling is gone: a plain unknown flag,
+		// with no alias and no hint toward --from.
+		{name: "removed sarif spelling", args: []string{"--sarif", "-"}, diag: "unknown flag '--sarif' for ingest (want --from, --json)", exit: cli.ExitUsage},
+		{name: "removed sarif beside from", args: []string{"--from", "sarif", "-", "--sarif", "scan.sarif"}, diag: "unknown flag '--sarif' for ingest (want --from, --json)", exit: cli.ExitUsage},
 		{name: "bare path", args: []string{"scan.sarif"}, diag: "name the source as --from sarif scan.sarif", exit: cli.ExitUsage},
 		{name: "bare stdin", args: []string{"-"}, diag: "name the source as --from sarif -", exit: cli.ExitUsage},
 		{name: "single dash flag", args: []string{"-v"}, diag: "unknown flag '-v'", exit: cli.ExitUsage},
 		{name: "single dash from", args: []string{"-f", "sarif"}, diag: "unknown flag '-f'", exit: cli.ExitUsage},
 		{name: "long unknown flag", args: []string{"--nope", "-"}, diag: "unknown flag '--nope'", exit: cli.ExitUsage},
 		{name: "two paths", args: []string{"--from", "sarif", "-", "extra.sarif"}, diag: "unexpected argument", exit: cli.ExitUsage},
-		{name: "path after sarif", args: []string{"--sarif", "scan.sarif", "extra"}, diag: "unexpected argument", exit: cli.ExitUsage},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -21,8 +21,7 @@ import (
 
 // Run executes `ingest <owner/repo> <pr> --from sarif <file|-> [--json]`,
 // returning the process exit code. Human progress goes to the runner's human
-// stream; --json mode prints one envelope to stdout. The legacy `--sarif
-// <file|->` form names the same source and stays accepted.
+// stream; --json mode prints one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	return run(ctx, r, args, &req, os.Stdin)
 }
@@ -84,22 +83,18 @@ type input struct {
 	Path   string
 }
 
-// rawFlags is argv as written: which source spellings appeared, and what each
-// carried. Resolution happens once, after the whole line is read, so a
-// conflicting or repeated spelling can never win by position.
+// rawFlags is argv as written: the --from format and the one bare source.
+// Resolution happens once, after the whole line is read, so a repeated flag
+// can never win by position.
 type rawFlags struct {
 	fromFormat string
 	positional string
-	aliasPath  string
 	fromSet    bool
-	aliasSet   bool
 }
 
-// parseFlags reads `--from <format> <file|->`, its `--from=<format>` form, and
-// the legacy `--sarif <file|->` spelling, then resolves one source. A bare
-// path, a repeated flag, two spellings of the same source, and an unknown
-// single-dash flag are all usage errors: the verb takes exactly one source and
-// names it once.
+// parseFlags reads `--from <format> <file|->` and its `--from=<format>` form,
+// then resolves one source. A bare path, a repeated flag, and an unknown flag
+// are all usage errors: the verb takes exactly one source and names it once.
 func parseFlags(r *cli.Runner, args []string) (in input, code int, done bool) {
 	var raw rawFlags
 	for i := 0; i < len(args); i++ {
@@ -126,11 +121,9 @@ func (f *rawFlags) take(args []string, i int) (int, *cli.UsageError) {
 		return f.takeFrom(v, next-i, u)
 	case strings.HasPrefix(a, "--from="):
 		return f.takeFrom(strings.TrimPrefix(a, "--from="), 0, nil)
-	case a == "--sarif":
-		return f.takeAlias(args, i)
 	case isFlag(a):
 		return 0, &cli.UsageError{
-			Message: fmt.Sprintf("unknown flag '%s' for ingest (want --from, --sarif, --json)", a),
+			Message: fmt.Sprintf("unknown flag '%s' for ingest (want --from, --json)", a),
 		}
 	default:
 		return 0, f.takePath(a)
@@ -150,20 +143,6 @@ func (f *rawFlags) takeFrom(value string, consumed int, u *cli.UsageError) (int,
 	return consumed, nil
 }
 
-// takeAlias reads the older `--sarif <file|->` spelling of the same source.
-func (f *rawFlags) takeAlias(args []string, i int) (int, *cli.UsageError) {
-	v, next, u := cli.FlagValue(args, i, args[i], "<file|->")
-	if u != nil {
-		return 0, u
-	}
-	if f.aliasSet {
-		return 0, &cli.UsageError{Message: "--sarif was given twice; name one source"}
-	}
-	f.aliasSet = true
-	f.aliasPath = v
-	return next - i, nil
-}
-
 // takePath records the one bare argument. It is only a source beside
 // `--from sarif`, which resolve enforces.
 func (f *rawFlags) takePath(a string) *cli.UsageError {
@@ -179,19 +158,11 @@ func (f *rawFlags) takePath(a string) *cli.UsageError {
 // resolve turns the recorded spellings into one source, or names the conflict.
 func (f *rawFlags) resolve() (input, *cli.UsageError) {
 	switch {
-	case f.fromSet && f.aliasSet:
-		return input{}, &cli.UsageError{Message: "--from and --sarif name one source; pass one"}
-	case f.aliasSet && f.positional != "":
-		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("unexpected argument %q after --sarif; pass one <file|-> value", f.positional),
-		}
-	case f.aliasSet:
-		return input{Path: f.aliasPath}, nil
 	case f.fromSet:
 		return f.resolveFrom()
 	case f.positional != "":
 		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("name the source as --from sarif %s (or --sarif %s)", f.positional, f.positional),
+			Message: "name the source as --from sarif " + f.positional,
 		}
 	default:
 		// No source at all: the core service refuses missing-sarif with its hint.

@@ -999,9 +999,9 @@ Fix: have the agent write `{schema_version: "1", findings: [...]}` to the review
 
 ## `missing-sarif`
 
-Cause: `ingest` was invoked without a source — no `--from sarif <file|->` (or legacy `--sarif <file|->`) — or with an empty path or stdin stream.
+Cause: `ingest` was invoked without a source — no `--from sarif <file|->`, or an MCP call without `from` — or with an empty path or stdin stream.
 
-Fix: pass `--from sarif <file>`, or `--from sarif -` (or `--sarif -`) to read stdin, then re-run `verdict ingest`.
+Fix: pass `--from sarif <file>`, or `--from sarif -` to read stdin, then re-run `verdict ingest`.
 
 ## `missing-selection`
 
