@@ -185,8 +185,8 @@ build_release() {
 
 # prepare_notes renders the release body into a file outside dist/
 # (GoReleaser's --clean empties dist): CHANGELOG.md's section for this version,
-# led by the hand-written docs/releases/<version>.md highlights when that file
-# exists (scripts/release-notes.mjs composes both).
+# led by the hand-written release/highlights/<version>.md when that file exists
+# (scripts/release-notes.mjs composes both).
 prepare_notes() {
   if [ -z "$NOTES_FILE" ]; then NOTES_FILE="$(mktemp)"; fi
   node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
