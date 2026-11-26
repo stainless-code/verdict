@@ -485,6 +485,40 @@ func TestCrossQuoteSideHasNoDefault(t *testing.T) {
 	}
 }
 
+// TestCrossQuoteNamesUnknownKeysWithTheSide proves a quote with a bad side
+// and a key the receipt parser refuses names both in the first round, so the
+// round that fixes the side is not refused again for the key.
+func TestCrossQuoteNamesUnknownKeysWithTheSide(t *testing.T) {
+	t.Parallel()
+	quote := jq.NewObj("path", "a.go", "side", "new", "line", json.Number("1"), "text", "x", "note", "y")
+	problems := crossQuoteProblems(evidence.IndexDiff(nil), "$.results[0].quote", "insufficient", quote)
+	got := make([]string, 0, len(problems))
+	for _, p := range problems {
+		got = append(got, p.Path+" "+p.Code)
+	}
+	want := []string{`$.results[0].quote["note"] unknown-field`, "$.results[0].quote.side bad-enum"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("problems = %q, want %q", got, want)
+	}
+}
+
+// TestCrossRowNamesEveryIdentityProblem proves a row with a wrong checker and
+// a same_as that is not a string names both at once, and answers its
+// signature, so no missing-row problem joins them.
+func TestCrossRowNamesEveryIdentityProblem(t *testing.T) {
+	t.Parallel()
+	row := jq.NewObj("sig", "s", "checker", "finder-1", "same_as", json.Number("7"))
+	problems := assignCrossRows([]any{row}, "finder-2", []any{jq.NewObj("sig", "s")})
+	got := make([]string, 0, len(problems))
+	for _, p := range problems {
+		got = append(got, p.Path+" "+p.Code)
+	}
+	want := []string{"$.results[0].checker bad-enum", "$.results[0].same_as wrong-type"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("problems = %q, want %q", got, want)
+	}
+}
+
 // TestCoordinatorCrossRepairNamesTheMissingRow proves an answer that drops a
 // requested signature is repaired with that signature named, not with a
 // generic request to return every row.

@@ -781,6 +781,23 @@ func killAttempt(t *testing.T, req *core.RunRequest, commander *phaseCommander, 
 	}
 }
 
+// TestCanceledExecutionIsResumable proves a run canceled after it published
+// its in-progress record says it can be resumed, so the re-entry line carries
+// --resume and the finished finder is reused rather than relaunched.
+func TestCanceledExecutionIsResumable(t *testing.T) {
+	t.Parallel()
+	req, commander := resumeFixture(t, "local-resume-canceled")
+	ctx, cancel := context.WithCancel(t.Context())
+	commander.cancel, commander.cancelOn = cancel, "x-finder-2"
+	response, ref := Run(ctx, req)
+	if ref == nil || ref.Code != codeCanceled {
+		t.Fatalf("canceled attempt refusal = %v", ref)
+	}
+	if response == nil || !response.Resumable {
+		t.Fatalf("response = %+v, want resumable", response)
+	}
+}
+
 // assertInProgressBindings proves one killed attempt left the two finished
 // finders sealed in a record that is still in progress, so the next attempt can
 // reuse them instead of spending the agent again.

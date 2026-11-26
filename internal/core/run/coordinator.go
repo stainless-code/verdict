@@ -91,12 +91,23 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 	// Every launch spent whether or not the execution completed, so the
 	// receipt settles either way. The settlement must outlive a cancel.
 	st.settleExecution(context.WithoutCancel(ctx), c.dir)
+	c.resumableCancel(ref)
 	c.executionResponse()
 	if ref == nil {
 		ref = c.executionRefusal()
 	}
 	c.settleExit(ref)
 	return c.response, ref
+}
+
+// resumableCancel marks a canceled execution resumable once it published its
+// in-progress record: that record, with its resume block, is what --resume
+// continues, reusing every phase it bound. A cancel before the first publish
+// left nothing to continue.
+func (c *coordinator) resumableCancel(ref *core.RefusalError) {
+	if ref != nil && ref.Code == codeCanceled && c.record != nil {
+		c.resumable = true
+	}
 }
 
 // settleExit keeps the agent's exit status on the response only when the run's

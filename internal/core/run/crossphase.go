@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync"
 	"unicode/utf8"
@@ -344,9 +345,7 @@ func assignCrossRows(rows []any, checker string, batch []any) []core.Problem {
 	}
 	var problems []core.Problem
 	for i, row := range rows {
-		if p := assignCrossRow(fmt.Sprintf("$.results[%d]", i), row, checker, expected); p != nil {
-			problems = append(problems, *p)
-		}
+		problems = append(problems, assignCrossRow(fmt.Sprintf("$.results[%d]", i), row, checker, expected)...)
 	}
 	for _, signature := range order {
 		if expected[signature] {
@@ -358,35 +357,46 @@ func assignCrossRows(rows []any, checker string, batch []any) []core.Problem {
 	return problems
 }
 
-func assignCrossRow(path string, row any, checker string, expected map[string]bool) *core.Problem {
+// assignCrossRow claims the row's requested signature and names every
+// independent problem its identity fields have. A requested signature counts
+// as answered even when another field is wrong, so the fix list never adds a
+// misleading missing row beside the field to correct.
+func assignCrossRow(path string, row any, checker string, expected map[string]bool) []core.Problem {
 	obj, ok := row.(*jq.Obj)
 	if !ok {
-		p := crossProblem(path, core.ProblemCodeWrongType, "each result must be an object",
-			"write the row as {sig, verdict, evidence, quote}")
-		return &p
+		return []core.Problem{crossProblem(path, core.ProblemCodeWrongType, "each result must be an object",
+			"write the row as {sig, verdict, evidence, quote}")}
 	}
+	var problems []core.Problem
 	signature := jq.StrOf(readcommon.FieldOf(obj, crossSig))
-	if !expected[signature] {
-		p := crossProblem(path+".sig", core.ProblemCodeBadEnum,
+	if expected[signature] {
+		delete(expected, signature)
+	} else {
+		problems = append(problems, crossProblem(path+".sig", core.ProblemCodeBadEnum,
 			fmt.Sprintf("signature %q is not a requested signature still unanswered", signature),
-			"answer each signature request.json lists exactly once")
-		return &p
+			"answer each signature request.json lists exactly once"))
 	}
-	assigned := jq.StrOf(readcommon.FieldOf(obj, crossChecker))
-	if assigned != "" && assigned != checker {
-		p := crossProblem(path+".checker", core.ProblemCodeBadEnum,
+	problems = append(problems, crossIdentityProblems(path, obj, checker)...)
+	if len(problems) == 0 {
+		obj.Set(crossChecker, checker)
+	}
+	return problems
+}
+
+// crossIdentityProblems names a checker that is not this check's and a
+// same_as that is not a string or null, both at once.
+func crossIdentityProblems(path string, obj *jq.Obj, checker string) []core.Problem {
+	var problems []core.Problem
+	if assigned := jq.StrOf(readcommon.FieldOf(obj, crossChecker)); assigned != "" && assigned != checker {
+		problems = append(problems, crossProblem(path+".checker", core.ProblemCodeBadEnum,
 			fmt.Sprintf("checker %q is not this check's checker %q", assigned, checker),
-			"leave checker out, or set it to "+strconv.Quote(checker))
-		return &p
+			"leave checker out, or set it to "+strconv.Quote(checker)))
 	}
 	if !sameAsShape(obj) {
-		p := crossProblem(path+"."+crossSameAs, core.ProblemCodeWrongType, "same_as must be a string or null",
-			"set same_as to the sig of one of your own_findings, or leave it out")
-		return &p
+		problems = append(problems, crossProblem(path+"."+crossSameAs, core.ProblemCodeWrongType,
+			"same_as must be a string or null", "set same_as to the sig of one of your own_findings, or leave it out"))
 	}
-	delete(expected, signature)
-	obj.Set(crossChecker, checker)
-	return nil
+	return problems
 }
 
 // sameAsShape accepts a row whose same_as is absent, null, or a string. Whether
@@ -439,13 +449,15 @@ func crossQuoteProblems(idx *evidence.DiffIndex, path string, verdict, raw any) 
 			fmt.Sprintf("a %s verdict needs a quote", verdict),
 			"quote the exact line from full.diff, or answer insufficient")}
 	}
+	keys := crossQuoteKeyProblems(path, raw)
 	quote, ok := crossQuoteOf(raw)
 	if !ok {
-		return []core.Problem{crossProblem(path, core.ProblemCodeWrongType,
+		return append(keys, crossProblem(path, core.ProblemCodeWrongType,
 			"quote must be {path, side, line, text} with a string path, side and text and a positive integer line",
-			"write the quote as {\"path\":\"a.go\",\"side\":\"RIGHT\",\"line\":12,\"text\":\"<the exact line>\"}")}
+			"write the quote as {\"path\":\"a.go\",\"side\":\"RIGHT\",\"line\":12,\"text\":\"<the exact line>\"}"))
 	}
 	problems, sides := crossSideProblems(path+".side", quote.Side)
+	problems = append(keys, problems...)
 	if !cites {
 		return problems
 	}
@@ -453,6 +465,26 @@ func crossQuoteProblems(idx *evidence.DiffIndex, path string, verdict, raw any) 
 		problems = append(problems, crossProblem(path, core.QuoteProblemCode(reason),
 			fmt.Sprintf("quote does not match full.diff at %s:%d (%s)", strconv.Quote(quote.Path), quote.Line, reason),
 			"copy an exact line from that hunk of full.diff, or answer insufficient"))
+	}
+	return problems
+}
+
+// crossQuoteFields are the only keys a checker quote carries: the receipt
+// parser refuses any other, so the repair round names them up front.
+var crossQuoteFields = []string{"path", "side", "line", "text"}
+
+// crossQuoteKeyProblems names each key the quote carries beyond its four.
+func crossQuoteKeyProblems(path string, raw any) []core.Problem {
+	obj, ok := raw.(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	var problems []core.Problem
+	for _, key := range obj.Keys {
+		if !slices.Contains(crossQuoteFields, key) {
+			problems = append(problems, crossProblem(path+"["+strconv.Quote(key)+"]", core.ProblemCodeUnknownField,
+				"unknown quote key "+strconv.Quote(key), "remove it: a quote carries only path, side, line and text"))
+		}
 	}
 	return problems
 }

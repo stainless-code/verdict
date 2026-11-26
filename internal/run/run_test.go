@@ -452,9 +452,24 @@ func TestReentryNotesEveryRedaction(t *testing.T) {
 	t.Parallel()
 	f := &flags{agent: "claude", recipe: "supersecretvalue1", timeout: DefaultTimeoutS, rounds: DefaultRounds}
 	got := reentry(testReq(), f, false, false, []string{"ANTHROPIC_API_KEY=supersecretvalue1"})
-	want := "verdict run acme/app 42 --agent claude --recipe ***REDACTED***" + redactedNote
+	want := "verdict run acme/app 42 --agent claude --recipe '***REDACTED***'" + redactedNote
 	if got != want {
 		t.Fatalf("re-entry = %s\nwant       %s", got, want)
+	}
+}
+
+// TestReentryScrubsSecretsShellQuotingRewrites proves a credential holding a
+// quote or a space is scrubbed before the line is quoted: shell quoting would
+// rewrite it into a form a scrub of the rendered line never matches.
+func TestReentryScrubsSecretsShellQuotingRewrites(t *testing.T) {
+	t.Parallel()
+	for _, secret := range []string{"pa'ssword-123456", "pass word-123456"} {
+		f := &flags{agent: "claude", recipe: secret, timeout: DefaultTimeoutS, rounds: DefaultRounds}
+		got := reentry(testReq(), f, false, false, []string{"DATABASE_PASSWORD=" + secret})
+		want := "verdict run acme/app 42 --agent claude --recipe '***REDACTED***'" + redactedNote
+		if got != want {
+			t.Errorf("secret %q: re-entry = %s\nwant       %s", secret, got, want)
+		}
 	}
 }
 

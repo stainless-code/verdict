@@ -333,8 +333,9 @@ const redactedNote = "  # replace each '" + argvshape.RedactedValue + "' with th
 // --resume refuses a different list — but every value is redacted, model and
 // budget values included: the line is a recovery hint that lands in terminal
 // and CI logs, and any value can be a credential. It is also scrubbed of the
-// environment's credentials and token shapes, and a line that redacts
-// anything carries the note asking for the values back.
+// environment's credentials and token shapes argument by argument, before
+// quoting, and a line that redacts anything carries the note asking for the
+// values back.
 func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ []string) string {
 	argv := append([]string{"verdict", verbRun, req.Repo, req.Pr}, flagArgv(f, resume)...)
 	if f.consent {
@@ -343,15 +344,26 @@ func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ [
 	if jsonMode {
 		argv = append(argv, "--json")
 	}
-	line := RenderCommand(argv)
+	secrets := argvshape.SecretValues(environ)
+	line := RenderCommand(scrubArgs(argv, secrets))
 	if len(f.pass) > 0 {
-		line += " -- " + RenderCommand(passShape(f.pass))
+		line += " -- " + RenderCommand(scrubArgs(passShape(f.pass), secrets))
 	}
-	line = envsecret.ScrubShapes(envsecret.ScrubValues(line, argvshape.SecretValues(environ)))
 	if strings.Contains(line, argvshape.RedactedValue) {
 		line += redactedNote
 	}
 	return line
+}
+
+// scrubArgs scrubs each argument of the environment's credentials and token
+// shapes before it is rendered: shell quoting rewrites a value that holds a
+// quote or a space, so a scrub of the rendered line would miss it.
+func scrubArgs(args, secrets []string) []string {
+	out := make([]string, len(args))
+	for i, arg := range args {
+		out[i] = envsecret.ScrubShapes(envsecret.ScrubValues(arg, secrets))
+	}
+	return out
 }
 
 // passShape keeps each agent argument's flag name and redacts every value: a

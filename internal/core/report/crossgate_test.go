@@ -217,12 +217,7 @@ func assertResumeGate(t *testing.T, flags *reportcore.Flags, findings bool) {
 // and marks the gate for a fresh run naming the gap instead of a resume.
 func TestCrossGatePartialExecutionResumeRefusesNeverPasses(t *testing.T) {
 	incompleteBundle(t, crossEntryJSON("informational", ""))
-	launcher := crossStore + "/launcher.json"
-	raw, err := os.ReadFile(launcher)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeFile(t, launcher, strings.Replace(string(raw), `"plan_sha256":"`, `"plan_sha256":"0`, 1))
+	tamperManifest(t, `"plan_sha256":"`)
 	resp := runCross(t)
 	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Resume ||
 		resp.Gate.Restart != "execution manifest binding mismatch: plan_sha256" {
@@ -231,6 +226,63 @@ func TestCrossGatePartialExecutionResumeRefusesNeverPasses(t *testing.T) {
 	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
 		t.Fatalf("findings = %+v, want unknown", dim)
 	}
+}
+
+// TestCrossGateStoppedExecutionGapsAreNamed proves a stopped manifest reads
+// partial whatever else is missing, and that a missing plan is resumable only
+// while the manifest's other bindings hold: a missing diff, or a missing plan
+// beside a binding mismatch, marks the gate for a fresh run naming the gap,
+// with findings unknown, never a pass.
+func TestCrossGateStoppedExecutionGapsAreNamed(t *testing.T) {
+	for _, tc := range []struct {
+		prepare func(t *testing.T)
+		name    string
+		restart string
+	}{
+		{name: "diff missing", restart: "execution manifest or diff missing", prepare: func(t *testing.T) {
+			t.Helper()
+			removeFile(t, crossStore+"/full.diff")
+		}},
+		{
+			name: "plan missing beside a binding mismatch", restart: "execution manifest binding mismatch: review_sha256",
+			prepare: func(t *testing.T) {
+				t.Helper()
+				removeFile(t, crossStore+"/verification/plan.json")
+				tamperManifest(t, `"review_sha256":"`)
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			incompleteBundle(t, crossEntryJSON("informational", ""))
+			tc.prepare(t)
+			assertRestartGate(t, tc.restart)
+		})
+	}
+}
+
+// assertRestartGate requires the gate failed, marked for a fresh run naming
+// gap rather than a resume, with its findings unknown.
+func assertRestartGate(t *testing.T, gap string) {
+	t.Helper()
+	resp := runCross(t)
+	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Resume || resp.Gate.Restart != gap {
+		t.Fatalf("gate = %+v, want failed with restart %q\n%s", resp.Gate, gap, dimSummary(resp))
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// tamperManifest breaks one binding the manifest records, so it no longer
+// matches the bundle it names.
+func tamperManifest(t *testing.T, key string) {
+	t.Helper()
+	launcher := crossStore + "/launcher.json"
+	raw, err := os.ReadFile(launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, launcher, strings.Replace(string(raw), key, key+"0", 1))
 }
 
 // TestCrossGateCompleteExecutionNeverResumes proves the resume marker belongs

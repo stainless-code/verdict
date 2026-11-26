@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -270,19 +271,18 @@ func digest(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// readBound reads the manifest, aggregate plan, and diff an execution bound,
-// recording whether the manifest stopped short of complete, and names the
-// first one missing.
+// readBound reads the manifest, aggregate plan, and diff an execution bound.
+// The manifest's status is recorded first, so a stopped run reads partial
+// whatever else is missing; a missing manifest or diff is the gap.
 func (s *Execution) readBound(dir string) (manifest, plan *jq.Obj, planRaw, diff []byte, gap string) {
 	manifest, _ = readObject(dir, "launcher.json")
+	if manifest != nil {
+		s.partial = readcommon.FieldOf(manifest, fieldStatus) != "complete"
+	}
 	plan, planRaw = readObject(dir, filepath.Join(executionVerification, "plan.json"))
 	diff, err := readArtifact(dir, "full.diff", coreexec.FetchOutputCap)
 	if manifest == nil || err != nil {
 		return nil, nil, nil, nil, "execution manifest or diff missing"
-	}
-	s.partial = readcommon.FieldOf(manifest, fieldStatus) != "complete"
-	if plan == nil {
-		return nil, nil, nil, nil, gapPlanMissing
 	}
 	return manifest, plan, planRaw, diff, ""
 }
@@ -298,8 +298,8 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 		executionIDKey: s.ID, executionHead: head, executionDiffSHA: digest(diff),
 		executionReviewSHA: digest(raw), executionPlanSHA: digest(planRaw),
 	}
-	if gap := bindingGap(manifest, bindings); gap != "" {
-		return "execution manifest " + gap
+	if gap := s.manifestGap(manifest, plan, bindings); gap != "" {
+		return gap
 	}
 
 	s.completedFinders(manifest)
@@ -342,9 +342,32 @@ func (s *Execution) boundReceipt(dir, head string, bindings map[string]string, f
 	return file, ""
 }
 
+// manifestGap checks the manifest's bindings before a missing plan is the
+// gap: a mismatch is never resumable, so it must not read as the plan a
+// stopped run never wrote. A missing plan has no digest to bind, so only the
+// other bindings are compared then.
+func (s *Execution) manifestGap(manifest, plan *jq.Obj, bindings map[string]string) string {
+	if plan == nil {
+		bindings = maps.Clone(bindings)
+		delete(bindings, executionPlanSHA)
+	}
+	if gap := bindingGap(manifest, bindings); gap != "" {
+		return "execution manifest " + gap
+	}
+	if plan == nil {
+		return gapPlanMissing
+	}
+	return ""
+}
+
+// bindingGap compares each binding the map names, in a fixed order; a named
+// binding with no value is a mismatch.
 func bindingGap(doc *jq.Obj, bindings map[string]string) string {
 	for _, key := range []string{executionIDKey, executionHead, executionDiffSHA, executionReviewSHA, executionPlanSHA} {
-		want := bindings[key]
+		want, named := bindings[key]
+		if !named {
+			continue
+		}
 		if want == "" || readcommon.FieldOf(doc, key) != want {
 			return "binding mismatch: " + key
 		}
