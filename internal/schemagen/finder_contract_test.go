@@ -75,6 +75,11 @@ func TestAutomaticPlanSchema(t *testing.T) {
 		{"complete", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[]}`, true},
 		{"missing review binding", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","checks":[],"sources":[]}`, false},
 		{"missing sources", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[]}`, false},
+		{"merged source", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[{"sig":"kept","origins":[{"finder":"finder-1","index":0,"finding":{}},{"finder":"finder-2","index":0,"finding":{}}],"merged":{"sig":"dropped","checker":"finder-2"}}]}`, true},
+		{"merged source without checker", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[{"sig":"kept","origins":[{"finder":"finder-1","index":0,"finding":{}},{"finder":"finder-2","index":0,"finding":{}}],"merged":{"sig":"dropped"}}]}`, false},
+		{"merged source with an unknown checker", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[{"sig":"kept","origins":[{"finder":"finder-1","index":0,"finding":{}},{"finder":"finder-2","index":0,"finding":{}}],"merged":{"sig":"dropped","checker":"finder-3"}}]}`, false},
+		{"merged source with an extra key", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[{"sig":"kept","origins":[{"finder":"finder-1","index":0,"finding":{}},{"finder":"finder-2","index":0,"finding":{}}],"merged":{"sig":"dropped","checker":"finder-1","why":"x"}}]}`, false},
+		{"merged source null", `{"schema_version":"2","head_sha":"head","execution_id":"execution-A","diff_sha256":"diff","review_sha256":"review","checks":[],"sources":[{"sig":"kept","origins":[{"finder":"finder-1","index":0,"finding":{}},{"finder":"finder-2","index":0,"finding":{}}],"merged":null}]}`, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -3881,6 +3881,31 @@ coordinator merges exact signatures and dispatches each candidate to the opposit
 finder for a fresh cross-check. Duplicate findings keep both origins and receive
 both directed checks.
 
+Two finders rarely word one defect the same way, so the cross-check also folds
+reworded duplicates. Each request lists the checker's own findings
+(`own_findings`, with `path`, `start_line`, `line`, and `side`); a row that
+confirms a candidate may add `same_as` with one of those signatures when both
+name the same defect. After the cross phase the coordinator merges the pair
+into one finding only when both checks and the anchors agree: the other
+finder's check confirmed the named finding, and the two sit in the same file
+and side at overlapping or adjacent lines (`start_line` through `line`, where a
+`start_line` below 1 counts as absent). Both checkers naming the same pair is
+one merge. The merged finding keeps the row whose quote verifies against the
+diff over its `start_line`–`line` window (the confirmed candidate on a tie) at
+the higher of the two severities, takes the other row's `category` when it has
+none and the higher `rigor` with its `reproduction`, carries both origins and
+both directed checks, and `verification/plan.json` records the fold under
+`sources[].merged` (`sig` folded in, `checker` that named it). The checks and
+the anchors, not one checker's word, decide: a `same_as` on an unconfirmed row,
+one naming a finding the other checker refuted, left insufficient, or never
+checked, one naming a finding that is not the checker's alone, one in another
+file or on the other side, or one farther than a line away is ignored with a
+warning that names the reason, and each finding merges at most once whatever
+order the rows came in. `review.json`, the plan, and
+`verification/verdicts.json` are rewritten and re-bound together, so `record`,
+`post`, `report`, and `gate` count the defect once. A `--resume` reaches the
+same merge from the same rows.
+
 `record`, `post`, `report`, and their MCP adapters consume the same bound receipts.
 The S3 body reports completed finders and confirmed, contested, and pending checks.
 Each finding names its origins and checker standing. A potentially blocking
