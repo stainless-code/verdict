@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // codeThreadsFailed is the refusal every resolve-path failure reports when
@@ -89,7 +90,7 @@ func ReplyThread(
 	if !caps.ThreadReply || replier == nil {
 		return "", &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
 			"thread replies on %s are not implemented (%s)",
-			provider, caps.ThreadReplyReason())}
+			untrusted.Line(provider), caps.ThreadReplyReason())}
 	}
 	if cmdr == nil {
 		return "", &core.RefusalError{Code: codeThreadsFailed, Message: "threads failed: no commander in runtime"}
@@ -100,7 +101,7 @@ func ReplyThread(
 			return "", ref
 		}
 		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"could not reply to thread %s: %v", threadID, err)}
+			"could not reply to thread %s: %v", untrusted.Line(threadID), err)}
 	}
 	return id, nil
 }
@@ -126,7 +127,7 @@ func ResolveThread(
 	if !caps.ThreadResolution || resolver == nil {
 		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
 			"thread resolution on %s is not implemented (%s)",
-			provider, caps.ReasonFor(core.CapabilityThreadResolution))}
+			untrusted.Line(provider), caps.ReasonFor(core.CapabilityThreadResolution))}
 	}
 	if cmdr == nil {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: "threads failed: no commander in runtime"}
@@ -136,7 +137,7 @@ func ResolveThread(
 			return ref
 		}
 		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"could not resolve thread %s: %v", threadID, err)}
+			"could not resolve thread %s: %v", untrusted.Line(threadID), err)}
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]string,
@@ -23,7 +24,7 @@ func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 	}
 	if res.ExitCode != 0 {
 		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not reply to comment %s: %s", rootID, firstReason(res.Stderr))}
+			"github did not reply to comment %s: %s", untrusted.Line(rootID), firstReason(res.Stderr))}
 	}
 	return replyID(res.Stdout)
 }
@@ -43,7 +44,7 @@ func (gitlabHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 	}
 	if res.ExitCode != 0 {
 		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not reply to discussion %s: %s", threadID, firstReason(res.Stderr))}
+			"gitlab did not reply to discussion %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
 	}
 	return replyID(res.Stdout)
 }

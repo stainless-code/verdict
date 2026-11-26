@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // eventApprove is the positive binding event the payload and gates name.
@@ -413,7 +414,7 @@ func (st *state) checkBundle() *core.RefusalError {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
 	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
-		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(msgProviderUnimplemented, prov)}
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(msgProviderUnimplemented, untrusted.Line(prov))}
 	}
 	if !readcommon.IsDir(st.dir) {
 		return &core.RefusalError{Code: codeMissingBundle, Message: fmt.Sprintf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}
@@ -432,7 +433,7 @@ func (st *state) checkBundle() *core.RefusalError {
 		st.warn("PR state unknown (re-fetch to record it) — proceeding")
 	case statusOpen:
 	default:
-		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, prState)}
+		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, untrusted.Line(prState))}
 	}
 	return st.gateControls()
 }
@@ -910,7 +911,8 @@ func (st *state) sameSHARefusal() (*core.RefusalError, core.ForcedPost) {
 		case storedHead == st.commitID:
 			storedAt := st.postedAt()
 			return &core.RefusalError{Code: codeAlreadyPosted, Message: fmt.Sprintf(msgAlreadyPosted,
-					readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr, readcommon.ShortSHA(storedHead))},
+					untrusted.Line(readcommon.ShortSHA(st.commitID)), untrusted.Line(storedAt), st.req.Repo, st.req.Pr,
+					untrusted.Line(readcommon.ShortSHA(storedHead)))},
 				core.ForcedPost{Reason: codeAlreadyPosted, PreviousHead: &storedHead}
 		}
 	}
@@ -962,7 +964,8 @@ func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 	return &core.RefusalError{Code: "already-reviewed-patch", Message: fmt.Sprintf(
 		"already-reviewed-patch: patch %s was posted from %s at head %s (%s) — "+
 			"refusing a duplicate review of the same change (pass --force to post again)",
-		*cur.PatchID, filepath.ToSlash(filepath.Join(filepath.Dir(st.dir), match.bundle)), readcommon.ShortSHA(match.head), match.postedAt)}
+		*cur.PatchID, untrusted.Line(filepath.ToSlash(filepath.Join(filepath.Dir(st.dir), match.bundle))),
+		readcommon.ShortSHA(match.head), match.postedAt)}
 }
 
 // patchSibling is one completed same-patch sibling receipt.

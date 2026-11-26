@@ -11,6 +11,7 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Codes the typed run policy adds: compliance and bind refusals no flag
@@ -113,10 +114,11 @@ func policyFindings(entries []any) []config.FindingView {
 
 // findingLabel names a blocking finding for the refusal.
 func findingLabel(finding *config.FindingView) string {
+	label := "[" + finding.Category + "/" + finding.Severity + "]"
 	if finding.Path != "" {
-		return finding.Path + " [" + finding.Category + "/" + finding.Severity + "]"
+		label = finding.Path + " " + label
 	}
-	return "[" + finding.Category + "/" + finding.Severity + "]"
+	return untrusted.Line(label)
 }
 
 // checkEvidence is one verdict a post actually gathered for one selected
@@ -195,7 +197,7 @@ func (st *state) evidenceGate() *core.RefusalError {
 	// review-insufficient once.
 	return &core.RefusalError{
 		Code:    core.CodeReviewInsufficient,
-		Message: strings.TrimPrefix(st.merged.Approval.Reason, core.CodeReviewInsufficient+": "),
+		Message: untrusted.Line(strings.TrimPrefix(st.merged.Approval.Reason, core.CodeReviewInsufficient+": ")),
 	}
 }
 
@@ -220,7 +222,7 @@ func (st *state) privacyConflictGate() *core.RefusalError {
 	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(
 		"required review for %s in %s withholds that path by exclusion rule %q — compliance is unmet and conflicted; "+
 			"adjust the review scope or requirements, then re-fetch (comments and non-approving runs can record the conflict), "+
-			"and never disclose the withheld bytes", first.Path, where, first.Rule)}
+			"and never disclose the withheld bytes", untrusted.Line(first.Path), where, first.Rule)}
 }
 
 // blockedGroups collects the group ids a blocker set fails, and whether any
@@ -324,7 +326,8 @@ func (st *state) unmetRefusal(check, hint string) *core.RefusalError {
 	first := unmet[0]
 	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(
 		msgRequirementUnmet, check, groupDesc(first.Label, first.ID),
-		readcommon.ShortSHA(st.commitID), latestDetail(rs, first.ID, check, st.commitID), hint)}
+		untrusted.Line(readcommon.ShortSHA(st.commitID)),
+		untrusted.Line(latestDetail(rs, first.ID, check, st.commitID)), hint)}
 }
 
 // headCurrent is the drift read's verdict: the live host head equals the

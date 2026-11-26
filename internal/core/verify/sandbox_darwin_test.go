@@ -460,8 +460,8 @@ func assertGitStillWorks(t *testing.T, sb *sandbox, env []string, root string) {
 // TestSandboxExecDeniesServiceMediatedChannels proves the Mach default-deny
 // against the real services: `defaults write` cannot get cfprefsd to persist
 // a preference, and the pasteboard can be neither read nor written. The
-// pasteboard leg uses the find pasteboard and restores it, so the operator's
-// clipboard is never touched.
+// pasteboard leg uses a private pasteboard this run owns, so nothing else on
+// the machine can change what it reads.
 func TestSandboxExecDeniesServiceMediatedChannels(t *testing.T) {
 	requireSandboxExec(t)
 	root := t.TempDir()
@@ -490,9 +490,7 @@ func assertUserLookupAllowed(t *testing.T, sb *sandbox, env []string, root strin
 // the sandbox and proves the host cannot read it back.
 func assertPreferencesNotPersisted(t *testing.T, sb *sandbox, env []string, root string) {
 	t.Helper()
-	// A per-process, per-moment suffix: concurrent runs never share a domain,
-	// so one run's cleanup cannot delete another's probe.
-	domain := fmt.Sprintf("dev.verdict.sandboxtest.%d.%d", os.Getpid(), time.Now().UnixNano())
+	domain := uniqueProbeName()
 	t.Cleanup(func() { removePreferenceDomain(t, domain) })
 	// The per-domain write must itself fail for the right reason: cfprefsd is
 	// unreachable. `defaults write -g` exits 0 even when nothing persists, so
@@ -527,36 +525,76 @@ func removePreferenceDomain(t *testing.T, domain string) {
 	}
 }
 
-// assertPasteboardUnreachable puts a sentinel on the find pasteboard from the
-// host, proves the sandbox can neither read nor overwrite it, and restores
-// the pasteboard's previous text.
+// uniqueProbeName names one run's preference domain or pasteboard. The
+// per-process, per-moment suffix keeps concurrent runs apart, so one run's
+// cleanup cannot delete another's probe.
+func uniqueProbeName() string {
+	return fmt.Sprintf("dev.verdict.sandboxtest.%d.%d", os.Getpid(), time.Now().UnixNano())
+}
+
+// pasteboardProbe is a JavaScript for Automation script over one named
+// pasteboard, which pbcopy and pbpaste cannot address. It asks the same
+// server they do. A server it cannot reach hands back a nil board, which the
+// script reports instead of crashing on, so "unreachable" also proves the
+// interpreter and AppKit ran.
+const pasteboardProbe = `ObjC.import('AppKit')
+function run([op, name, text]) {
+  const board = $.NSPasteboard.pasteboardWithName(name)
+  if (board.isNil()) return 'unreachable'
+  if (op === 'release') {
+    board.releaseGlobally
+    return 'released'
+  }
+  if (op === 'write') {
+    board.clearContents
+    return board.setStringForType($(text), $.NSPasteboardTypeString) ? 'wrote' : 'refused'
+  }
+  const found = board.stringForType($.NSPasteboardTypeString)
+  return found.isNil() ? 'empty' : 'read ' + ObjC.unwrap(found)
+}
+`
+
+// assertPasteboardUnreachable puts a sentinel on a private pasteboard from
+// the host, proves the sandbox can neither read nor overwrite it, and releases
+// the pasteboard.
 func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root string) {
 	t.Helper()
 	const sentinel = "verdict-pasteboard-sentinel"
-	saved, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find")
-	t.Cleanup(func() { hostCommand(t, saved, "/usr/bin/pbcopy", "-pboard", "find") })
-	hostCommand(t, sentinel, "/usr/bin/pbcopy", "-pboard", "find")
-	if got, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find"); got != sentinel {
-		// A headless or SSH session has no usable pasteboard server, so the
-		// leg cannot apply; the CI lanes that require the sandbox fail here.
-		if os.Getenv("EVAL_REQUIRE_SANDBOX") == "1" {
-			t.Fatalf("host control read %q from the find pasteboard, want the sentinel", got)
+	writeSandboxFile(t, filepath.Join(root, "pasteboard.js"), pasteboardProbe)
+	name := uniqueProbeName()
+	host := func(args ...string) string {
+		out, _ := hostCommand(t, pasteboardProbe, "/usr/bin/osascript",
+			append([]string{"-l", "JavaScript", "-"}, args...)...)
+		return strings.TrimSpace(out)
+	}
+	t.Cleanup(func() { host("release", name) })
+	requirePasteboardControl(t, host("write", name, sentinel), host("read", name), sentinel)
+	for _, args := range []string{"read " + name, "write " + name + " overwritten"} {
+		res := runWrapped(t, sb, env, root, `osascript -l JavaScript pasteboard.js `+args)
+		if got := strings.TrimSpace(res.Stdout + res.Stderr); res.ExitCode != 0 || got != "unreachable" {
+			t.Errorf("sandboxed pasteboard %q = exit %d %q, want unreachable", args, res.ExitCode, got)
 		}
-		t.Logf("WARNING: the pasteboard leg did not run: no usable pasteboard on this host (control read %q); "+
-			"the verify-sandbox eval under EVAL_REQUIRE_SANDBOX=1 is the gate that requires it", got)
-		t.Skipf("no usable pasteboard on this host (control read %q); the leg cannot apply", got)
 	}
-	res := runWrapped(t, sb, env, root, `pbpaste -pboard find`)
-	if res.ExitCode == 0 || strings.Contains(res.Stdout+res.Stderr, sentinel) {
-		t.Errorf("sandboxed pbpaste = exit %d %q, want the pasteboard unreachable", res.ExitCode, res.Stdout+res.Stderr)
+	if got := host("read", name); got != "read "+sentinel {
+		t.Errorf("the private pasteboard holds %q after the sandboxed write, want the sentinel", got)
 	}
-	res = runWrapped(t, sb, env, root, `printf overwritten | pbcopy -pboard find`)
-	if res.ExitCode == 0 {
-		t.Errorf("sandboxed pbcopy exited 0, want the pasteboard unreachable")
+}
+
+// requirePasteboardControl ends the leg unless the host's own write and read
+// back of the sentinel worked, so a denial after it means something.
+func requirePasteboardControl(t *testing.T, wrote, read, sentinel string) {
+	t.Helper()
+	if wrote == "wrote" && read == "read "+sentinel {
+		return
 	}
-	if got, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find"); got != sentinel {
-		t.Errorf("the find pasteboard reads %q after the sandboxed pbcopy, want the sentinel", got)
+	// A headless or SSH session has no usable pasteboard server, so the leg
+	// cannot apply; the CI lanes that require the sandbox fail here.
+	if os.Getenv("EVAL_REQUIRE_SANDBOX") == "1" {
+		t.Fatalf("host control: write = %q, read = %q, want the sentinel back", wrote, read)
 	}
+	t.Logf("WARNING: the pasteboard leg did not run: no usable pasteboard on this host (write %q, read %q); "+
+		"the verify-sandbox eval under EVAL_REQUIRE_SANDBOX=1 is the gate that requires it", wrote, read)
+	t.Skipf("no usable pasteboard on this host (write %q, read %q); the leg cannot apply", wrote, read)
 }
 
 // hostCmdWaitDelay bounds the wait for a captured command's pipes to close

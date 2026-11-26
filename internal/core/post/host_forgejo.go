@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Forgejo has no CLI: every read and write is one API call through `curl`. The
@@ -165,7 +166,7 @@ func forgejoSubmit(ctx context.Context, cmdr Commander, auth curlauth.Credential
 		return postFailure(dir, msgForgejoPayload, true, append(warnings, forgejoLandedWarning(len(part.comments))...))
 	}
 	if review.State != part.event {
-		return postRefusal(dir, fmt.Sprintf(msgForgejoState, review.State, part.event),
+		return postRefusal(dir, fmt.Sprintf(msgForgejoState, untrusted.Line(review.State), part.event),
 			append(warnings, forgejoLandedWarning(len(part.comments))...))
 	}
 	return postAccepted(dir, forgejoReceiptObject(&review), res.Stderr, warnings)

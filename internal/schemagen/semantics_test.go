@@ -393,7 +393,10 @@ var publishedSemantics = map[string]string{
 	// reportData drops its optional completeness and gate properties and the
 	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
 	// data profile. gateDimension prose no longer names the removed flags.
-	"envelope.schema.json": "ee04e4354c0e2babb311bca49f1811d1287075f55451b9a263f85df3e805c7d3",
+	// loop's wall-clock limit is a timeout (a rename before loopData first
+	// ships): the stop enum value wall-budget becomes timeout and the required
+	// budget_s becomes timeout_s, so "budget" no longer names a duration.
+	"envelope.schema.json": "b5d2e343e0bc5c472fef8ffa373ffb23f2f224be205badf6a6d02afe9a2e83af",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

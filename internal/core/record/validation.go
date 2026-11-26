@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 	"github.com/stainless-code/verdict/internal/validation"
 )
 
@@ -146,7 +147,7 @@ func downgradeRefusal(m *jq.Obj, result *core.ValidationResult) *core.RefusalErr
 	}
 	return &core.RefusalError{Code: validation.CodeBad, Message: fmt.Sprintf(
 		"validation.json DOWNGRADED for %s names from_severity %s, but the finding is %s",
-		readcommon.ShortSHA(result.Sig), result.FromSeverity, current)}
+		untrusted.Line(readcommon.ShortSHA(result.Sig)), untrusted.Line(result.FromSeverity), untrusted.Line(current))}
 }
 
 func (st *state) applyFloors(policy validation.Policy) []validation.Violation {

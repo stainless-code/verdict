@@ -142,4 +142,4 @@ evidence does not support is not reported.
 with an agent fix phase between a failed gate and the next round's fresh
 review, run before opening a PR. Each round retains a receipt; only a passing
 last gate produces a passing summary. See the manual's **Agent self-review
-loop** for its stop conditions, coverage posture, and budgets.
+loop** for its stop conditions, coverage posture, and limits.

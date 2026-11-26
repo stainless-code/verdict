@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // gitlabHost is the `glab` host: one discussion per finding, a summary note,
@@ -56,11 +57,11 @@ func (gitlabHost) resolveThread(ctx context.Context, cmdr Commander, _ map[strin
 	}
 	if res.ExitCode != 0 {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not resolve discussion %s: %s", threadID, firstReason(res.Stderr))}
+			"gitlab did not resolve discussion %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
 	}
 	if !gitlabDiscussionResolved(res.Stdout) {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not confirm discussion %s resolved", threadID)}
+			"gitlab did not confirm discussion %s resolved", untrusted.Line(threadID))}
 	}
 	return nil
 }
