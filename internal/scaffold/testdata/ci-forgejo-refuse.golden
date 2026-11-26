@@ -59,7 +59,7 @@ jobs:
           persist-credentials: false
 
       - name: Install verdict
-        uses: https://github.com/stainless-code/verdict/setup-verdict@b4c36344f03375985a8edf859b9092ba7d59f077 # vVERSION
+        uses: https://github.com/stainless-code/verdict/setup-verdict@b4c36344f03375985a8edf859b9092ba7d59f077 # v0.7.0
         with:
           version: ${{ vars.VERDICT_VERSION }}
 
