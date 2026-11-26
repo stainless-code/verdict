@@ -452,8 +452,12 @@ func TestSameAsShapeAcceptsOnlyStrings(t *testing.T) {
 	} {
 		rows := []any{unionInput(t, raw)}
 		batch := []any{jq.NewObj("sig", "s")}
-		if got := assignCrossRows(rows, "finder-2", batch); got != want {
-			t.Fatalf("assignCrossRows(%s) = %v, want %v", raw, got, want)
+		problems := assignCrossRows(rows, "finder-2", batch)
+		if got := len(problems) == 0; got != want {
+			t.Fatalf("assignCrossRows(%s) problems = %v, want valid %v", raw, problems, want)
+		}
+		if !want && problems[0].Path != "$.results[0].same_as" {
+			t.Fatalf("assignCrossRows(%s) problem path = %q, want $.results[0].same_as", raw, problems[0].Path)
 		}
 	}
 }

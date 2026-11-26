@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -52,6 +53,12 @@ func parseQuote(raw any) (CodeQuote, error) {
 	if err := decoder.Decode(&quote); err != nil {
 		return CodeQuote{}, bad("invalid checker quote")
 	}
+	// The side is required and spelled one way: an absent or empty side would
+	// reach the quote matcher as its finding default, RIGHT, so a receipt the
+	// cross check refuses would still verify here.
+	if quote.Side != "RIGHT" && quote.Side != "LEFT" {
+		return CodeQuote{}, bad("checker quote side must be RIGHT or LEFT")
+	}
 	return quote, nil
 }
 
@@ -73,6 +80,9 @@ type Execution struct {
 	// outlives the artifacts the capture bound: a receipt that still states
 	// the execution forbids reading its findings as a manual review.
 	CrossRequired bool
+	// partial records that the bound manifest never reached complete: a run
+	// stopped before its last barrier, which `run --resume` continues.
+	partial bool
 	// oneFinder records that the capture settled on one finder (see
 	// readTopology). Such a capture is manual by declaration: a leftover
 	// execution reference must not re-arm cross checks on it.
@@ -261,12 +271,26 @@ func digest(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
-	manifest, _ := readObject(dir, "launcher.json")
-	plan, planRaw := readObject(dir, filepath.Join(executionVerification, "plan.json"))
+// readBound reads the manifest, aggregate plan, and diff an execution bound.
+// The manifest's status is recorded first, so a stopped run reads partial
+// whatever else is missing; a missing manifest or diff is the gap.
+func (s *Execution) readBound(dir string) (manifest, plan *jq.Obj, planRaw, diff []byte, gap string) {
+	manifest, _ = readObject(dir, "launcher.json")
+	if manifest != nil {
+		s.partial = readcommon.FieldOf(manifest, fieldStatus) != "complete"
+	}
+	plan, planRaw = readObject(dir, filepath.Join(executionVerification, "plan.json"))
 	diff, err := readArtifact(dir, "full.diff", coreexec.FetchOutputCap)
-	if manifest == nil || plan == nil || err != nil {
-		return "execution manifest, plan or diff missing"
+	if manifest == nil || err != nil {
+		return nil, nil, nil, nil, "execution manifest or diff missing"
+	}
+	return manifest, plan, planRaw, diff, ""
+}
+
+func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
+	manifest, plan, planRaw, diff, gap := s.readBound(dir)
+	if gap != "" {
+		return gap
 	}
 	head := readcommon.OpenBundle(dir).Head()
 	s.head = head
@@ -274,8 +298,8 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 		executionIDKey: s.ID, executionHead: head, executionDiffSHA: digest(diff),
 		executionReviewSHA: digest(raw), executionPlanSHA: digest(planRaw),
 	}
-	if gap := bindingGap(manifest, bindings); gap != "" {
-		return "execution manifest " + gap
+	if gap := s.manifestGap(manifest, plan, bindings); gap != "" {
+		return gap
 	}
 
 	s.completedFinders(manifest)
@@ -293,7 +317,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	s.blockingGap(Findings(review))
 	s.specGap(review)
 	if readcommon.FieldOf(manifest, fieldStatus) != "complete" {
-		return "execution manifest is incomplete"
+		return gapIncomplete
 	}
 	return ""
 }
@@ -304,7 +328,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 func (s *Execution) boundReceipt(dir, head string, bindings map[string]string, findings []any) (*File, string) {
 	receipt, receiptRaw := readObject(dir, filepath.Join(executionVerification, "verdicts.json"))
 	if receipt == nil {
-		return nil, "execution panel receipt missing"
+		return nil, gapReceiptMissing
 	}
 	if gap := bindingGap(receipt, bindings); gap != "" {
 		return nil, "execution panel " + gap
@@ -318,9 +342,32 @@ func (s *Execution) boundReceipt(dir, head string, bindings map[string]string, f
 	return file, ""
 }
 
+// manifestGap checks the manifest's bindings before a missing plan is the
+// gap: a mismatch is never resumable, so it must not read as the plan a
+// stopped run never wrote. A missing plan has no digest to bind, so only the
+// other bindings are compared then.
+func (s *Execution) manifestGap(manifest, plan *jq.Obj, bindings map[string]string) string {
+	if plan == nil {
+		bindings = maps.Clone(bindings)
+		delete(bindings, executionPlanSHA)
+	}
+	if gap := bindingGap(manifest, bindings); gap != "" {
+		return "execution manifest " + gap
+	}
+	if plan == nil {
+		return gapPlanMissing
+	}
+	return ""
+}
+
+// bindingGap compares each binding the map names, in a fixed order; a named
+// binding with no value is a mismatch.
 func bindingGap(doc *jq.Obj, bindings map[string]string) string {
 	for _, key := range []string{executionIDKey, executionHead, executionDiffSHA, executionReviewSHA, executionPlanSHA} {
-		want := bindings[key]
+		want, named := bindings[key]
+		if !named {
+			continue
+		}
 		if want == "" || readcommon.FieldOf(doc, key) != want {
 			return "binding mismatch: " + key
 		}
@@ -498,6 +545,30 @@ func (s *Execution) ApplyEvidence(receipt *core.EvidenceReceipt) {
 	receipt.Gaps = append(receipt.Gaps, "execution: "+strings.TrimSpace(s.Gap+" "+s.BlockingGap))
 }
 
+// The gaps a stopped run leaves and `run --resume` repairs: a failed phase
+// after every bound artifact verified, or an aggregate plan or panel receipt
+// the run never reached. A missing manifest or diff, a binding mismatch, or a
+// receipt that fails its parse is not one: resume refuses those.
+const (
+	gapIncomplete     = "execution manifest is incomplete"
+	gapPlanMissing    = "execution plan missing"
+	gapReceiptMissing = "execution panel receipt missing"
+)
+
+// Incomplete reports whether a two-finder execution stopped before it
+// finished — its manifest is not complete and its gap is one a resumed run
+// repairs — so its findings await cross checks `run --resume` can finish.
+func (s *Execution) Incomplete() bool {
+	return s != nil && s.CrossRequired && s.partial &&
+		(s.Gap == gapIncomplete || s.Gap == gapPlanMissing || s.Gap == gapReceiptMissing)
+}
+
+// Partial reports whether a two-finder execution's manifest stopped short of
+// complete with a gap, resumable or not: its findings are unsettled either way.
+func (s *Execution) Partial() bool {
+	return s != nil && s.CrossRequired && s.partial && s.Gap != ""
+}
+
 // Problem is the bound execution failure exposed by readiness.
 func (s *Execution) Problem() string {
 	if !s.CrossRequired {
@@ -591,7 +662,7 @@ func (s *Execution) seal(gap string) {
 	s.Gap = gap
 	if gap != "" {
 		s.Eligible = make(map[string]bool)
-		if gap != "execution manifest is incomplete" {
+		if gap != gapIncomplete {
 			s.Checked = nil
 		}
 		s.SpecViolations = nil

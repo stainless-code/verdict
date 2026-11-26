@@ -44,7 +44,10 @@ const (
 	idCoverage      = "coverage"
 	idWidth         = 12 // longest dimension id: live_threads
 	actionFindings  = "address or triage the open findings"
-	actionMissing   = "review + post the fetched HEAD"
+	// actionResume continues the incomplete execution the gate waits on; run
+	// never records, so the record step follows it.
+	actionResume  = "finish the incomplete execution with the same verdict run command plus --resume, then re-run record"
+	actionMissing = "review + post the fetched HEAD"
 	// actionCoverage names both attestation keys: a chunked bundle ignores
 	// coverage[], so a recovery naming only that key would loop the operator.
 	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
@@ -182,14 +185,44 @@ func gateNext(gate *core.ReportGate) string {
 	return strings.Join(actions, ", then ")
 }
 
+// gateActions collects each failing dimension's recovery. A gate over an
+// execution that stopped before it finished leads with its recovery — resume
+// it, or start it fresh when it cannot be resumed: the findings and evidence
+// dimensions fail on the same unsettled cross checks, so neither adds a
+// recovery of its own.
 func gateActions(gate *core.ReportGate) []string {
-	actions := make([]string, 0, len(gate.Dimensions))
+	actions := make([]string, 0, len(gate.Dimensions)+1)
+	if action := stoppedAction(gate); action != "" {
+		actions = append(actions, action)
+	}
 	for _, dim := range gate.Dimensions {
+		if resumeCovers(gate, dim) {
+			continue
+		}
 		if action := gateAction(dim); action != "" {
 			actions = append(actions, action)
 		}
 	}
 	return actions
+}
+
+// stoppedAction is the recovery for a gate over a stopped execution, empty
+// when the execution finished.
+func stoppedAction(gate *core.ReportGate) string {
+	switch {
+	case gate.Resume:
+		return actionResume
+	case gate.Restart != "":
+		return "re-run the same verdict run command without --resume (the execution cannot be resumed: " +
+			gate.Restart + "), then re-run record"
+	}
+	return ""
+}
+
+// resumeCovers reports a dimension whose failure the stopped execution's
+// recovery already answers: findings and evidence wait on the same execution.
+func resumeCovers(gate *core.ReportGate, dim core.GateDimension) bool {
+	return (gate.Resume || gate.Restart != "") && (dim.ID == idFindings || dim.ID == idEvidence)
 }
 
 func gateAction(dim core.GateDimension) string {

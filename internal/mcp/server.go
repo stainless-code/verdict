@@ -638,7 +638,7 @@ func refusalData(ref *core.RefusalError) refusalContent {
 	return refusalContent{
 		Code:     ref.Code,
 		Message:  ref.Message,
-		Hint:     core.HintFor(ref.Code),
+		Hint:     core.RefusalHint(ref),
 		RetryAt:  ref.RetryAt,
 		Warnings: ref.Warnings,
 		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,

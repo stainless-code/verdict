@@ -167,7 +167,7 @@ func nextStoreError(r *cli.Runner, resp *core.NextResponse) int {
 	env := core.RenderEnvelope(nextVerb, r.Repo, r.Pr, resp.At, "",
 		ref.Warnings, nil, &core.SchemaError{
 			Code:    ref.Code,
-			Message: ref.Message + "\n" + cli.HintFor(ref.Code),
+			Message: ref.Message + "\n" + core.RefusalHint(ref),
 		})
 	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
 	r.WriteRentry()

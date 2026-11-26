@@ -591,6 +591,10 @@ type RefusalError struct {
 	Message  string
 	Hint     string
 	Warnings []string
+	// Problems lists the input problems the refusal names (each with its
+	// JSONPath, code, and fix), the list a hint like "fix the evidence gaps
+	// named above" points at; empty when the refusal names none.
+	Problems []Problem
 }
     RefusalError is a typed refusal: machine code plus human message. Match it
     with errors.As; every Client method returns one (or a MissingToolError)

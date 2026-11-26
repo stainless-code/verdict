@@ -25,6 +25,10 @@ type RefusalError struct {
 	Message  string
 	Hint     string
 	Warnings []string
+	// Problems lists the input problems the refusal names (each with its
+	// JSONPath, code, and fix), the list a hint like "fix the evidence gaps
+	// named above" points at; empty when the refusal names none.
+	Problems []Problem
 }
 
 // Error implements error.
@@ -231,8 +235,9 @@ func refusalErr(ref *core.RefusalError) error {
 	return &RefusalError{
 		Code:     ref.Code,
 		Message:  ref.Message,
-		Hint:     core.HintFor(ref.Code),
+		Hint:     core.RefusalHint(ref),
 		Warnings: append([]string{}, ref.Warnings...),
+		Problems: append([]Problem(nil), ref.Problems...),
 	}
 }
 

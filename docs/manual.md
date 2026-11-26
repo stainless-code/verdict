@@ -3907,6 +3907,23 @@ coordinator merges exact signatures and dispatches each candidate to the opposit
 finder for a fresh cross-check. Duplicate findings keep both origins and receive
 both directed checks.
 
+A cross check answers each requested signature exactly once in its
+`verdicts.json`: a `verdict` (`confirmed`, `refuted`, or `insufficient`),
+10–500 characters of `evidence`, and, for `confirmed` or `refuted`, a `quote`
+`{path, side, line, text}` that matches the pinned diff. `side` is required:
+`RIGHT` for a line on the new side of the diff or `LEFT` for a deleted line on
+the old side. An absent, empty, or other spelling is refused, by the cross
+check and by every later reader of `verification/verdicts.json` alike. An
+answer that fails the check earns a repair round carrying every problem the
+checker found in one pass — the row set, each row's fields, and each quote
+against the diff, so a bad side never hides a quote that does not match — each
+with its JSONPath, code, and fix, in the shape `record` reports, up to the
+lesser of `--rounds` and 2 attempts. A check still failing after them records
+`cross-incomplete`, and the run refuses `review-insufficient` naming every
+failed phase and, for an execution `--resume` can continue, that recovery; one
+it cannot (a missing manifest or diff, a binding mismatch) says to re-run
+without `--resume`.
+
 Two finders rarely word one defect the same way, so the cross-check also folds
 reworded duplicates. Each request lists the checker's own findings
 (`own_findings`, with `path`, `start_line`, `line`, and `side`); a row that
@@ -3937,7 +3954,18 @@ The S3 body reports completed finders and confirmed, contested, and pending chec
 Each finding names its origins and checker standing. A potentially blocking
 finding with missing, refuted, or unverified cross evidence does not gate as
 confirmed, and approval is insufficient — after the execution finishes and after
-its artifacts are gone, not only while it is live. Refutations remain visible as
+its artifacts are gone, not only while it is live. While the execution is
+stopped short — its manifest is not complete and its gap is a failed phase or
+an aggregate plan or panel receipt the run never wrote — `gate` fails in every
+mode and names one recovery: the same `run` with `--resume`, then `record`.
+An execution that stopped short in a way `--resume` refuses (a binding
+mismatch, an invalid panel receipt) fails the same way and reads its findings
+`unknown` too, but its recovery is the same `run` without `--resume`, naming
+the gap.
+The `findings` dimension reads `unknown`, never "no open findings", counting
+the in-tier findings that await cross checks (zero when none does: a finding
+below the tier, outside the category, or absent is still unsettled), and the
+`evidence` dimension fails on the same execution. Refutations remain visible as
 bounded quoted evidence. `verification.cross` is derived output: removing or
 forging it cannot replace the bound receipts. When no live artifact states the
 capture, the strongest remaining statement decides it: an explicit `finders: 1`
@@ -4452,7 +4480,20 @@ missing artifact) and exit status, naming every failed finder, not
 `review-insufficient`; when only one finder fails, the survivor's evidence is
 still judged and the refusal names the failed finder's cause beside the gap.
 `no-review-artifact` prints the agent's permission flag from the table above as
-a re-run line; verdict never adds it to the argv itself.
+a re-run line; verdict never adds it to the argv itself. The `re-enter:` line
+repeats the invocation as argv quoted the way `--print` quotes it, so no
+operand runs as a second shell command. It keeps the shape of the arguments
+after `--`, since `--resume` refuses a different argument list: a bare flag
+name (`--name`, `-x`) stays, `--name=value` keeps its name, and every value —
+model and budget values included — is `***REDACTED***`. The line is scrubbed of
+the environment's credentials and token shapes, and whenever it redacts
+anything a trailing shell comment asks for the values back. A refusal over an
+execution `--resume` continues re-enters with `--resume` already among
+verdict's flags, before `--`; a `resume-drift` or `cannot-resume` refusal
+re-enters without it. A `review-insufficient` refusal that lists no
+evidence problems names its one gap in the message, and its hint points there
+instead of at a list; the SDK's `RefusalError` carries the listed problems in
+`Problems`.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--agent`, a `--rounds` outside 1–5, `--print` with `--rounds` greater than 1, or
