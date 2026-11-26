@@ -124,5 +124,5 @@ func parseBaseTrigger(raw []byte) (*core.ConfigTrigger, *core.RefusalError) {
 	if config.IsUnknownField(ref) {
 		return nil, ref
 	}
-	return nil, triggerFailure("could not parse the base "+config.ConfigPath, ref)
+	return nil, triggerFailure("could not parse the base policy", ref)
 }

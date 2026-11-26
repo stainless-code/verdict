@@ -395,7 +395,9 @@ type fetchRunCtx struct { //nolint:govet // field grouping documents the run sta
 	// createdDir records that the bundle directory did not exist before this
 	// run, so a refusal removes it instead of leaving a half-written bundle.
 	// A re-fetch over an existing bundle never removes it.
-	createdDir        bool
+	createdDir bool
+	// bundleRoot is the repository root the bundle leaf was created under.
+	bundleRoot        string
 	noDefaultExcludes bool
 	preview           bool
 	receiptLoaded     bool

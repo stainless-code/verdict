@@ -37,6 +37,9 @@ type Ctx struct {
 	// kb.txt: the agent was handed them, so citing one is not "unknown" even
 	// though no store row backs it. A store row with the same id still wins.
 	Bundled map[string]bool
+	// bundledGap names a kb.txt whose manifest could not be read; the first
+	// cite the manifest would have answered warns it once.
+	bundledGap string
 	// Root is the reviewed repository root every store write anchors to
 	// ("" reads the working directory).
 	Root string
@@ -230,6 +233,7 @@ func (n *normalizer) live(s string) bool {
 		if n.c.Bundled[s] {
 			return true
 		}
+		n.c.warnBundledGap()
 		n.c.Warn(fmt.Sprintf("ignoring unknown kb rule '%s' (no %s yet)", s, File))
 		return false
 	}
@@ -242,6 +246,7 @@ func (n *normalizer) live(s string) bool {
 		if n.c.Bundled[s] {
 			return true
 		}
+		n.c.warnBundledGap()
 		n.c.Warn(fmt.Sprintf("ignoring unknown kb rule '%s'", s))
 	default:
 		n.c.Warn(fmt.Sprintf("kb store unreadable — ignoring cited rule '%s'", s))
@@ -293,25 +298,55 @@ const (
 	kbListCap = 5
 )
 
-// packSourcePrefix marks a recall manifest row fetch rendered from a pack
-// rule rather than a store row.
-const packSourcePrefix = "pack:"
+// PackSourcePrefix marks a recall manifest row fetch rendered from a pack
+// rule rather than a store row; the fetch writer and BundledRules share it.
+const PackSourcePrefix = "pack:"
+
+// LoadBundled reads the bundle's pack rules into Bundled. When the bundle
+// has a kb.txt but its manifest is missing or unreadable, the pack rules the
+// agent was handed cannot be recognized: the first cite that falls through
+// to "unknown" says why, once, instead of the gap staying silent.
+func (c *Ctx) LoadBundled(dir string) {
+	rules, ok := readBundledRules(dir)
+	c.Bundled = rules
+	if !ok && isFile(filepath.Join(dir, "kb.txt")) {
+		c.bundledGap = fmt.Sprintf("kb recall manifest %s is missing or unreadable — "+
+			"pack rules in kb.txt cannot be recognized as cites (re-fetch the bundle)",
+			filepath.ToSlash(filepath.Join(dir, "kb-recall.json")))
+	}
+}
+
+// warnBundledGap warns the unreadable-manifest gap once.
+func (c *Ctx) warnBundledGap() {
+	if c.bundledGap == "" {
+		return
+	}
+	c.Warn(c.bundledGap)
+	c.bundledGap = ""
+}
 
 // BundledRules reads the pack rule ids the bundle's kb-recall.json lists: the
 // same rules fetch wrote into kb.txt. A missing or unreadable manifest reads
 // empty, so a bundle fetched before the manifest keeps the store-only check.
 func BundledRules(dir string) map[string]bool {
+	rules, _ := readBundledRules(dir)
+	return rules
+}
+
+// readBundledRules reads the manifest's pack rule ids, reporting false when
+// the manifest is missing, unreadable, or not a manifest array.
+func readBundledRules(dir string) (map[string]bool, bool) {
 	raw, err := jq.CappedFile(filepath.Join(dir, "kb-recall.json"), jq.MaxKBBytes)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return nil
+		return nil, false
 	}
 	list, ok := doc.([]any)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	out := map[string]bool{}
 	for _, item := range list {
@@ -319,7 +354,7 @@ func BundledRules(dir string) map[string]bool {
 			out[id] = true
 		}
 	}
-	return out
+	return out, true
 }
 
 // packRowID returns a manifest row's id when the row came from a pack rule,
@@ -330,7 +365,7 @@ func packRowID(item any) string {
 		return ""
 	}
 	src, ok := row["source"].(string)
-	if !ok || !strings.HasPrefix(src, packSourcePrefix) {
+	if !ok || !strings.HasPrefix(src, PackSourcePrefix) {
 		return ""
 	}
 	id, ok := row["id"].(string)

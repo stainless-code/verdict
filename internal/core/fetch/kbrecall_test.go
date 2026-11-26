@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 
 	"github.com/stainless-code/verdict/internal/core/pack"
+	"github.com/stainless-code/verdict/internal/kb"
 )
 
 // recallStore is the planted .review/kb.jsonl for the recall tests: four
@@ -173,6 +174,11 @@ func TestKBRecallRendersPackRules(t *testing.T) {
 		`"severity":"critical","source":"pack:acme/security@1.2.3"}]` + "\n"
 	if got := readBundleFile(t, dir, "kb-recall.json"); got != wantManifest {
 		t.Errorf("kb-recall.json =\n%s\nwant\n%s", got, wantManifest)
+	}
+	// The reader record uses accepts exactly what this writer wrote: the pack
+	// rule handed to the agent in kb.txt is a known cite.
+	if got := kb.BundledRules(dir); len(got) != 1 || !got["no-secrets"] {
+		t.Errorf("kb.BundledRules over the written manifest = %v, want only no-secrets", got)
 	}
 }
 

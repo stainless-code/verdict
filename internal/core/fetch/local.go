@@ -312,7 +312,10 @@ func localStateDir(ctx2 *fetchRunCtx, req *LocalRequest) *core.RefusalError {
 	if ctx2.preview {
 		return nil
 	}
-	return ensureBundleState(req.RepoRootPath())
+	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+		return ref
+	}
+	return ctx2.claimBundleDir(req.RepoRootPath(), ctx2.dir)
 }
 
 // localPreviewDir resolves where a fetch-local run stages its reads: the
@@ -320,9 +323,7 @@ func localStateDir(ctx2 *fetchRunCtx, req *LocalRequest) *core.RefusalError {
 // state store owns.
 func localPreviewDir(ctx2 *fetchRunCtx, req *LocalRequest, slug string) (string, *core.RefusalError) {
 	if !ctx2.preview {
-		dir, ref := localBundleDir(req.RepoRootPath(), slug)
-		ctx2.createdDir = ref == nil && bundleAbsent(dir)
-		return dir, ref
+		return localBundleDir(req.RepoRootPath(), slug)
 	}
 	return ctx2.previewStage()
 }

@@ -321,7 +321,7 @@ func (st *state) kbThresholds() (int, string) {
 func (st *state) applyFlip(dir string, entries []any, full, now string) *core.RefusalError {
 	ratOut := st.rationaleFor()
 	k := kb.New(st.warn)
-	k.Bundled = kb.BundledRules(dir)
+	k.LoadBundled(dir)
 	credited := st.stageCredit(k, entries, full, now)
 	flipEntry(entries, full, st.req.Status, ratOut, now, credited)
 	if err := writeFindings(dir, entries); err != nil {

@@ -65,6 +65,7 @@ func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
 		if c.Bundled[rid] && !c.hasRow(rid) {
 			return
 		}
+		c.warnBundledGap()
 		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, c.display(File)))
 		return
 	}
@@ -149,14 +150,14 @@ func creditRef(cr any) (string, string, bool) {
 	}
 }
 
-// ruleActive owns the active-status gate: the rule row must exist with
-// status active. An unreadable store reads inactive (the caller warns).
 // hasRow reports whether the store holds a row for rid in any status.
 func (c *Ctx) hasRow(rid string) bool {
 	rows, ok := c.readRows()
 	return ok && FindRow(rows, rid) != nil
 }
 
+// ruleActive owns the active-status gate: the rule row must exist with
+// status active. An unreadable store reads inactive (the caller warns).
 func (c *Ctx) ruleActive(rid string) bool {
 	raw, ok := c.ReadFile(File)
 	if !ok {

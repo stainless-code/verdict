@@ -2,10 +2,10 @@ package fetchcore
 
 import (
 	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/budget"
@@ -29,21 +29,45 @@ func (c *fetchRunCtx) cleanScratch() {
 	_ = os.RemoveAll(c.scratch)
 }
 
-// bundleAbsent reports that nothing exists at dir yet, so this run owns
-// whatever it creates there.
-func bundleAbsent(dir string) bool {
-	_, err := os.Lstat(dir)
-	return errors.Is(err, fs.ErrNotExist)
+// claimBundleDir creates the run's bundle leaf and records it as the run's
+// own only when this run's exclusive create made it: a bundle another run
+// created, or one that existed before, is never ours to remove. ctx2.dir is
+// set here, at creation, so a refusal on the very next step still cleans up.
+func (c *fetchRunCtx) claimBundleDir(root, dir string) *core.RefusalError {
+	created, serr := config.NewLayout(root).CreateBundleDir(filepath.Base(dir))
+	if serr != nil {
+		return stateRefusal(serr, dir)
+	}
+	c.dir, c.bundleRoot, c.createdDir = dir, root, created
+	return nil
 }
 
 // discardCreatedBundle removes the bundle directory a refused run created,
-// so a refusal leaves no bundle without its source.json. A bundle that
-// existed before the run is kept as it is.
-func (c *fetchRunCtx) discardCreatedBundle() {
+// so a refusal leaves no bundle without its source.json, and returns a
+// warning when the removal fails. A bundle that existed before the run is
+// kept.
+func (c *fetchRunCtx) discardCreatedBundle() string {
 	if !c.createdDir || c.preview || c.dir == "" {
-		return
+		return ""
 	}
-	_ = os.RemoveAll(c.dir)
+	if serr := config.NewLayout(c.bundleRoot).RemoveBundleDir(filepath.Base(c.dir)); serr != nil {
+		return core.Msgf("could not remove the refused run's bundle %s: %s", c.dir, serr.Error())
+	}
+	return ""
+}
+
+// discardRefused removes the bundle a refused run created and carries a
+// failed removal as a refusal warning.
+func (st *state) discardRefused(ctx2 *fetchRunCtx, err error) error {
+	msg := ctx2.discardCreatedBundle()
+	if msg == "" {
+		return err
+	}
+	ctx2.runner.Warn(msg)
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		ref.Warnings = st.warnings
+	}
+	return err
 }
 
 // previewStage is the directory a preview stages host work in, creating it on

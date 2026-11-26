@@ -420,8 +420,7 @@ func bundleStageDir(ctx2 *fetchRunCtx, req *Request) (string, *core.RefusalError
 	if ref != nil {
 		return "", ref
 	}
-	ctx2.createdDir = bundleAbsent(dir)
-	if ref := ensureBundleDir(req.RepoRootPath(), dir); ref != nil {
+	if ref := ctx2.claimBundleDir(req.RepoRootPath(), dir); ref != nil {
 		return "", ref
 	}
 	return dir, ensureBundleState(req.RepoRootPath())

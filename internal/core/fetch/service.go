@@ -85,9 +85,9 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 	defer ctx2.cleanScratch()
 	resp, err := st.build(ctx, ctx2, s, req, f)
 	if err != nil {
-		ctx2.discardCreatedBundle()
+		return nil, st.discardRefused(ctx2, err)
 	}
-	return resp, err
+	return resp, nil
 }
 
 // build runs one remote fetch after the provider resolves; dispatch owns the
@@ -185,9 +185,9 @@ func RunLocal(ctx context.Context, req *LocalRequest) (*Response, error) {
 	defer ctx2.cleanScratch()
 	resp, err := st.buildLocal(ctx, ctx2, s, req)
 	if err != nil {
-		ctx2.discardCreatedBundle()
+		return nil, st.discardRefused(ctx2, err)
 	}
-	return resp, err
+	return resp, nil
 }
 
 // buildLocal runs one fetch-local after the session exists; RunLocal owns the
