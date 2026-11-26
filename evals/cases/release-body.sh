@@ -275,7 +275,7 @@ assert_file_nogrep "the tag stage made no changeset or git call" "$BIG/git.log" 
 # Legs 9–12 run scripts/release-notes.mjs in a copy root, so the highlights
 # file and the changelog are fixtures this case owns, not the repository's.
 COMPOSE="$EVAL_SANDBOX/compose-release"
-mkdir -p "$COMPOSE/scripts" "$COMPOSE/release" "$COMPOSE/docs/releases"
+mkdir -p "$COMPOSE/scripts" "$COMPOSE/release/highlights"
 cp "$EVAL_ROOT/scripts/release-notes.mjs" "$COMPOSE/scripts/"
 cp "$EVAL_ROOT/release/contract.json" "$COMPOSE/release/"
 # Three changesets: an indented continuation and a nested bullet must not count
@@ -310,7 +310,7 @@ render() { # runs release-notes.mjs in the copy root; leaves status + streams
 # Leg 9 — a highlights file leads the body: header with the computed change
 # count, the file verbatim, the remainder line, then the whole section folded
 # into <details>. The expectation is a literal: it is what a reader sees.
-cat > "$COMPOSE/docs/releases/9.9.9.md" <<'EOF'
+cat > "$COMPOSE/release/highlights/9.9.9.md" <<'EOF'
 - **Alpha.** What it does for you.
 
 ### Breaking changes
@@ -356,7 +356,7 @@ fi
 
 # Leg 10 — no highlights file: the body is the section alone, as before, and
 # stderr warns so a release cut without highlights is visible in the log.
-rm "$COMPOSE/docs/releases/9.9.9.md"
+rm "$COMPOSE/release/highlights/9.9.9.md"
 cat > "$EVAL_SANDBOX/fallback-want.md" <<'EOF'
 ### Minor Changes
 
@@ -372,7 +372,7 @@ EOF
 render
 assert_exit "a missing highlights file falls back" 0
 assert_file_eq "the fallback body is the changelog section alone" "$EVAL_SANDBOX/fallback-want.md" "$EVAL_OUT"
-if matches -F "warning: no docs/releases/9.9.9.md" "$EVAL_ERR"; then
+if matches -F "warning: no release/highlights/9.9.9.md" "$EVAL_ERR"; then
   good "the fallback warns naming the missing highlights file"
 else
   bad "the fallback did not warn: $(cat "$EVAL_ERR")"
@@ -380,7 +380,7 @@ fi
 
 # Leg 11 — a highlights file with no bullet before its first heading is an
 # authoring slip; publishing it would claim highlights the body lacks.
-printf '### Breaking changes\n\n- **Alpha moved.** Do this instead.\n' > "$COMPOSE/docs/releases/9.9.9.md"
+printf '### Breaking changes\n\n- **Alpha moved.** Do this instead.\n' > "$COMPOSE/release/highlights/9.9.9.md"
 render
 if [ "$EVAL_STATUS" -ne 0 ]; then
   good "a highlights file with no highlight bullets refuses (exit $EVAL_STATUS)"
@@ -395,7 +395,7 @@ fi
 
 # Leg 12 — the size guard measures the composed body, not the section: a
 # section that fits alone plus highlights that push it over must refuse.
-rm "$COMPOSE/docs/releases/9.9.9.md"
+rm "$COMPOSE/release/highlights/9.9.9.md"
 line="$(printf '%0100d' 0)"
 {
   printf '# changelog\n\n## 9.9.9\n\n'
@@ -412,7 +412,7 @@ fi
 {
   printf -- '- **Big.** %s\n' "$(printf '%08000d' 0)"
   printf '\n### Breaking changes\n\n- **Huge.** %s\n' "$(printf '%05000d' 0)"
-} > "$COMPOSE/docs/releases/9.9.9.md"
+} > "$COMPOSE/release/highlights/9.9.9.md"
 render
 if [ "$EVAL_STATUS" -ne 0 ]; then
   good "a composed body over the limit refuses (exit $EVAL_STATUS)"

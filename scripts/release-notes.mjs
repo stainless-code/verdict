@@ -1,10 +1,10 @@
 // The GitHub Release body. Its source is the CHANGELOG.md section for one
 // version, with the changeset commit ids (`- 1a2b3c4: note`) removed so a
-// reader sees the note and not a hash. When `docs/releases/<version>.md` exists,
-// the body leads with it:
+// reader sees the note and not a hash. When `release/highlights/<version>.md`
+// exists, the body leads with it:
 //
 //   **v<version>** · <N> changes
-//   <highlights and `### Breaking changes`, from docs/releases/<version>.md>
+//   <highlights and `### Breaking changes`, from the highlights file>
 //   ### Plus <M> more fixes and improvements.
 //   <details><summary>Full changelog</summary> <the section> </details>
 //
@@ -12,7 +12,8 @@
 // the highlight bullets. Without a highlights file the body is the section
 // alone, with a warning on stderr. The file lives outside `.changeset/`
 // because changesets parses every top-level `.changeset/*.md` as a changeset
-// and throws on one with no frontmatter.
+// and throws on one with no frontmatter, and outside `docs/` because every page
+// there needs an index line, which would cost each release a second edit.
 //
 // `scripts/release.sh` pipes the body into `goreleaser release
 // --release-notes`, and `make release-dry-run` runs it on the current version,
@@ -60,7 +61,7 @@ if (notes === "") {
   process.exit(1);
 }
 
-const highlightsPath = `docs/releases/${version}.md`;
+const highlightsPath = `release/highlights/${version}.md`;
 let highlights = null;
 try {
   highlights = (await readFile(new URL(highlightsPath, root), "utf8")).trim();

@@ -34,5 +34,4 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [OpenSSF Best Practices audit](openssf-best-practices.md): the Passing-level criteria audited against this repository, what is met, and what is outstanding.
 - [Policy contract](policy-contract.md): requirement gates, evidence, consent, privacy constraints, and publication outcomes.
 - [Reactions and rule trends](reactions-trend.md): `calibrate --reactions` proposals from votes on posted comments, and `trend --rules` per-rule acceptance and false-hit rates.
-- [Release highlights: 0.8.0](releases/0.8.0.md): the hand-written highlights and breaking changes that lead the v0.8.0 GitHub release body.
 - [Vision](vision.md): what Verdict is, what it refuses to be, and where its craft comes from.
