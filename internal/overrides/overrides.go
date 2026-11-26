@@ -5,7 +5,6 @@
 package overrides
 
 import (
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -75,7 +74,7 @@ func CheckLocked(path, text string) error {
 }
 
 func cliRef(path, invariant, why string) error {
-	return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBadOverride, Message: core.Msgf(
 		"override %s violates locked invariant '%s' (%s)", path, invariant, why)}
 }
 
@@ -100,7 +99,7 @@ func parseOrderOrDef(raw []byte) ([]string, error) {
 		return nil, ref
 	}
 	if len(order) == 0 {
-		return nil, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' (no fields "+
+		return nil, &core.RefusalError{Code: codeBadOverride, Message: core.Msgf("override %s violates 'footer-order-subset' (no fields "+
 			"listed — want a non-empty subset of tier, cost, files, link)", FooterOrderPath)}
 	}
 	return order, nil
@@ -129,11 +128,11 @@ func checkOrderField(line string, seen map[string]bool) error {
 	switch line {
 	case "tier", "cost", "files", "link":
 	default:
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
+		return &core.RefusalError{Code: codeBadOverride, Message: core.Msgf("override %s violates 'footer-order-subset' "+
 			"(unknown field '%s' — want only tier, cost, files, link)", FooterOrderPath, line)}
 	}
 	if seen[line] {
-		return &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates 'footer-order-subset' "+
+		return &core.RefusalError{Code: codeBadOverride, Message: core.Msgf("override %s violates 'footer-order-subset' "+
 			"(duplicate field '%s' — list each field once)", FooterOrderPath, line)}
 	}
 	return nil
@@ -207,24 +206,24 @@ func parseThresholdEntry(ln string, seen map[string]bool) (key string, val int, 
 // parsed value.
 func checkThreshold(line, key, val string, seen map[string]bool) (int, error) {
 	if key == "" {
-		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: core.Msgf(
 			"override %s violates locked invariant 'degenerate-guard' "+
 				"(unknown key in '%s' — want only 'files: N' and 'bytes: N')", Threshold, line)}
 	}
 	if !jq.Digits(val) {
-		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: core.Msgf(
 			"override %s violates locked invariant 'degenerate-guard' (value '%s'"+
 				" for '%s' is not a non-negative integer — thresholds must stay satisfiable)",
 			Threshold, val, key)}
 	}
 	if len(val) > maxThresholdDigits {
-		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: core.Msgf(
 			"override %s violates locked invariant 'degenerate-guard' (value"+
 				" '%s' for '%s' exceeds 15 digits — thresholds must fit 64-bit arithmetic)",
 			Threshold, val, key)}
 	}
 	if seen[key] {
-		return 0, &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates locked invariant "+
+		return 0, &core.RefusalError{Code: codeBadOverride, Message: core.Msgf("override %s violates locked invariant "+
 			"'degenerate-guard' (duplicate '%s' — list each key once)", Threshold, key)}
 	}
 	n, err := strconv.Atoi(val)
@@ -268,7 +267,7 @@ func (s Set) AttributionText() (string, error) {
 	}
 	text := strings.TrimRight(strings.ReplaceAll(string(raw), "\r", ""), newline)
 	if strings.Count(text, newline) != 0 {
-		return "", &core.RefusalError{Code: codeBadOverride, Message: fmt.Sprintf("override %s violates "+
+		return "", &core.RefusalError{Code: codeBadOverride, Message: core.Msgf("override %s violates "+
 			"'attribution-single-line' (want one sentence on one line)", Attribution)}
 	}
 	return text, nil

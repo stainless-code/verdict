@@ -30,7 +30,7 @@ func runMCPConfig(args []string, stdout, stderr *os.File, getenv func(string) st
 	cwd, err := os.Getwd()
 	if err != nil {
 		return r.Refuse(&cli.RefusalError{
-			Code: "mcp-config-read-failed", Message: "cannot resolve the current directory: " + err.Error(),
+			Code: "mcp-config-read-failed", Message: core.Msgf("cannot resolve the current directory: %s", err.Error()),
 		})
 	}
 	res, ref := mcpconfig.Run(&mcpconfig.Request{

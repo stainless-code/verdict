@@ -104,14 +104,14 @@ func Resolve(env map[string]string, repo, pr string) (auth curlauth.Credential, 
 	if !ok {
 		return curlauth.Credential{}, "", &core.RefusalError{
 			Code:    CodeBadTarget,
-			Message: fmt.Sprintf("bitbucket needs a workspace/repo slug, got %q", repo),
+			Message: core.Msgf("bitbucket needs a workspace/repo slug, got %q", repo),
 		}
 	}
 	n, aerr := strconv.Atoi(pr)
 	if aerr != nil || n <= 0 {
 		return curlauth.Credential{}, "", &core.RefusalError{
 			Code:    CodeBadTarget,
-			Message: fmt.Sprintf("bitbucket needs a numeric pull-request number, got %q", pr),
+			Message: core.Msgf("bitbucket needs a numeric pull-request number, got %q", pr),
 		}
 	}
 	return auth, api + "/repositories/" + url.PathEscape(ws) + slash + url.PathEscape(slug) +

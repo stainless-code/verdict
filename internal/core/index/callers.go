@@ -92,7 +92,7 @@ func (st *state) warnStale(ctx context.Context, root, tree string) bool {
 	if ref != nil || head == tree {
 		return false
 	}
-	st.warn(fmt.Sprintf("» index: built for %s, HEAD is %s", tree, head))
+	st.warn(core.Msgf("» index: built for %s, HEAD is %s", tree, head))
 	return true
 }
 
@@ -219,11 +219,11 @@ func matchingPackages(pkgs map[string]*packageInfo, dirs []string, qualifier str
 		return byBase, nil
 	}
 	if len(byBase) > 1 {
-		return nil, &core.RefusalError{Code: codeBadFlags, Message: "package qualifier " + qualifier + " is ambiguous"}
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("package qualifier %s is ambiguous", qualifier)}
 	}
 	return nil, &core.RefusalError{
 		Code:    codeBadFlags,
-		Message: "package qualifier " + qualifier + " matches no package directory or import path",
+		Message: core.Msgf("package qualifier %s matches no package directory or import path", qualifier),
 	}
 }
 

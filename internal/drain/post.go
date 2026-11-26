@@ -136,7 +136,7 @@ func postPreflight(req Request, fl *flags) (string, *draincore.File, []byte, *co
 func checkThreadReplyCap(provider string) *core.RefusalError {
 	caps := core.CapabilitiesFor(provider)
 	if !caps.ThreadReply {
-		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: "provider-unimplemented", Message: core.Msgf(
 			"thread replies on %s are not implemented (%s)", provider, caps.ThreadReplyReason())}
 	}
 	return nil
@@ -346,8 +346,8 @@ func postDryRunFinish(r *cli.Runner, req Request, dir string, plan *draincore.Fi
 	if err := draincore.WriteDryRun(filepath.Join(dir, draincore.KeyDryRunJSON), preview); err != nil {
 		return r.Refuse(drainFailed(err.Error()))
 	}
-	fmt.Fprintf(r.Human, "» %d planned, %d skipped (dry run; nothing posted) -> %s/%s\n",
-		len(preview.Planned), len(preview.Skipped), dir, draincore.KeyDryRunJSON)
+	fmt.Fprint(r.Human, core.Msgf("» %d planned, %d skipped (dry run; nothing posted) -> %s/%s\n",
+		len(preview.Planned), len(preview.Skipped), dir, draincore.KeyDryRunJSON))
 	r.Emit(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), dryRunNext(req, fl),
 		r.Warnings, preview.Wire())
 	return cli.ExitOK
@@ -360,10 +360,10 @@ func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 	if result.Incomplete {
 		nextText = "re-run verdict drain " + req.Repo + " " + req.Pr + " --post"
 	}
-	fmt.Fprintf(r.Human, "» %d posted, %d failed -> %s/%s\n",
-		len(result.Posted), len(plan.Failed), dir, draincore.KeyPlanJSON)
+	fmt.Fprint(r.Human, core.Msgf("» %d posted, %d failed -> %s/%s\n",
+		len(result.Posted), len(plan.Failed), dir, draincore.KeyPlanJSON))
 	if result.Incomplete {
-		ref := &core.RefusalError{Code: "drain-incomplete", Message: fmt.Sprintf(
+		ref := &core.RefusalError{Code: "drain-incomplete", Message: core.Msgf(
 			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(plan.Failed))}
 		if !r.JSONMode {
 			return r.Refuse(ref)

@@ -968,24 +968,24 @@ func confinedRoot(root string) bool {
 
 // unsafePath builds the pack-unsafe-path refusal.
 func unsafePath(name string) *core.RefusalError {
-	return &core.RefusalError{Code: CodePackUnsafePath, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodePackUnsafePath, Message: core.Msgf(
 		"lens pack path %q is not a regular file under a real directory — absolute paths, '..', "+
 			"symlinks, and special files are refused", name)}
 }
 
 // tooLarge builds the pack-too-large refusal.
 func tooLarge(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodePackTooLarge, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodePackTooLarge, Message: core.Msgf(
 		"%s (caps: %d bytes/file, %d bytes/pack, %d files, %d lenses)",
 		reason, MaxFileBytes, MaxPackBytes, MaxFiles, MaxLenses)}
 }
 
 // badPack builds the bad-pack refusal.
 func badPack(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBadPack, Message: reason}
+	return &core.RefusalError{Code: CodeBadPack, Message: core.Msgf("%s", reason)}
 }
 
 // conflict builds the pack-conflict refusal.
 func conflict(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodePackConflict, Message: reason}
+	return &core.RefusalError{Code: CodePackConflict, Message: core.Msgf("%s", reason)}
 }

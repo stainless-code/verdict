@@ -175,7 +175,7 @@ func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 	case subCheck:
 		return checkCheckArgs(r, args)
 	default:
-		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return invocation{}, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown pack subcommand '%s' (want list, add, sync, test, or check)", args[0])}), true
 	}
 }
@@ -223,8 +223,8 @@ func checkCheckArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return invocation{sub: subCheck, path: args[1]}, 0, false
 	}
 	if len(args) == checkArgCount {
-		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"pack check takes a repository-relative path, not %q\n%s", args[1], packUsage)}), true
+		return invocation{}, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
+			"pack check takes a repository-relative path, not %q\n"+packUsage, args[1])}), true
 	}
 	return packUsageError(r)
 }
@@ -264,7 +264,7 @@ func resolveDirectoryPack(dir string) (*packcore.Pack, *packcore.Set, []string, 
 	if p == nil {
 		return nil, nil, nil, &core.RefusalError{
 			Code: packcore.CodeBadPack,
-			Message: fmt.Sprintf("pack directory %q carries no %s", dir,
+			Message: core.Msgf("pack directory %q carries no %s", dir,
 				packcore.ManifestFile),
 		}
 	}
@@ -297,7 +297,7 @@ func resolveInstalledPack(ctx context.Context, read Request, name string) (*pack
 	if p == nil {
 		return nil, nil, nil, &core.RefusalError{
 			Code:    packcore.CodeBadPack,
-			Message: fmt.Sprintf("pack %q is not installed", name),
+			Message: core.Msgf("pack %q is not installed", name),
 		}
 	}
 	return p, set, warnings, nil

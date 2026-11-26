@@ -55,7 +55,7 @@ func captureRefusal(err error) *core.RefusalError {
 	if ref := config.RefusalOf(err); ref != nil && ref.Code == config.CodeBundleOutdated {
 		return ref
 	}
-	return &core.RefusalError{Code: codeRecordFailed, Message: err.Error()}
+	return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("%v", err)}
 }
 
 // unreadableSpendCapture refuses a capture an older verdict wrote, and any

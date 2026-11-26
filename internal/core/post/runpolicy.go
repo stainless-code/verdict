@@ -69,7 +69,7 @@ func (st *state) complianceGate() *core.RefusalError {
 		return nil
 	}
 	first := blocked[0]
-	return &core.RefusalError{Code: CodeRequirementBlocked, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeRequirementBlocked, Message: core.Msgf(
 		msgRequirementBlocked, findingLabel(&first.Finding), first.Clause,
 		strings.Join(first.Sources, ", "), blockingGroup(&first))}
 }
@@ -197,7 +197,7 @@ func (st *state) evidenceGate() *core.RefusalError {
 	// review-insufficient once.
 	return &core.RefusalError{
 		Code:    core.CodeReviewInsufficient,
-		Message: untrusted.Line(strings.TrimPrefix(st.merged.Approval.Reason, core.CodeReviewInsufficient+": ")),
+		Message: core.Msgf("%s", strings.TrimPrefix(st.merged.Approval.Reason, core.CodeReviewInsufficient+": ")),
 	}
 }
 
@@ -219,10 +219,10 @@ func (st *state) privacyConflictGate() *core.RefusalError {
 	if first.Group != "" {
 		where = groupDesc(first.GroupLabel, first.Group)
 	}
-	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeRequirementUnmet, Message: core.Msgf(
 		"required review for %s in %s withholds that path by exclusion rule %q — compliance is unmet and conflicted; "+
 			"adjust the review scope or requirements, then re-fetch (comments and non-approving runs can record the conflict), "+
-			"and never disclose the withheld bytes", untrusted.Line(first.Path), where, first.Rule)}
+			"and never disclose the withheld bytes", first.Path, where, first.Rule)}
 }
 
 // blockedGroups collects the group ids a blocker set fails, and whether any
@@ -324,10 +324,10 @@ func (st *state) unmetRefusal(check, hint string) *core.RefusalError {
 		return nil
 	}
 	first := unmet[0]
-	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeRequirementUnmet, Message: core.Msgf(
 		msgRequirementUnmet, check, groupDesc(first.Label, first.ID),
-		untrusted.Line(readcommon.ShortSHA(st.commitID)),
-		untrusted.Line(latestDetail(rs, first.ID, check, st.commitID)), hint)}
+		readcommon.ShortSHA(st.commitID),
+		latestDetail(rs, first.ID, check, st.commitID), hint)}
 }
 
 // headCurrent is the drift read's verdict: the live host head equals the
@@ -411,7 +411,7 @@ func (st *state) certifiedRoot() (string, *core.RefusalError) {
 	if ref != nil {
 		return "", &core.RefusalError{
 			Code:    CodeRequirementUnmet,
-			Message: "deep validation cannot certify the reviewed root: " + ref.Message,
+			Message: core.Msgf("deep validation cannot certify the reviewed root: %s", ref.Message),
 		}
 	}
 	return root, nil
@@ -449,7 +449,7 @@ func (st *state) deepGroupGap(rs *config.RunState, root string, group *config.Pl
 	default:
 		return nil
 	}
-	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(msgDeepValidation, name, why)}
+	return &core.RefusalError{Code: CodeRequirementUnmet, Message: core.Msgf(msgDeepValidation, name, why)}
 }
 
 // lensApprovalGate refuses a binding positive approval whose capped plan
@@ -467,7 +467,7 @@ func (st *state) lensApprovalGate() *core.RefusalError {
 		return nil
 	}
 	first := violations[0]
-	return &core.RefusalError{Code: CodeRequirementUnmet, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeRequirementUnmet, Message: core.Msgf(
 		msgLensGate, first.Detail, msgLensFix)}
 }
 

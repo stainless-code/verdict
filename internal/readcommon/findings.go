@@ -2,7 +2,6 @@ package readcommon
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"slices"
 
@@ -33,7 +32,7 @@ func LoadFindings(dir string) ([]any, error) {
 		if errors.Is(err, jq.ErrTooLarge) {
 			return nil, corruptStore(dir)
 		}
-		return nil, &core.RefusalError{Code: codeMissingFindings, Message: fmt.Sprintf(msgMissingFindings, dir)}
+		return nil, &core.RefusalError{Code: codeMissingFindings, Message: core.Msgf(msgMissingFindings, dir)}
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -61,7 +60,7 @@ func OutdatedEntries(dir string, entries []any) *core.RefusalError {
 	if !slices.ContainsFunc(entries, arrayVerification) {
 		return nil
 	}
-	return &core.RefusalError{Code: codeBundleOutdated, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBundleOutdated, Message: core.Msgf(
 		"findings store %s/findings.json was written by an older verdict (a finding's "+
 			"verification is a bare array) — re-run the review and record to rebuild it", filepath.ToSlash(dir))}
 }
@@ -79,7 +78,7 @@ func arrayVerification(e any) bool {
 }
 
 func corruptStore(dir string) *core.RefusalError {
-	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
+	return &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptStore, dir)}
 }
 
 // ValidEntries enforces the entry shape shared by the readers: every entry

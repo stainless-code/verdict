@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	"github.com/stainless-code/verdict/internal/exclude"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -50,7 +51,7 @@ func writeKBRecall(ctx2 *fetchRunCtx, dir, extra string) {
 	if !writeKBManifest(r, mfj, mf, ranked, packs) {
 		return
 	}
-	fmt.Fprintf(r.Human, "» kb: %d rule(s) -> %s (%s)\n", len(ranked)+len(packs), mf, strings.Join(ids, ", "))
+	fmt.Fprint(r.Human, core.Msgf("» kb: %d rule(s) -> %s (%s)\n", len(ranked)+len(packs), mf, strings.Join(ids, ", ")))
 }
 
 func buildKBOutcome(ranked, omitted, packs []recallCand) *provenance.KBRecallInput {

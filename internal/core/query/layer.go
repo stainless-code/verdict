@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -291,7 +290,7 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 	if dir != want {
 		return "", false, &core.RefusalError{
 			Code: "bundle-ambiguous",
-			Message: fmt.Sprintf("serve: bundle %q resolves to %s, not %s "+
+			Message: core.Msgf("serve: bundle %q resolves to %s, not %s "+
 				"(address the local bundle as local-%s)", bundle, dir, want, bundle),
 		}
 	}

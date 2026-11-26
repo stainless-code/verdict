@@ -245,7 +245,7 @@ func validateCategory(category string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeBadCategory,
-		Message: fmt.Sprintf("report: unknown category '%s' (want %s)",
+		Message: core.Msgf("report: unknown category '%s' (want %s)",
 			category, strings.Join(core.CategoryValues, "|")),
 	}
 }
@@ -259,7 +259,7 @@ func validateTier(tier string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("gate: unknown gate tier '%s' (want %s)",
+		Message: core.Msgf("gate: unknown gate tier '%s' (want %s)",
 			tier, strings.Join(core.TierValues, "|")),
 	}
 }
@@ -272,7 +272,7 @@ func validateMaxRisk(level string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("gate: unknown --max-risk level '%s' (want %s)",
+		Message: core.Msgf("gate: unknown --max-risk level '%s' (want %s)",
 			level, strings.Join(risk.Levels(), "|")),
 	}
 }
@@ -399,7 +399,7 @@ func loadRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: "internal", Message: err.Error()}
+	return &core.RefusalError{Code: "internal", Message: core.Msgf("%v", err)}
 }
 
 func loadStateCost(st *state) {
@@ -612,7 +612,7 @@ func bundlePatch(dir string) (any, *core.RefusalError) {
 func corruptPatch(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    "corrupt-store",
-		Message: fmt.Sprintf("patch store %s/patch.json is unreadable (re-run post to rebuild, or restore the file)", dir),
+		Message: core.Msgf("patch store %s/patch.json is unreadable (re-run post to rebuild, or restore the file)", dir),
 	}
 }
 

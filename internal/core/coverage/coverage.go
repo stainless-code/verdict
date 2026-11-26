@@ -212,7 +212,7 @@ func Evaluate(dir string, review *jq.Obj, generated func(string) bool) (Summary,
 func badReviewInput(problems []core.Problem) *core.RefusalError {
 	return &core.RefusalError{
 		Code:     CodeBadReviewInput,
-		Message:  fmt.Sprintf(msgReviewProblem, len(problems)),
+		Message:  core.Msgf(msgReviewProblem, len(problems)),
 		Problems: problems,
 	}
 }
@@ -727,7 +727,7 @@ func rangeField(o *jq.Obj) (value string, present, wrongType bool) {
 func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 	rows, err := hunks.Load(dir)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeIncomplete, Message: fmt.Sprintf(msgHunksUnreadable, err)}
+		return nil, &core.RefusalError{Code: CodeIncomplete, Message: core.Msgf(msgHunksUnreadable, err)}
 	}
 	if rows != nil {
 		return rows, nil

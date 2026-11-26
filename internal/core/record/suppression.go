@@ -21,7 +21,7 @@ const (
 )
 
 func suppressionError(message string) error {
-	return &core.RefusalError{Code: "bad-suppression", Message: message}
+	return &core.RefusalError{Code: "bad-suppression", Message: core.Msgf("%s", message)}
 }
 
 func (st *state) parseSuppressions() ([]*jq.Obj, error) {

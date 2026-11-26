@@ -37,7 +37,7 @@ func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]
 		return cli.ExitOK
 	default:
 		return r.ReportUsage(&cli.UsageError{
-			Message: fmt.Sprintf("unknown skill command '%s' (want show, files, status, install, uninstall)", sub),
+			Message: core.Msgf("unknown skill command '%s' (want show, files, status, install, uninstall)", sub),
 		})
 	}
 }
@@ -121,12 +121,12 @@ func parseSkillShowFlags(r *cli.Runner, args []string) (skillShowFlags, int, boo
 			f.path = arg
 		default:
 			return f, r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill (want --format md|json, --json, or one path)", arg),
+				Message: core.Msgf("unknown flag '%s' for skill (want --format md|json, --json, or one path)", arg),
 			}), true
 		}
 	}
 	if f.format != "md" && f.format != formatJSONName {
-		return f, r.ReportUsage(&cli.UsageError{Message: "bad --format '" + f.format + "' (want md or json)"}), true
+		return f, r.ReportUsage(&cli.UsageError{Message: core.Msgf("bad --format '%s' (want md or json)", f.format)}), true
 	}
 	if r.JSONMode && f.format != formatJSONName {
 		return f, r.ReportUsage(&cli.UsageError{Message: "--json cannot be combined with --format md"}), true
@@ -142,7 +142,7 @@ func runSkillFiles(ctx context.Context, r *cli.Runner, args []string, env map[st
 			return cli.ExitOK
 		default:
 			return r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill files (want --json)", arg),
+				Message: core.Msgf("unknown flag '%s' for skill files (want --json)", arg),
 			})
 		}
 	}
@@ -291,7 +291,7 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 			return f, cli.ExitOK, true
 		default:
 			return f, r.ReportUsage(&cli.UsageError{
-				Message: fmt.Sprintf("unknown flag '%s' for skill install (want --dir, --agent, --detect, --force, --dry-run, --json)", arg),
+				Message: core.Msgf("unknown flag '%s' for skill install (want --dir, --agent, --detect, --force, --dry-run, --json)", arg),
 			}), true
 		}
 	}

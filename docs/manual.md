@@ -1934,13 +1934,20 @@ U+2066–U+2069) as lowercase `\uXXXX`, so a consumer that prints an envelope
 string to a terminal gets no live control. A warning is also one line: a newline inside
 an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
 space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
-An `error:` line keeps the breaks its own message lays out, so a `record`,
-`post`, or thread-write refusal folds the line breaks of a value it quotes (a
-`review.json` `schema_version`, a changed file's path, a host's PR state) before
-the value enters the message. Files verdict writes to disk are not folded, and
-neither is a field of the `--json` envelope: gate `detail` and error `message`
-carry the stored value verbatim, and the human renderers fold it — except a
-value a refusal folded as above, which reads the same in both modes.
+An `error:` line keeps the breaks its own message lays out, so every refusal,
+whichever verb raises it, folds each value it quotes (a flag value, a path, a
+`review.json` field, a config key, a host's reply, a child process's stderr)
+before the value enters the message: line breaks (LF, CR, U+2028, U+2029, every
+other control) and the bidi controls become spaces, and the value is still
+named. A usage error, a `loop` refusal, and a `»` progress line fold the values
+they name the same way. Text another program printed that verdict passes on to
+the terminal (`gh`'s or `git`'s stderr during `fetch`, an agent's output tail
+in a `run` refusal) keeps its lines, but each is folded and led by an indented
+tag (`gh:`, `git:`, `agent:`), so none can start as an `error:` or `warn:`
+line. Files verdict writes to disk are not folded, and neither is gate
+`detail` in the `--json` envelope, which carries the stored value verbatim for
+the human renderer to fold. A refusal's `error.message` carries the quoted
+values already folded, so it reads the same in both modes.
 `show`'s human form and `pr-wait`'s
 human-mode snapshots are JSON-shaped, so the fold touches only the bidi
 marks (U+061C, U+200E, U+200F) Go's encoder leaves unescaped, replacing each

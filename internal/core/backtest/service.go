@@ -288,7 +288,7 @@ func (st *state) carry(resp **Response, ref **core.RefusalError) {
 
 // refuse builds a typed refusal.
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg)}
 }
 
 // canceled refuses a run whose context is done, so an interrupt reports the
@@ -619,11 +619,11 @@ func runIDSlug(run string) *core.RefusalError {
 	if readcommon.Slugify(run) != run {
 		return &core.RefusalError{
 			Code:    codeBadSlug,
-			Message: "--run must be lowercase letters, digits, and dashes: '" + run + "'",
+			Message: core.Msgf("--run must be lowercase letters, digits, and dashes: '%s'", run),
 		}
 	}
 	if len(run) > runIDMax {
-		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadSlug, Message: core.Msgf(
 			"--run must be at most %d bytes: 'bt-<n>-' plus the id must fit the %d-byte bundle name cap, got %d",
 			runIDMax, replaySlugMax, len(run))}
 	}

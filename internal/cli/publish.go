@@ -53,7 +53,7 @@ func resolvePublishFile(path string, obj map[string]any, eff *Effective) error {
 	}
 	pub, ok := jq.AsMap(raw)
 	if !ok {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPublishObj, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgPublishObj, path)}
 	}
 	if ref := checkPublishKeys(path, pub); ref != nil {
 		return ref
@@ -126,7 +126,7 @@ func checkPublishKeys(path string, pub map[string]any) error {
 		switch k {
 		case "footer", "attribution", "attribution_text", "copyright", "logo", "logo_url", "overview", "diagrams", "fix_prompt":
 		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPublishKeys, path, k)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgPublishKeys, path, k)}
 		}
 	}
 	return nil
@@ -139,7 +139,7 @@ func publishBoolKey(path string, pub map[string]any, key, want string) (string, 
 	}
 	b, isBool := raw.(bool)
 	if !isBool {
-		return "", &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPublishBool, path, key, want)}
+		return "", &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgPublishBool, path, key, want)}
 	}
 	if b {
 		return FlagOn, nil
@@ -182,10 +182,10 @@ func resolveAttributionKey(path string, pub map[string]any, eff *Effective) erro
 		case AttributionOff, AttributionProduct, AttributionFull:
 			eff.PublishAttribution = t
 		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgAttrUnknown, path, t)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgAttrUnknown, path, t)}
 		}
 	default:
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgAttrType, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgAttrType, path)}
 	}
 	return nil
 }
@@ -197,7 +197,7 @@ func resolveTextKey(path string, pub map[string]any, key, hint string, dst *stri
 	}
 	s, isStr := raw.(string)
 	if !isStr {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTextType, path, key, hint)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgTextType, path, key, hint)}
 	}
 	*dst = s
 	return nil
@@ -206,13 +206,13 @@ func resolveTextKey(path string, pub map[string]any, key, hint string, dst *stri
 func resolveDiagrams(path string, raw any, eff *Effective) error {
 	d, ok := jq.AsMap(raw)
 	if !ok {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgDiagramsObj, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgDiagramsObj, path)}
 	}
 	for _, k := range SortedKeys(d) {
 		switch k {
 		case "structural", "anchored":
 		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgDiagramsKey, path, k)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgDiagramsKey, path, k)}
 		}
 	}
 	for _, kb := range []struct {
@@ -236,7 +236,7 @@ func setDiagramBool(path string, d map[string]any, key string, dst *string) erro
 	}
 	b, isBool := raw.(bool)
 	if !isBool {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgDiagramsBool, path, key)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgDiagramsBool, path, key)}
 	}
 	if b {
 		*dst = FlagOn

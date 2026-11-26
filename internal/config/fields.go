@@ -219,6 +219,8 @@ func checkScopeUnknown(raw any, path string) *core.RefusalError {
 
 // scopeGlobalOnly pairs one global-only default key with its refusal:
 // the message carries the scope defaults path and the refusal code.
+// scopeGlobalOnly is one key a scope may not carry; msg follows the scope's
+// path and a dot in the refusal.
 type scopeGlobalOnly struct {
 	key  string
 	code string
@@ -229,34 +231,34 @@ var scopeGlobalOnlyKeys = []scopeGlobalOnly{
 	{
 		key:  keyKBPolicy,
 		code: CodeBadScope,
-		msg:  "%s.kb_policy: kb_policy is global-only — set it in root defaults or personal settings, " + scopeOnlyNote,
+		msg:  "kb_policy: kb_policy is global-only — set it in root defaults or personal settings, " + scopeOnlyNote,
 	},
 	{
 		key:  keyFinders,
 		code: CodeBadScope,
-		msg:  "%s.finders: finders is global-only — set root defaults or personal settings",
+		msg:  "finders: finders is global-only — set root defaults or personal settings",
 	},
 	{
 		key:  keyBudget,
 		code: CodeBadScope,
-		msg:  "%s.budget: budget is global-only — set root defaults or personal settings",
+		msg:  "budget: budget is global-only — set root defaults or personal settings",
 	},
 	{
 		key:  keySensitivePaths,
 		code: CodeBadScope,
-		msg: "%s.sensitive_paths: sensitive_paths is global-only — set it in root defaults or personal settings, " +
+		msg: "sensitive_paths: sensitive_paths is global-only — set it in root defaults or personal settings, " +
 			scopeOnlyNote,
 	},
 	{
 		key:  keySpecCoverageMin,
 		code: CodeBadScope,
-		msg: "%s.spec_coverage_min: spec_coverage_min is global-only — set it in root defaults or personal settings, " +
+		msg: "spec_coverage_min: spec_coverage_min is global-only — set it in root defaults or personal settings, " +
 			scopeOnlyNote,
 	},
 	{
 		key:  keyMonthlyBudgetUSD,
 		code: CodeBadConfig,
-		msg: "%s.monthly_budget_usd: monthly_budget_usd is a repo-wide default only — set it in root defaults or personal settings, " +
+		msg: "monthly_budget_usd: monthly_budget_usd is a repo-wide default only — set it in root defaults or personal settings, " +
 			scopeOnlyNote,
 	},
 }
@@ -274,7 +276,7 @@ func checkScopeDefaults(raw any, path string) *core.RefusalError {
 	}
 	for _, entry := range scopeGlobalOnlyKeys {
 		if _, present := obj[entry.key]; present {
-			return refuse(entry.code, entry.msg, path)
+			return refuse(entry.code, "%s.%s", path, entry.msg)
 		}
 	}
 	return checkDefaultsKeys(raw, path)

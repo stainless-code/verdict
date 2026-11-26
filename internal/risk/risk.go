@@ -111,7 +111,7 @@ func parseStatus(r *cli.Runner, args []string, i int) (string, int, int, bool) {
 		return "", i, r.ReportUsage(u), true
 	}
 	if v != riskcore.QueueStatusOpen && v != riskcore.QueueStatusAll {
-		return "", i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return "", i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"--status wants open or all, not %q", v)}), true
 	}
 	return v, next, 0, false
@@ -121,11 +121,11 @@ func parseStatus(r *cli.Runner, args []string, i int) (string, int, int, bool) {
 // names the gate that does cover one bundle, anything else an unknown flag.
 func operandUsage(repo, arg string) *cli.UsageError {
 	if !strings.HasPrefix(arg, "-") {
-		return &cli.UsageError{Message: fmt.Sprintf(
+		return &cli.UsageError{Message: core.Msgf(
 			"risk takes one <owner/repo>; gating one bundle is verdict gate %s %s --max-risk <band>",
 			repo, arg)}
 	}
-	return &cli.UsageError{Message: fmt.Sprintf(
+	return &cli.UsageError{Message: core.Msgf(
 		"unknown flag '%s' for risk (want --status, --limit, --json)", arg)}
 }
 
@@ -138,7 +138,7 @@ func parseLimit(r *cli.Runner, args []string, i int) (int, int, int, bool) {
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 || n > riskcore.MaxQueueLimit {
-		return 0, i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return 0, i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"--limit wants an integer from 1 to %d, not %q", riskcore.MaxQueueLimit, raw)}), true
 	}
 	return n, next, 0, false

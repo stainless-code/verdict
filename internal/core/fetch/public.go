@@ -50,7 +50,7 @@ func publicPullPath(repo, pr string) string {
 
 // publicMeta owns the PR read and its stderr sidecar.
 func publicMeta(ctx context.Context, r *session, dir, repo, pr, pull string) (string, error) {
-	fmt.Fprintf(r.Human, "» public API: %s#%s (no gh login)\n", repo, pr)
+	fmt.Fprint(r.Human, core.Msgf("» public API: %s#%s (no gh login)\n", repo, pr))
 	res, err := r.curlPublic(ctx, flagCurlPublicFail, pull)
 	if werr := writeErrFile(dir+suffixMetaErr, res.Stderr); werr != nil {
 		return "", werr
@@ -67,7 +67,7 @@ func publicMeta(ctx context.Context, r *session, dir, repo, pr, pull string) (st
 // publicDiff reads the diff media type into full.diff: the same artifact the
 // CLI path writes, so the cap gate, hunk index, and chunk plan are shared.
 func publicDiff(ctx context.Context, r *session, dir, pull string) error {
-	fmt.Fprintf(r.Human, "» public API: diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» public API: diff -> %s/full.diff\n", r.display(dir)))
 	res, err := r.curlPublic(ctx, flagCurlPublicFail, flagH, publicDiffAccept, pull)
 	if werr := writeErrFile(dir+suffixDiffErr, res.Stderr); werr != nil {
 		return werr
@@ -76,7 +76,7 @@ func publicDiff(ctx context.Context, r *session, dir, pull string) error {
 		return publicDiffFailure(ctx, dir, res)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(res.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -132,16 +132,16 @@ func publicRefusal(stderr, what string) *core.RefusalError {
 	head := headBytes(stderr, numExcerpt)
 	switch {
 	case rateLimited(stderr):
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"%s read failed over the public API: %s (anonymous reads are capped at %d requests/hour — "+
 				"run 'gh auth login' or wait, then re-run)",
 			what, head, publicRateLimit)}
 	case notFound(stderr):
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"%s read failed over the public API: %s (the pull request is missing or private — "+
 				"check the URL, or run 'gh auth login' for a private one)", what, head)}
 	default:
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"%s read failed over the public API: %s", what, head)}
 	}
 }

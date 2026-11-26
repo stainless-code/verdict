@@ -2,13 +2,11 @@ package postcore
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // gitlabHost is the `glab` host: one discussion per finding, a summary note,
@@ -56,12 +54,12 @@ func (gitlabHost) resolveThread(ctx context.Context, cmdr Commander, _ map[strin
 		return jq.Sealed("gitlab resolve thread", err)
 	}
 	if res.ExitCode != 0 {
-		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not resolve discussion %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
+		return &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"gitlab did not resolve discussion %s: %s", threadID, firstReason(res.Stderr))}
 	}
 	if !gitlabDiscussionResolved(res.Stdout) {
-		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not confirm discussion %s resolved", untrusted.Line(threadID))}
+		return &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"gitlab did not confirm discussion %s resolved", threadID)}
 	}
 	return nil
 }

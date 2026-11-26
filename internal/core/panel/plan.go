@@ -66,7 +66,7 @@ func Plan(dir, head, at, roster, prompt string, review *jq.Obj) (*jq.Obj, string
 	findings, verifiers := Findings(review), members[1:]
 	if len(findings) > maxFindings || len(verifiers) > maxVerifiers {
 		return nil, "", nil, &core.RefusalError{
-			Code: CodeTooLarge, Message: fmt.Sprintf("panel has %d findings and %d verifiers; maximum 100 findings and 4 verifiers",
+			Code: CodeTooLarge, Message: core.Msgf("panel has %d findings and %d verifiers; maximum 100 findings and 4 verifiers",
 				len(findings), len(verifiers)),
 		}
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 //nolint:revive // chunk snapshot, dry-run, and coverage gates read as one block
@@ -41,7 +40,7 @@ func (st *state) validateChunkMerge() (string, error) {
 		removeBestEffort(chunkHunks)
 		removeBestEffort(dir + "/.chunk-hunks.tsv.part")
 		if err := atomic.WriteFile(chunkHunks, []byte(hunks.Format(allHunks))); err != nil {
-			return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
+			return "", &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("could not write %s: %v", chunkHunks, err)}
 		}
 	}
 	if !concatEquals(diffs, dir+"/full.diff", exclusions) {
@@ -78,14 +77,14 @@ func readChunkManifest(manifest, refetch string, allowEmpty bool) ([]chunk, []st
 		if schema == "" {
 			schema = "missing"
 		}
-		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
-			msgChunkUnreadable, manifest, untrusted.Line(schema), refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: core.Msgf(
+			msgChunkUnreadable, manifest, schema, refetch)}
 	}
 	chunks := parseChunks(jq.Elements(manMap[fieldChunks]))
 	sortChunks(chunks)
 	names := chunkNames(chunks)
 	if len(names) == 0 && !allowEmpty {
-		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkNoChunks, manifest, refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: core.Msgf(msgChunkNoChunks, manifest, refetch)}
 	}
 	return chunks, names, nil
 }
@@ -179,8 +178,8 @@ func resolveChunkDiffs(st *state, chunks []chunk, refetch string) ([]string, []h
 		if !st.dryRun {
 			removeBestEffort(chunkHunks)
 		}
-		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
-			msgChunkSnapMissing, untrusted.Line(strings.Join(missing, " ")), refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: core.Msgf(
+			msgChunkSnapMissing, strings.Join(missing, " "), refetch)}
 	}
 	return diffs, allHunks, nil
 }
@@ -211,7 +210,7 @@ func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []stri
 	chunkHunks := st.dir + chunkHunksSuffix
 	reviewRaw, err := ReadReview(st.dir, st.reviewFile)
 	if err != nil {
-		return "", &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.reviewFile)}
+		return "", &core.RefusalError{Code: codeMissingReviewFile, Message: core.Msgf(msgReviewMissing, st.reviewFile)}
 	}
 	claimed, kind := chunkAttestation(reviewRaw)
 	switch kind {
@@ -251,8 +250,8 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 		if !st.dryRun {
 			removeBestEffort(chunkHunks)
 		}
-		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
-			msgChunkCoverage, len(names)-nMiss, len(names), untrusted.Line(strings.Join(missingDescs, ", ")), refetch)}
+		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: core.Msgf(
+			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}
 	}
 	return chunkHunks, nil
 }

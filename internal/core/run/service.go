@@ -28,6 +28,7 @@ import (
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -112,13 +113,13 @@ func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 		if _, ok := lookupAgent(def.Name); ok {
 			return &core.RefusalError{
 				Code:    codeBadSettings,
-				Message: path + ": collides with a built-in agent; pick another name",
+				Message: core.Msgf("%s: collides with a built-in agent; pick another name", path),
 			}
 		}
 		if seen[def.Name] {
 			return &core.RefusalError{
 				Code:    codeBadSettings,
-				Message: path + ": defined twice; use one agent per name",
+				Message: core.Msgf("%s: defined twice; use one agent per name", path),
 			}
 		}
 		seen[def.Name] = true
@@ -534,7 +535,7 @@ func (st *state) artifactName() string {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg)}
 }
 
 // pipeline resolves the run's declared pipeline and folds in the warnings it
@@ -787,8 +788,8 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	if ref != nil {
 		return nil, ref
 	}
-	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
-	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
+	st.human(core.Msgf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
+	st.human(core.Msgf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	if ref := st.admit(ctx, 1); ref != nil {
 		return nil, ref
 	}
@@ -973,7 +974,8 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 			"%s ran past the %ds watchdog and was killed (raise --timeout, or pass its fast flags after '--')",
 			args.def.Name, args.timeout))
 	case res.ExitCode != 0:
-		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode)+st.agentOutput(args, res))
+		return &core.RefusalError{Code: codeAgentFailed, Message: core.Msgf("%s exited %d%s",
+			args.def.Name, res.ExitCode, core.Trusted(st.agentOutput(args, res)))}
 	}
 	return st.artifactRefusal(args, art, res)
 }
@@ -983,8 +985,14 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 // only has to name the cause (an HTTP 402, a refused write) at a glance.
 const messageTailCap = 600
 
+// agentOutputTag leads each line of the agent's output in a refusal, so no
+// line the agent printed can pass for verdict's own `error:` line.
+const agentOutputTag = "  agent: "
+
 // agentOutput is the tail of what the agent printed, formatted to append to a
-// refusal message. The agent's own error — a provider's out-of-credit reply, a
+// refusal message, one tagged and folded line per line it printed
+// (untrusted.Passthrough), which is why a refusal may carry it Trusted. The
+// agent's own error — a provider's out-of-credit reply, a
 // refused write — is printed there, and without it every failure reads as the
 // same bare exit code. It is empty when the agent printed nothing. The whole
 // capture (the watchdog caps it at 1 MiB) runs through verify's sanitizer
@@ -1002,7 +1010,7 @@ func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 	if tail == "" {
 		return ""
 	}
-	return "\nagent output (tail, redacted):\n" + tail
+	return "\nagent output (tail, redacted):\n" + strings.TrimSuffix(untrusted.Passthrough(agentOutputTag, tail), "\n")
 }
 
 // artifactRefusal is the artifact contract: exactly one fresh review file,
@@ -1010,8 +1018,8 @@ func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 func (st *state) artifactRefusal(args *launchArgs, art artifactState, res *core.Result) *core.RefusalError {
 	switch {
 	case !art.exists:
-		return st.refuse(codeNoArtifact, fmt.Sprintf(
-			"%s exited 0 but wrote no %s", args.def.Name, args.artifact)+st.agentOutput(args, res))
+		return &core.RefusalError{Code: codeNoArtifact, Message: core.Msgf("%s exited 0 but wrote no %s%s",
+			args.def.Name, args.artifact, core.Trusted(st.agentOutput(args, res)))}
 	case !art.regular:
 		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the artifact must be one JSON file")
 	case !art.fresh:
@@ -1066,10 +1074,10 @@ func (st *state) tail(output string, argSecrets []string) string {
 func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art artifactState,
 	started, ended time.Time, rep *core.RunRepair,
 ) *core.RunResponse {
-	st.human(fmt.Sprintf("» exit=%d timed_out=%s duration=%s",
+	st.human(core.Msgf("» exit=%d timed_out=%s duration=%s",
 		res.ExitCode, strconv.FormatBool(res.TimedOut), ended.Sub(started).Round(time.Millisecond)))
-	st.human(fmt.Sprintf("» wrote %s (fresh, %d bytes)", args.artifact, art.size))
-	st.human("» recorded " + st.display(rec.path(args.dir)))
+	st.human(core.Msgf("» wrote %s (fresh, %d bytes)", args.artifact, art.size))
+	st.human(core.Msgf("» recorded %s", st.display(rec.path(args.dir))))
 	return &core.RunResponse{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,

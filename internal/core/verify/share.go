@@ -237,7 +237,7 @@ func shareOutsideContent(ctx context.Context, g contenttree.Git, rel string) *co
 }
 
 func shareRefusal(rel, why string) *core.RefusalError {
-	return &core.RefusalError{Code: config.CodeBadConfig, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: config.CodeBadConfig, Message: core.Msgf(
 		"%s verify.share entry %q %s; nothing ran", config.ConfigPath, rel, why)}
 }
 
@@ -251,10 +251,10 @@ func (st *state) reportShares(sb *sandbox) {
 	}
 	names := strings.Join(sharedRels(st.shared), ", ")
 	if sb.full() {
-		st.human("» verified with shared directories: " + names + " (read-only under --sandbox)")
+		st.human(core.Msgf("» verified with shared directories: %s (read-only under --sandbox)", names))
 		return
 	}
-	st.human("» verified with shared directories: " + names + " (writable: no --sandbox)")
+	st.human(core.Msgf("» verified with shared directories: %s (writable: no --sandbox)", names))
 	st.warn("verify.share: " + names + " was writable during the run — only --sandbox makes a shared directory " +
 		"read-only, so a stub planted there could make the command pass")
 }

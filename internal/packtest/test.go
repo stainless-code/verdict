@@ -73,13 +73,13 @@ func Run(ctx context.Context, p *packcore.Pack, set *packcore.Set, at string) (*
 	if len(names) > maxTestCases {
 		return nil, &core.RefusalError{
 			Code: packcore.CodePackTooLarge,
-			Message: fmt.Sprintf("pack %q has more than %d eval cases",
+			Message: core.Msgf("pack %q has more than %d eval cases",
 				p.Name, maxTestCases),
 		}
 	}
 	data := testData(p, names)
 	if len(data.Cases) == 0 {
-		return nil, &core.RefusalError{Code: CodePackTestCases, Message: fmt.Sprintf("pack %q has no eval cases", p.Name)}
+		return nil, &core.RefusalError{Code: CodePackTestCases, Message: core.Msgf("pack %q has no eval cases", p.Name)}
 	}
 	if ref := runCases(ctx, p, set, files, data); ref != nil {
 		return nil, ref

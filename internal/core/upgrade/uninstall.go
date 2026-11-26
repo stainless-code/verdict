@@ -46,7 +46,7 @@ func removePathEntry(ctx context.Context, req *Request, det *detection, resp *Re
 	if err != nil {
 		return &core.RefusalError{
 			Code:    codeUpgradeFailed,
-			Message: "removed the binary but could not remove the PATH entry: " + err.Error(),
+			Message: core.Msgf("removed the binary but could not remove the PATH entry: %s", err.Error()),
 		}
 	}
 	resp.PathLineRemoved = changed
@@ -58,12 +58,12 @@ func removePathEntry(ctx context.Context, req *Request, det *detection, resp *Re
 
 func removeInstaller(det *detection, removed []string) (Response, *core.RefusalError) {
 	if err := os.Remove(det.exe); err != nil {
-		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot remove " + det.exe + ": " + err.Error()}
+		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf("cannot remove %s: %s", det.exe, err.Error())}
 	}
 	if err := os.Remove(det.Receipt); err != nil {
 		return Response{}, &core.RefusalError{
 			Code:    codeUpgradeFailed,
-			Message: "removed the binary but not the receipt: " + err.Error(),
+			Message: core.Msgf("removed the binary but not the receipt: %s", err.Error()),
 		}
 	}
 	_ = os.Remove(det.InstallDir) // succeeds only when empty; foreign files keep the dir
@@ -77,7 +77,7 @@ func uninstallRefusal(det *detection) *core.RefusalError {
 	if within(det.exe, det.InstallDir) && !validReceipt(det.Receipt) {
 		return &core.RefusalError{
 			Code: codeNoReceipt,
-			Message: fmt.Sprintf(
+			Message: core.Msgf(
 				"refusing to remove %s: no installer receipt (not installed by install.sh)", det.exe),
 		}
 	}
@@ -85,21 +85,21 @@ func uninstallRefusal(det *detection) *core.RefusalError {
 		if cmd, ok := skillUninstallCommand(det.exe); ok {
 			return &core.RefusalError{
 				Code: codeUninstallGate,
-				Message: fmt.Sprintf(
+				Message: core.Msgf(
 					"%s is not installer-managed; remove it with: %s",
 					det.exe, cmd),
 			}
 		}
 		return &core.RefusalError{
 			Code: codeUninstallGate,
-			Message: fmt.Sprintf(
+			Message: core.Msgf(
 				"%s is not installer-managed; remove it with the tool that installed the skill copy at %s",
 				det.exe, skillRoot(det.exe)),
 		}
 	}
 	return &core.RefusalError{
 		Code: codeUninstallGate,
-		Message: fmt.Sprintf("%s is not installer-managed; remove it with: %s",
+		Message: core.Msgf("%s is not installer-managed; remove it with: %s",
 			det.exe, uninstallCommand(det)),
 	}
 }

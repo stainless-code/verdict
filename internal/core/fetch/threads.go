@@ -32,7 +32,7 @@ func writeThreadsJSON(
 		Threads:       feed,
 	}
 	if err := threadscore.WriteFile(dir+suffixThreadsJSON, &doc); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("%v", err)}
 	}
 	return nil
 }

@@ -80,7 +80,7 @@ func Parse(args []string, q *readycore.WaitRequest) *core.RefusalError {
 }
 
 func badFlag(flag string) *core.RefusalError {
-	return &core.RefusalError{Code: "bad-flags", Message: "invalid or missing pr-wait flag operand: " + flag}
+	return &core.RefusalError{Code: "bad-flags", Message: core.Msgf("invalid or missing pr-wait flag operand: %s", flag)}
 }
 
 func render(r *cli.Runner, req readcommon.Request, resp *readycore.WaitResponse) {

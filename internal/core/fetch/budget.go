@@ -124,7 +124,7 @@ func gateHistoricalLowerBound(st *budgetState, res *config.Resolved, consent boo
 		st.receiptNeeded = true
 		return nil
 	}
-	return &core.RefusalError{Code: code, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: code, Message: core.Msgf(
 		"known subtotal of comparable %s runs averages at least $%s and exceeds a spend guard — consent required",
 		st.estTier, st.estLowerBound)}
 }
@@ -192,7 +192,7 @@ func refuseUnsupportedCap(res *config.Resolved) *core.RefusalError {
 // budgetExceeded reports a known projection over the resolved budget, naming
 // the source and the comparable runs the projection rests on.
 func budgetExceeded(st *budgetState) error {
-	return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
+	return &core.RefusalError{Code: "budget-exceeded", Message: core.Msgf(
 		"projected %s run ~$%s%s exceeds budget $%s (%s) from %d comparable run(s) — consent required before this run starts",
 		st.estTier, st.estUSD, st.basisNote(), st.budgetUSD, st.budgetSrc, st.estRuns)}
 }
@@ -215,7 +215,7 @@ func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
 // personalCeilingError reports a projection the operator's own ceiling does not
 // authorize, comparing exact decimals rather than display strings.
 func personalCeilingError(st *budgetState, limit string) error {
-	return &core.RefusalError{Code: codeSpendCapped, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeSpendCapped, Message: core.Msgf(
 		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (operator settings) from %d "+
 			"comparable run(s) — consent before this run starts, or raise the ceiling in settings and "+
 			"narrow the run",
@@ -229,7 +229,7 @@ func personalCeilingError(st *budgetState, limit string) error {
 // lenient posture proceeds unenforced.
 func gateUnknownEstimate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
 	if res != nil && spend.Authorize(spend.Projection{}, spend.Policy{RequireKnown: res.Spend.RequireKnownEstimate}, consent).Code != "" {
-		return &core.RefusalError{Code: "budget-unknown", Message: unknownEstimateMessage(st)}
+		return &core.RefusalError{Code: "budget-unknown", Message: core.Msgf("%s", unknownEstimateMessage(st))}
 	}
 	if consent {
 		st.receiptNeeded = true
@@ -330,7 +330,7 @@ func reportNoHistory(r *session) {
 // reportUnknownProjection explains a picked tier whose records carry no
 // est_usd, quoting the ordinary budget only when the run actually has one.
 func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns int) {
-	line := fmt.Sprintf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
+	line := core.Msgf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
 		tier, tierRuns)
 	if st.hasBudget {
 		line += fmt.Sprintf("; budget $%s (%s) unenforced on unknown", st.budgetUSD, st.budgetSrc)
@@ -341,7 +341,7 @@ func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns 
 // estimateLine renders a known projection, comparing it against the ordinary
 // guard only when the run carries one.
 func estimateLine(st *budgetState, tier string) string {
-	line := fmt.Sprintf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
+	line := core.Msgf("» estimate: tier %s ~$%s/run from %d comparable run(s)", tier, st.estUSD, st.estRuns)
 	if !st.hasBudget {
 		return line
 	}
@@ -637,8 +637,8 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 		r.Warn(fmt.Sprintf("could not write %s/budget.json: %v", dir, err))
 		return
 	}
-	fmt.Fprintf(r.Human, "» receipt: %s recorded in %s/budget.json (%s)\n",
-		receiptKind(st), dir, receiptSummary(st))
+	fmt.Fprint(r.Human, core.Msgf("» receipt: %s recorded in %s/budget.json (%s)\n",
+		receiptKind(st), dir, receiptSummary(st)))
 }
 
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {

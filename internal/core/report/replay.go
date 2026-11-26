@@ -327,5 +327,5 @@ func groupFilesKey(files []string) string {
 // the config parser supplies its own codes for a policy that parses but does
 // not resolve.
 func replayRefusal(message string) *core.RefusalError {
-	return &core.RefusalError{Code: codeBadFlags, Message: message}
+	return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("%s", message)}
 }

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -112,7 +113,7 @@ func parseArg(r *cli.Runner, st *flagState, args []string, i int) (int, int, boo
 
 // usage reports one usage error.
 func usage(r *cli.Runner, msg string) int {
-	return r.ReportUsage(&cli.UsageError{Message: msg})
+	return r.ReportUsage(&cli.UsageError{Message: core.Msgf("%s", msg)})
 }
 
 // judgeWant and judgeFileWant name the --judge/--judge-file operand forms.

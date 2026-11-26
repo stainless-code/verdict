@@ -2,7 +2,6 @@ package recordcore
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -65,14 +64,14 @@ func checkPriorShape(dir string) error {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
 	if doc == nil || doc == false {
 		return nil
 	}
 	items, ok := doc.([]any)
 	if !ok {
-		return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
 	return checkPriorElements(path, items)
 }
@@ -80,7 +79,7 @@ func checkPriorShape(dir string) error {
 func checkPriorElements(path string, items []any) error {
 	for _, item := range items {
 		if !priorElementOK(item) {
-			return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+			return &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 		}
 	}
 	return nil

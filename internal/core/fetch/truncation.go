@@ -1,7 +1,6 @@
 package fetchcore
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -46,7 +45,7 @@ func removeTruncation(path string) error {
 }
 
 func truncationWriteError(err error) error {
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not update truncation.json: %v", err)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not update truncation.json: %v", err)}
 }
 
 func (s *session) observePaging(cut bool, returned int) {

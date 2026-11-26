@@ -216,7 +216,7 @@ type state struct { // fix service state is allocated once per invocation
 // Run executes one fix pass, one batch pass, or reports completion.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if msg := req.comboFault(); msg != "" {
-		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: msg}
+		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: core.Msgf("%s", msg)}
 	}
 	st := &state{req: req}
 	if err := ctx.Err(); err != nil {
@@ -306,12 +306,20 @@ func (st *state) warn(msg string) {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
 func (st *state) humanf(format string, args ...any) {
 	if st.req.Human != nil {
 		fmt.Fprintf(st.req.Human, format, args...)
+	}
+}
+
+// progressf writes one `»` progress line, each value folded to that line by
+// core.Msgf: a path or a sig cannot start a line of its own.
+func (st *state) progressf(format string, args ...any) {
+	if st.req.Human != nil {
+		fmt.Fprint(st.req.Human, core.Msgf(format, args...))
 	}
 }
 
@@ -475,7 +483,7 @@ func (st *state) printReadiness(dir string, entries []any) (string, int, int) {
 	now := st.req.TimeUTC()
 	st.at = now
 	fixOpen, fixOpenInline := countOpen(entries)
-	st.humanf("» readiness: %s — findings %d open (%d inline open); "+
+	st.progressf("» readiness: %s — findings %d open (%d inline open); "+
 		"threads (stored): %s; PR %s\n",
 		dir, fixOpen, fixOpenInline, storedThreads(dir), prInfo(dir))
 	return now, fixOpen, fixOpenInline
@@ -795,7 +803,7 @@ func writeLedger(path string, store *ledgerDoc) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte(store.obj.MarshalCompact()+"\n")); err != nil {
 		return &core.RefusalError{
 			Code:    codeFixFailed,
-			Message: fmt.Sprintf("could not write %s: %v", path, err),
+			Message: core.Msgf("could not write %s: %v", path, err),
 		}
 	}
 	return nil
@@ -1093,7 +1101,7 @@ func (st *state) passOutput(
 	full, anchor string,
 	pass, fixOpen, fixOpenInline int,
 ) *core.RefusalError {
-	st.humanf("» ledger: %s — sig %s pass %d/3\n",
+	st.progressf("» ledger: %s — sig %s pass %d/3\n",
 		ledgerPath, readcommon.Prefix(full), pass)
 	block := readPassBlock(rec, full, anchor)
 	st.printPassBlock(block, pass, ledgerPath)

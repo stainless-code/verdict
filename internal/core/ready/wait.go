@@ -3,7 +3,6 @@ package readycore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -190,7 +189,7 @@ func waitRefusal(ctx context.Context, err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: waitReadCode, Message: "PR wait failed: " + err.Error()}
+	return &core.RefusalError{Code: waitReadCode, Message: core.Msgf("PR wait failed: %s", err.Error())}
 }
 
 type waitSession struct {
@@ -255,7 +254,7 @@ func (s *waitSession) unresolved() *core.RefusalError {
 	if s.pending == nil {
 		return nil
 	}
-	return &core.RefusalError{Code: s.pending.Code, Message: fmt.Sprintf("%s after %d inconsistent observations",
+	return &core.RefusalError{Code: s.pending.Code, Message: core.Msgf("%s after %d inconsistent observations",
 		s.pending.Message, s.data.InconsistentObservations)}
 }
 

@@ -2,7 +2,6 @@ package calibratecore
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -72,7 +71,7 @@ func (st *state) liveHost(dir string) (liveHost, *core.RefusalError) {
 	if host, ok := liveHostFor(prov); ok {
 		return host, nil
 	}
-	return liveHost{}, st.withWarnings(&core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+	return liveHost{}, st.withWarnings(&core.RefusalError{Code: codeProviderUnimplemented, Message: core.Msgf(
 		"calibrate on %s is not implemented yet (no live thread join for it)", prov)})
 }
 

@@ -6,9 +6,9 @@ package learn
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -140,7 +140,7 @@ var learnToggles = map[string]func(*flags){
 
 // unknownFlag reports one unknown learn flag.
 func unknownFlag(a string) *cli.UsageError {
-	return &cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for learn (want %s)", a, usageFlags)}
+	return &cli.UsageError{Message: core.Msgf("unknown flag '%s' for learn (want %s)", a, usageFlags)}
 }
 
 // learnIDWant is the operand hint shared by the id-taking learn flags, and

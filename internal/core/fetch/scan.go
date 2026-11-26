@@ -897,5 +897,5 @@ func scanQuoteByteInto(out *strings.Builder, c byte) {
 
 // scanRefusal builds the scan selector's typed refusal.
 func scanRefusal(format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: codeBadScan, Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: codeBadScan, Message: core.Msgf(format, args...)}
 }

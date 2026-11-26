@@ -15,7 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/retry"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const postJQFilter = "{id, state, html_url, submitted_at}"
@@ -368,7 +367,7 @@ func (st *state) submit(ctx context.Context) (*Response, *core.RefusalError) {
 	doc, err := jq.DecodeOrdered([]byte(posted))
 	obj, ok := doc.(*jq.Obj)
 	if err != nil || !ok || obj == nil {
-		return nil, st.withWarnings(&core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf(msgPostFailed, headReason(st.dir))})
+		return nil, st.withWarnings(&core.RefusalError{Code: codePostFailed, Message: core.Msgf(msgPostFailed, headReason(st.dir))})
 	}
 	if err := atomic.WriteFile(st.dir+"/.posted_"+st.phash, []byte{}); err != nil {
 		return nil, st.withWarnings(refusalOrFailed(err))
@@ -446,7 +445,7 @@ func (st *state) postOneWithRetry(ctx context.Context, cmdr Commander, payload s
 	if last.message != "" {
 		message = last.message
 	}
-	return "", &core.RefusalError{Code: codePostFailed, Message: message, RetryAt: st.retryAt}
+	return "", &core.RefusalError{Code: codePostFailed, Message: core.Msgf("%s", message), RetryAt: st.retryAt}
 }
 
 func (st *state) awaitPostRetry(ctx context.Context, wait time.Duration, attempt int) (bool, *core.RefusalError) {
@@ -479,10 +478,10 @@ func (st *state) followPosted(k, n int, part string) {
 }
 
 func (st *state) followRefusal(k, n int, posted, retryAt string) *core.RefusalError {
-	return &core.RefusalError{Code: codePostFailed, RetryAt: retryAt, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codePostFailed, RetryAt: retryAt, Message: core.Msgf(
 		"post failed: follow-up part %d/%d not posted (review %s landed part 1 — fix the cause and re-run; "+
 			"re-run skips parts already posted, and --force reposts part 1 as a duplicate)",
-		k, n, untrusted.Line(reviewID(posted)))}
+		k, n, reviewID(posted))}
 }
 
 func reviewID(posted string) string {
@@ -580,7 +579,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 		return err
 	}
 	if err := atomic.WriteFile(st.dir+"/post.json", []byte(jq.PrettyOrdered(receipt.Wire()))); err != nil {
-		return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("could not write %s/post.json: %v", st.dir, err)}
+		return &core.RefusalError{Code: codePostFailed, Message: core.Msgf("could not write %s/post.json: %v", st.dir, err)}
 	}
 	return nil
 }

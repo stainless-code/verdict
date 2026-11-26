@@ -9,7 +9,6 @@ package doctorcore
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -94,7 +93,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		return nil, ref
 	}
 	if _, known := hostChecks[host]; !known {
-		return nil, &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(msgBadProvider, host)}
+		return nil, &core.RefusalError{Code: codeBadProvider, Message: core.Msgf(msgBadProvider, host)}
 	}
 	st = &state{req: req, host: host, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {

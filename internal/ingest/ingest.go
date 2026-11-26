@@ -62,12 +62,12 @@ func ingestRequest(r *cli.Runner, req *readcommon.Request, stdin io.Reader, sour
 		if errors.Is(err, jq.ErrTooLarge) {
 			return nil, &core.RefusalError{
 				Code:    "sarif-too-large",
-				Message: fmt.Sprintf("SARIF stdin exceeds maximum size of %d bytes", ingestcore.MaxSARIFBytes),
+				Message: core.Msgf("SARIF stdin exceeds maximum size of %d bytes", ingestcore.MaxSARIFBytes),
 			}
 		}
 		return nil, &core.RefusalError{
 			Code:    "ingest-failed",
-			Message: fmt.Sprintf("reading SARIF from stdin: %v", err),
+			Message: core.Msgf("reading SARIF from stdin: %v", err),
 		}
 	}
 	out.SARIF = ""
@@ -123,7 +123,7 @@ func (f *rawFlags) take(args []string, i int) (int, *cli.UsageError) {
 		return f.takeFrom(strings.TrimPrefix(a, "--from="), 0, nil)
 	case isFlag(a):
 		return 0, &cli.UsageError{
-			Message: fmt.Sprintf("unknown flag '%s' for ingest (want --from, --json)", a),
+			Message: core.Msgf("unknown flag '%s' for ingest (want --from, --json)", a),
 		}
 	default:
 		return 0, f.takePath(a)
@@ -148,7 +148,7 @@ func (f *rawFlags) takeFrom(value string, consumed int, u *cli.UsageError) (int,
 func (f *rawFlags) takePath(a string) *cli.UsageError {
 	if f.positional != "" {
 		return &cli.UsageError{
-			Message: fmt.Sprintf("unexpected argument %q for ingest (one <file|-> source)", a),
+			Message: core.Msgf("unexpected argument %q for ingest (one <file|-> source)", a),
 		}
 	}
 	f.positional = a
@@ -162,7 +162,7 @@ func (f *rawFlags) resolve() (input, *cli.UsageError) {
 		return f.resolveFrom()
 	case f.positional != "":
 		return input{}, &cli.UsageError{
-			Message: "name the source as --from sarif " + f.positional,
+			Message: core.Msgf("name the source as --from sarif %s", f.positional),
 		}
 	default:
 		// No source at all: the core service refuses missing-sarif with its hint.
@@ -178,7 +178,7 @@ func (f *rawFlags) resolveFrom() (input, *cli.UsageError) {
 	}
 	if f.positional == "" {
 		return input{}, &cli.UsageError{
-			Message: fmt.Sprintf("--from %s needs <file|->", strings.TrimSpace(f.fromFormat)),
+			Message: core.Msgf("--from %s needs <file|->", strings.TrimSpace(f.fromFormat)),
 		}
 	}
 	return input{Format: f.fromFormat, Path: f.positional}, nil

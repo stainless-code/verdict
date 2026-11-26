@@ -137,3 +137,22 @@ func TestFlattenKeepsNewlinesAndFoldsTheRest(t *testing.T) {
 		t.Errorf("Flatten = %q, want %q", got, want)
 	}
 }
+
+func TestPassthroughTagsAndFoldsEveryLine(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ name, in, want string }{
+		{"empty", "", ""},
+		{"blank lines drop", "\n \r\n", ""},
+		{"lf", "a\nerror: forged\n", "  gh: a\n  gh: error: forged\n"},
+		{"crlf", "a\r\nb", "  gh: a\n  gh: b\n"},
+		{"separators", "a\xe2\x80\xa8b\xc2\x85c\xe2\x80\xa9d", "  gh: a\n  gh: b\n  gh: c\n  gh: d\n"},
+		{"controls and bidi folded", "x\x1b[31m\xe2\x80\xaey\tz", "  gh: x [31m y\tz\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := Passthrough("  gh: ", tc.in); got != tc.want {
+				t.Errorf("Passthrough(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}

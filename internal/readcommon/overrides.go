@@ -1,7 +1,6 @@
 package readcommon
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -60,7 +59,7 @@ func validateFragment(set overrides.Set, f string) error {
 	}
 	raw, err := noblock.ReadFile(path)
 	if err != nil {
-		return &core.RefusalError{Code: "bad-override", Message: fmt.Sprintf("override %s is unreadable (fix permissions or remove it)", f)}
+		return &core.RefusalError{Code: "bad-override", Message: core.Msgf("override %s is unreadable (fix permissions or remove it)", f)}
 	}
 	text := strings.ReplaceAll(string(raw), "\r", "")
 	if err := overrides.CheckLocked(f, text); err != nil {

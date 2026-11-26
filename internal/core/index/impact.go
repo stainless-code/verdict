@@ -3,7 +3,6 @@ package indexcore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -131,7 +130,7 @@ func impactStore(index, sourceRoot string) (root, store, at, from string, ref *c
 	}
 	if err != nil {
 		return "", "", "", "", &core.RefusalError{
-			Code: codeIndexFailed, Message: "impact: cannot read --index " + index + colonSpace + err.Error(),
+			Code: codeIndexFailed, Message: core.Msgf("impact: cannot read --index %s: %s", index, err.Error()),
 		}
 	}
 	if !info.IsDir() {
@@ -141,14 +140,14 @@ func impactStore(index, sourceRoot string) (root, store, at, from string, ref *c
 	dir, absErr := filepath.Abs(index)
 	if absErr != nil {
 		return "", "", "", "", &core.RefusalError{
-			Code: codeIndexFailed, Message: "impact: --index " + index + " is not addressable: " + absErr.Error(),
+			Code: codeIndexFailed, Message: core.Msgf("impact: --index %s is not addressable: %s", index, absErr.Error()),
 		}
 	}
 	store = storePath(dir)
 	if !isDir(filepath.Join(store, impactStoreTrees)) {
 		return "", "", "", "", &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: fmt.Sprintf(impactNotAStore, dir, config.VerdictDir+"/"+storeDirName),
+			Message: core.Msgf(impactNotAStore, dir, config.VerdictDir+"/"+storeDirName),
 		}
 	}
 	return dir, store, impactHeadRef, dir, nil
@@ -180,9 +179,9 @@ func (st *state) impactStale(tree, head, headTree string, headKnown bool) bool {
 	case head == "":
 		return false
 	case !headKnown:
-		st.warn(fmt.Sprintf(impactUnresolved, head, tree))
+		st.warn(core.Msgf(impactUnresolved, head, tree))
 	case headTree != tree:
-		st.warn(fmt.Sprintf(impactHeadStale, tree, headTree))
+		st.warn(core.Msgf(impactHeadStale, tree, headTree))
 	default:
 		return false
 	}

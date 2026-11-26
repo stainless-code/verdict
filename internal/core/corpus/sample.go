@@ -58,7 +58,7 @@ func loadSampling(dir string) (Sampling, *core.RefusalError) {
 	path := filepath.Join(dir, "corpus_run.json")
 	raw, err := jq.CappedFile(path, maxManifestBytes)
 	if errors.Is(err, os.ErrNotExist) {
-		return Sampling{}, &core.RefusalError{Code: config.CodeBundleOutdated, Message: fmt.Sprintf(
+		return Sampling{}, &core.RefusalError{Code: config.CodeBundleOutdated, Message: core.Msgf(
 			"corpus bundle %s has no corpus_run.json: an older bench runner wrote it "+
 				"(re-run the benchmark with the current bench/runner to rebuild it)", filepath.ToSlash(dir))}
 	}

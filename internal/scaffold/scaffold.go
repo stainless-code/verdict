@@ -8,11 +8,11 @@ package scaffold
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -195,10 +195,10 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 
 // unknownInitFlag is the usage error for a flag init does not take.
 func unknownInitFlag(name string) *cli.UsageError {
-	return &cli.UsageError{Message: fmt.Sprintf(
+	return &cli.UsageError{Message: core.Msgf(
 		"unknown flag '%s' for init (want --preset <chill|standard|strict>, "+
-			"--ci "+initcore.CIValues()+", --agent <name>, --key-secret <NAME>, "+
-			flagCommentTrigger+", --print, --yes, --force, --json)", name)}
+			"--ci %s, --agent <name>, --key-secret <NAME>, "+
+			flagCommentTrigger+", --print, --yes, --force, --json)", name, initcore.CIValues())}
 }
 
 // selectionFlag reports whether one argv token pins an answer: any of them
@@ -308,7 +308,7 @@ func scopedFlagError(f *flags) *cli.UsageError {
 		return unscopeError(f)
 	}
 	if _, ok := initcore.LookupCI(f.ci); !ok {
-		return &cli.UsageError{Message: fmt.Sprintf(
+		return &cli.UsageError{Message: core.Msgf(
 			"unknown --ci '%s' for init (want %s)", f.ci, initcore.CIValues())}
 	}
 	if f.commentTrigger && f.ci != providerGithub {
@@ -331,7 +331,7 @@ func unscopeError(f *flags) *cli.UsageError {
 		given bool
 	}{{flagAgent, f.agent != ""}, {flagKeySecret, f.keySecret != ""}, {flagPrint, f.print}} {
 		if scoped.given {
-			return &cli.UsageError{Message: scoped.name + " needs --ci " + initcore.CIValues()}
+			return &cli.UsageError{Message: core.Msgf("%s needs --ci %s", scoped.name, initcore.CIValues())}
 		}
 	}
 	return nil

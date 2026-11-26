@@ -129,7 +129,7 @@ func (st *svc) checkInputs(dir string) (CheckResult, *core.RefusalError) {
 		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 			return CheckResult{}, ref
 		}
-		return CheckResult{}, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, dir+"/review.json")}
+		return CheckResult{}, &core.RefusalError{Code: codeMissingReviewFile, Message: core.Msgf(msgReviewMissing, dir+"/review.json")}
 	}
 	st.normalized, st.repairs = NormalizeReview(raw)
 	res, ref := checkNormalized(dir, st.normalized, st.repairs)
@@ -198,8 +198,12 @@ func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 		return nil
 	}
 	total := shapeErrors + check.Warnings
-	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
-	return &core.RefusalError{Code: CodeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
+	return &core.RefusalError{
+		Code:              CodeBadReviewInput,
+		Message:           core.Msgf("review.json has %d problem(s); fix every one, then re-run", total),
+		Problems:          problems,
+		ProblemsTruncated: check.Truncated,
+	}
 }
 
 func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
@@ -261,7 +265,7 @@ func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.Refus
 	if st.req.DryRun {
 		raw, err := noblock.ReadFile(dir + diffSuffix)
 		if err != nil {
-			return nil, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
+			return nil, &core.RefusalError{Code: codeMissingDiff, Message: core.Msgf(msgMissingDiff, dir)}
 		}
 		st.hunkRows = hunks.Parse(string(raw))
 	} else if err := EnsureHunksSnapshot(st.runtime(), dir); err != nil {
@@ -406,7 +410,7 @@ func (st *svc) withWarnings(ref *core.RefusalError) *core.RefusalError {
 }
 
 func recordFailed(err error) *core.RefusalError {
-	return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("record failed: %v", err)}
+	return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("record failed: %v", err)}
 }
 
 // identityCommander returns the injected command runner for patch identity
@@ -465,7 +469,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 	}
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{
-			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/record.json: %v", dir, err),
+			Code: codeRecordFailed, Message: core.Msgf("could not write %s/record.json: %v", dir, err),
 		})
 	}
 	// The receipt above is already durable: a prior-coverage.json write
@@ -650,7 +654,7 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 	}
 	for _, f := range files {
 		if !exists(f.path) {
-			return &core.RefusalError{Code: f.code, Message: fmt.Sprintf("missing %s (%s)", f.path, f.hint)}
+			return &core.RefusalError{Code: f.code, Message: core.Msgf("missing %s (%s)", f.path, f.hint)}
 		}
 	}
 	source := dir + prSuffix
@@ -660,7 +664,7 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 		hint = "run fetch-local first"
 	}
 	if !exists(source) {
-		return &core.RefusalError{Code: "missing-source", Message: fmt.Sprintf("missing %s (%s)", source, hint)}
+		return &core.RefusalError{Code: "missing-source", Message: core.Msgf("missing %s (%s)", source, hint)}
 	}
 	return nil
 }

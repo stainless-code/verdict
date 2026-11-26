@@ -57,7 +57,7 @@ func (st *state) readyHost(dir string) (readyHost, *core.RefusalError) {
 	}
 	return readyHost{}, st.withWarnings(&core.RefusalError{
 		Code: "provider-unimplemented",
-		Message: "ready on " + prov + " is not implemented yet (no live reads for it — " +
-			"supported hosts: " + strings.Join(core.ReadyProviders(), ", ") + ")",
+		Message: core.Msgf("ready on %s is not implemented yet (no live reads for it — "+
+			"supported hosts: %s)", prov, strings.Join(core.ReadyProviders(), ", ")),
 	})
 }

@@ -476,7 +476,7 @@ func (s *Server) bundleUnchanged(
 		// with the nonce unspent: nothing was posted and nothing is stale.
 		s.writeRefusal(w, verbServe, body.Bundle, &core.RefusalError{
 			Code:    codeBundleUnreadable,
-			Message: "could not re-read the bundle before posting: " + err.Error(),
+			Message: core.Msgf("could not re-read the bundle before posting: %s", err.Error()),
 		})
 		return false
 	}
@@ -651,13 +651,13 @@ func (s *Server) lockWaitRefusal(ctx context.Context) *core.RefusalError {
 func (s *Server) phaseRefusal(ctx context.Context, phase submitPhase) *core.RefusalError {
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codePostTimeout, Message: core.Msgf(
 			"the submit did not finish within %s while %s; nothing was posted and "+
 				"this attempt did not spend the preview, so retry with the same preview if it has not expired, "+
 				"or run a new preview", s.postTimeout(), phase.timeout)}
 	case errors.Is(ctx.Err(), context.Canceled):
-		return &core.RefusalError{Code: codeCanceled, Message: "the server shut down while the submit " +
-			phase.shutdown + "; nothing was posted"}
+		return &core.RefusalError{Code: codeCanceled, Message: core.Msgf("the server shut down while the submit "+
+			"%s; nothing was posted", phase.shutdown)}
 	}
 	return nil
 }
@@ -682,7 +682,7 @@ func (s *Server) invokePostSubmit(
 	resp, ref := runner(ctx, req)
 	if ref != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) && contextOwned(ref) {
 		// The bound, not the host's own failure, ended the call.
-		ref = &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
+		ref = &core.RefusalError{Code: codePostTimeout, Message: core.Msgf(
 			"the host post did not finish within %s and was stopped; the host may or may not have recorded the review",
 			s.postTimeout()), Warnings: ref.Warnings}
 	}

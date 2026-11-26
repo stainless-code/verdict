@@ -222,7 +222,7 @@ func (st *state) loadKB() {
 func (st *state) reportMoves() {
 	st.nKept = len(st.kept)
 	st.nMoved = len(st.moved)
-	st.human(fmt.Sprintf("» anchors: %d inline, %d moved to body", st.nKept, st.nMoved))
+	st.human(core.Msgf("» anchors: %d inline, %d moved to body", st.nKept, st.nMoved))
 	if st.nMoved == 0 {
 		return
 	}
@@ -271,7 +271,7 @@ func checkReviewSchema(review *jq.Obj) error {
 	rv, has := review.Get("schema_version")
 	execution, _ := review.Get("execution")
 	if !has || rv == nil || (rv != schemaVersion1 && (rv != "2" || execution == nil)) {
-		return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, untrusted.Line(jq.R(rv)))}
+		return &core.RefusalError{Code: codeBadReviewSchema, Message: core.Msgf(msgBadSchema, jq.R(rv))}
 	}
 	findings, has := review.Get("findings")
 	if _, ok := findings.([]any); !has || !ok {
@@ -833,14 +833,14 @@ func loadPrior(dir string) ([]any, error) {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
 	if doc == nil || doc == false {
 		return nil, nil
 	}
 	arr, ok := doc.([]any)
 	if !ok {
-		return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
 	if ref := readcommon.OutdatedEntries(dir, arr); ref != nil {
 		return nil, ref //nolint:wrapcheck // typed refusal passes through unchanged

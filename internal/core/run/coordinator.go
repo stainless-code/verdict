@@ -581,9 +581,11 @@ func (c *coordinator) allFindersFailed(outcomes []discoveryOutcome, skipped []bo
 		lines = append(lines, finderPhase(i)+" "+cause.Code+": "+cause.Message)
 	}
 	c.response = outcomes[lead].response
+	// Each line is a finder's own refusal, its message already folded where
+	// it was built, so the list keeps one finder per line.
 	return &core.RefusalError{
 		Code:    finderCause(&outcomes[lead]).Code,
-		Message: "every finder failed:\n" + strings.Join(lines, "\n"),
+		Message: core.Msgf("every finder failed:\n%s", core.Trusted(strings.Join(lines, "\n"))),
 	}
 }
 

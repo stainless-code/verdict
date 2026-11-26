@@ -1,7 +1,6 @@
 package run
 
 import (
-	"fmt"
 	"os"
 	"time"
 
@@ -112,14 +111,14 @@ func writeLauncher(path string, rec *launcher) (time.Time, *core.RefusalError) {
 	if err := atomic.WriteFile(path, data); err != nil {
 		return time.Time{}, &core.RefusalError{
 			Code:    codeRecordFailed,
-			Message: fmt.Sprintf("could not write the launcher record %s: %v", path, err),
+			Message: core.Msgf("could not write the launcher record %s: %v", path, err),
 		}
 	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return time.Time{}, &core.RefusalError{
 			Code:    codeRecordFailed,
-			Message: fmt.Sprintf("could not stat the launcher record %s: %v", path, err),
+			Message: core.Msgf("could not stat the launcher record %s: %v", path, err),
 		}
 	}
 	return info.ModTime(), nil

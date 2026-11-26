@@ -211,14 +211,14 @@ func lockedPack(snap *controls.Snapshot, name string) (*Pack, *core.RefusalError
 
 // lockDrift builds the drift refusal, naming the pack and both hashes.
 func lockDrift(name, field, want, got string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 		"repo pack %s drift: %s records %s %s, found %s — re-add the pack or restore it",
 		name, LockFile, field, want, got)}
 }
 
 // lockMissing builds the missing-entry refusal, naming every unlisted pack.
 func lockMissing(names []string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 		"repo pack %s has no %s entry — run 'verdict pack add <dir>' to vendor and lock it",
 		strings.Join(names, ", "), LockFile)}
 }
@@ -385,12 +385,12 @@ func hex40(s string) bool {
 
 // badLock builds the malformed-lock refusal.
 func badLock(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBadPack, Message: reason}
+	return &core.RefusalError{Code: CodeBadPack, Message: core.Msgf("%s", reason)}
 }
 
 // badLockSource builds the lock-row source refusal.
 func badLockSource(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBadLockSource, Message: reason}
+	return &core.RefusalError{Code: CodeBadLockSource, Message: core.Msgf("%s", reason)}
 }
 
 // loadLock reads the worktree's verdict.lock. A missing file reads nil.
@@ -500,7 +500,7 @@ func CheckOrgPin(snap *controls.Snapshot) *core.RefusalError {
 // lockMissingOrg refuses a pin the lock holds no row for, naming the sync that
 // would create one.
 func lockMissingOrg(pin *OrgPin) *core.RefusalError {
-	return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 		"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
 		pin.Repo, pin.Ref, LockFile)}
 }
@@ -536,22 +536,22 @@ func verifyOrgEntryFromSnapshot(snap *controls.Snapshot, entry *LockEntry, pin *
 		return ref
 	}
 	if p == nil {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found no vendored pack — run 'verdict pack sync'",
 			entry.Name, LockFile, lockTreeField, entry.Hash)}
 	}
 	if p.Hash != entry.Hash {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found %s — run 'verdict pack sync'",
 			entry.Name, LockFile, lockTreeField, entry.Hash, p.Hash)}
 	}
 	if want := LockSig(entry); entry.Sig != want {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found %s — run 'verdict pack sync'",
 			entry.Name, LockFile, "sig", entry.Sig, want)}
 	}
 	if !orgPathMatch(entry, pin) {
-		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 			"org pack %s@%s path %q does not match lock for %q:%s — run 'verdict pack sync'",
 			pin.Repo, pin.Ref, orgPinPath(pin), pin.Repo, pin.Ref)}
 	}

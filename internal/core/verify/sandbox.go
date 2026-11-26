@@ -1600,7 +1600,7 @@ func sandboxExecPrivate(in sandboxInputs, repo, tmpBase string) (private, profil
 			return
 		}
 		if err := removePrivateDir(acquired); err != nil {
-			ref.Message += fmt.Sprintf(" (the private directory %s could not be removed: %v)", acquired, err)
+			ref.Message += core.Msgf(" (the private directory %s could not be removed: %v)", acquired, err)
 		}
 	}(private)
 	profile, ref = sandboxExecPrivateProfile(in, repo, private, tmpBase)
@@ -2004,7 +2004,7 @@ func canceledRefusal() *core.RefusalError {
 }
 
 func sandboxUnavailable(message string) *core.RefusalError {
-	return &core.RefusalError{Code: codeSandboxUnavailable, Message: "sandbox unavailable: " + message}
+	return &core.RefusalError{Code: codeSandboxUnavailable, Message: core.Msgf("sandbox unavailable: %s", message)}
 }
 
 // firstLine trims s to its first line.

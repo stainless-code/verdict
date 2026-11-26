@@ -20,7 +20,7 @@ type Request = readcommon.Request
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	for _, a := range args {
 		return r.ReportUsage(&cli.UsageError{
-			Message: fmt.Sprintf("unknown flag '%s' for journal (want --json)", a),
+			Message: core.Msgf("unknown flag '%s' for journal (want --json)", a),
 		})
 	}
 	if code, done := r.Canceled(ctx, "journal"); done {

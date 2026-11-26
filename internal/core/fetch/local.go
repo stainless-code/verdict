@@ -185,10 +185,10 @@ func localGitRoot(req *LocalRequest, f *LocalFlags) string {
 // local-prefixed names refuse typed.
 func localSlugGate(pr, slug string) *core.RefusalError {
 	if slug == "" || slug == "local" {
-		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("name '%s' sanitizes to nothing — pass a usable bundle name", pr)}
+		return &core.RefusalError{Code: codeBadSlug, Message: core.Msgf("name '%s' sanitizes to nothing — pass a usable bundle name", pr)}
 	}
 	if readcommon.IsDigits(slug) {
-		return &core.RefusalError{Code: codeBadSlug, Message: fmt.Sprintf("'%s' looks like a PR number — use fetch for PRs", slug)}
+		return &core.RefusalError{Code: codeBadSlug, Message: core.Msgf("'%s' looks like a PR number — use fetch for PRs", slug)}
 	}
 	if strings.HasPrefix(slug, "local-") {
 		return &core.RefusalError{Code: codeBadSlug, Message: "no local- prefix needed — the store adds it"}
@@ -365,7 +365,7 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	captureContentTree(ctx, r, mode)
 
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -409,7 +409,7 @@ func localDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 		return ref
 	}
-	return &core.RefusalError{Code: "diff-failed", Message: "git diff failed: " + headBytes(stderr, numExcerpt)}
+	return &core.RefusalError{Code: "diff-failed", Message: core.Msgf("git diff failed: %s", headBytes(stderr, numExcerpt))}
 }
 
 // localCap owns the fetch-local cap gate: resolution and the over-cap
@@ -455,9 +455,9 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 	if err := writeLocalTOC(ctx2, slug, listed, numstat); err != nil {
 		return err
 	}
-	fmt.Fprintf(r.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", r.display(dir)))
 	if err := atomic.WriteFile(dir+"/roles.txt", []byte(rolesForPathsText(withoutExcluded(ctx2, listed)))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", dir, err)}
 	}
 	if ref := emitContext(ctx2); ref != nil {
 		return ref
@@ -661,7 +661,7 @@ func resolveStashMode(ctx context.Context, s *session, f *LocalFlags) (localMode
 	if _, err := s.run(ctx, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
 		return localMode{}, &core.RefusalError{
 			Code:    "bad-stash",
-			Message: fmt.Sprintf("no such stash: stash@{%s} (see git stash list)", f.StashN),
+			Message: core.Msgf("no such stash: stash@{%s} (see git stash list)", f.StashN),
 		}
 	}
 	head := s.gitLineOrEmpty(ctx, gitCmdRevParse, stashRefPrefix+f.StashN+"}^{commit}")
@@ -675,7 +675,7 @@ func resolveStashMode(ctx context.Context, s *session, f *LocalFlags) (localMode
 func resolveBaseMode(ctx context.Context, s *session, f *LocalFlags, branch string) (localMode, error) {
 	mb, err := s.gitLine(ctx, "merge-base", f.BaseRef, gitHeadRef)
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: "bad-base", Message: fmt.Sprintf("no merge-base with '%s'", f.BaseRef)}
+		return localMode{}, &core.RefusalError{Code: "bad-base", Message: core.Msgf("no merge-base with '%s'", f.BaseRef)}
 	}
 	head := s.gitLineOrEmpty(ctx, gitCmdRevParse, gitHeadRef)
 	headRef := branch
@@ -716,17 +716,17 @@ func resolveThreeDot(ctx context.Context, s *session, spec string) (localMode, e
 	_, rb, _ := strings.CutLast(spec, gitRange3)
 	base, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, ra)
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: core.Msgf("cannot resolve range base '%s'", ra)}
 	}
 	// merge-base takes the resolved base: the rev-parse above both
 	// validates the ref (its refusal fires first) and pins the SHA.
 	mb, err := s.gitLine(ctx, "merge-base", base, rb)
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("no merge-base for '%s'", spec)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: core.Msgf("no merge-base for '%s'", spec)}
 	}
 	head, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: core.Msgf("cannot resolve range head '%s'", rb)}
 	}
 	return localMode{kind: modeRange, baseSHA: mb, headSHA: head, headRef: rb, rangeVal: spec}, nil
 }
@@ -741,11 +741,11 @@ func resolveTwoDot(ctx context.Context, s *session, spec string) (localMode, err
 	}
 	base, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, ra+"^{commit}")
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range base '%s'", ra)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: core.Msgf("cannot resolve range base '%s'", ra)}
 	}
 	head, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, rb+"^{commit}")
 	if err != nil {
-		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: fmt.Sprintf("cannot resolve range head '%s'", rb)}
+		return localMode{}, &core.RefusalError{Code: codeBadRange, Message: core.Msgf("cannot resolve range head '%s'", rb)}
 	}
 	return localMode{kind: modeRange, baseSHA: base, headSHA: head, headRef: rb, rangeVal: spec}, nil
 }
@@ -774,7 +774,7 @@ func (s *session) gitLineOrEmpty(ctx context.Context, args ...string) string {
 // itself refuses (unreachable on a writable bundle).
 func truncateEmpty(path string) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte{}); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", path, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s: %v", path, err)}
 	}
 	return nil
 }
@@ -1063,7 +1063,7 @@ func writeSourceJSON(
 		"created_at", now,
 	)
 	if err := atomic.WriteFile(dir+"/source.json", []byte(jq.PrettyOrdered(doc))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/source.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/source.json: %v", dir, err)}
 	}
 	return nil
 }

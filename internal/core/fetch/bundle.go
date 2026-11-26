@@ -22,10 +22,10 @@ import (
 func buildHunksTSV(fullDiff, out string) error {
 	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgReadFailed, fullDiff, err)}
 	}
 	if werr := atomic.WriteFile(out, []byte(hunks.Snapshot(string(raw)))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s: %v", out, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s: %v", out, werr)}
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func buildHunksTSV(fullDiff, out string) error {
 func diffFiles(fullDiff, dir string) ([]string, error) {
 	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgReadFailed, fullDiff, err)}
 	}
 	files := diffHunkFiles(string(raw))
 	slices.Sort(files)
@@ -44,7 +44,7 @@ func diffFiles(fullDiff, dir string) ([]string, error) {
 		sb.WriteString(f + newline)
 	}
 	if werr := atomic.WriteFile(dir+"/.difffiles", []byte(sb.String())); werr != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/.difffiles: %v", dir, werr)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/.difffiles: %v", dir, werr)}
 	}
 	return files, nil
 }
@@ -110,12 +110,12 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 		sb.WriteString("omitted: (none)\n")
 	}
 	if werr := atomic.WriteFile(ctx.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/toc.txt: %v", ctx.dir, werr)}
 	}
-	fmt.Fprintf(ctx.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir))
+	fmt.Fprint(ctx.runner.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx.runner.display(ctx.dir)))
 	paths := splitLines(withoutExcluded(ctx, strings.Join(prFilePaths(ctx.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", ctx.dir, werr)}
 	}
 	return nil
 }
@@ -219,9 +219,9 @@ func emitPanel(ctx *fetchRunCtx, panelList []string, panelSrc string) *core.Refu
 			sb.WriteString(p + newline)
 		}
 		if werr := atomic.WriteFile(ctx.dir+"/panel", []byte(sb.String())); werr != nil {
-			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/panel: %v", ctx.dir, werr)}
+			return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/panel: %v", ctx.dir, werr)}
 		}
-		fmt.Fprintf(ctx.runner.Human, "» panel (%d from %s)\n", len(panelList), panelSrc)
+		fmt.Fprint(ctx.runner.Human, core.Msgf("» panel (%d from %s)\n", len(panelList), panelSrc))
 	} else if ctx.runner.Effective.Compact != strTrue {
 		fmt.Fprintln(ctx.runner.Human,
 			"» panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)")
@@ -235,8 +235,8 @@ func emitLearnings(ctx *fetchRunCtx) *core.RefusalError {
 	if ctx.runner.Effective.Compact != strTrue {
 		if raw, ok := ctx.runner.readControl(config.LearningsPath); ok {
 			// `wc -l` counts newline bytes, not lines.
-			fmt.Fprintf(ctx.runner.Human, "» learnings: %s (%d lines — read headings first, not the full file)\n",
-				ctx.runner.controls.Path(config.LearningsPath), countNewlines(string(raw)))
+			fmt.Fprint(ctx.runner.Human, core.Msgf("» learnings: %s (%d lines — read headings first, not the full file)\n",
+				ctx.runner.controls.Path(config.LearningsPath), countNewlines(string(raw))))
 		}
 	}
 	return nil
@@ -352,18 +352,18 @@ func countNewlines(s string) int {
 func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) (*identity.Identity, error) {
 	filtered, err := noblock.ReadFile(dir + suffixFullDiff)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixFullDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgReadFailed, dir+suffixFullDiff, err)}
 	}
 	// Only a genuinely absent raw artifact falls back to the filtered
 	// bytes: a present-but-unreadable raw diff refuses instead of
 	// certifying the wrong identity input.
 	raw, err := identity.ReadRawDiff(dir, filtered)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixRawDiff, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgReadFailed, dir+suffixRawDiff, err)}
 	}
 	id := identity.Build(ctx, cmdr, filtered, raw, head, base)
 	if err := atomic.WriteFile(dir+suffixIdentity, []byte(jq.PrettyOrdered(id.Wire()))); err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/identity.json: %v", dir, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/identity.json: %v", dir, err)}
 	}
 	return id, nil
 }

@@ -33,14 +33,14 @@ const (
 func missingPatchRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeMissingPatch,
-		Message: fmt.Sprintf("missing %s/patch.json (nothing claimed to verify)", dir),
+		Message: core.Msgf("missing %s/patch.json (nothing claimed to verify)", dir),
 	}
 }
 
 func corruptStoreRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    "corrupt-store",
-		Message: fmt.Sprintf("patch store %s/patch.json is unreadable (restore it from backup, then re-run)", dir),
+		Message: core.Msgf("patch store %s/patch.json is unreadable (restore it from backup, then re-run)", dir),
 	}
 }
 
@@ -99,7 +99,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}
 	timeout, ok := parseTimeout(req.TimeoutRaw)
 	if !ok {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeBadTimeout, Message: fmt.Sprintf(
+		return nil, st.withWarnings(&core.RefusalError{Code: codeBadTimeout, Message: core.Msgf(
 			"timeout must be a positive number of seconds, got '%s'", req.TimeoutRaw)})
 	}
 	if ref := Check(vcmd); ref != nil {
@@ -191,7 +191,7 @@ func (st *state) execute(
 	receipt := &core.VerifyReceipt{
 		SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now, Shared: sharedRels(st.shared),
 	}
-	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
+	st.human(core.Msgf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
 	st.reportShares(sb)
 	st.releaseSandbox(sb)
@@ -330,7 +330,7 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 }
 
 func failed(err error) *core.RefusalError {
-	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
+	return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(msgVerifyFailed, err)}
 }
 
 func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *sandbox,
@@ -341,7 +341,7 @@ func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *s
 	// Sanitize the whole capture before cutting: a cut first could leave the
 	// unrecognizable second half of a credential at the tail's left edge.
 	tail := coreexec.TrimTail(lastBytes(sanitizeTail(combined, st.req.Environ), tailCap))
-	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
+	st.human(core.Msgf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
 	if ref := bundle.unchanged(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -468,7 +468,7 @@ func recordOutcome(bundle *bundleHandle, now string, exit int, timedOut bool, ta
 		m.Delete("sandboxMechanism")
 	}
 	if err := atomic.WriteFileIn(bundle.root, patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf("could not write %s/patch.json: %v", dir, err)}
 	}
 	return nil
 }

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -212,11 +211,10 @@ func setCopyright(v string, g *GlobalForces) {
 // without its value is a known flag, never an unknown one. want names the
 // accepted values and is appended as `(want ...)`; "" omits it.
 func MissingValue(flag, want string) *UsageError {
-	msg := flag + " needs a value"
 	if want != "" {
-		msg += " (want " + want + ")"
+		return &UsageError{Message: core.Msgf("%s needs a value (want %s)", flag, want)}
 	}
-	return &UsageError{Message: msg}
+	return &UsageError{Message: core.Msgf("%s needs a value", flag)}
 }
 
 // FlagValue returns the value operand of the value flag at args[i], plus the
@@ -246,14 +244,14 @@ func setColor(v string, g *GlobalForces) error {
 		g.ColorForce = v
 		return nil
 	default:
-		return &RefusalError{Code: "bad-color", Message: fmt.Sprintf("unknown --color '%s' (want auto|always|never)", v)}
+		return &RefusalError{Code: "bad-color", Message: core.Msgf("unknown --color '%s' (want auto|always|never)", v)}
 	}
 }
 
 func stripAttributionEq(a string, g *GlobalForces) (int, []string, *UsageError, error) {
 	v := strings.TrimPrefix(a, "--attribution=")
 	if !isAttributionTier(v) {
-		return 0, nil, nil, &RefusalError{Code: "bad-attribution", Message: fmt.Sprintf(
+		return 0, nil, nil, &RefusalError{Code: "bad-attribution", Message: core.Msgf(
 			"unknown --attribution '%s' (want off|product|full)", v)}
 	}
 	g.PublishAttributionForce = v

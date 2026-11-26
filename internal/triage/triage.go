@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -90,9 +91,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	case "--dry-run":
 		f.dryRun = true
 	default:
-		msg := fmt.Sprintf("unknown flag '%s' for triage "+
-			"(want --sig, --status, --rationale, --force, --dry-run, --json)", a)
-		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown flag '%s' for triage "+
+			"(want --sig, --status, --rationale, --force, --dry-run, --json)", a)}), true
 	}
 	return i, 0, false
 }

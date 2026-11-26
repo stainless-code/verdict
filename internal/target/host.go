@@ -2,7 +2,6 @@ package target
 
 import (
 	"cmp"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -98,5 +97,5 @@ func gitlabPortConflict(host, configured string) *core.RefusalError {
 }
 
 func mismatch(format string, a ...any) *core.RefusalError {
-	return &core.RefusalError{Code: core.CodeHostMismatch, Message: fmt.Sprintf(format, a...)}
+	return &core.RefusalError{Code: core.CodeHostMismatch, Message: core.Msgf(format, a...)}
 }

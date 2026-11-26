@@ -49,5 +49,5 @@ const (
 const codeCredential = "verify-credential-read"
 
 func refuse(code, frag, detail string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: "refusing verifyCmd: matched '" + frag + "' (" + detail + ")"}
+	return &core.RefusalError{Code: code, Message: core.Msgf("refusing verifyCmd: matched '%s' (%s)", frag, detail)}
 }

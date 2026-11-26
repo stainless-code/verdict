@@ -126,7 +126,7 @@ func loadAdjudication(path string, rep *Report) (*Adjudication, error) {
 		return nil, err
 	}
 	if rec.RunID != rep.RunID {
-		return nil, &core.RefusalError{Code: "run-mismatch", Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: "run-mismatch", Message: core.Msgf(
 			"refusing adjudication: record %s is for run %q, the report is run %q", path, rec.RunID, rep.RunID)}
 	}
 	adj := &Adjudication{
@@ -179,8 +179,8 @@ func adjudicateEntry(adj *Adjudication, index map[string]map[int]gradedSample, e
 	}
 	finding, ok := sample.outcomes[e.Sig]
 	if !ok {
-		return &core.RefusalError{Code: "unknown-sig", Message: "refusing adjudication: " + fmt.Sprintf(
-			"%s: sig %q is not a finding case %q sample %d produced", at, e.Sig, e.Case, e.Sample)}
+		return &core.RefusalError{Code: "unknown-sig", Message: core.Msgf("refusing adjudication: %s", fmt.Sprintf(
+			"%s: sig %q is not a finding case %q sample %d produced", at, e.Sig, e.Case, e.Sample))}
 	}
 	if finding.truePositive {
 		return adjudicationRefusal("%s: sig %q was graded a true positive; adjudication reclassifies unmatched findings only", at, e.Sig)
@@ -253,8 +253,8 @@ func validateVerdict(at string, e *adjudicationEntry) error {
 func validateRationale(at string, e *adjudicationEntry) error {
 	rationale := strings.TrimSpace(e.Rationale)
 	if utf8.RuneCountInString(rationale) < rationaleMin {
-		return &core.RefusalError{Code: "rationale-required", Message: "refusing adjudication: " + fmt.Sprintf(
-			"%s: rationale must be at least %d characters, got %d", at, rationaleMin, utf8.RuneCountInString(rationale))}
+		return &core.RefusalError{Code: "rationale-required", Message: core.Msgf("refusing adjudication: %s", fmt.Sprintf(
+			"%s: rationale must be at least %d characters, got %d", at, rationaleMin, utf8.RuneCountInString(rationale)))}
 	}
 	if e.Verdict != verdictFalsePositive && !quotesCode(rationale) {
 		return adjudicationRefusal("%s: verdict %q needs a code-citing rationale: quote the line in backticks", at, e.Verdict)
@@ -423,5 +423,5 @@ func recordSHA256(raw []byte) string {
 // adjudicationRefusal types every record problem as one code the operator can
 // look up: the record is rewritten, not worked around.
 func adjudicationRefusal(format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: "bad-adjudication", Message: "refusing adjudication: " + fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: "bad-adjudication", Message: core.Msgf("refusing adjudication: %s", fmt.Sprintf(format, args...))}
 }

@@ -55,8 +55,10 @@ func TestCheckRefusalMessages(t *testing.T) {
 			message: "refusing verifyCmd: matched 'r*' (" + glob + ")",
 		},
 		{
+			// grep -o lists the matches one per line; they are the agent's
+			// command text, so the refusal folds the list onto its one line.
 			name: "two matches", cmd: `git -c protocol.ext.allow=always ls-remote ext::x`, code: "verify-destructive",
-			message: "refusing verifyCmd: matched 'protocol.ext.allow\next::x' " +
+			message: "refusing verifyCmd: matched 'protocol.ext.allow ext::x' " +
 				"(git ext transport executes a local command — fetch fixtures first, run offline)",
 		},
 	}

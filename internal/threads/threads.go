@@ -6,10 +6,10 @@ package threads
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -105,7 +105,7 @@ func parseResolveFlags(r *cli.Runner, args []string) (threads []string, dry bool
 		case a == "--dry-run":
 			dry = true
 		default:
-			return nil, false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return nil, false, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for threads resolve (want --thread <id>, --dry-run, --json)", a)}), true
 		}
 	}
@@ -136,7 +136,7 @@ func parseFlags(r *cli.Runner, args []string) (provider string, code int, done b
 			provider = v
 			i = next
 		default:
-			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return "", r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for threads (want --provider <name>, --json)", a)}), true
 		}
 	}

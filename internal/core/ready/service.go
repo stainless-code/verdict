@@ -250,7 +250,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeMissingBundle,
-			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
+			Message: core.Msgf("missing %s/PR.json (run fetch %s %s first)", dir, st.repo, st.pr),
 		})
 	}
 	if ref := host.live(ctx, st, dir); ref != nil {
@@ -283,7 +283,7 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
 			Code:    waitReadCode,
-			Message: "could not read live PR state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
+			Message: core.Msgf("could not read live PR state for %s"+hashSep+"%s: %s", st.repo, st.pr, firstLine(stderr)),
 		})
 	}
 	doc, derr := jq.Decode([]byte(stdout))
@@ -511,7 +511,7 @@ func githubThreads(ctx context.Context, st *state) *core.RefusalError {
 	if err != nil {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
+			Message: core.Msgf("could not read live review threads for %s"+hashSep+"%s", st.repo, st.pr),
 		})
 	}
 	applyThreadCounts(st, readcommon.OpenThreadCount(nodes), readcommon.MalformedThreadCount(nodes))

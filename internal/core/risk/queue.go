@@ -227,7 +227,7 @@ func queueOptions(req *QueueRequest) (string, int, *core.RefusalError) {
 	if status != QueueStatusOpen && status != QueueStatusAll {
 		return "", 0, &core.RefusalError{
 			Code:    "bad-flags",
-			Message: fmt.Sprintf("risk --status wants open or all, not %q", req.Status),
+			Message: core.Msgf("risk --status wants open or all, not %q", req.Status),
 		}
 	}
 	limit := req.Limit
@@ -237,7 +237,7 @@ func queueOptions(req *QueueRequest) (string, int, *core.RefusalError) {
 	if limit < 1 || limit > MaxQueueLimit {
 		return "", 0, &core.RefusalError{
 			Code:    "bad-flags",
-			Message: fmt.Sprintf("risk --limit wants 1 to %d, not %d", MaxQueueLimit, req.Limit),
+			Message: core.Msgf("risk --limit wants 1 to %d, not %d", MaxQueueLimit, req.Limit),
 		}
 	}
 	return status, limit, nil
@@ -263,7 +263,7 @@ func (st *scan) readState() ([]os.DirEntry, *core.RefusalError) {
 	state := readcommon.StateDir(st.req.RepoRootPath())
 	entries, err := readcommon.StoreEntries(state)
 	if err != nil {
-		return nil, &core.RefusalError{Code: "corrupt-store", Message: err.Error()}
+		return nil, &core.RefusalError{Code: "corrupt-store", Message: core.Msgf("%v", err)}
 	}
 	return entries, nil
 }

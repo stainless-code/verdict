@@ -53,7 +53,7 @@ func (st *state) readCodeowners(
 	src, ok := blobs[entry.Blob]
 	if !ok {
 		return nil, &core.RefusalError{
-			Code: codeIndexFailed, Message: "git cat-file did not return " + source + " (" + entry.Blob + ")",
+			Code: codeIndexFailed, Message: core.Msgf("git cat-file did not return %s (%s)", source, entry.Blob),
 		}
 	}
 	rules, unsupported := parseCodeowners(string(src))
@@ -267,7 +267,7 @@ func (st *state) ownersAt(
 	target.OwnersSource = file.source
 	target.Owners = matchOwners(file.rules, p)
 	if file.unsupported > 0 {
-		st.warn(fmt.Sprintf(codeownersWarning, file.unsupported))
+		st.warn(core.Msgf(codeownersWarning, file.unsupported))
 	}
 	return target, nil
 }
@@ -306,7 +306,7 @@ func (st *state) owners(ctx context.Context) (*Response, *core.RefusalError) {
 	}
 	if _, ok := entryByPath(entries, p); !ok {
 		return nil, &core.RefusalError{
-			Code: codeBadFlags, Message: "index owners: " + p + " is not a file at " + tree,
+			Code: codeBadFlags, Message: core.Msgf("index owners: %s is not a file at %s", p, tree),
 		}
 	}
 	target, ref := st.ownersAt(ctx, root, entries, p)

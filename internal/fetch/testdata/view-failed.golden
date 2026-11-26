@@ -16,7 +16,7 @@ exit: 1
 }
 --- stderr ---
 » gh pr view acme/app#4701
-gh: PR not found
+  gh: gh: PR not found
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state

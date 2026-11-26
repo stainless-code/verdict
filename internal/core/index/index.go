@@ -273,7 +273,7 @@ func (st *state) loadConfigLimits(l *Limits) *core.RefusalError {
 		return nil
 	}
 	if err != nil {
-		return &core.RefusalError{Code: codeIndexFailed, Message: "could not read the index caps: " + err.Error()}
+		return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not read the index caps: %s", err.Error())}
 	}
 	cfg, ref := config.Parse(raw)
 	if ref != nil {

@@ -74,7 +74,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 	}
 	agents, policy, ref := personalAgents(req.Env)
 	if ref != nil {
-		return refuse(r, nil, &core.RefusalError{Code: ref.Code, Message: ref.Message})
+		return refuse(r, nil, &core.RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))})
 	}
 	request := runRequest(r, &req, &flags)
 	request.SpendPolicy = policy
@@ -220,7 +220,7 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		f.print = true
 		return i, 0, false
 	default:
-		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 			"unknown flag '%s' for run (want %s)", a, verbsWanted)}), true
 	}
 }
@@ -360,7 +360,7 @@ func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags
 	}
 	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
 	command += findersTail(f.finders)
-	ref.Message += "\nre-run with: " + command + " -- " + row.Launch.PermissionHint
+	ref.Message += core.Msgf("\nre-run with: %s -- %s", command, row.Launch.PermissionHint)
 }
 
 func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
@@ -409,7 +409,7 @@ func parseBudgetFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, b
 		return i, r.ReportUsage(usage), true
 	}
 	if !budget.ValidRequest(value) {
-		return i, r.ReportUsage(&cli.UsageError{Message: budgetFlag + " must be " + budget.Vocabulary()}), true
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(budgetFlag+" must be %s", budget.Vocabulary())}), true
 	}
 	f.budget = value
 	return next, 0, false

@@ -73,7 +73,7 @@ func writeImpact(ctx context.Context, ctx2 *fetchRunCtx, in impactInput) error {
 // index, so a section and a file always appear and disappear together.
 func discardImpact(ctx2 *fetchRunCtx) error {
 	if err := os.Remove(ctx2.dir + suffixImpact); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove %s: %v", ctx2.dir+suffixImpact, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not remove %s: %v", ctx2.dir+suffixImpact, err)}
 	}
 	return nil
 }
@@ -84,11 +84,11 @@ func discardImpact(ctx2 *fetchRunCtx) error {
 func impactDiff(ctx2 *fetchRunCtx) (raw []byte, found bool, err error) {
 	raw, err = noblock.ReadFile(ctx2.dir + suffixFullDiff)
 	if errors.Is(err, os.ErrNotExist) {
-		ctx2.runner.Warn(fmt.Sprintf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
+		ctx2.runner.Warn(core.Msgf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, ctx2.dir+suffixFullDiff, err)}
+		return nil, false, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgReadFailed, ctx2.dir+suffixFullDiff, err)}
 	}
 	return raw, true, nil
 }
@@ -97,16 +97,16 @@ func impactDiff(ctx2 *fetchRunCtx) (raw []byte, found bool, err error) {
 // a bundle with a section always carries the file the section came from.
 func writeImpactFiles(ctx2 *fetchRunCtx, impact *indexcore.Impact) error {
 	if werr := atomic.WriteFile(ctx2.dir+suffixImpact, []byte(jq.PrettyOrdered(impactJSON(impact)))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/impact.json: %v", ctx2.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/impact.json: %v", ctx2.dir, werr)}
 	}
 	return appendTOCSection(ctx2.dir, impactSection(impact))
 }
 
 // impactLine names the hand-off on the human surface.
 func impactLine(ctx2 *fetchRunCtx, impact *indexcore.Impact) {
-	fmt.Fprintf(ctx2.runner.Human, "» impact: %d symbol(s), %d caller(s), %d test(s) from %s -> %s/impact.json\n",
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» impact: %d symbol(s), %d caller(s), %d test(s) from %s -> %s/impact.json\n",
 		len(impact.Data.Blast.Symbols), len(impact.Data.Blast.Callers), len(impact.Data.Blast.Tests),
-		impact.Index, ctx2.runner.display(ctx2.dir))
+		impact.Index, ctx2.runner.display(ctx2.dir)))
 }
 
 // readRequest builds the index hand-off's read request: the run's command seam
@@ -280,7 +280,7 @@ func appendTOCSection(dir, section string) error {
 	path := dir + "/toc.txt"
 	raw, err := noblock.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", path, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not read %s: %v", path, err)}
 	}
 	body := string(raw)
 	if body != "" && !strings.HasSuffix(body, "\n") {
@@ -288,7 +288,7 @@ func appendTOCSection(dir, section string) error {
 	}
 	body += newline + section
 	if werr := atomic.WriteFile(path, []byte(body)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/toc.txt: %v", dir, werr)}
 	}
 	return nil
 }

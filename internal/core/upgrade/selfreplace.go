@@ -2,7 +2,6 @@ package upgrade
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -26,7 +25,7 @@ func selfReplace(ctx context.Context, req *Request, det *detection) (Response, *
 	if err != nil {
 		return Response{}, &core.RefusalError{
 			Code: codeUpgradeFailed,
-			Message: fmt.Sprintf("cannot stage an upgrade in %s: %s (set VERDICT_INSTALL; no root needed)",
+			Message: core.Msgf("cannot stage an upgrade in %s: %s (set VERDICT_INSTALL; no root needed)",
 				det.InstallDir, err),
 		}
 	}
@@ -54,7 +53,7 @@ func selfReplace(ctx context.Context, req *Request, det *detection) (Response, *
 	if err := smoke(ctx, result.Binary, version); err != nil {
 		return Response{}, &core.RefusalError{
 			Code: codeUpgradeFailed,
-			Message: fmt.Sprintf("the downloaded verdict %s failed its --version smoke test (%s); "+
+			Message: core.Msgf("the downloaded verdict %s failed its --version smoke test (%s); "+
 				"the installed binary is untouched", version, err),
 		}
 	}
@@ -62,7 +61,7 @@ func selfReplace(ctx context.Context, req *Request, det *detection) (Response, *
 		return windowsHandoff(ctx, req, det, &result, version)
 	}
 	if err := replaceInstalled(req, det, &result, version); err != nil {
-		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: err.Error()}
+		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf("%v", err)}
 	}
 	return Response{
 		Channel: ChannelInstaller,
@@ -77,13 +76,14 @@ func resolveVersion(ctx context.Context, req *Request, base string) (string, *co
 	pin := strings.TrimPrefix(req.PinVersion, "v")
 	if pin != "" {
 		if !release.ValidVersion(pin) {
-			return "", &core.RefusalError{Code: codeBadVersion, Message: "bad --version: " + req.PinVersion + " (use X.Y.Z or vX.Y.Z)"}
+			return "", &core.RefusalError{Code: codeBadVersion, Message: core.Msgf(
+				"bad --version: %s (use X.Y.Z or vX.Y.Z)", req.PinVersion)}
 		}
 		return pin, nil
 	}
 	version, err := release.LatestVersion(ctx, req.Client, base)
 	if err != nil {
-		return "", &core.RefusalError{Code: codeUpgradeFailed, Message: "could not resolve the latest release: " + err.Error()}
+		return "", &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf("could not resolve the latest release: %s", err.Error())}
 	}
 	return version, nil
 }
@@ -112,11 +112,13 @@ func windowsHandoff(
 ) (Response, *core.RefusalError) {
 	dir, err := os.MkdirTemp("", "verdict-upgrade-")
 	if err != nil {
-		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot stage the Windows handoff: " + err.Error()}
+		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf(
+			"cannot stage the Windows handoff: %s", err.Error())}
 	}
 	helper := det.exe + helperImageSuffix
 	if err := copyFile(result.Binary, helper); err != nil {
-		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot copy the new binary aside: " + err.Error()}
+		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf(
+			"cannot copy the new binary aside: %s", err.Error())}
 	}
 	handoff := Handoff{
 		ParentPID:   os.Getpid(),
@@ -130,7 +132,8 @@ func windowsHandoff(
 	logPath, err := spawnHandoff(ctx, req, helper, &handoff)
 	if err != nil {
 		_ = os.Remove(helper)
-		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: "cannot start the upgrade helper: " + err.Error()}
+		return Response{}, &core.RefusalError{Code: codeUpgradeFailed, Message: core.Msgf(
+			"cannot start the upgrade helper: %s", err.Error())}
 	}
 	return Response{
 		Channel:      ChannelInstaller,

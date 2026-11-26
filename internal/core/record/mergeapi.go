@@ -326,9 +326,9 @@ func sigAt(sigs []string, i int) string {
 }
 
 func reportFindings(st *state) {
-	line := fmt.Sprintf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
+	line := core.Msgf("» findings: %d sigs -> %s", len(st.entries), st.findingsFile)
 	if st.dryRun && st.cmd == recordCommand {
-		line = fmt.Sprintf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
+		line = core.Msgf("» findings: %d sigs (dry run — no findings file written)", len(st.entries))
 	}
 	st.human(line)
 	for _, e := range st.entries {
@@ -391,7 +391,7 @@ func loadReview(path string, read func(string) ([]byte, error)) (*jq.Obj, error)
 		if ref := agentRefusal(err); ref != nil {
 			return nil, ref
 		}
-		return nil, &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, path)}
+		return nil, &core.RefusalError{Code: codeMissingReviewFile, Message: core.Msgf(msgReviewMissing, path)}
 	}
 	return LoadReviewBytes(reviewRaw)
 }
@@ -432,7 +432,7 @@ func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 	rt.Warn(fmt.Sprintf(msgHunksRebuild, dir))
 	raw, err := noblock.ReadFile(dir + "/full.diff")
 	if err != nil {
-		return &core.RefusalError{Code: "missing-diff", Message: fmt.Sprintf(msgMissingDiff, dir)}
+		return &core.RefusalError{Code: "missing-diff", Message: core.Msgf(msgMissingDiff, dir)}
 	}
 	return atomic.WriteFile(dir+"/hunks.tsv", []byte(hunks.Snapshot(string(raw))))
 }
@@ -498,8 +498,8 @@ func readAgentHandle(f *os.File, path string) ([]byte, error) {
 }
 
 func agentCapRefusal(path string) error {
-	return &core.RefusalError{Code: codeBadReviewInput, Message: path +
-		" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)"}
+	return &core.RefusalError{Code: codeBadReviewInput, Message: core.Msgf("%s"+
+		" exceeds the 32 MiB agent-input cap (shrink the review, then re-run)", path)}
 }
 
 func agentRefusal(err error) error {

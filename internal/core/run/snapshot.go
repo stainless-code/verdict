@@ -62,7 +62,7 @@ func (snapshot executionSnapshot) check(dir string) *core.RefusalError {
 			return ref
 		}
 		if digest != hash {
-			return &core.RefusalError{Code: codeStaleArtifact, Message: "execution snapshot changed: " + name}
+			return &core.RefusalError{Code: codeStaleArtifact, Message: core.Msgf("execution snapshot changed: %s", name)}
 		}
 	}
 	return nil
@@ -85,15 +85,15 @@ func phaseDirectory(dir, name string, reuse bool) (string, *core.RefusalError) {
 		}
 		return "", &core.RefusalError{
 			Code:    codeRecordFailed,
-			Message: "phase path is not a plain directory: " + name,
+			Message: core.Msgf("phase path is not a plain directory: %s", name),
 		}
 	}
-	return "", &core.RefusalError{Code: codeRecordFailed, Message: "cannot create fresh phase directory: " + name}
+	return "", &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("cannot create fresh phase directory: %s", name)}
 }
 
 func writeCoordinator(dir, name string, value any) *core.RefusalError {
 	if err := atomic.WriteFileMode(filepath.Join(dir, name), coordinatorBytes(value), roundEvidenceMode); err != nil {
-		return &core.RefusalError{Code: codeRecordFailed, Message: "cannot write execution artifact: " + name}
+		return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("cannot write execution artifact: %s", name)}
 	}
 	return nil
 }
@@ -160,11 +160,11 @@ func openSnapshotLeaf(root *os.Root, name string) (*os.File, *core.RefusalError)
 }
 
 func snapshotUnsafe(name string) *core.RefusalError {
-	return &core.RefusalError{Code: codeStaleArtifact, Message: "snapshot file is unsafe: " + name}
+	return &core.RefusalError{Code: codeStaleArtifact, Message: core.Msgf("snapshot file is unsafe: %s", name)}
 }
 
 func snapshotUnreadable(name string) *core.RefusalError {
-	return &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+	return &core.RefusalError{Code: codeMissingBundle, Message: core.Msgf("snapshot file unreadable: %s", name)}
 }
 
 // snapshotBytes reads one snapshot file whole for a consumer that needs its

@@ -93,7 +93,7 @@ func slicePlan(fullDiff, kept, cdir string, plan []chunkEntry) error {
 	if serr := sliceChunks(kept, cdir, plan); serr != nil {
 		cwe, _ := errors.AsType[*chunkWriteError](serr)
 		if cwe != nil {
-			return &core.RefusalError{Code: "chunk-write-failed", Message: fmt.Sprintf(
+			return &core.RefusalError{Code: "chunk-write-failed", Message: core.Msgf(
 				"chunk %s missing after slicing %s (re-run the fetch)", cwe.name, fullDiff)}
 		}
 		return serr
@@ -133,7 +133,7 @@ func writeChunkManifest(
 	if werr := atomic.WriteFile(cdir+"/manifest.json", []byte(jq.PrettyOrdered(manifest))); werr != nil {
 		return nil, internalErrorf("could not write %s/manifest.json: %v", cdir, werr)
 	}
-	fmt.Fprintf(human, "» chunked: %d chunk(s) at or under %d bytes + %s/chunks/manifest.json\n", n, maxBytes, dir)
+	fmt.Fprint(human, core.Msgf("» chunked: %d chunk(s) at or under %d bytes + %s/chunks/manifest.json\n", n, maxBytes, dir))
 	return jq.NewObj("count", n, "manifest", dir+suffixChunkManifest, "total_bytes", total), nil
 }
 

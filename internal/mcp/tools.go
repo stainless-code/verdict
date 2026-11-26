@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"strings"
@@ -647,7 +646,7 @@ func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, 
 		return nil, ref
 	}
 	if resp.Error != nil {
-		return nil, &core.RefusalError{Code: resp.Error.Code, Message: resp.Error.Message}
+		return nil, &core.RefusalError{Code: resp.Error.Code, Message: core.Msgf("%s", resp.Error.Message)}
 	}
 	return wireData(resp.Data), nil
 }
@@ -673,9 +672,9 @@ func commandRefusal(err error) *core.RefusalError {
 		return ref
 	}
 	if missing, ok := errors.AsType[*core.MissingToolError](err); ok {
-		return &core.RefusalError{Code: "missing-tool", Message: "missing: " + missing.Tool}
+		return &core.RefusalError{Code: "missing-tool", Message: core.Msgf("missing: %s", missing.Tool)}
 	}
-	return &core.RefusalError{Code: "fetch-failed", Message: err.Error()}
+	return &core.RefusalError{Code: "fetch-failed", Message: core.Msgf("%v", err)}
 }
 
 func writeArtifact(a *core.FileArtifact) *core.RefusalError {
@@ -685,7 +684,7 @@ func writeArtifact(a *core.FileArtifact) *core.RefusalError {
 	if err := atomic.WriteThrough(a.Path, a.Content, artifactPerm); err != nil {
 		return &core.RefusalError{
 			Code:    "report-failed",
-			Message: fmt.Sprintf("could not write %s: %v", a.Path, err),
+			Message: core.Msgf("could not write %s: %v", a.Path, err),
 		}
 	}
 	return nil

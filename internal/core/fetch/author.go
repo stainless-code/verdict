@@ -74,17 +74,17 @@ func writeAuthor(ctx2 *fetchRunCtx) error {
 	}
 	raw := jq.PrettyOrdered(core.Wire(file))
 	if werr := atomic.WriteFile(ctx2.dir+suffixAuthor, []byte(raw)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not write %s/author.json: %v", ctx2.dir, werr)}
 	}
-	fmt.Fprintf(ctx2.runner.Human, "» author: %s (%s confidence) from %d signal(s) -> %s/author.json\n",
-		file.Agent, file.Confidence, len(file.Evidence), ctx2.runner.display(ctx2.dir))
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» author: %s (%s confidence) from %d signal(s) -> %s/author.json\n",
+		file.Agent, file.Confidence, len(file.Evidence), ctx2.runner.display(ctx2.dir)))
 	return nil
 }
 
 func discardAuthor(dir string) error {
 	if err := os.Remove(dir + suffixAuthor); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove %s/author.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not remove %s/author.json: %v", dir, err)}
 	}
 	return nil
 }

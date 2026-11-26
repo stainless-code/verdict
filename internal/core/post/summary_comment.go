@@ -76,7 +76,7 @@ func summaryHostFor(provider string) (hostSummary, error) {
 	default:
 		return nil, &core.RefusalError{
 			Code:    codeProviderUnimplemented,
-			Message: fmt.Sprintf("summary comment is not supported for provider %q", provider),
+			Message: core.Msgf("summary comment is not supported for provider %q", provider),
 		}
 	}
 }
@@ -101,7 +101,7 @@ func (st *state) resolveSummaryTarget(ctx context.Context, host hostSummary) (su
 		if err != nil {
 			return summaryTarget{}, &core.RefusalError{
 				Code:    codePostFailed,
-				Message: fmt.Sprintf("%s: %v", msgSummaryNoAuthor, err),
+				Message: core.Msgf("%s: %v", msgSummaryNoAuthor, err),
 			}
 		}
 		return summaryTarget{}, &core.RefusalError{Code: codePostFailed, Message: msgSummaryNoAuthor}
@@ -110,7 +110,7 @@ func (st *state) resolveSummaryTarget(ctx context.Context, host hostSummary) (su
 	if err != nil {
 		return summaryTarget{}, &core.RefusalError{
 			Code:    codePostFailed,
-			Message: fmt.Sprintf("failed reading live summary comments: %v", err),
+			Message: core.Msgf("failed reading live summary comments: %v", err),
 		}
 	}
 	return pickSummaryTarget(comments, me), nil
@@ -166,7 +166,7 @@ func (st *state) publishSummary(ctx context.Context, cmdr Commander, reviewObj *
 		st.warn("review posted, but summary comment write failed")
 		return nil, &core.RefusalError{
 			Code:    codePostFailed,
-			Message: fmt.Sprintf("review posted, but summary comment write failed: %v", err),
+			Message: core.Msgf("review posted, but summary comment write failed: %v", err),
 		}
 	}
 	if written.URL == "" {

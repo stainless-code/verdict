@@ -295,8 +295,8 @@ func outdatedState(path string) *stateError {
 // stale refuses with the snapshot-drift code: the typed evidence changed
 // under the bundle, so no verb may proceed on it — re-fetch rebuilds it.
 func stale(dir, why string) *core.RefusalError {
-	return &core.RefusalError{Code: controls.CodeStale, Message: "typed evidence " + why +
-		" (" + RunBundlePath(dir) + " changed under the bundle — re-fetch the bundle)"}
+	return &core.RefusalError{Code: controls.CodeStale, Message: core.Msgf("typed evidence %s"+
+		" (%s changed under the bundle — re-fetch the bundle)", why, RunBundlePath(dir))}
 }
 
 // verifyConfigBytes compares the captured configuration hash to the

@@ -482,5 +482,5 @@ func stringAt(raw any, path string) (string, *core.RefusalError) {
 // refuse seals one recipe diagnostic. The code comes first so the archtest
 // refusal-code scan reads the same emission shape every package uses.
 func refuse(code, format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: code, Message: core.Msgf(format, args...)}
 }

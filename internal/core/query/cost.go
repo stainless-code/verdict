@@ -36,7 +36,7 @@ type costBucket struct {
 // smaller sum look complete.
 func (l *Layer) Cost(ctx context.Context, by string) (*View, error) {
 	if !slices.Contains(costDimensions, by) {
-		return nil, &core.RefusalError{Code: "bad-by", Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: "bad-by", Message: core.Msgf(
 			"serve cost by %q is unsupported (want repo, week, or model)", by)}
 	}
 	aggregate := &costAggregate{view: l.newView(), by: by, buckets: map[string]*costBucket{}}

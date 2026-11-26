@@ -165,7 +165,7 @@ func refuseFetch(r *cli.Runner, err error) int {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return r.RefuseTyped(ref)
 	}
-	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
+	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: core.Msgf("fetch failed: %v", err)})
 }
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A value flag
@@ -219,10 +219,9 @@ func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (i
 	case flagChunk:
 		f.ChunkFlag = true
 	default:
-		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
 			"--provider <name>, --index <ref|dir>, --issue <ref>, --consent-over-budget, --allow-head-controls, "+
-			"--ignore <glob>, --no-default-excludes, --preview, --show-prompts, --chunk, --json)", a)
-		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+			"--ignore <glob>, --no-default-excludes, --preview, --show-prompts, --chunk, --json)", a)}), true
 	}
 	return i, 0, false
 }
@@ -301,17 +300,15 @@ func parseLocalToken(r *cli.Runner, f *fetchcore.LocalFlags, args []string, i in
 		f.ChunkFlag = true
 	default:
 		if strings.HasPrefix(a, "-") {
-			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
+			return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown flag '%s' for fetch-local (want --staged, "+
 				"--range <A..B>, --base <ref>, --stash [n], --worktree, --scan <path>, --index <ref|dir>, "+
 				"--consent-over-budget, --allow-head-controls, --ignore <glob>, --no-default-excludes, "+
-				"--preview, --show-prompts, --chunk, -- <paths>, --json)", a)
-			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+				"--preview, --show-prompts, --chunk, -- <paths>, --json)", a)}), true
 		}
 		// A bare word is never a path filter: an unquoted glob or variable the
 		// shell expanded would narrow the review silently. Filters go after `--`.
-		msg := fmt.Sprintf("unexpected argument '%s' for fetch-local: path filters go after '--' "+
-			"(fetch-local <owner/repo> <name> -- <paths>)", a)
-		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
+		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf("unexpected argument '%s' for fetch-local: path filters go after '--' "+
+			"(fetch-local <owner/repo> <name> -- <paths>)", a)}), true
 	}
 	return i, 0, false
 }

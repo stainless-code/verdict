@@ -76,7 +76,7 @@ func validateEnvNames(source string, names []string) *core.RefusalError {
 		if !validEnvName(name) {
 			return &core.RefusalError{
 				Code:    codeBadFlags,
-				Message: fmt.Sprintf("invalid environment variable name in %s (want [A-Za-z_][A-Za-z0-9_]*)", source),
+				Message: core.Msgf("invalid environment variable name in %s (want [A-Za-z_][A-Za-z0-9_]*)", source),
 			}
 		}
 	}
@@ -132,7 +132,7 @@ func baseControls(dir, base string) (*controls.Snapshot, *core.RefusalError) {
 		}
 		return nil, &core.RefusalError{
 			Code:    controls.CodeUnavailable,
-			Message: fmt.Sprintf("cannot inspect bundle controls %s: %v", controls.FileName, err),
+			Message: core.Msgf("cannot inspect bundle controls %s: %v", controls.FileName, err),
 		}
 	}
 	return controls.Gate(dir, base)
@@ -163,7 +163,7 @@ func parseVerifyEnvFile(raw []byte) ([]string, *core.RefusalError) {
 		if !validEnvName(trimmed) {
 			return nil, &core.RefusalError{
 				Code: codeBadFlags,
-				Message: fmt.Sprintf(
+				Message: core.Msgf(
 					"invalid environment variable name on %s line %d (want [A-Za-z_][A-Za-z0-9_]*)",
 					controls.VerifyEnvPath, i+1,
 				),

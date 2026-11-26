@@ -92,7 +92,7 @@ func ReadContractUsage(env map[string]string) ([]ContractUsage, error) {
 // usageUnreadable refuses a handed path the tool cannot read: the operator
 // named it, so a broken handoff must never silently degrade.
 func usageUnreadable(path string, err error) error {
-	return &core.RefusalError{Code: codeBadUsage, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBadUsage, Message: core.Msgf(
 		"VERDICT_USAGE %q is not readable: %v", path, err)}
 }
 
@@ -136,7 +136,7 @@ func readUsageFile(path string) ([]ContractUsage, error) {
 		return nil, usageUnreadable(path, err)
 	}
 	if !info.Mode().IsRegular() || info.Size() > maxUsageFileBytes {
-		return nil, &core.RefusalError{Code: codeBadUsage, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeBadUsage, Message: core.Msgf(
 			"VERDICT_USAGE %q is not a readable usage file (want a regular file under %d bytes)", path, maxUsageFileBytes)}
 	}
 	raw, err := os.ReadFile(path)
@@ -320,7 +320,7 @@ func usageRefusal(path string, index int, cause string) error {
 	if index > 0 {
 		where = fmt.Sprintf("%s record %d", path, index)
 	}
-	return &core.RefusalError{Code: codeBadUsage, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBadUsage, Message: core.Msgf(
 		"VERDICT_USAGE %s: %s", where, cause)}
 }
 

@@ -130,7 +130,7 @@ func (st *state) prepareValidation(ctx context.Context, dir string, req *Request
 // budget, allowlist, and commander. Nothing executes here.
 func (st *state) validationInputs(dir string, req *Request) (*validationRun, *core.RefusalError) {
 	if req.Group == "" || req.Command == "" {
-		return nil, &core.RefusalError{Code: codeBadGroupValidation, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeBadGroupValidation, Message: core.Msgf(
 			"group validation needs both --group and --command (got group=%q command=%s); "+
 				"neither keeps the patch verify path", req.Group, present(req.Command))}
 	}
@@ -171,7 +171,7 @@ func (st *state) pinnedRun(dir string, req *Request) (*validationRun, *core.Refu
 func validationTimeout(raw string) (int, *core.RefusalError) {
 	timeout, ok := parseTimeout(raw)
 	if !ok {
-		return 0, &core.RefusalError{Code: codeBadTimeout, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadTimeout, Message: core.Msgf(
 			"timeout must be a positive number of seconds, got '%s'", raw)}
 	}
 	return timeout, nil
@@ -182,7 +182,7 @@ func validationTimeout(raw string) (int, *core.RefusalError) {
 func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core.RefusalError {
 	reviewedHead := readcommon.OpenBundle(dir).Head()
 	if reviewedHead == "" {
-		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeHeadMismatch, Message: core.Msgf(
 			"bundle %s carries no reviewed head to bind validation to (re-fetch it)", dir)}
 	}
 	// The receipt certifies content, so the checkout's content — committed or
@@ -190,7 +190,7 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 	// The snapshot the command runs in is what gets compared (RunGroup).
 	want, err := run.git.Commit(ctx, reviewedHead)
 	if errors.Is(err, contenttree.ErrUnresolved) {
-		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeHeadMismatch, Message: core.Msgf(
 			"the reviewed head %s is not in the local repository — fetch it, then validate",
 			readcommon.ShortSHA(reviewedHead))}
 	}
@@ -207,11 +207,11 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 // that refusal names the driver (git-lfs) instead of asking for a checkout.
 func otherContent(run *validationRun, filtered []contenttree.Filtered) *core.RefusalError {
 	if len(filtered) > 0 {
-		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeHeadMismatch, Message: core.Msgf(
 			"the content at %s is not the reviewed commit %s's: %s — validation certifies the reviewed "+
 				"content only", run.root, readcommon.ShortSHA(run.reviewedHead), filteredNote(filtered[0]))}
 	}
-	return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeHeadMismatch, Message: core.Msgf(
 		"the content at %s is not the reviewed commit %s's — check out the reviewed head with no "+
 			"other changes; validation certifies the reviewed content only", run.root, readcommon.ShortSHA(run.reviewedHead))}
 }
@@ -238,7 +238,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 		return nil, st.withWarnings(ref)
 	}
 	defer bundle.close()
-	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
+	st.human(core.Msgf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, commandDir(run.workDir, run.sandbox),
 		st.childEnv(), run.sandbox)
@@ -254,7 +254,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	if ref := bundle.writeValidationReceipt(filepath.Base(run.receiptPath), &receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	st.human(fmt.Sprintf("» exit=%d timed_out=%t status=%s recorded into %s",
+	st.human(core.Msgf("» exit=%d timed_out=%t status=%s recorded into %s",
 		receipt.Exit, receipt.TimedOut, receipt.Status, run.receiptPath))
 	st.warnOutcomes(&receipt, runRef)
 	return st.groupResponse(dir, run.receiptPath, &receipt), nil
@@ -354,7 +354,7 @@ func canonicalRoot(root string) (string, *core.RefusalError) {
 	}
 	physical, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return "", &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 			"could not canonicalize reviewed root %s: %v (no unverified-root fallback)", root, err)}
 	}
 	return physical, nil
@@ -369,7 +369,7 @@ func (st *state) recheckCapture(dir string, pinned *config.RunState) *core.Refus
 		return ref
 	}
 	if after == nil || after.Name != pinned.Name || after.InputsSHA256 != pinned.InputsSHA256 {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 			"the run capture changed while the command ran (run %q inputs %s → %s) — command is not evidence for it",
 			pinned.Name, readcommon.ShortSHA(pinned.InputsSHA256), readcommon.ShortSHA(afterInputs(after)))}
 	}
@@ -406,7 +406,7 @@ func (st *state) pinGroup(dir, groupID string) (config.PlanGroup, string, *confi
 // provenance.
 func verifiedRun(rs *config.RunState, dir string) *core.RefusalError {
 	if rs == nil || rs.Resolved == nil {
-		return &core.RefusalError{Code: codeNoRunBundle, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeNoRunBundle, Message: core.Msgf(
 			"bundle %s has no verified run.json (re-fetch it before deep validation)", dir)}
 	}
 	return nil
@@ -422,7 +422,7 @@ func findPinnedGroup(rs *config.RunState, dir, groupID string) (config.PlanGroup
 		}
 		path, ok := receiptPath(dir, groupID)
 		if !ok {
-			return config.PlanGroup{}, "", &core.RefusalError{Code: codeBadGroupValidation, Message: fmt.Sprintf(
+			return config.PlanGroup{}, "", &core.RefusalError{Code: codeBadGroupValidation, Message: core.Msgf(
 				"group id %q cannot name a confined receipt file", groupID)}
 		}
 		return groups[i], path, nil
@@ -432,7 +432,7 @@ func findPinnedGroup(rs *config.RunState, dir, groupID string) (config.PlanGroup
 		ids = append(ids, groups[i].ID)
 	}
 	slices.Sort(ids)
-	return config.PlanGroup{}, "", &core.RefusalError{Code: codeUnknownGroup, Message: fmt.Sprintf(
+	return config.PlanGroup{}, "", &core.RefusalError{Code: codeUnknownGroup, Message: core.Msgf(
 		"run %s has no plan group %q (groups: %v)", rs.Name, groupID, ids)}
 }
 
@@ -464,7 +464,7 @@ func (b *bundleHandle) writeValidationReceipt(name string, receipt *core.Validat
 		return failed(err)
 	}
 	if err := atomic.WriteFileIn(b.root, name, append(raw, '\n')); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/%s: %v", b.dir, name, err)}
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf("could not write %s/%s: %v", b.dir, name, err)}
 	}
 	return nil
 }
@@ -477,7 +477,7 @@ func ReadValidationReceipt(dir, groupID string) (core.ValidationReceipt, bool, *
 	if !ok {
 		return core.ValidationReceipt{}, false, &core.RefusalError{
 			Code:    codeBadGroupValidation,
-			Message: fmt.Sprintf("group id %q cannot name a confined receipt file", groupID),
+			Message: core.Msgf("group id %q cannot name a confined receipt file", groupID),
 		}
 	}
 	if _, statErr := os.Stat(path); statErr != nil {
@@ -494,13 +494,13 @@ func ReadValidationReceipt(dir, groupID string) (core.ValidationReceipt, bool, *
 	if problem := decodeStrict(raw, &receipt); problem != "" {
 		return core.ValidationReceipt{}, false, &core.RefusalError{
 			Code:    codeVerifyFailed,
-			Message: fmt.Sprintf("validation receipt %s is unreadable (%s); re-run the group validation", path, problem),
+			Message: core.Msgf("validation receipt %s is unreadable (%s); re-run the group validation", path, problem),
 		}
 	}
 	if receipt.SchemaVersion != validationSchema {
 		return core.ValidationReceipt{}, false, &core.RefusalError{
 			Code:    codeVerifyFailed,
-			Message: fmt.Sprintf("validation receipt %s has schema_version %q, want %s", path, receipt.SchemaVersion, validationSchema),
+			Message: core.Msgf("validation receipt %s has schema_version %q, want %s", path, receipt.SchemaVersion, validationSchema),
 		}
 	}
 	return receipt, true, nil

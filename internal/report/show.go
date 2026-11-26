@@ -78,7 +78,7 @@ func parseShowFlags(r *cli.Runner, args []string) (string, int, bool) {
 			sig = v
 			i = next + 1
 		default:
-			return "", r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf("unknown flag '%s' for show (want --sig, --json)", a)}), true
+			return "", r.ReportUsage(&cli.UsageError{Message: core.Msgf("unknown flag '%s' for show (want --sig, --json)", a)}), true
 		}
 	}
 	return sig, 0, false

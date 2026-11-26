@@ -102,7 +102,7 @@ func orgPackOrigin(root, listed string) (pack.Origin, *core.RefusalError) {
 	if p == nil {
 		return pack.Origin{}, &core.RefusalError{
 			Code:    pack.CodeBadPack,
-			Message: fmt.Sprintf("org pack path %q carries no %s", listed, pack.ManifestFile),
+			Message: core.Msgf("org pack path %q carries no %s", listed, pack.ManifestFile),
 		}
 	}
 	return pack.Origin{Layer: pack.LayerOrg, Source: "dir:" + filepath.ToSlash(listed), Pack: p}, nil
@@ -134,7 +134,7 @@ func repoPackOrigin(snap *controls.Snapshot, name string) (pack.Origin, *core.Re
 	if p == nil {
 		return pack.Origin{}, &core.RefusalError{
 			Code:    pack.CodeBadPack,
-			Message: fmt.Sprintf("%s/%s carries no %s", pack.RepoPacksDir, name, pack.ManifestFile),
+			Message: core.Msgf("%s/%s carries no %s", pack.RepoPacksDir, name, pack.ManifestFile),
 		}
 	}
 	return pack.Origin{Layer: pack.LayerRepo, Source: pack.RepoPacksDir + "/" + name, Pack: p}, nil

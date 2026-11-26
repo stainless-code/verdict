@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -164,7 +165,7 @@ func (r *issueRead) ok() bool { return r.warn == "" }
 // readIssue resolves one reference, naming the read on the human stream
 // before it costs a host call.
 func readIssue(ctx context.Context, ctx2 *fetchRunCtx, ref issueRef) issueRead {
-	fmt.Fprintf(ctx2.runner.Human, "» issue %s\n", ref.label())
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» issue %s\n", ref.label()))
 	return readGitHubIssue(ctx, ctx2.runner, ref)
 }
 
@@ -232,7 +233,7 @@ func (c *linkedCollector) collect(ctx context.Context, gate []readcommon.LinkedI
 	for _, candidate := range candidates {
 		labels = append(labels, candidate.ref.label())
 	}
-	fmt.Fprintf(c.ctx2.runner.Human, "» linked issues: %d (%s)\n", len(candidates), strings.Join(labels, ", "))
+	fmt.Fprint(c.ctx2.runner.Human, core.Msgf("» linked issues: %d (%s)\n", len(candidates), strings.Join(labels, ", ")))
 	for i := range candidates {
 		read := candidates[i].read(ctx, c.ctx2)
 		if !read.ok() {

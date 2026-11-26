@@ -1,7 +1,6 @@
 package fetchcore
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -53,7 +52,7 @@ func (c *fetchRunCtx) previewStage() (string, *core.RefusalError) {
 func previewScratch() (string, *core.RefusalError) {
 	dir, err := os.MkdirTemp("", previewScratchPrefix)
 	if err != nil {
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"preview could not create its scratch directory: %v", err)}
 	}
 	// macOS ships a TMPDIR under a symlinked /var, and every confined read
@@ -62,7 +61,7 @@ func previewScratch() (string, *core.RefusalError) {
 	resolved, rerr := filepath.EvalSymlinks(dir)
 	if rerr != nil {
 		_ = os.RemoveAll(dir)
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"preview could not resolve its scratch directory: %v", rerr)}
 	}
 	return resolved, nil

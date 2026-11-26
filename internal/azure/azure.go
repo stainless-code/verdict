@@ -14,7 +14,6 @@ package azure
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -224,14 +223,14 @@ func Resolve(env map[string]string, repo, pr string) (Target, *core.RefusalError
 	if !ok {
 		return Target{}, &core.RefusalError{
 			Code:    CodeBadTarget,
-			Message: fmt.Sprintf("azure needs a project/repository pair, got %q", repo),
+			Message: core.Msgf("azure needs a project/repository pair, got %q", repo),
 		}
 	}
 	n, err := strconv.Atoi(pr)
 	if err != nil || n <= 0 {
 		return Target{}, &core.RefusalError{
 			Code:    CodeBadTarget,
-			Message: fmt.Sprintf("azure needs a numeric pull-request id, got %q", pr),
+			Message: core.Msgf("azure needs a numeric pull-request id, got %q", pr),
 		}
 	}
 	return Target{Org: org, Project: project, Repo: name, PR: n}, nil

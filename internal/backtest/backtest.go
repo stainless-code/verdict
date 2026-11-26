@@ -138,8 +138,8 @@ func runComposed(ctx context.Context, r *cli.Runner, req readcommon.Request, f *
 	if f.agent == "" {
 		return r.RefuseTyped(&core.RefusalError{
 			Code: "bad-flags",
-			Message: "backtest --since runs mine, replay, and score, and replay needs --agent <name> (known: " +
-				strings.Join(runcore.AgentNames(), ", ") + ")",
+			Message: core.Msgf("backtest --since runs mine, replay, and score, and replay needs --agent <name> (known: "+
+				"%s)", strings.Join(runcore.AgentNames(), ", ")),
 		})
 	}
 	mined, ref := corebacktest.Run(ctx, mineRequest(r, req, f))
@@ -405,7 +405,7 @@ func (f *flags) wanted() string {
 
 // usage builds the exit-2 flag error.
 func usage(msg string) *cli.UsageError {
-	return &cli.UsageError{Message: msg}
+	return &cli.UsageError{Message: core.Msgf("%s", msg)}
 }
 
 // rentry rebuilds the re-run command after flag parsing: the flags the operator

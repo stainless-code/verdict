@@ -86,7 +86,7 @@ func autoRunnable(row agentcatalog.Agent) bool {
 func noAgentRefusal() *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeAgentMissing,
-		Message: msgNoAgent + "\ntry: " + guideLine() + ", or pass --agent <name>",
+		Message: core.Msgf(msgNoAgent+"\ntry: %s, or pass --agent <name>", guideLine()),
 	}
 }
 

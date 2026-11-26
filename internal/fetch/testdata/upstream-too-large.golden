@@ -17,9 +17,9 @@ exit: 1
 --- stderr ---
 » gh pr view acme/app#4711
 » gh pr diff -> .verdict/state/4711/full.diff
-gh: diff unavailable
+  gh: gh: diff unavailable
 gh pr diff failed, trying API diff
-HTTP 406: this diff is too large to be rendered
+  gh: HTTP 406: this diff is too large to be rendered
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4711 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state

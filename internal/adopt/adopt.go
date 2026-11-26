@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -56,8 +57,7 @@ func parseFlags(r *cli.Runner, args []string) (string, int, bool) {
 			from = v
 			i = next
 		default:
-			msg := fmt.Sprintf(msgUnknownFlag, a)
-			code := r.ReportUsage(&cli.UsageError{Message: msg})
+			code := r.ReportUsage(&cli.UsageError{Message: core.Msgf(msgUnknownFlag, a)})
 			return "", code, true
 		}
 	}

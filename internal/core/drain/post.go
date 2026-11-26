@@ -3,7 +3,6 @@ package drain
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"slices"
 	"strings"
 
@@ -59,7 +58,7 @@ func ValidatePostDrafts(plan *File, draftsRaw []byte, provider string) (*Replies
 	}
 	caps := core.CapabilitiesFor(provider)
 	if !caps.ThreadReply {
-		return nil, nil, nil, &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+		return nil, nil, nil, &core.RefusalError{Code: "provider-unimplemented", Message: core.Msgf(
 			"thread replies on %s are not implemented (%s)", provider, caps.ThreadReplyReason())}
 	}
 	var doc RepliesFile
@@ -315,7 +314,7 @@ func secretGate(replies []Reply) *core.RefusalError {
 			continue
 		}
 		if shapes := postcore.BodySecretShapes(reply.Body); len(shapes) > 0 {
-			return &core.RefusalError{Code: postcore.CodeSecretShaped, Message: fmt.Sprintf(
+			return &core.RefusalError{Code: postcore.CodeSecretShaped, Message: core.Msgf(
 				"%s: replies[%d].body carries a secret-shaped value (%s); remove it before posting",
 				postcore.CodeSecretShaped, i, strings.Join(shapes, ", "))}
 		}

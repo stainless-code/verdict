@@ -171,7 +171,7 @@ func procedureRefusal(err error) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: "prompt-dump-failed",
-		Message: fmt.Sprintf("%s is missing — Procedure refused: no partial Procedure is written or "+
+		Message: core.Msgf("%s is missing — Procedure refused: no partial Procedure is written or "+
 			"printed; reinstall verdict from a signed release", path),
 	}
 }
@@ -189,13 +189,13 @@ func writeBundleProcedure(dir string) error {
 		}
 		return &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s: %v", filepath.ToSlash(filepath.Join(dir, "refs")), err),
+			Message: core.Msgf("could not write %s: %v", filepath.ToSlash(filepath.Join(dir, "refs")), err),
 		}
 	}
 	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
 		return &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixProcedureMD, werr),
+			Message: core.Msgf("could not write %s%s: %v", dir, suffixProcedureMD, werr),
 		}
 	}
 	return nil
@@ -285,7 +285,7 @@ func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) *
 		return nil
 	}
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"prompt dump cannot read %s/full.diff: %v — refusing to hand the model a dump without its patch",
 			ctx.dir, err)}
 	}

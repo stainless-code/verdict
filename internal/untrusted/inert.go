@@ -25,7 +25,7 @@ const (
 // so the two cannot drift. Other format characters stay: a zero-width joiner
 // holds an emoji sequence together.
 func folds(r rune) bool {
-	return core.IsLineBreak(r) || isBidiControl(r)
+	return core.IsLineBreak(r) || core.IsBidiControl(r)
 }
 
 // Inert folds every rune [folds] names to a space, except the newline and

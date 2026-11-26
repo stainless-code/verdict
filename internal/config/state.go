@@ -92,7 +92,7 @@ func (e *stateError) Refusal() *core.RefusalError {
 	if e.code != "" {
 		code = e.code
 	}
-	return &core.RefusalError{Code: code, Message: e.msg}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", e.msg)}
 }
 
 // Unwrap exposes the cause to [errors.Is]/[errors.As].

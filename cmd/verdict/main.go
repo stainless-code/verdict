@@ -365,7 +365,7 @@ func resolveRepoRoot(ctx context.Context, r *cli.Runner, cmd string) (root strin
 		return "", exit, false
 	}
 	if !repoFreeVerbs[cmd] {
-		return "", r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: err.Error()}), false
+		return "", r.Refuse(&cli.RefusalError{Code: "not-a-repo", Message: core.Msgf("%v", err)}), false
 	}
 	return ".", 0, true
 }

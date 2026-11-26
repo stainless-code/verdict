@@ -60,7 +60,7 @@ func (st *state) coverageGate(sum *coverage.Summary) error {
 		return &core.RefusalError{Code: coverage.CodeIncomplete, Message: msgCoverageAbsent}
 	}
 	if !sum.Complete() {
-		return &core.RefusalError{Code: coverage.CodeIncomplete, Message: coverageGapMessage(sum)}
+		return &core.RefusalError{Code: coverage.CodeIncomplete, Message: core.Msgf("%s", coverageGapMessage(sum))}
 	}
 	return nil
 }

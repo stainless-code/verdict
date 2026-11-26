@@ -340,5 +340,5 @@ func checkRuleRows(rules []CheckRule) []string {
 
 // badPath builds the bad-path refusal.
 func badPath(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBadPath, Message: reason}
+	return &core.RefusalError{Code: CodeBadPath, Message: core.Msgf("%s", reason)}
 }

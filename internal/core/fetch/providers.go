@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func runProvider(
@@ -148,7 +149,7 @@ func fetchProviderBundle(
 	case providerAzure:
 		return nullStr, false, fetchAzure(ctx, ctx2, req)
 	default:
-		return nullStr, false, &core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+		return nullStr, false, &core.RefusalError{Code: codeBadProvider, Message: core.Msgf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", f.Provider)}
 	}
 }
@@ -194,7 +195,7 @@ func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, c
 		return "", "", "", werr
 	}
 	if merr != nil {
-		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", "", "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"glab mr view failed for %s!%s: %s (auth? iid?)", repo, pr, headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	pid, perr := gitlabProjectID(ctx, r, repo)
@@ -209,7 +210,7 @@ func gitlabReads(ctx context.Context, r *session, dir, repo, pr string) (meta, c
 func gitlabProjectID(ctx context.Context, r *session, repo string) (string, error) {
 	pidRes, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabProjects+url.PathEscape(repo), "--jq", ".id")
 	if err != nil {
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "cannot resolve GitLab project id for " + repo}
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("cannot resolve GitLab project id for %s", repo)}
 	}
 	return strings.TrimRight(pidRes.Stdout, newline), nil
 }
@@ -237,7 +238,7 @@ func gitlabReadable(r *session, payload string) string {
 
 // gitlabDiff owns the `glab mr diff` read with its raw flag.
 func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
-	fmt.Fprintf(r.Human, "» glab mr diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» glab mr diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.cliFetch(ctx, binGlab, "mr", gitCmdDiff, pr, flagRepo, repo, "--raw")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
@@ -246,7 +247,7 @@ func gitlabDiff(ctx context.Context, r *session, dir, repo, pr string) error {
 		return gitlabDiffFail(dir, diffRes.Stderr)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -257,7 +258,7 @@ func gitlabDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 		return ref
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: "glab mr diff failed: " + headBytes(stderr, numExcerpt)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("glab mr diff failed: %s", headBytes(stderr, numExcerpt))}
 }
 
 // gitlabIncremental owns the --base-sha compare: the comparison API's
@@ -271,7 +272,7 @@ func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flag
 		return nullStr, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
-	fmt.Fprintf(r.Human, "» glab compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» glab compare %s...%s -> %s/incremental.diff\n", f.BaseSHA, headSHA, r.display(dir)))
 	res, err := r.cliFetch(ctx, binGlab, ghCmdAPI, gitlabComparePath(pid, f.BaseSHA, headSHA))
 	if err != nil {
 		return nullStr, gitlabIncrementalFail(r, dir, res.Stderr)
@@ -307,7 +308,7 @@ func gitlabIncrementalWrite(r *session, dir, base, payload string) (string, erro
 	if werr := atomic.WriteFile(dir+suffixIncremental, []byte(gitlabCompareDiff(entries))); werr != nil {
 		return nullStr, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixIncremental, werr),
+			Message: core.Msgf("could not write %s%s: %v", dir, suffixIncremental, werr),
 		}
 	}
 	return base, nil
@@ -349,10 +350,10 @@ func gitlabThreads(ctx context.Context, r *session, dir, pid, pr, head string) e
 	notes, truncated := gitlabNotes(ctx, r, pid, pr)
 	inlineDoc, reviewsDoc := splitGitLabNotes(notes)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(inlineDoc))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, werr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(reviewsDoc))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, werr)}
 	}
 	feed, feedTruncated, feedErr := gitlabDiscussionFeed(ctx, r, pid, pr, head)
 	threadWarning(r, providerGitLab, feed, feedTruncated, feedErr)
@@ -522,12 +523,12 @@ func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error {
 	}
 	revs, revTruncated, revErr := fetchCafePages(cafeReviewsPage(ctx, r, repo, pr))
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, werr)}
 	}
 	warnPaging(r, providerGitCafe, "reviews", revErr, revTruncated)
 	cmts, cmtTruncated, cmtErr := fetchCafePages(cafeCommentsPage(ctx, r, repo, pr))
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(cmts)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, werr)}
 	}
 	warnPaging(r, providerGitCafe, "comments", cmtErr, cmtTruncated)
 	feed := threadscore.FromGitCafe(decodeThreadPayload(revs), decodeThreadPayload(cmts))
@@ -546,7 +547,7 @@ func cafeMeta(ctx context.Context, r *session, dir, repo, pr string) (core.Resul
 		return metaRes, werr
 	}
 	if err != nil {
-		return metaRes, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return metaRes, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"cafe pr view failed: %s (auth? number?)", headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	return metaRes, nil
@@ -562,12 +563,12 @@ func cafeDiff(ctx context.Context, r *session, dir, repo, pr string) (core.Resul
 	if err != nil {
 		return itemsRes, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: "cafe pr diff failed: " + headBytes(itemsRes.Stderr, numExcerpt),
+			Message: core.Msgf("cafe pr diff failed: %s", headBytes(itemsRes.Stderr, numExcerpt)),
 		}
 	}
 	items := cafeItems(itemsRes.Stdout)
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(cafeFullDiff(items))); werr != nil {
-		return itemsRes, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return itemsRes, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	if n := cafeUnhandledHunks(items); n != 0 {
 		r.Warn(fmt.Sprintf("%d cafe files carry structured hunks the builder does not render — anchors unchecked for those paths", n))
@@ -892,7 +893,7 @@ func forgejoAuth(ctx2 *fetchRunCtx) (auth curlauth.Credential, api string, err e
 func forgejoAuthFor(env map[string]string, repo, pr string) (auth curlauth.Credential, api string, err error) {
 	auth, api, ref := forgejo.Resolve(env, repo, pr)
 	if ref != nil {
-		return curlauth.Credential{}, "", &core.RefusalError{Code: ref.Code, Message: ref.Message}
+		return curlauth.Credential{}, "", &core.RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
 	}
 	return auth, api, nil
 }
@@ -904,20 +905,20 @@ func forgejoMeta(ctx context.Context, r *session, dir string, auth curlauth.Cred
 		return metaRes, werr
 	}
 	if err != nil {
-		return metaRes, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return metaRes, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"forgejo PR fetch failed: %s (host? token? number?)", headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	return metaRes, nil
 }
 
 func forgejoDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, api, metaStdout string) error {
-	fmt.Fprintf(r.Human, "» forgejo diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» forgejo diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.curlFetch(ctx, auth, flagCurlFail, api+".diff")
 	if err != nil {
 		return forgejoDiffFallback(ctx, r, dir, auth, api, metaStdout)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -956,10 +957,11 @@ func forgejoDiffFallback(ctx context.Context, r *session, dir string, auth curla
 		if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 			return ref
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: "forgejo diff fetch failed: " + headBytes(diffRes.Stderr, numExcerpt)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
+			"forgejo diff fetch failed: %s", headBytes(diffRes.Stderr, numExcerpt))}
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -1008,7 +1010,7 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth curlauth.C
 	revs, revTruncated, revErr := forgejoListRead(ctx, r, auth, api+"/reviews")
 	warnPaging(r, providerForgejo, "reviews", revErr, revTruncated)
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(revs)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, werr)}
 	}
 	inline, complete := forgejoInline(ctx, r, api, auth, revs)
 	if !complete {
@@ -1018,7 +1020,7 @@ func forgejoThreads(ctx context.Context, r *session, dir string, auth curlauth.C
 		}
 	}
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(inline)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, werr)}
 	}
 	truncated := revTruncated || revErr != nil || !complete
 	feed := threadscore.FromForgejo(decodeThreadPayload(revs), decodeThreadPayload(inline), forgejoHeadSHA(meta))
@@ -1232,29 +1234,30 @@ func bitbucketAuthFor(env map[string]string) (curlauth.Credential, *core.Refusal
 func bitbucketMeta(ctx context.Context, r *session, dir string, auth curlauth.Credential, base string) (string, *core.RefusalError) {
 	metaRes, err := r.curlFetch(ctx, auth, flagCurlFail, base)
 	if werr := writeErrFile(dir+suffixMetaErr, metaRes.Stderr); werr != nil {
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("%v", werr)}
 	}
 	if err != nil {
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"bitbucket PR fetch failed: %s (auth? workspace/repo#id?)", headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	return metaRes.Stdout, nil
 }
 
 func bitbucketDiff(ctx context.Context, r *session, dir string, auth curlauth.Credential, base string) *core.RefusalError {
-	fmt.Fprintf(r.Human, "» bitbucket diff -> %s/full.diff\n", r.display(dir))
+	fmt.Fprint(r.Human, core.Msgf("» bitbucket diff -> %s/full.diff\n", r.display(dir)))
 	diffRes, err := r.curlFetch(ctx, auth, flagCurlFollowFail, base+"/diff")
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: werr.Error()}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("%v", werr)}
 	}
 	if err != nil {
 		if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 			return ref
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: "bitbucket diff failed: " + headBytes(diffRes.Stderr, numExcerpt)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
+			"bitbucket diff failed: %s", headBytes(diffRes.Stderr, numExcerpt))}
 	}
 	if err := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, err)}
 	}
 	return nil
 }
@@ -1273,10 +1276,10 @@ func bitbucketThreads(
 	}
 	inline, reviews := splitBitbucketComments(cm)
 	if err := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(plainAll(inline)))); err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, err)}
 	}
 	if err := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, err)}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, err)}
 	}
 	feed := threadscore.FromBitbucket(cm)
 	if ref := writeThreadsJSON(dir, providerBitbucket, pr, head, r.nowUTC(), truncated, feed); ref != nil {
@@ -1456,12 +1459,12 @@ func azureSetup(ctx context.Context, ctx2 *fetchRunCtx, repo, pr string) (azureC
 		return conn, werr
 	}
 	if err != nil {
-		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"az repos pr show failed: %s (login? extension? project/repo#id?)", headBytes(metaRes.Stderr, numExcerpt))}
 	}
 	remote, hs, bs := azureMergeRef(metaRes.Stdout)
 	if azureMergeMissing(remote, hs, bs) {
-		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("azure PR %s carries no merge commits/remote", pr)}
+		return conn, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("azure PR %s carries no merge commits/remote", pr)}
 	}
 	if !sameOrigin(org, remote) {
 		return conn, offOriginRefusal(providerAzure, remote)
@@ -1498,11 +1501,12 @@ func azureToken(ctx context.Context, r *session, ctx2 *fetchRunCtx) (string, err
 func azureCloneInit(ctx context.Context, r *session) (string, error) {
 	tmp, err := os.MkdirTemp("", "verdict-azure")
 	if err != nil {
-		return "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("azure temp clone init failed: %v", err)}
+		return "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("azure temp clone init failed: %v", err)}
 	}
 	if res, err := r.run(ctx, "init", "-q", tmp); err != nil {
-		// No stderr redirect on the init call: git's own text leaks.
-		fmt.Fprint(r.Human, res.Stderr)
+		// No stderr redirect on the init call: git's own text reaches the
+		// terminal, each line tagged.
+		fmt.Fprint(r.Human, untrusted.Passthrough(gitTag, res.Stderr))
 		return "", &core.RefusalError{Code: CodeFetchFailed, Message: "azure temp clone init failed"}
 	}
 	return tmp, nil
@@ -1534,14 +1538,15 @@ func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azur
 		return werr
 	}
 	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: "azure git fetch failed: " + headBytes(fetchRes.Stderr, numExcerpt)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
+			"azure git fetch failed: %s", headBytes(fetchRes.Stderr, numExcerpt))}
 	}
 	diffRes, err := r.runIn(ctx, tmp, gitCmdDiff, bs, hs)
 	if err != nil {
 		return azureDiffFail(dir, diffRes.Stderr)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -1552,7 +1557,7 @@ func azureDiffFail(dir, stderr string) error {
 	if ref := truncateEmpty(dir + suffixFullDiff); ref != nil {
 		return ref
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: "azure diff failed: " + headBytes(stderr, numExcerpt)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("azure diff failed: %s", headBytes(stderr, numExcerpt))}
 }
 
 // azureResource is the Azure DevOps Entra application id `az rest` buys its
@@ -1581,10 +1586,10 @@ func azureThreads(ctx context.Context, r *session, dir string, conn *azureConn, 
 	}
 	inline, reviews := splitAzureThreads(raw)
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(jq.Pretty(plainAll(inline)))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, werr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(jq.Pretty(plainAll(reviews)))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, werr)}
 	}
 	feed := threadscore.FromAzure(decodeThreadPayload(raw))
 	if ref := writeThreadsJSON(dir, providerAzure, pr, azureHeadSHA(conn.meta), r.nowUTC(), truncated, feed); ref != nil {
@@ -1722,10 +1727,10 @@ func azureInline(e any) bool {
 
 func writePRJSON(dir, kind, pr string, doc *jq.Obj, err error) error {
 	if err != nil || doc == nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not normalize %s %s", kind, pr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not normalize %s %s", kind, pr)}
 	}
 	if err := atomic.WriteFile(dir+suffixPRJSON, []byte(jq.PrettyOrdered(doc))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/PR.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/PR.json: %v", dir, err)}
 	}
 	return nil
 }
@@ -1826,12 +1831,12 @@ func writeTocRoles(ctx2 *fetchRunCtx, title, total string, statLines []string, w
 		sb.WriteString("omitted: (none)\n")
 	}
 	if werr := atomic.WriteFile(ctx2.dir+"/toc.txt", []byte(sb.String()+exclusionTOC(ctx2))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/toc.txt: %v", ctx2.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/toc.txt: %v", ctx2.dir, werr)}
 	}
-	fmt.Fprintf(ctx2.runner.Human, "» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx2.dir)
+	fmt.Fprint(ctx2.runner.Human, core.Msgf("» roles -> %s/roles.txt (heuristic file roles for triage)\n", ctx2.dir))
 	paths := splitLines(withoutExcluded(ctx2, strings.Join(prFilePaths(ctx2.dir+suffixPRJSON), "\n")))
 	if werr := atomic.WriteFile(ctx2.dir+"/roles.txt", []byte(rolesTextEmpty(paths))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/roles.txt: %v", ctx2.dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/roles.txt: %v", ctx2.dir, werr)}
 	}
 	return nil
 }

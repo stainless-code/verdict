@@ -74,7 +74,10 @@ type Verify struct { //nolint:govet // field order is the published property ord
 	Refusal  *Refusal `anyOf:"null"     json:"refusal"`
 }
 
-// Refusal is a composed verb's typed refusal, carried as it was raised.
+// Refusal is a composed verb's typed refusal, carried as it was raised. Its
+// Message is built like a RefusalError's, by core.Msgf (internal/archtest
+// holds the line), and the human render folds it again because a loop's data
+// can be read back from disk.
 type Refusal struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

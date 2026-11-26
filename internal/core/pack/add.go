@@ -293,12 +293,12 @@ func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.Refusal
 
 // badPackGitFailed builds the failed-git-call refusal.
 func badPackGitFailed(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodePackGitFailed, Message: reason}
+	return &core.RefusalError{Code: CodePackGitFailed, Message: core.Msgf("%s", reason)}
 }
 
 // badPackSource builds the git-source refusal.
 func badPackSource(reason string) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBadPackSource, Message: reason}
+	return &core.RefusalError{Code: CodeBadPackSource, Message: core.Msgf("%s", reason)}
 }
 
 // gitSource is one allowlisted git remote and its optional @ref, in the shape
@@ -733,7 +733,7 @@ func checkBoundComponent(component, bound string) (*core.RefusalError, bool) {
 	case err != nil:
 		return badPack(fmt.Sprintf("inspect the git clone: %v", err)), true
 	case !info.IsDir():
-		return &core.RefusalError{Code: CodePackUnsafePath, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodePackUnsafePath, Message: core.Msgf(
 			"the git clone's %q is not a real directory under the clone root — "+
 				"symlinked and special pack roots are refused", filepath.ToSlash(bound))}, true
 	}
@@ -812,7 +812,7 @@ func sweepStaleVendored(packsDir, slug string) *core.RefusalError {
 		if err := os.RemoveAll(filepath.Join(packsDir, name)); err != nil {
 			return &core.RefusalError{
 				Code: CodePackStagingStale,
-				Message: fmt.Sprintf("remove the stale %s/%s: %v — delete that path by hand, then re-run",
+				Message: core.Msgf("remove the stale %s/%s: %v — delete that path by hand, then re-run",
 					RepoPacksDir, name, err),
 			}
 		}
@@ -871,7 +871,7 @@ func cleanupStageFailure(ref *core.RefusalError, err error) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code:    ref.Code,
-		Message: fmt.Sprintf("%s (staging cleanup failed: %v)", ref.Message, err),
+		Message: core.Msgf("%s (staging cleanup failed: %v)", ref.Message, err),
 	}
 }
 

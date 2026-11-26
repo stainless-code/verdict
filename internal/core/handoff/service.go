@@ -143,7 +143,7 @@ func Run(_ context.Context, req *Request) (*Response, *core.RefusalError) {
 		Paths:  req.Paths,
 	})
 	if len(picks) == 0 {
-		return nil, &core.RefusalError{Code: codeNoOpen, Message: emptyMsg(floor, req.Paths)}
+		return nil, &core.RefusalError{Code: codeNoOpen, Message: core.Msgf("%s", emptyMsg(floor, req.Paths))}
 	}
 	now := req.TimeUTC()
 	rows := make([]Row, 0, len(picks))
@@ -187,7 +187,7 @@ func refusalOf(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: "corrupt-store", Message: err.Error()}
+	return &core.RefusalError{Code: "corrupt-store", Message: core.Msgf("%v", err)}
 }
 
 func emptyMsg(floor string, paths []string) string {

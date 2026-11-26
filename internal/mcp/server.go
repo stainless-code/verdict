@@ -442,7 +442,7 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 	if s.cfg.ReadOnly {
 		s.writeResult(id, refusalResult(&core.RefusalError{
 			Code:    "read-only-tool",
-			Message: "tool \"" + name + "\" writes local state; it requires " + hidden.requires,
+			Message: core.Msgf("tool \"%s\" writes local state; it requires %s", name, hidden.requires),
 		}))
 		return
 	}
@@ -616,7 +616,7 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 // become not-a-repo so a call never falls back to cwd.
 func wireRefusal(err error) *core.RefusalError {
 	if _, ok := errors.AsType[*paramError](err); ok {
-		return &core.RefusalError{Code: codeBadFlags, Message: err.Error()}
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("%v", err)}
 	}
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
@@ -625,7 +625,7 @@ func wireRefusal(err error) *core.RefusalError {
 }
 
 func rootResolutionRefusal(err error) *core.RefusalError {
-	return &core.RefusalError{Code: "not-a-repo", Message: err.Error()}
+	return &core.RefusalError{Code: "not-a-repo", Message: core.Msgf("%v", err)}
 }
 
 // refusalData builds the refusal payload every surface renders: tools as

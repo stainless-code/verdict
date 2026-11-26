@@ -2,10 +2,10 @@ package record
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -73,10 +73,10 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (*postInvocation, 
 		case parsePostEqFlag(&inv.flags, a):
 		case applyPostSwitchFlag(&inv.flags, a):
 		default:
-			msg := fmt.Sprintf("unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
-				"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
-				"--require-rigor <tier>=<rung>, --allow-secret-values, --provenance, --json)", a)
-			return inv, r.ReportUsage(&cli.UsageError{Message: msg}), true
+			return inv, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
+				"unknown flag '%s' for post (want --approve[=bool], --request-changes, "+
+					"--bind, --force, --review-file <path>, --summary comment|off, --dry-run, --require-coverage, "+
+					"--require-rigor <tier>=<rung>, --allow-secret-values, --provenance, --json)", a)}), true
 		}
 	}
 	return inv, 0, false

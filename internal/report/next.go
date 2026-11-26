@@ -123,7 +123,7 @@ func parseNextArgs(r *cli.Runner, args []string) (nextFlags, int, bool) {
 		case flagCoverage:
 			flags.coverage, i = true, i+1
 		default:
-			return nextFlags{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return nextFlags{}, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for next (want --status, --coverage, --json)", a)}), true
 		}
 	}

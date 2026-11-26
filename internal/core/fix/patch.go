@@ -41,10 +41,10 @@ func (st *state) writePatch(ctx context.Context, dir string) (*string, *core.Ref
 	if err := atomic.WriteFile(path, []byte(res.Stdout)); err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeFixFailed,
-			Message: fmt.Sprintf("could not write %s: %v", path, err),
+			Message: core.Msgf("could not write %s: %v", path, err),
 		}
 	}
-	st.humanf("» patch: %s (%d bytes, %d file(s))\n",
+	st.progressf("» patch: %s (%d bytes, %d file(s))\n",
 		path, len(res.Stdout), patchFiles(res.Stdout))
 	return &path, nil
 }
@@ -56,7 +56,7 @@ func removeStalePatch(path string) *core.RefusalError {
 	if err := os.Remove(path); err != nil {
 		return &core.RefusalError{
 			Code:    codeFixFailed,
-			Message: fmt.Sprintf("could not remove the stale %s: %v", path, err),
+			Message: core.Msgf("could not remove the stale %s: %v", path, err),
 		}
 	}
 	return nil

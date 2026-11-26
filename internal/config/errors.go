@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -44,5 +42,5 @@ const (
 // refuse builds the layer's sealed refusal. The message always names the
 // field path or rule so one input produces one diagnostic.
 func refuse(code, format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: code, Message: core.Msgf(format, args...)}
 }

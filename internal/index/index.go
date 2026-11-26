@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -465,4 +466,4 @@ func boundedInt(v string, bound int) (int, bool) {
 }
 
 // usageError builds one plain usage error.
-func usageError(msg string) *cli.UsageError { return &cli.UsageError{Message: msg} }
+func usageError(msg string) *cli.UsageError { return &cli.UsageError{Message: core.Msgf("%s", msg)} }

@@ -66,7 +66,7 @@ func (st *state) snapshotWith(ctx context.Context, g contenttree.Git, timeout in
 	if ctx.Err() != nil {
 		return nil, canceledRefusal()
 	}
-	return nil, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+	return nil, &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 		"verify failed: could not snapshot the content at %s (%v) — verify runs a command only in a "+
 			"snapshot of the content its receipt binds, never in your checkout; nothing ran", g.Root, err)}
 }

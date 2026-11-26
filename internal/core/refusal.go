@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"maps"
 	"regexp"
 	"slices"
@@ -38,7 +37,7 @@ func ValidateAttributionPlaceholders(text, source string) *RefusalError {
 		case "{version}", "{tier}", "{product_url}", "{files_reviewed}",
 			"{head_sha_short}", "{model}", "{cost}", "{attribution}":
 		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPlaceholder, source, ph)}
+			return &RefusalError{Code: codeBadSettings, Message: Msgf(msgPlaceholder, source, ph)}
 		}
 	}
 	return nil

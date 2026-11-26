@@ -76,7 +76,7 @@ func parseFlags(r *cli.Runner, args []string) (bool, bool, int, bool) {
 		case "--incidents":
 			incidents = true
 		default:
-			return false, false, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			return false, false, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
 				"unknown flag '%s' for trend (want --overlap, --incidents, --json)", a)}), true
 		}
 	}

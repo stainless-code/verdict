@@ -90,7 +90,7 @@ func (st *threadsRun) openBundle() (string, *core.RefusalError) {
 	if !fileExists(dir + suffixPRJSON) {
 		return "", st.withWarnings(&core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
+			Message: core.Msgf("missing %s/PR.json (fetch the PR first)", dir),
 		})
 	}
 	return dir, nil
@@ -149,13 +149,13 @@ func (st *threadsRun) read(
 		}
 		return nil, true, st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("could not read live threads for %s#%s: %v", st.req.Repo, st.req.Pr, err),
+			Message: core.Msgf("could not read live threads for %s#%s: %v", st.req.Repo, st.req.Pr, err),
 		})
 	}
 	if len(feed) == 0 && (truncated || threadscore.CountFile(dir+suffixThreadsJSON) > 0) {
 		return nil, true, st.withWarnings(&core.RefusalError{
 			Code: codeThreadsFailed,
-			Message: fmt.Sprintf("could not read live threads for %s#%s; existing threads.json kept (never silently emptied)",
+			Message: core.Msgf("could not read live threads for %s#%s; existing threads.json kept (never silently emptied)",
 				st.req.Repo, st.req.Pr),
 		})
 	}
@@ -174,7 +174,7 @@ func (st *threadsRun) write(
 		return nil, st.withWarnings(ref)
 	}
 	data := summarizeThreads(dir, provider, head, at, truncated, feed)
-	st.human(fmt.Sprintf("» %s threads -> %s/threads.json", provider, dir))
+	st.human(core.Msgf("» %s threads -> %s/threads.json", provider, dir))
 	st.human(fmt.Sprintf("done: %d threads (%d open, %d outdated) -> %s/threads.json",
 		data.Threads, data.Open, data.Outdated, dir))
 	return data, nil
@@ -390,7 +390,7 @@ func (st *threadsRun) selectProvider(ctx context.Context, dir string) (string, *
 		}
 	}
 	if selected == "" || threadsProvider(selected) == "" {
-		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+		return "", st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: core.Msgf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", selected)})
 	}
 	return selected, nil
@@ -412,7 +412,7 @@ func (st *threadsRun) checkOriginProvider(ctx context.Context, provider string) 
 		return st.withWarnings(ref)
 	}
 	if source == "remote" && inferred != provider {
-		return st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+		return st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: core.Msgf(
 			"origin provider %q disagrees with bundle provider %q — "+
 				"pass --provider %s to select the bundle explicitly", inferred, provider, provider)})
 	}

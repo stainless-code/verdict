@@ -141,7 +141,7 @@ func parseFormat(r *cli.Runner, args []string, i int) (int, int, bool) {
 	}
 	if v != formatMD {
 		return i, r.ReportUsage(&cli.UsageError{
-			Message: fmt.Sprintf("--format wants md, not %q", v),
+			Message: core.Msgf("--format wants md, not %q", v),
 		}), true
 	}
 	return next, 0, false

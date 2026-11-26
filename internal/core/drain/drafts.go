@@ -118,7 +118,7 @@ func parseDrafts(raw []byte, plan *File) (*RepliesFile, map[string]json.RawMessa
 		return nil, nil, invalid("schema_version", fmt.Sprintf("got %q, want %q", doc.SchemaVersion, SchemaVersion))
 	}
 	if doc.PlanDigest != plan.PlanDigest {
-		return nil, nil, &core.RefusalError{Code: "drafts-stale", Message: fmt.Sprintf(
+		return nil, nil, &core.RefusalError{Code: "drafts-stale", Message: core.Msgf(
 			"drain.replies.json plan_digest %q does not match the plan's %q; re-run drain for a fresh plan",
 			doc.PlanDigest, plan.PlanDigest)}
 	}
@@ -229,5 +229,5 @@ func decodeStrict(raw []byte, into any) error {
 }
 
 func invalid(site, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: "drafts-invalid", Message: "drain.replies.json " + site + ": " + reason}
+	return &core.RefusalError{Code: "drafts-invalid", Message: core.Msgf("drain.replies.json %s: %s", site, reason)}
 }
