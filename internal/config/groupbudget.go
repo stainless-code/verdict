@@ -290,13 +290,6 @@ func scanSample(sample *CostSample, groupID, tier string) (named, atTier int, es
 	return named, atTier, est
 }
 
-// SpendExceeds reports whether a known projection is strictly above a limit,
-// comparing exact decimals so display rounding never flips a guard. Either side
-// unknown means no claim.
-func SpendExceeds(projected, limit string) bool {
-	return spendpolicy.Exceeds(projected, limit)
-}
-
 // rationalOf parses an exact decimal literal; a missing or negative value is
 // not a projection at all.
 func rationalOf(lit string) *big.Rat {

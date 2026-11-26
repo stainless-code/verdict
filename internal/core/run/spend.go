@@ -216,14 +216,20 @@ func (st *state) checkMonthlyExceeds(policy spend.Policy, mtd spend.MTD, project
 func monthlyExceedsMessage(policy spend.Policy, mtd spend.MTD, projected, combined string) string {
 	if projected == "" {
 		return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
-			"$" + displayOrZero(mtd.KnownUSD) + " exceeds it alone, with the pending projection unknown — " +
-			"pass run --consent-over-budget for this invocation or raise monthly_budget_usd"
+			"$" + spend.DisplayBreach(displayOrZeroExact(mtd.KnownUSD), policy.MonthlyCap) +
+			" exceeds it alone, with the pending projection unknown — " +
+			"pass run --consent-over-budget for this invocation or " + raiseMonthlyCeiling
 	}
 	return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
 		"$" + displayOrZero(mtd.KnownUSD) + " plus projected $" + displayOrZero(projected) +
-		" = $" + combined + " — pass run --consent-over-budget for this invocation " +
-		"or raise monthly_budget_usd"
+		" = $" + spend.DisplayBreach(combined, policy.MonthlyCap) + " — pass run --consent-over-budget for this invocation " +
+		"or " + raiseMonthlyCeiling
 }
+
+// raiseMonthlyCeiling names both keys the effective monthly ceiling is the
+// stricter of, so the operator raises the one that binds.
+const raiseMonthlyCeiling = "raise the monthly ceiling: spend.monthly_budget_usd in the operator settings " +
+	"or defaults.monthly_budget_usd in .verdict/config.json, whichever is lower"
 
 func projectedString(p spend.Projection) string {
 	if p.Total != nil {
@@ -258,11 +264,18 @@ func sumExact(a, b string) string {
 	return spend.FormatRat(sumRat)
 }
 
-func displayOrZero(s string) string {
+// displayOrZeroExact is the exact amount, "0" when nothing is known.
+func displayOrZeroExact(s string) string {
 	if s == "" {
 		return "0"
 	}
 	return s
+}
+
+// displayOrZero renders an exact month-to-date amount for a person: "0" when
+// nothing is known, else rounded the way every money line prints.
+func displayOrZero(s string) string {
+	return spend.DisplayUSD(displayOrZeroExact(s))
 }
 
 // warnMonthlyUnknown names the unknown legs it enforced against: the
@@ -342,7 +355,7 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 ) *core.RefusalError {
 	topology := jq.NewObj("execution_id", execution, "finders", 2, "rounds", rounds, "recipe", st.req.Recipe, "phases", phases)
 	st.receiptID = execution + "@" + st.now().UTC().Format(time.RFC3339Nano) + "-" + receiptNonce()
-	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", execution, "scope", "invocation",
+	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", execution, "scope", spend.ScopeInvocation,
 		"invocation_id", st.receiptID,
 		"projection_sha256", shaHex([]byte(topology.MarshalCompact())), "topology", topology,
 		"projected_usd", projection.Total, "projection", projection, "budget_usd", budgetNumber(policy.Budget),

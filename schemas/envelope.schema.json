@@ -833,6 +833,8 @@
         "receipts": {
           "type": "array"
         },
+        "measured_usd": { "type": ["number", "null"] },
+        "measured_receipts": { "type": "integer", "minimum": 0 },
         "mtd": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportMTD" }]
         }

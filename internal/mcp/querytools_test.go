@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core/query"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const (
@@ -623,5 +625,151 @@ func TestQueryToolsServeReadOnly(t *testing.T) {
 	data := queryData(t, queryCall(t, &cfg, "query-health", `{}`))
 	if _, ok := data["roots"]; !ok {
 		t.Errorf("read-only health misses roots: %v", data)
+	}
+}
+
+// TestQueryServesRepoNotInstallRoot pins that the dashboard reads serve the
+// repository the server runs in, not Config.Root: an installed binary's
+// root is its install directory, which here carries a decoy bundle the
+// query surface must never list.
+func TestQueryServesRepoNotInstallRoot(t *testing.T) {
+	install := t.TempDir()
+	writeFile(t, filepath.Join(install, "package.json"), `{"version":"1.2.3"}`)
+	writeFile(t, filepath.Join(install, ".verdict/state/9999/findings.json"), "[]")
+	queryFixture(t)
+	cfg := testConfig()
+	cfg.Root = install
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	rows, ok := data["rows"].([]any)
+	if !ok {
+		t.Fatalf("bundles rows missing: %v", data)
+	}
+	var got []string
+	for _, row := range rows {
+		got = append(got, rowField[string](t, row, "bundle"))
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"1234", "local-1"}) {
+		t.Errorf("query-bundles = %v, want the repo's [1234 local-1]", got)
+	}
+	findings := queryData(t, queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`))
+	if _, ok := findings["report"].(map[string]any); !ok {
+		t.Errorf("query-findings 1234 = %v, want the repo bundle's report", findings)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	checkQueryResourceRead(t, "verdict://findings/1234", frames["1"])
+}
+
+// TestQueryServesGitTopLevelFromSubdirectory proves a server started inside
+// a subdirectory of a real checkout serves the checkout's top-level store,
+// the root git names, not the working directory.
+func TestQueryServesGitTopLevelFromSubdirectory(t *testing.T) {
+	queryFixture(t)
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, top, "init", "-q", "-b", "main")
+	writeFile(t, "src/deep/keep.txt", "x")
+	t.Chdir(filepath.Join(top, "src", "deep"))
+	cfg := testConfig()
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	rows, ok := data["rows"].([]any)
+	if !ok || len(rows) != 2 {
+		t.Fatalf("query-bundles from a subdirectory = %v, want the top-level store's 2 bundles", data["rows"])
+	}
+}
+
+// TestQueryRootFailureRefusesTyped proves a repository root that will not
+// resolve answers the same typed refusal on a tool and on a resource.
+func TestQueryRootFailureRefusesTyped(t *testing.T) {
+	broken := t.TempDir()
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: missing\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(broken)
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"query-bundles","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"resources/read","params":{"uri":"verdict://bundles"}}`)
+	assertToolRefusalCode(t, "1", frames["1"], "not-a-repo")
+	got := frames["2"].Error
+	if got == nil || got.Code != codeInvalidParams || !strings.HasPrefix(got.Message, "not-a-repo: ") {
+		t.Fatalf("resources/read verdict://bundles error = %+v, want invalid params naming not-a-repo", got)
+	}
+}
+
+// TestQueryRefusesStoreSymlinkedOutsideRepo proves a committed
+// .verdict/state symlink into another checkout serves none of its bundles
+// through the MCP query tools or resources.
+func TestQueryRefusesStoreSymlinkedOutsideRepo(t *testing.T) {
+	queryFixture(t)
+	other, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repo := t.TempDir()
+	writeFile(t, filepath.Join(repo, ".verdict", "keep"), "")
+	if err := os.Symlink(filepath.Join(other, ".verdict", "state"), filepath.Join(repo, ".verdict", "state")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	t.Chdir(repo)
+	cfg := testConfig()
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	if rows, ok := data["rows"].([]any); !ok || len(rows) != 0 {
+		t.Errorf("query-bundles through an outside store = %v, want no rows", data["rows"])
+	}
+	findings := queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`)
+	if !findings.IsError {
+		t.Errorf("query-findings through an outside store = %s, want a refusal", findings.Content[0].Text)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	if frames["1"].Error == nil {
+		t.Errorf("verdict://findings/1234 through an outside store = %s, want an error", frames["1"].Result)
+	}
+}
+
+// TestQueryRefusesATrackedLinkInTheCheckout proves a symlink the checkout
+// commits under .verdict refuses the MCP query tools and resources typed,
+// and its target's bytes never reach a result.
+func TestQueryRefusesATrackedLinkInTheCheckout(t *testing.T) {
+	queryFixture(t)
+	top, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	const canary = "c0ffee0000000000000000000000000000000000"
+	outside := filepath.Join(t.TempDir(), "findings.json")
+	writeFile(t, outside, "["+queryFinding(canary, "open", "critical")+"]")
+	link := filepath.Join(".verdict", "state", "1234", "findings.json")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	gitIn(t, top, "init", "-q")
+	gitIn(t, top, "add", "-f", "--", link)
+	cfg := testConfig()
+	findings := queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`)
+	if text := findings.Content[0].Text; !findings.IsError || !strings.Contains(text, "bad-config") || strings.Contains(text, canary) {
+		t.Errorf("query-findings through a tracked link = %s, want a bad-config refusal", text)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	if got := frames["1"].Error; got == nil || !strings.HasPrefix(got.Message, "bad-config: ") {
+		t.Errorf("verdict://findings/1234 through a tracked link = %+v, want bad-config", got)
+	}
+}
+
+// gitIn runs one git command in dir with the test environment.
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir, cmd.Env, cmd.WaitDelay = dir, testenv.Base(nil), gitWaitDelay
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }

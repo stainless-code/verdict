@@ -227,7 +227,7 @@ skill-read-failed	try: address the cause above, then re-run the same command
 skill-target-file	try: address the cause above, then re-run the same command
 skill-unknown-agent	try: address the cause above, then re-run the same command
 spec-too-large	try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch
-spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
+spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the ceiling the message names: the personal spend ceiling (spend.budget_usd in the operator settings) or the monthly ceiling (monthly_budget_usd), then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
 target-unresolved	try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL

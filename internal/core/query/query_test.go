@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -560,17 +561,14 @@ func TestCacheInvalidatesThroughSymlinkedChunks(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedOverride proves a linked override
-// fragment's target edit re-composes instead of serving the old stamp.
+// fragment's target edit re-composes instead of serving the old stamp. The
+// target sits in the repository: a fragment linked out of it refuses
+// (TestOverrideLinkedOutsideRepoRefuses).
 func TestCacheInvalidatesThroughSymlinkedOverride(t *testing.T) {
 	t.Parallel()
 	dir, _ := fixture(t)
-	target := filepath.Join(t.TempDir(), "preamble.md")
-	if err := os.WriteFile(target, []byte("A preamble.\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(dir, ".verdict", "overrides"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	writeFiles(t, dir, map[string]string{"linked-overrides/preamble.md": "A preamble.\n", ".verdict/overrides/.keep": ""})
+	target := filepath.Join(dir, "linked-overrides", "preamble.md")
 	symlinkOrSkip(t, target, filepath.Join(dir, ".verdict", "overrides", "preamble.md"))
 
 	layer := newLayer(dir)
@@ -589,10 +587,15 @@ func TestCacheInvalidatesThroughSymlinkedOverride(t *testing.T) {
 }
 
 // symlinkOrSkip links target at link, skipping the test where the platform
-// refuses symlinks.
+// refuses symlinks. A link path that already exists is the fixture's own bug,
+// not a platform limit, so it fails instead of skipping the proof silently.
 func symlinkOrSkip(t *testing.T, target, link string) {
 	t.Helper()
-	if err := os.Symlink(target, link); err != nil {
+	err := os.Symlink(target, link)
+	if errors.Is(err, fs.ErrExist) {
+		t.Fatalf("symlink %s: %v", link, err)
+	}
+	if err != nil {
 		t.Skipf("symlinks are unavailable: %v", err)
 	}
 }
@@ -1622,6 +1625,36 @@ func assertInventoryReceipt(t *testing.T, view *View) {
 	for key, want := range map[string]any{"truncated": true, "truncation_reason": "scan_cap", "returned": json.Number("64"), "total": nil, "next_offset": nil} {
 		if got := data[key]; got != want {
 			t.Errorf("inventory receipt %s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+// TestOverrideLinkedOutsideRepoRefuses proves an override fragment linked out
+// of the repository refuses the composition, and its target's digest and size
+// never reach the served source inventory.
+func TestOverrideLinkedOutsideRepoRefuses(t *testing.T) {
+	t.Parallel()
+	dir, _ := fixture(t)
+	target := filepath.Join(t.TempDir(), "preamble.md")
+	if err := os.WriteFile(target, []byte("A preamble.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeFiles(t, dir, map[string]string{".verdict/overrides/.keep": ""})
+	symlinkOrSkip(t, target, filepath.Join(dir, ".verdict", "overrides", "preamble.md"))
+	layer := newLayer(dir)
+	_, err := layer.Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "bad-override" {
+		t.Errorf("Detail through an outside override link = %v, want bad-override", err)
+	}
+	served, ok := layer.rootByID(RootID(mustAbs(t, dir)))
+	if !ok {
+		t.Fatal("served root missing")
+	}
+	inv := layer.inventory(served, "1234", filepath.Join(dir, ".verdict", "state", "1234"))
+	for _, source := range inv.sources {
+		if strings.HasSuffix(source.Path, "preamble.md") {
+			t.Errorf("inventory ledgered the outside override target: %+v", source)
 		}
 	}
 }

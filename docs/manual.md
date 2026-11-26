@@ -2606,7 +2606,9 @@ and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
 questions ("open findings in this repo", "list bundles", "cost this week by
 model", "get one finding plus its fix prompt") straight from `internal/core/query`,
 with the same envelope (`at`, `repo`, `pr`, `next`, `warnings` plus the view
-data) `verdict serve` renders:
+data) `verdict serve` renders. The served root is the repository the server
+runs in (its git top level, as `acp` and the target-taking tools resolve it),
+never the directory the binary is installed in:
 
 - `query-bundles` (`pattern?`) — every bundle under the served root with counts and head.
 - `query-findings` (`bundle`) — one bundle's ranked findings with evidence rungs.
@@ -2620,7 +2622,20 @@ journal entries) and are served in every mode, including `--read-only`; like
 the ACP extension methods they never write the disk, spawn a process, or call
 the network. Bundle names resolve inside the served root through the same
 guard every verb shares, so a traversal name refuses `bad-flags` and a missing
-bundle refuses `not-found`. The same reads are addressable as resources:
+bundle refuses `not-found`; a `.verdict` or `.verdict/state` that resolves
+outside the served root serves no bundles at all. In a git checkout, any symlink
+or gitlink the repository commits at or under `.verdict`, matched without
+regard to case (a tracked `.Verdict` is the same directory on a
+case-insensitive filesystem; checked once per served root against
+`git --icase-pathspecs ls-files -s -- .verdict`, cached by the index file's
+mtime and size), refuses that root's verdict data everywhere: the listing, every
+bundle read, overrides, sources, and the `serve` watcher, which emits nothing
+for it. The refusal is `bad-config` and names the tracked link. A root inside a
+checkout whose git call fails refuses the same way, naming the git error. A link
+the operator made locally (untracked, or in a root with no git checkout) is the
+operator's own and keeps serving; a link swapped in after the check needs a live
+local writer and is out of scope. A linked `threads.json` reads as absent, and
+an override fragment linked out of its repository refuses `bad-override`. The same reads are addressable as resources:
 `resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
 and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
 offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,
@@ -4280,6 +4295,88 @@ workspace-write` (the whole working tree), so a `codex` review still needs
 that flag after `--`, and `no-review-artifact` names it.
 ([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
 
+`cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
+
+`agy` print mode (`-p`) soft-denies file edits (`Edit` / `write_file`) outside
+trusted workspaces — even under default `auto` mode or `--mode accept-edits` —
+and exits `0` without writing `review.json`, so `run` refuses
+`no-review-artifact`. Two operator-side remedies apply: add the repository to
+`trustedWorkspaces` (or allow `write_file(...)` under `permissions.allow`) in
+`~/.gemini/antigravity-cli/settings.json` (see the
+[Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json)
+and [headless mode docs](https://antigravity.google/docs/cli/headless)), or
+pass `-- --dangerously-skip-permissions` explicitly (an approval bypass stays
+the operator's choice and is never baked into the shipped row):
+
+```bash
+verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-high --dangerously-skip-permissions
+```
+
+Because that soft-denial exits `0` silently unless configured, `run --agent agy`
+prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
+and proceeds rather than refusing. The warning is skipped when the arguments
+after `--` already carry `--dangerously-skip-permissions`. As history, `agy` versions before 1.5.13
+were observed returning before sub-agents finished (2026-11-18).
+
+Aider is deliberately absent. Its positional arguments are files to edit, not
+a prompt, so it cannot read a verdict bundle with its own tools; it also
+auto-commits by default. An operator can still define it below.
+
+#### Operator-defined agents
+
+Names can also come from your own settings file,
+`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`, under `agents`.
+The file accepts ten top-level keys in total (including `$schema`): `$schema`,
+`output`, `layout`, `color`, `publish`, `review`, `spend`, `privacy`, `packs`,
+and `agents`:
+
+```json
+{
+  "agents": {
+    "local": {
+      "binary": "local-agent",
+      "args": ["exec"],
+      "prompt_flag": "-p",
+      "model_flag": "--model",
+      "install": "brew install local-agent",
+      "probe_args": ["ask", "--help"],
+      "probe_match": "ask"
+    }
+  }
+}
+```
+
+`binary` is required and is either a name resolved on `PATH` or an absolute
+path; `args` defaults to `[]`, and the other fields are optional strings.
+`probe_match` is required when `probe_args` is set, and both use the same
+identity check as the shipped rows.
+A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.
+Unknown keys at any level, a blank binary, a relative binary containing a path
+separator, a bad name, and a collision all refuse `bad-settings` naming the
+path. The file is prefs-only: a repository `.verdict/config.json` carrying an
+`agents` key refuses `bad-config` from the typed config parser, and a PR cannot
+define an agent. The settings parser owns the same closed shape.
+
+A defined agent behaves like any shipped row: its own flags come first, your
+`-- <args>` follow, and the directive comes last (or directly after its
+`prompt_flag`). `unknown-agent` lists both groups with labels. `launcher.json`
+records `agent_source: "prefs"` so provenance says where the definition came
+from.
+
+#### Binary name clashes and the identity probe
+
+Six shipped binaries share their name with another tool: `bob`, `cortex`,
+`forge`, `fx`, `grok`, and `kilo`. Before a launch, verdict runs the row's
+harmless help command with the launch's environment, no stdin, a five-second
+budget, and a capture of the combined stdout and stderr whose first 64 KiB is searched for the match.
+The output must contain the row's match
+text; a non-zero exit, a timeout, or a missing match refuses `agent-mismatch`
+and starts no agent. `--print` spawns nothing, so it never probes. A passing
+check is recorded as `probe: {"args": [...], "ok": true}` in `launcher.json`.
+Define the agent in settings.json `agents` with an absolute `binary` path, or
+pass `--agent` for the one you meant, when the wrong tool wins `PATH` resolution.
+`jazz` was checked in Homebrew and has no known namesake, so it carries no probe.
+
 ### Recipes (declared review pipelines)
 
 A review pipeline — lenses, synthesizer, dedupe, rank — is a file you can
@@ -4544,7 +4641,8 @@ print a pre-run `» estimate` line before any network. A group over its guard, o
 the exact sum of group projections over the personal limit, refuses with typed
 `budget-exceeded` unless the run carries `--consent-over-budget`; consented runs
 append one receipt to the bundle's `budget.json`, which `report --cost` surfaces
-as a `receipts:` line (and a `receipts` key in the JSON cost object). Repository,
+as a `receipts:` line (and a `receipts` key in the JSON cost object, which lists
+every ledger row, spend receipts included). Repository,
 environment, and flag defaults can never raise the personal limit, and no
 repository key grants consent. Any unknown group projection makes the whole-run
 total unknown: with `require_known_estimate` the run refuses typed
@@ -4712,6 +4810,27 @@ receipt is never displaced by a self-report: a `cost.json` written after it,
 with no newer invocation of that execution in between, is not counted. Receipts
 count per invocation, settled or not, so a resumed execution's spend is counted
 for every invocation that spent.
+
+`report --cost`, the publish footer, and the `fetch` estimate show that
+measured spend; the dashboard cost rollup (`query-cost`, `verdict://cost`,
+`serve`) still reads agent-written `cost.json` records only. `report --cost`
+adds a `measured: $<usd> from <n> spend receipt(s)` line (`measured_usd` and
+`measured_receipts` in the JSON cost object) summing the bundle's `measured`
+and `tokens` receipts, and its `receipts:` line counts only the rows an
+operator's `--consent-over-budget` wrote. The publish footer prices a
+two-finder bundle from its current execution once every invocation of it
+settled, before any agent-written phase record, and a bundle no self-report
+priced from its measured spawn receipts. The `fetch` estimate reads each
+two-finder execution as one comparable standard-tier run (a receipt names no
+effort), however many invocations a resume took: every invocation settled
+prices it, and any unsettled one leaves its measured part a known lower bound.
+A `cost.json` record that a measured invocation receipt owns — the latest
+invocation row at or before it, of its execution or of any when it names
+none — is not sampled again. Spend guards compare the exact mean, never the
+rounded one. Every printed amount is rounded to four decimals with trailing
+zeros trimmed, except that an amount over the ceiling it is compared with, or
+a nonzero amount, rounds up rather than read as within the ceiling or as zero;
+receipts keep the agent CLI's exact figure.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 

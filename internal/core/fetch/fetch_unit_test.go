@@ -1,6 +1,7 @@
 package fetchcore
 
 import (
+	"math/big"
 	"os"
 	"slices"
 	"strings"
@@ -166,9 +167,9 @@ func TestPickEstimateTier(t *testing.T) {
 // the fallback for runs with no measured twin.
 func TestPickEstimateTierMeasured(t *testing.T) {
 	t.Parallel()
-	measured := 0.75
+	measured := big.NewRat(3, 4)
 	recs := []costRec{
-		{tier: "standard", usd: "5.00", has: true, measured: &measured, usageSource: "bench-harness"},
+		{tier: "standard", usd: "5.00", has: true, measured: measured, usageSource: "bench-harness"},
 		{tier: "standard", usd: "0.25", has: true},
 	}
 	tier, runs, stat, ok := pickEstimateTier(recs, "", false)

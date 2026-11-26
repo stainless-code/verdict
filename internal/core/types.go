@@ -131,18 +131,22 @@ type ReportFilters struct { //nolint:govet // field order is the published prope
 	IncludeWithheld bool    `json:"include_withheld,omitempty" optional:"true"`
 }
 
-// ReportCost is the summed cost rollup carried by report --cost.
+// ReportCost is the summed cost rollup carried by report --cost. MeasuredUSD
+// sums the bundle's budget.json receipts the agent CLIs' own output priced,
+// absent when none did.
 type ReportCost struct { //nolint:govet // field order is the published property order
-	Runs              int        `json:"runs"                min:"0"`
-	RunsWithCost      int        `json:"runs_with_cost"      min:"0"`
-	InputTokens       *int       `json:"input_tokens"        min:"0"`
-	OutputTokens      *int       `json:"output_tokens"       min:"0"`
-	TotalTokens       *int       `json:"total_tokens"        min:"0"`
-	CachedInputTokens *int       `json:"cached_input_tokens" min:"0"`
+	Runs              int        `json:"runs"                        min:"0"`
+	RunsWithCost      int        `json:"runs_with_cost"              min:"0"`
+	InputTokens       *int       `json:"input_tokens"                min:"0"`
+	OutputTokens      *int       `json:"output_tokens"               min:"0"`
+	TotalTokens       *int       `json:"total_tokens"                min:"0"`
+	CachedInputTokens *int       `json:"cached_input_tokens"         min:"0"`
 	EstUSD            *float64   `json:"est_usd"`
 	ByTier            CostTiers  `json:"by_tier"`
 	Receipts          []any      `json:"receipts,omitempty"`
-	Mtd               *ReportMTD `anyOf:"null"               json:"mtd,omitempty"`
+	MeasuredUSD       *float64   `json:"measured_usd,omitempty"`
+	MeasuredReceipts  int        `json:"measured_receipts,omitempty" min:"0"`
+	Mtd               *ReportMTD `anyOf:"null"                       json:"mtd,omitempty"`
 }
 
 // ReportMTD is the month-to-date spend aggregate carried by report --cost

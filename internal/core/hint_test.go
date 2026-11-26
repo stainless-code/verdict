@@ -20,7 +20,7 @@ func TestHintForSpendAndBudget(t *testing.T) {
 		{
 			name: "personal ceiling",
 			code: "spend-capped",
-			want: []string{"--consent-over-budget", "personal spend ceiling", "operator settings"},
+			want: []string{"--consent-over-budget", "personal spend ceiling", "operator settings", "monthly_budget_usd"},
 			deny: []string{"REVIEW_BUDGET_USD", "budget_usd default"},
 		},
 		{

@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Query request shapes. Each carries only its public arguments; the query
@@ -73,29 +74,53 @@ func decodeQueryCost(req *queryCostRequest, a *args) {
 
 func decodeQueryHealth(_ *queryHealthRequest, _ *args) {}
 
-func wireQueryBundles(_ context.Context, b *bindings, req *queryBundlesRequest) error {
-	req.layer, req.rootID = queryLayerFor(b.root, b.version, b.now)
-	return nil
+func wireQueryBundles(ctx context.Context, b *bindings, req *queryBundlesRequest) error {
+	var err error
+	req.layer, req.rootID, err = servedQueryLayer(ctx, b.version, b.now)
+	return err
 }
 
-func wireQueryFindings(_ context.Context, b *bindings, req *queryFindingsRequest) error {
-	req.layer, req.rootID = queryLayerFor(b.root, b.version, b.now)
-	return nil
+func wireQueryFindings(ctx context.Context, b *bindings, req *queryFindingsRequest) error {
+	var err error
+	req.layer, req.rootID, err = servedQueryLayer(ctx, b.version, b.now)
+	return err
 }
 
-func wireQueryFinding(_ context.Context, b *bindings, req *queryFindingRequest) error {
-	req.layer, req.rootID = queryLayerFor(b.root, b.version, b.now)
-	return nil
+func wireQueryFinding(ctx context.Context, b *bindings, req *queryFindingRequest) error {
+	var err error
+	req.layer, req.rootID, err = servedQueryLayer(ctx, b.version, b.now)
+	return err
 }
 
-func wireQueryCost(_ context.Context, b *bindings, req *queryCostRequest) error {
-	req.layer, req.rootID = queryLayerFor(b.root, b.version, b.now)
-	return nil
+func wireQueryCost(ctx context.Context, b *bindings, req *queryCostRequest) error {
+	var err error
+	req.layer, req.rootID, err = servedQueryLayer(ctx, b.version, b.now)
+	return err
 }
 
-func wireQueryHealth(_ context.Context, b *bindings, req *queryHealthRequest) error {
-	req.layer, req.rootID = queryLayerFor(b.root, b.version, b.now)
-	return nil
+func wireQueryHealth(ctx context.Context, b *bindings, req *queryHealthRequest) error {
+	var err error
+	req.layer, req.rootID, err = servedQueryLayer(ctx, b.version, b.now)
+	return err
+}
+
+// servedQueryLayer serves the repository the server runs in, the root
+// ACP and LSP serve and the target-taking tools read. Config.Root is the
+// binary's install root (embedded skill and version reads): for an installed
+// binary it holds no bundles, so serving it would answer every query empty.
+//
+// A root that will not resolve refuses typed, so a tool and a resource
+// answer the same code: canceled when the call was, else not-a-repo.
+func servedQueryLayer(ctx context.Context, version string, now func() time.Time) (*query.Layer, string, error) {
+	root, err := readcommon.RepoRoot(ctx)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, "", &core.RefusalError{Code: "canceled", Message: "canceled before the repository root resolved"}
+		}
+		return nil, "", rootResolutionRefusal(jq.Sealed("resolve repository root", err))
+	}
+	layer, id := queryLayerFor(root, version, now)
+	return layer, id, nil
 }
 
 // queryLayerFor builds the ephemeral read model over the one served root

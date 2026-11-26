@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // Cost rollup warning lines, frozen as the wire contract.
@@ -584,7 +585,17 @@ func attachReceipts(dir string, res *CostResult) {
 		res.Receipts = []any{doc}
 	}
 	res.Cost.Set("receipts", receiptsValue(res.Receipts))
+	if measured := spend.SumMeasured(spend.MeasuredRows(res.Receipts)); measured.Rows > 0 {
+		res.Cost.Set(KeyMeasuredUSD, jq.Number(measured.USD))
+		res.Cost.Set(KeyMeasuredReceipts, measured.Rows)
+	}
 }
+
+// Cost rollup keys for the bundle's measured spend receipts.
+const (
+	KeyMeasuredUSD      = "measured_usd"
+	KeyMeasuredReceipts = "measured_receipts"
+)
 
 func receiptsValue(receipts []any) any {
 	out := make([]any, 0, len(receipts))

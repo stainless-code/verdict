@@ -165,12 +165,19 @@ func (a *precisionAggregate) dimension() string {
 	return precisionCategory
 }
 
+// storedFeed reads a bundle's threads.json the way threadView does: a link
+// or any other non-regular entry reads as absent, so the feed never follows a
+// link out of the bundle.
 func storedFeed(dir string) (*threadscore.File, bool, error) {
 	path := dir + slashSep + threadscore.KeyThreadsJSON
-	if _, err := os.Lstat(path); os.IsNotExist(err) {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
 		return nil, false, nil
 	} else if err != nil {
 		return nil, true, jq.Sealed("serve: inspect stored threads", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, false, nil
 	}
 	feed, err := threadscore.ReadFile(path)
 	if err != nil {

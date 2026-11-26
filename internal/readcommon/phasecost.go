@@ -14,6 +14,10 @@ import (
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
+// CostExecution names the two-finder execution a bundle's run.json captured;
+// "" when it captured none.
+func CostExecution(dir string) string { return costExecution(dir) }
+
 func costExecution(dir string) string {
 	value := phaseCostObject(filepath.Join(dir, "run.json"))
 	return jq.StrOf(FieldOf(FieldOf(value, "execution"), "id"))
