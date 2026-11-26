@@ -67,4 +67,7 @@ resolves it.
   bare bundle. Verbs that verify run state refuse `controls-stale`; re-fetch
   the bundle.
 - Corrupt bundle: loud `bad-config` refusal, never silent degrade.
+- Outdated bundle: a `run.json` without `requires_evidence` and
+  `inputs_sha256` was written by an older verdict and refuses
+  `bundle-outdated` on every read; re-fetch the bundle.
 - Untrusted preview: resolves, never persists, never approves.

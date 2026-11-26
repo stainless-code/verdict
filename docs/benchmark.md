@@ -953,8 +953,8 @@ have joined this cohort: one that declares another case, another run, or
 another model or panel is another denominator, and its own breakage is not a
 loss to this rate.
 
-Legacy bundles without `corpus_run.json` are independent k=1 runs and resolve
-weights from the repository's typed config, falling back to 25/5/1.
+A bundle without `corpus_run.json` was written by an older runner and refuses
+`bundle-outdated`; re-run the benchmark to rebuild it.
 `calibrate` reads sibling samples for its any-of-k rate only; its other rates
 describe the selected sample. `trend` groups by run, case, model, and panel.
 Duplicate or inconsistent first-k cohorts contribute no recall denominator.

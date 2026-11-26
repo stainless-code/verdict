@@ -86,9 +86,9 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 // verifyRunState binds the bundle to its typed evidence through the
 // same integrity check post enforces: a deleted or tampered run bundle
 // refuses controls-stale instead of silently degrading to no policy.
-// Record is not a binding action, so a bundle that predates typed
-// evidence warns and proceeds; a pre-integrity bundle enforces its
-// stored inputs and reports unavailable provenance.
+// Record is not a binding action, so a bare bundle with no typed evidence
+// warns and proceeds; a run.json an older verdict
+// wrote refuses bundle-outdated.
 func (st *svc) verifyRunState(dir string) (*config.RunState, *core.RefusalError) {
 	rs, ref := config.VerifyRunState(dir)
 	if ref != nil {
@@ -97,9 +97,6 @@ func (st *svc) verifyRunState(dir string) (*config.RunState, *core.RefusalError)
 	if rs == nil {
 		st.addWarning("run bundle has no typed evidence (pre-typed bundle?) — recording without repository policy checks")
 		return nil, nil
-	}
-	if !rs.Verified() {
-		st.addWarning("typed evidence provenance unavailable (pre-integrity bundle) — stored inputs apply without verified evidence")
 	}
 	return rs, nil
 }

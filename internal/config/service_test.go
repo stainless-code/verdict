@@ -272,12 +272,9 @@ func TestPreviewUnreadableBundleFailsClosed(t *testing.T) {
 }
 
 // TestPreviewHeadInventoryIsUntrusted keeps a recorded worktree opt-out
-// distinct from trusted base policy, including a legacy snapshot.
+// distinct from trusted base policy.
 func TestPreviewHeadInventoryIsUntrusted(t *testing.T) {
 	serviceFixture(t)
-	if err := os.Remove(filepath.Join(".verdict", "state", "7", "run.json")); err != nil {
-		t.Fatal(err)
-	}
 	data, _, ref := Preview(".", "7", "", "", map[string]string{})
 	if ref != nil {
 		t.Fatalf("Preview: %v", ref)
@@ -287,6 +284,31 @@ func TestPreviewHeadInventoryIsUntrusted(t *testing.T) {
 	}
 	if valueFor(data.Values, "panel") == nil {
 		t.Fatal("inventory panel missing from preview")
+	}
+}
+
+// TestPreviewRefusesBundleWithoutRunState pins the removed flat-list
+// fallback: a bundle directory beside its controls snapshot but without
+// run.json is the shape an older verdict wrote, so preview refuses
+// bundle-outdated naming the re-fetch instead of guessing the file list from
+// .difffiles.
+func TestPreviewRefusesBundleWithoutRunState(t *testing.T) {
+	serviceFixture(t)
+	dir := filepath.Join(".verdict", "state", "7")
+	if err := os.Remove(filepath.Join(dir, "run.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".difffiles"), []byte("a.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, _, ref := Preview(".", "7", "", "", map[string]string{})
+	if ref == nil || ref.Code != "bundle-outdated" {
+		t.Fatalf("Preview without run.json = %v, want bundle-outdated", ref)
+	}
+	want := "bundle .verdict/state/7 has no run.json: an older verdict, an interrupted fetch, or something " +
+		"other than fetch wrote it (re-fetch the bundle with `verdict fetch`, or `verdict fetch-local`, then re-run)"
+	if ref.Message != want {
+		t.Fatalf("message = %q\nwant      %q", ref.Message, want)
 	}
 }
 

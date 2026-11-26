@@ -273,7 +273,7 @@ func (f *failingProbe) Run(_ context.Context, cmd *core.Command) (core.Result, e
 func TestProbeRefusesBothFindersAsAgentMismatch(t *testing.T) {
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	writeUnder(t, dir, "run.json", `{"schema_version":"1"}`)
+	writeCapture(t, dir, `{"schema_version":"1"}`)
 	writeUnder(t, dir, "PR.json", `{"headRefOid":"head"}`)
 	writeUnder(t, dir, "procedure.md", "authoritative procedure")
 	cdr := &failingProbe{}

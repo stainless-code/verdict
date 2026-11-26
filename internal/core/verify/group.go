@@ -401,16 +401,13 @@ func (st *state) pinGroup(dir, groupID string) (config.PlanGroup, string, *confi
 	return group, path, rs, nil
 }
 
-// verifiedRun refuses a missing bundle, a missing plan, or a capture without
-// integrity provenance before any group is resolved.
+// verifiedRun refuses a missing bundle or a missing plan before any group is
+// resolved; VerifyRunState already refused a capture without integrity
+// provenance.
 func verifiedRun(rs *config.RunState, dir string) *core.RefusalError {
 	if rs == nil || rs.Resolved == nil {
 		return &core.RefusalError{Code: codeNoRunBundle, Message: fmt.Sprintf(
 			"bundle %s has no verified run.json (re-fetch it before deep validation)", dir)}
-	}
-	if rs.InputsSHA256 == "" || !rs.Verified() {
-		return &core.RefusalError{Code: codeNoRunBundle, Message: fmt.Sprintf(
-			"bundle %s carries no verified provenance (re-fetch it before deep validation)", dir)}
 	}
 	return nil
 }

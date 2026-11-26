@@ -200,7 +200,7 @@ func coordinatorFixture(t *testing.T) (*core.RunRequest, *phaseCommander) {
 	t.Helper()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	writeUnder(t, dir, "run.json", `{"schema_version":"1"}`)
+	writeCapture(t, dir, `{"schema_version":"1"}`)
 	writeUnder(t, dir, "PR.json", `{"headRefOid":"head"}`)
 	writeUnder(t, dir, "procedure.md", "authoritative procedure")
 	commander := &phaseCommander{t: t, dir: dir}
@@ -500,7 +500,7 @@ func missingExecutionCoordinator(t *testing.T, launcher func(t *testing.T, dir s
 	req, commander := coordinatorFixture(t)
 	// The documented re-fetch shape: no execution reference and no finder count,
 	// so CheckExecution cannot call the run active.
-	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","finders":0}`)
+	writeCapture(t, commander.dir, `{"schema_version":"1","finders":0}`)
 	launcher(t, commander.dir)
 	return &coordinator{
 		st: &state{req: req}, dir: commander.dir, id: "execution-A",

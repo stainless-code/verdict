@@ -134,11 +134,6 @@ func Explain(root, name string) (*core.ConfigData, []string, *core.RefusalError)
 	}
 	data := dataFromEvidence(rs)
 	data.Mode = "explain"
-	if !rs.Verified() {
-		note := "typed evidence provenance unavailable (pre-integrity bundle) — " +
-			"policy enforced from stored capture, not verified evidence"
-		return data, []string{note}, nil
-	}
 	return data, nil, nil
 }
 
@@ -366,14 +361,19 @@ func missingBundle(dir string) bool {
 }
 
 // previewFiles preserves the captured review identities, including rename
-// endpoints. Legacy bundles without run.json fall back to their flat list.
+// endpoints. No bundle directory previews no per-file groups; a directory
+// without run.json refuses bundle-outdated rather than guessing its file
+// list from the flat .difffiles an older verdict read here.
 func previewFiles(dir string) ([]FileInput, *core.RefusalError) {
 	_, found, err := ReadRunState(dir)
 	if err != nil {
+		if err.code == CodeBundleOutdated {
+			return nil, err.Refusal()
+		}
 		return nil, stale(dir, "run bundle is unreadable")
 	}
 	if !found {
-		return legacyPreviewFiles(dir), nil
+		return nil, noRunStateFiles(dir)
 	}
 	rs, ref := VerifyRunState(dir)
 	if ref != nil {
@@ -383,6 +383,17 @@ func previewFiles(dir string) ([]FileInput, *core.RefusalError) {
 		return nil, stale(dir, "run bundle disappeared during preview")
 	}
 	return capturedFileInputs(rs), nil
+}
+
+// noRunStateFiles previews no per-file groups when no bundle directory exists,
+// and refuses one that exists without run.json.
+func noRunStateFiles(dir string) *core.RefusalError {
+	if missingBundle(dir) {
+		return nil
+	}
+	return refuse(CodeBundleOutdated, "bundle %s has no %s: an older verdict, an interrupted "+
+		"fetch, or something other than fetch wrote it (re-fetch the bundle with `verdict fetch`, "+
+		"or `verdict fetch-local`, then re-run)", filepath.ToSlash(dir), runStateFileName)
 }
 
 func capturedFileInputs(rs *RunState) []FileInput {
@@ -395,20 +406,6 @@ func capturedFileInputs(rs *RunState) []FileInput {
 		files = append(files, FileInput{Path: file.Path, OldPath: file.OldPath})
 	}
 	return files
-}
-
-func legacyPreviewFiles(dir string) []FileInput {
-	raw, err := os.ReadFile(filepath.Join(dir, ".difffiles"))
-	if err != nil {
-		return nil
-	}
-	var out []FileInput
-	for _, line := range splitIgnoreLines(string(raw)) {
-		if line != "" {
-			out = append(out, FileInput{Path: line})
-		}
-	}
-	return out
 }
 
 // RunBundlePath names the persisted run bundle for diagnostics.

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -943,4 +944,29 @@ func TestLoopPiMissingUsageStaysUnmeasured(t *testing.T) {
 		t.Errorf("loop cost = %+v, want no incomplete", got)
 	}
 	checkAgentLogContains(t, cfg, rep.Loops[0].Slug, "not-json")
+}
+
+// TestWriteLoopBundleStandsAlone pins the loop's final bundle on a directory
+// no earlier round staged: it writes its own run.json and corpus_run.json
+// beside the controls snapshot, so the capture verifies without leaning on
+// stageLoopBundle having run first.
+func TestWriteLoopBundleStandsAlone(t *testing.T) {
+	t.Chdir(t.TempDir())
+	r := &runner{cfg: &Config{
+		Model: "fixture", K: 1, Runs: 1, Panel: []string{"bench-fixture"},
+		Now: time.Date(2026, 11, 26, 0, 0, 0, 0, time.UTC),
+	}}
+	c := &corpusCase{id: "standalone", manifest: []byte(`{"schema_version":"1"}`), diff: []byte("diff --git a/x b/x\n")}
+	cr := r.paths(c, 1)
+	bundle := filepath.Join(reviewRoot, cr.slug)
+	last := &RoundAttempt{Round: 1, ReviewBytes: []byte(`{"schema_version":"1","findings":[]}`)}
+	if err := r.writeLoopBundle(t.Context(), cr, bundle, caseSource(c), last); err != nil {
+		t.Fatal(err)
+	}
+	if rs, ref := config.VerifyRunState(bundle); ref != nil || rs == nil {
+		t.Fatalf("VerifyRunState = %v, %v; want the loop bundle's own sealed capture", rs, ref)
+	}
+	if _, err := os.Stat(filepath.Join(bundle, samplingName)); err != nil {
+		t.Fatalf("loop bundle has no %s: %v", samplingName, err)
+	}
 }

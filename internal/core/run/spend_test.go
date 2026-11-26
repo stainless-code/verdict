@@ -17,9 +17,7 @@ func spendState(t *testing.T) (*state, string) {
 	t.Helper()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(`{"schema_version":"1","execution":{"id":"execution-A","finders":2}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeCapture(t, dir, `{"schema_version":"1","execution":{"id":"execution-A","finders":2}}`)
 	req := request(root, &scripted{})
 	req.SpendPolicy = &spend.Policy{RequireKnown: true}
 	return &state{req: req}, dir

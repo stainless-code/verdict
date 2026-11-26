@@ -94,12 +94,12 @@ func readFinderCaptureForPolicy(dir string, req *core.RunRequest) (*config.RunSt
 func readFinderCapture(dir string) (*config.RunState, *core.RefusalError) {
 	captured, _, err := config.ReadRunState(dir)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeRecordFailed, Message: err.Error()}
+		return nil, captureRefusal(err)
 	}
-	if captured != nil && captured.RequiresEvidence {
+	if captured != nil {
 		return config.VerifyRunState(dir)
 	}
-	return captured, nil
+	return nil, nil
 }
 
 func (st *state) launchBundle() (string, *core.RefusalError) {
