@@ -560,6 +560,20 @@ func TestGateHintResumesAnIncompleteExecution(t *testing.T) {
 	}
 }
 
+// TestGateHintRestartsAnExecutionResumeRefuses pins the recovery for a gate
+// over an execution that stopped short in a way --resume refuses: a fresh run,
+// naming the gap, once for both the findings and evidence dimensions.
+func TestGateHintRestartsAnExecutionResumeRefuses(t *testing.T) {
+	gate := &core.ReportGate{Restart: "execution manifest binding mismatch: plan_sha256", Dimensions: []core.GateDimension{
+		{ID: "findings", Status: statusUnknown}, {ID: "evidence", Status: statusFail},
+	}}
+	want := "re-run the same verdict run command without --resume (the execution cannot be resumed: " +
+		"execution manifest binding mismatch: plan_sha256), then re-run record, then re-run gate"
+	if got := gateHint(gate); got != want {
+		t.Errorf("gateHint = %q, want %q", got, want)
+	}
+}
+
 // TestGateNextNamesCompliance pins the fourth dimension: a gate whose only
 // failing dimension is compliance used to publish "none — every requested
 // dimension passed" next to a FAIL verdict, with no recovery line at all.

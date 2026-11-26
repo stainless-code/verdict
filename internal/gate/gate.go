@@ -186,13 +186,14 @@ func gateNext(gate *core.ReportGate) string {
 }
 
 // gateActions collects each failing dimension's recovery. A gate over an
-// execution that stopped before it finished leads with resuming it: the
-// findings and evidence dimensions fail on the same unsettled cross checks,
-// so neither adds a recovery of its own.
+// execution that stopped before it finished leads with its recovery — resume
+// it, or start it fresh when it cannot be resumed: the findings and evidence
+// dimensions fail on the same unsettled cross checks, so neither adds a
+// recovery of its own.
 func gateActions(gate *core.ReportGate) []string {
 	actions := make([]string, 0, len(gate.Dimensions)+1)
-	if gate.Resume {
-		actions = append(actions, actionResume)
+	if action := stoppedAction(gate); action != "" {
+		actions = append(actions, action)
 	}
 	for _, dim := range gate.Dimensions {
 		if resumeCovers(gate, dim) {
@@ -205,10 +206,23 @@ func gateActions(gate *core.ReportGate) []string {
 	return actions
 }
 
-// resumeCovers reports a dimension whose failure the resume recovery already
-// answers: findings and evidence wait on the same stopped execution.
+// stoppedAction is the recovery for a gate over a stopped execution, empty
+// when the execution finished.
+func stoppedAction(gate *core.ReportGate) string {
+	switch {
+	case gate.Resume:
+		return actionResume
+	case gate.Restart != "":
+		return "re-run the same verdict run command without --resume (the execution cannot be resumed: " +
+			gate.Restart + "), then re-run record"
+	}
+	return ""
+}
+
+// resumeCovers reports a dimension whose failure the stopped execution's
+// recovery already answers: findings and evidence wait on the same execution.
 func resumeCovers(gate *core.ReportGate, dim core.GateDimension) bool {
-	return gate.Resume && (dim.ID == idFindings || dim.ID == idEvidence)
+	return (gate.Resume || gate.Restart != "") && (dim.ID == idFindings || dim.ID == idEvidence)
 }
 
 func gateAction(dim core.GateDimension) string {

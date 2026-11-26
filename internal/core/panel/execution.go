@@ -540,6 +540,12 @@ func (s *Execution) Incomplete() bool {
 		(s.Gap == gapIncomplete || s.Gap == gapPlanMissing || s.Gap == gapReceiptMissing)
 }
 
+// Partial reports whether a two-finder execution's manifest stopped short of
+// complete with a gap, resumable or not: its findings are unsettled either way.
+func (s *Execution) Partial() bool {
+	return s != nil && s.CrossRequired && s.partial && s.Gap != ""
+}
+
 // Problem is the bound execution failure exposed by readiness.
 func (s *Execution) Problem() string {
 	if !s.CrossRequired {

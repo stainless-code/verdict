@@ -617,7 +617,19 @@ func gateTail(st *state) (bool, *core.ReportGate) {
 			failed = true
 		}
 	}
-	return failed, &core.ReportGate{Passed: !failed, Dimensions: dims, Resume: st.execution.Incomplete()}
+	return failed, stoppedGate(st, &core.ReportGate{Passed: !failed, Dimensions: dims})
+}
+
+// stoppedGate marks a gate over a two-finder execution that stopped short:
+// resumable, or not, with the gap a fresh run has to replace.
+func stoppedGate(st *state, gate *core.ReportGate) *core.ReportGate {
+	switch {
+	case st.execution.Incomplete():
+		gate.Resume = true
+	case st.execution.Partial():
+		gate.Restart = st.execution.Gap
+	}
+	return gate
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head,
@@ -772,7 +784,7 @@ func gateTierCheck(st *state) core.GateDimension {
 			Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s", n, st.flags.Check, inCategory(st)),
 		}
 	}
-	if st.execution.Incomplete() {
+	if st.execution.Partial() {
 		return incompleteFindings(st)
 	}
 	return core.GateDimension{
@@ -782,12 +794,12 @@ func gateTierCheck(st *state) core.GateDimension {
 }
 
 // incompleteFindings is the findings dimension of an execution that stopped
-// before it settled its cross checks: none of its findings can gate yet, so
-// none can be said to be absent either, whatever their tier.
+// before it settled its cross checks, resumable or not: none of its findings
+// can gate yet, so none can be said to be absent either, whatever their tier.
 func incompleteFindings(st *state) core.GateDimension {
 	pending := gatePendingCross(st)
 	detail := fmt.Sprintf("%d open finding(s) at-or-above %s%s await the cross checks of an incomplete "+
-		"execution — unknown, never a pass", pending, st.flags.Check, inCategory(st))
+		"execution (%s) — unknown, never a pass", pending, st.flags.Check, inCategory(st), st.execution.Gap)
 	if pending == 0 {
 		detail = "the two-finder execution is incomplete (" + st.execution.Gap + "), so no finding is settled " +
 			"— unknown, never a pass"

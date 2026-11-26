@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -137,7 +138,7 @@ func TestCrossGateIncompleteExecutionNeverReadsAsNoFindings(t *testing.T) {
 	}
 	findings := dimOf(t, resp, "findings")
 	wantFindings := "1 open finding(s) at-or-above important await the cross checks of an incomplete " +
-		"execution — unknown, never a pass"
+		"execution (execution manifest is incomplete) — unknown, never a pass"
 	if findings.Status != "unknown" || findings.Count == nil || *findings.Count != 1 || findings.Detail != wantFindings {
 		t.Fatalf("findings = %+v, want unknown 1 %q", findings, wantFindings)
 	}
@@ -204,6 +205,28 @@ func assertResumeGate(t *testing.T, flags *reportcore.Flags, findings bool) {
 	}
 	if !findings {
 		return
+	}
+	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
+		t.Fatalf("findings = %+v, want unknown", dim)
+	}
+}
+
+// TestCrossGatePartialExecutionResumeRefusesNeverPasses proves a stopped
+// execution whose gap --resume refuses — here a manifest whose plan binding no
+// longer matches — still reads its findings unknown, never "no open findings",
+// and marks the gate for a fresh run naming the gap instead of a resume.
+func TestCrossGatePartialExecutionResumeRefusesNeverPasses(t *testing.T) {
+	incompleteBundle(t, crossEntryJSON("informational", ""))
+	launcher := crossStore + "/launcher.json"
+	raw, err := os.ReadFile(launcher)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, launcher, strings.Replace(string(raw), `"plan_sha256":"`, `"plan_sha256":"0`, 1))
+	resp := runCross(t)
+	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Resume ||
+		resp.Gate.Restart != "execution manifest binding mismatch: plan_sha256" {
+		t.Fatalf("gate = %+v, want failed and marked for a fresh run\n%s", resp.Gate, dimSummary(resp))
 	}
 	if dim := dimOf(t, resp, "findings"); dim.Status != "unknown" {
 		t.Fatalf("findings = %+v, want unknown", dim)

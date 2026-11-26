@@ -282,6 +282,10 @@ type ReportGate struct { //nolint:govet // published wire order: passed before d
 	// dimensions were asked for. The adapter names that recovery; it is not
 	// published.
 	Resume bool `json:"-"`
+	// Restart names the gap of a two-finder execution that stopped short in a
+	// way `run --resume` refuses: the recovery is a fresh run. It is not
+	// published.
+	Restart string `json:"-"`
 }
 
 // GateDimension is one gate dimension's verdict. Detail is human text no

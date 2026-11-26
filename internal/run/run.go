@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -107,23 +108,41 @@ func personalAgents(env map[string]string) ([]config.PersonalAgent, *spend.Polic
 // as the process exit; every other refusal exits with verdict's own code.
 const codeAgentFailed = "agent-failed"
 
-// refuse renders a run refusal, preserving the agent's own exit code when the
-// service reports one (only the agent-failed refusal carries it).
 // verbRun is the verb's name in its envelope and its re-run lines.
 const verbRun = "run"
 
-// refuseRun renders the service's refusal. A refusal over an execution
-// `--resume` continues re-enters with --resume among verdict's own flags, so
-// the line it prints is the one that continues it.
+// refuseRun renders the service's refusal with the re-entry line that answers
+// it ([refusalReentry]).
 func refuseRun(r *cli.Runner, req *readcommon.Request, f *flags, request *core.RunRequest,
 	resp *core.RunResponse, ref *core.RefusalError,
 ) int {
-	if resp != nil && resp.Resumable && !f.resume {
-		r.Rentry = reentry(req, f, r.JSONMode, true, request.Environ)
-	}
+	r.Rentry = refusalReentry(req, f, r.JSONMode, request.Environ, resp, ref)
 	addPermissionHint(ref, req, f)
 	return refuse(r, resp, ref)
 }
+
+// codesRefusingResume are the refusals that say --resume cannot continue the
+// execution, so the line that answers them starts a fresh one.
+var codesRefusingResume = []string{"resume-drift", "cannot-resume"}
+
+// refusalReentry is the re-entry line a refusal prints: with --resume among
+// verdict's own flags for an execution the refusal says to continue, without
+// it for a --resume the refusal says cannot continue, and as typed otherwise.
+func refusalReentry(req *readcommon.Request, f *flags, jsonMode bool, environ []string,
+	resp *core.RunResponse, ref *core.RefusalError,
+) string {
+	resume := f.resume
+	switch {
+	case resp != nil && resp.Resumable:
+		resume = true
+	case slices.Contains(codesRefusingResume, ref.Code):
+		resume = false
+	}
+	return reentry(req, f, jsonMode, resume, environ)
+}
+
+// refuse renders a run refusal, preserving the agent's own exit code when the
+// service reports one (only the agent-failed refusal carries it).
 
 func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 	code := cli.ExitRefused
@@ -310,11 +329,12 @@ const redactedNote = "  # replace each '" + argvshape.RedactedValue + "' with th
 // reentry renders the re-run command as argv through [RenderCommand], so no
 // operand the operator typed reaches the line unquoted. resume puts --resume
 // before the `--` separator for an execution the refusal says to continue. The
-// agent arguments after `--` are kept, since --resume refuses a different
-// list, but shown by the launch display's rule: only the model and budget
-// options it can show safely survive, every other argument is redacted for the
-// operator to re-supply, and the line is scrubbed of the environment's
-// credentials and token shapes, because it lands in terminal and CI logs.
+// agent arguments after `--` keep their shape — flag names stay, since
+// --resume refuses a different list — but every value is redacted, model and
+// budget values included: the line is a recovery hint that lands in terminal
+// and CI logs, and any value can be a credential. It is also scrubbed of the
+// environment's credentials and token shapes, and a line that redacts
+// anything carries the note asking for the values back.
 func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ []string) string {
 	argv := append([]string{"verdict", verbRun, req.Repo, req.Pr}, flagArgv(f, resume)...)
 	if f.consent {
@@ -325,13 +345,34 @@ func reentry(req *readcommon.Request, f *flags, jsonMode, resume bool, environ [
 	}
 	line := RenderCommand(argv)
 	if len(f.pass) > 0 {
-		shape, shown := runcore.DisplayPassThrough(f.pass, environ)
-		line += " -- " + RenderCommand(shape)
-		if !shown {
-			line += redactedNote
+		line += " -- " + RenderCommand(passShape(f.pass))
+	}
+	line = envsecret.ScrubShapes(envsecret.ScrubValues(line, argvshape.SecretValues(environ)))
+	if strings.Contains(line, argvshape.RedactedValue) {
+		line += redactedNote
+	}
+	return line
+}
+
+// passShape keeps each agent argument's flag name and redacts every value: a
+// bare long flag (`--name`) or short flag (`-x`) stays, `--name=value` keeps
+// its name, and anything else — a flag's operand, a positional, a short flag
+// with its value attached — is redacted whole.
+func passShape(pass []string) []string {
+	shape := make([]string, len(pass))
+	for i, arg := range pass {
+		name, _, inline := strings.Cut(arg, "=")
+		long := strings.HasPrefix(arg, "--") && len(name) > 2
+		switch {
+		case long && inline:
+			shape[i] = name + "=" + argvshape.RedactedValue
+		case long, len(arg) == 2 && arg[0] == '-' && arg[1] != '-':
+			shape[i] = arg
+		default:
+			shape[i] = argvshape.RedactedValue
 		}
 	}
-	return envsecret.ScrubShapes(envsecret.ScrubValues(line, argvshape.SecretValues(environ)))
+	return shape
 }
 
 // flagArgv rebuilds the flags the operator typed, each one only when the

@@ -397,60 +397,97 @@ func assertSinglePrefsAgent(t *testing.T, defs []config.PersonalAgent) {
 }
 
 // TestReentryKeepsAgentArguments pins that the re-entry line carries the
-// arguments after `--` after --json, by the launch display's rule: the model
-// and budget options it can show survive, every other argument is redacted,
-// and the line says to re-supply them.
+// arguments after `--` after --json with their shape: every flag name stays,
+// every value — model and budget values included — is redacted, and the line
+// says to re-supply them.
 func TestReentryKeepsAgentArguments(t *testing.T) {
 	r, _, _ := testRunner()
 	parsed, _, done := parseFlags(r, []string{
 		"--agent", "claude", "--resume", "--",
-		"--model", "opus", "--max-turns", "12", "--permission-mode", "acceptEdits",
+		"--model", "opus", "--max-turns=12", "-p", "--permission-mode", "acceptEdits", "-mopus",
 	})
 	if done {
 		t.Fatalf("parsed=%+v", parsed)
 	}
-	want := `verdict run acme/app 42 --resume --agent claude --json -- --model opus --max-turns 12 ` +
-		`'***REDACTED***' '***REDACTED***'  # replace each '***REDACTED***' with the agent argument you passed`
+	want := `verdict run acme/app 42 --resume --agent claude --json -- --model '***REDACTED***' ` +
+		`'--max-turns=***REDACTED***' -p --permission-mode '***REDACTED***' '***REDACTED***'` +
+		`  # replace each '***REDACTED***' with the agent argument you passed`
 	if got := reentry(testReq(), &parsed, true, parsed.resume, nil); got != want {
 		t.Fatalf("re-entry = %s\nwant       %s", got, want)
 	}
 }
 
 // TestReentryNeverPrintsCredentials proves no credential an agent argument
-// carries reaches the re-entry line: a bearer header and a cookie, which no
-// secret-named flag announces, are redacted with the rest, and a token shape
-// hiding in an option the display would show is scrubbed from the line.
+// carries reaches the re-entry line, whatever flag carries it: a bearer header
+// and a cookie, which no secret-named flag announces, an opaque value and a
+// long-tailed key passed as the model, and a token shape the display would
+// once have shown.
 func TestReentryNeverPrintsCredentials(t *testing.T) {
 	t.Parallel()
 	const opaque = "opaque-session-9f8e7d6c5b4a"
-	const token = "ghp_0123456789abcdefghijABCDEFGHIJ0123456789"
+	const tail = "Zq81x7Yw2Vt9Ur4Sp6On3Ml5Kj0Ih8Gf"
 	for name, tc := range map[string]struct {
 		secret string
 		pass   []string
 	}{
 		"bearer header": {opaque, []string{"--header", "Authorization: Bearer " + opaque}},
 		"cookie":        {opaque, []string{"--cookie", "sid=" + opaque}},
-		"token shape":   {token, []string{"--model", token}},
+		"opaque model":  {opaque, []string{"--model", opaque}},
+		"sk-proj model": {tail, []string{"-m", "sk-proj-" + tail}},
+		"inline model":  {tail, []string{"--model=sk-proj-" + tail}},
 	} {
 		f := &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds, pass: tc.pass}
 		got := reentry(testReq(), f, false, false, nil)
-		if strings.Contains(got, tc.secret) || !strings.HasPrefix(got, "verdict run acme/app 42 --agent claude -- ") {
-			t.Errorf("%s: re-entry = %s, want the credential redacted", name, got)
+		if strings.Contains(got, tc.secret) || !strings.HasPrefix(got, "verdict run acme/app 42 --agent claude -- ") ||
+			!strings.HasSuffix(got, redactedNote) {
+			t.Errorf("%s: re-entry = %s, want the credential redacted and the note", name, got)
 		}
+	}
+}
+
+// TestReentryNotesEveryRedaction proves the re-supply note follows any
+// redaction the line carries, not only the agent arguments': an operand the
+// environment scrub redacted asks for its value back too.
+func TestReentryNotesEveryRedaction(t *testing.T) {
+	t.Parallel()
+	f := &flags{agent: "claude", recipe: "supersecretvalue1", timeout: DefaultTimeoutS, rounds: DefaultRounds}
+	got := reentry(testReq(), f, false, false, []string{"ANTHROPIC_API_KEY=supersecretvalue1"})
+	want := "verdict run acme/app 42 --agent claude --recipe ***REDACTED***" + redactedNote
+	if got != want {
+		t.Fatalf("re-entry = %s\nwant       %s", got, want)
 	}
 }
 
 // TestReentryResumesBeforeTheSeparator proves the re-entry line for an
 // execution the refusal says to continue carries --resume among verdict's own
 // flags, before `--`, where the shell hands it to verdict rather than the
-// agent.
+// agent; a bare agent flag carries no value, so nothing is redacted.
 func TestReentryResumesBeforeTheSeparator(t *testing.T) {
 	t.Parallel()
 	f := &flags{agent: "agy", timeout: DefaultTimeoutS, rounds: DefaultRounds, pass: []string{"--dangerously-skip-permissions"}}
-	want := `verdict run acme/app 42 --resume --agent agy -- '***REDACTED***'` +
-		`  # replace each '***REDACTED***' with the agent argument you passed`
-	if got := reentry(testReq(), f, false, true, nil); got != want {
+	resp := &core.RunResponse{Resumable: true}
+	ref := &core.RefusalError{Code: "review-insufficient"}
+	want := `verdict run acme/app 42 --resume --agent agy -- --dangerously-skip-permissions`
+	if got := refusalReentry(testReq(), f, false, nil, resp, ref); got != want {
 		t.Fatalf("re-entry = %s\nwant       %s", got, want)
+	}
+}
+
+// TestReentryDropsAResumeTheRefusalRejects proves a --resume the refusal says
+// cannot continue the execution re-enters without it, matching the message,
+// while any other refusal of a --resume run repeats it as typed.
+func TestReentryDropsAResumeTheRefusalRejects(t *testing.T) {
+	t.Parallel()
+	f := &flags{agent: "claude", resume: true, timeout: DefaultTimeoutS, rounds: DefaultRounds}
+	for code, want := range map[string]string{
+		"resume-drift":        "verdict run acme/app 42 --agent claude",
+		"cannot-resume":       "verdict run acme/app 42 --agent claude",
+		"review-insufficient": "verdict run acme/app 42 --resume --agent claude",
+	} {
+		got := refusalReentry(testReq(), f, false, nil, &core.RunResponse{}, &core.RefusalError{Code: code})
+		if got != want {
+			t.Errorf("%s: re-entry = %s, want %s", code, got, want)
+		}
 	}
 }
 

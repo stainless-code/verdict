@@ -3929,6 +3929,10 @@ its artifacts are gone, not only while it is live. While the execution is
 stopped short — its manifest is not complete and its gap is a failed phase or
 an aggregate plan or panel receipt the run never wrote — `gate` fails in every
 mode and names one recovery: the same `run` with `--resume`, then `record`.
+An execution that stopped short in a way `--resume` refuses (a binding
+mismatch, an invalid panel receipt) fails the same way and reads its findings
+`unknown` too, but its recovery is the same `run` without `--resume`, naming
+the gap.
 The `findings` dimension reads `unknown`, never "no open findings", counting
 the in-tier findings that await cross checks (zero when none does: a finding
 below the tier, outside the category, or absent is still unsettled), and the
@@ -4448,14 +4452,15 @@ still judged and the refusal names the failed finder's cause beside the gap.
 `no-review-artifact` prints the agent's permission flag from the table above as
 a re-run line; verdict never adds it to the argv itself. The `re-enter:` line
 repeats the invocation as argv quoted the way `--print` quotes it, so no
-operand runs as a second shell command. It keeps the arguments after `--`,
-since `--resume` refuses a different argument list, but shows them by the
-launch progress rule: only `--model`, `-m`, `--max-budget-usd`, `--max-cost`,
-and `--max-turns` with plain values survive, every other argument is
-`***REDACTED***`, a trailing shell comment asks for the values back, and the
-line is scrubbed of the environment's credentials and token shapes. A refusal
-over an execution `--resume` continues re-enters with `--resume` already among
-verdict's flags, before `--`. A `review-insufficient` refusal that lists no
+operand runs as a second shell command. It keeps the shape of the arguments
+after `--`, since `--resume` refuses a different argument list: a bare flag
+name (`--name`, `-x`) stays, `--name=value` keeps its name, and every value —
+model and budget values included — is `***REDACTED***`. The line is scrubbed of
+the environment's credentials and token shapes, and whenever it redacts
+anything a trailing shell comment asks for the values back. A refusal over an
+execution `--resume` continues re-enters with `--resume` already among
+verdict's flags, before `--`; a `resume-drift` or `cannot-resume` refusal
+re-enters without it. A `review-insufficient` refusal that lists no
 evidence problems names its one gap in the message, and its hint points there
 instead of at a list; the SDK's `RefusalError` carries the listed problems in
 `Problems`.

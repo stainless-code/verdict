@@ -2,13 +2,6 @@ package run
 
 import "strings"
 
-// DisplayPassThrough is the one rule every surface shows the agent arguments
-// by: only the model and budget options with plain values survive, every other
-// argument is [redactedValue], and the bool reports whether all of them did.
-func DisplayPassThrough(args, environ []string) ([]string, bool) {
-	return displayPassThrough(args, environ)
-}
-
 func displayPassThrough(args, environ []string) ([]string, bool) {
 	shape := make([]string, len(args))
 	for i := range shape {

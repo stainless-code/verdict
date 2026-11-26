@@ -133,7 +133,11 @@ func unverified(reason string) QuoteResult {
 	return QuoteResult{Status: StatusUnverified, Reason: reason}
 }
 
-// canonicalSide defaults an empty side to RIGHT and validates RIGHT/LEFT.
+// canonicalSide defaults an empty side to RIGHT and validates RIGHT/LEFT. The
+// empty default stays because a QuoteRequest cannot tell an absent side from an
+// empty one and a finding's absent side means RIGHT; a present empty side is
+// refused where it is parsed (record's side check, the cross check, and the
+// verdicts.json parser), never here.
 func canonicalSide(side string) (string, bool) {
 	if side == "" || side == SideRight {
 		return SideRight, true

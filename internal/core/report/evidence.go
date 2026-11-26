@@ -228,7 +228,7 @@ func pendingCrossDimension(st *state) (core.GateDimension, bool) {
 		return core.GateDimension{}, false
 	}
 	detail := pendingCrossDetail(pending)
-	if st.execution.Incomplete() {
+	if st.execution.Partial() {
 		detail += " (the execution is incomplete)"
 	}
 	return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(pending), Detail: detail}, true
