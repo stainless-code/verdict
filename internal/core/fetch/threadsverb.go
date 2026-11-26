@@ -3,7 +3,6 @@ package fetchcore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 
@@ -130,7 +129,7 @@ func RunThreads(ctx context.Context, req *ThreadsRequest) (*ThreadsResponse, *co
 		return nil, ref
 	}
 	next := threadsNext(data.Open)
-	st.human("next: " + next)
+	st.human(core.Msgf("next: %s", next))
 	return &ThreadsResponse{
 		Repo: req.Repo, Pr: req.Pr, At: data.FetchedAt, Next: next,
 		Warnings: st.warnings, Data: data,
@@ -175,7 +174,7 @@ func (st *threadsRun) write(
 	}
 	data := summarizeThreads(dir, provider, head, at, truncated, feed)
 	st.human(core.Msgf("» %s threads -> %s/threads.json", provider, dir))
-	st.human(fmt.Sprintf("done: %d threads (%d open, %d outdated) -> %s/threads.json",
+	st.human(core.Msgf("done: %d threads (%d open, %d outdated) -> %s/threads.json",
 		data.Threads, data.Open, data.Outdated, dir))
 	return data, nil
 }

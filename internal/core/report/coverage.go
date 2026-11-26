@@ -109,8 +109,10 @@ func incrementalHumanSuffix(sum *coverage.Summary) string {
 	return ""
 }
 
-// coverageHuman renders the two blocks: the summary line, then the gaps. A
-// chunked bundle names its chunk count and stops — chunks[] is its attestation.
+// coverageHuman renders the two blocks: the summary line, then the gaps, one
+// line each with its file path folded (core.Msgf), so the block keeps its own
+// lines and a path cannot add one. A chunked bundle names its chunk count and
+// stops — chunks[] is its attestation.
 func coverageHuman(sum *coverage.Summary, noReview bool) string {
 	var b strings.Builder
 	switch {
@@ -134,7 +136,7 @@ func coverageHuman(sum *coverage.Summary, noReview bool) string {
 	}
 	b.WriteString("\n" + msgCoverageUnread)
 	for _, g := range sum.Unattested {
-		b.WriteString("\n- " + g.File + ":" + g.Ranges)
+		b.WriteString(core.Msgf("\n- %s:%s", g.File, g.Ranges))
 	}
 	return b.String()
 }

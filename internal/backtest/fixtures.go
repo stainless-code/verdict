@@ -23,7 +23,7 @@ func runFixtures(ctx context.Context, r *cli.Runner, req readcommon.Request, f *
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	fmt.Fprint(r.Human, qualitycore.HumanReport(resp.Data)+"\n")
+	fmt.Fprintln(r.Human, qualitycore.HumanReport(resp.Data))
 	renderJSON(r, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }

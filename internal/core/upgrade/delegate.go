@@ -33,7 +33,7 @@ func delegate(ctx context.Context, req *Request, det *detection) (Response, *cor
 			Message: core.Msgf("%s is not on PATH; install it, then re-run: %s", argv[0], strings.Join(argv, " ")),
 		}
 	}
-	req.human("upgrade: running " + strings.Join(argv, " "))
+	req.human(core.Msgf("upgrade: running %s", strings.Join(argv, " ")))
 	runArgv := append([]string{path}, argv[1:]...)
 	code, err := req.run(ctx, runArgv)
 	resp := Response{Channel: det.Channel, Action: ActionDelegate, Command: argv, ExitCode: code}

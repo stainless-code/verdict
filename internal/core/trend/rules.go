@@ -1,9 +1,9 @@
 package trendcore
 
 import (
-	"fmt"
 	"slices"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -26,7 +26,7 @@ func ruleAudit(st *state, rows []row) *jq.Obj {
 	for _, id := range keys {
 		c := cells[id]
 		out.Set(id, c.wire())
-		st.human(fmt.Sprintf("rule %s: accepted=%d false-hits=%d judged=%d cited=%d",
+		st.human(core.Msgf("rule %s: accepted=%d false-hits=%d judged=%d cited=%d",
 			id, c.accepted, c.falseHits, c.accepted+c.falseHits, c.cited))
 	}
 	return out

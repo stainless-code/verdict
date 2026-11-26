@@ -68,7 +68,7 @@ func (st *state) runPromotion(
 			return ref
 		}
 	}
-	st.progressf("» test: %s (%d bytes)\n", destRel, len(artifact))
+	st.humanf("» test: %s (%d bytes)\n", destRel, len(artifact))
 	st.humanf("run: %s\n", promotedCmd)
 	st.next = fmt.Sprintf("promoted regression test at %s — run %s", destRel, promotedCmd)
 	st.data = &Data{

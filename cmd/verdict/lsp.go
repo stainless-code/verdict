@@ -104,7 +104,7 @@ func runLSP(ctx context.Context, r *cli.Runner, args []string, version string) i
 	}
 	err := server.ServeInterruptible(ctx, closableReader(os.Stdin), os.Stdout)
 	if err != nil && !errors.Is(err, lsp.ErrExitWithoutShutdown) && !server.Canceled() {
-		fmt.Fprintf(r.Diag, "lsp: %v\n", err)
+		fmt.Fprint(r.Diag, core.Msgf("lsp: %v\n", err))
 	}
 	return lspExitCode(server.Canceled(), err)
 }

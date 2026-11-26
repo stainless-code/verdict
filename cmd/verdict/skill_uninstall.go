@@ -110,34 +110,35 @@ func skillUninstallSuffix(r *cli.Runner, flags skillUninstallFlags) string {
 }
 
 func printSkillRemoval(r *cli.Runner, rm *skill.Removal) {
-	fmt.Fprintf(r.Human, "skill uninstall: %s v%s -> %s\n", rm.Name, rm.Version, rm.Target)
+	fmt.Fprint(r.Human, core.Msgf("skill uninstall: %s v%s -> %s\n", rm.Name, rm.Version, rm.Target))
 	printSkillRemovalOutcome(r, rm)
 }
 
 func printSkillRemovalSet(r *cli.Runner, set *skill.RemovalSet) {
-	fmt.Fprintf(r.Human, "skill uninstall: %s v%s -> %d agent(s): %s\n",
-		set.Name, set.Version, len(set.Targets), strings.Join(set.Agents, ", "))
+	fmt.Fprint(r.Human, core.Msgf("skill uninstall: %s v%s -> %d agent(s): %s\n",
+		set.Name, set.Version, len(set.Targets), strings.Join(set.Agents, ", ")))
 	for i := range set.Targets {
-		fmt.Fprintf(r.Human, "--- %s: %s (%s) ---\n",
-			set.Targets[i].Agent, set.Targets[i].Target, set.Targets[i].Status)
+		fmt.Fprint(r.Human, core.Msgf("--- %s: %s (%s) ---\n",
+			set.Targets[i].Agent, set.Targets[i].Target, set.Targets[i].Status))
 		printSkillRemovalOutcome(r, &set.Targets[i])
 	}
 }
 
 func printSkillRemovalOutcome(r *cli.Runner, rm *skill.Removal) {
 	if rm.Status == skill.StatusBlocked {
-		fmt.Fprintf(r.Human, "uninstall: blocked (no %s receipt; --force removes only verdict's payload files)\n", skill.ReceiptName)
+		fmt.Fprint(r.Human, core.Msgf(
+			"uninstall: blocked (no %s receipt; --force removes only verdict's payload files)\n", skill.ReceiptName))
 	}
 	if rm.DryRun {
-		fmt.Fprintf(r.Human, "dry-run: would remove %d file(s); nothing changed\n", len(rm.Would))
+		fmt.Fprint(r.Human, core.Msgf("dry-run: would remove %d file(s); nothing changed\n", len(rm.Would)))
 	} else {
-		fmt.Fprintf(r.Human, "uninstall: removed %d payload file(s)\n", len(rm.Removed))
+		fmt.Fprint(r.Human, core.Msgf("uninstall: removed %d payload file(s)\n", len(rm.Removed)))
 	}
 	if rm.ReceiptRemoved {
 		fmt.Fprintln(r.Human, "uninstall: receipt removed")
 	}
 	if len(rm.Kept) > 0 {
-		fmt.Fprintf(r.Human, "uninstall: kept %d foreign file(s)\n", len(rm.Kept))
+		fmt.Fprint(r.Human, core.Msgf("uninstall: kept %d foreign file(s)\n", len(rm.Kept)))
 	}
 }
 

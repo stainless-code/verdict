@@ -299,8 +299,8 @@ func parseSkillInstallFlags(r *cli.Runner, args []string) (skillInstallFlags, in
 }
 
 func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
-	fmt.Fprintf(r.Human, "skill install: %s v%s -> %s\n", plan.Name, plan.Version, plan.Target)
-	fmt.Fprintf(r.Human, "--- %s (%s) ---\n", plan.Target, plan.Status)
+	fmt.Fprint(r.Human, core.Msgf("skill install: %s v%s -> %s\n", plan.Name, plan.Version, plan.Target))
+	fmt.Fprint(r.Human, core.Msgf("--- %s (%s) ---\n", plan.Target, plan.Status))
 	printSkillTarget(r, plan)
 	if dry {
 		fmt.Fprintln(r.Human, "dry-run: nothing changed")
@@ -308,10 +308,10 @@ func printSkillPlan(r *cli.Runner, plan *skill.Plan, dry bool) {
 }
 
 func printSkillSet(r *cli.Runner, label string, det *skill.Detection, dry bool) {
-	fmt.Fprintf(r.Human, "%s: %s v%s -> %d agent(s): %s\n",
-		label, det.Name, det.Version, len(det.Plans), strings.Join(det.Agents, ", "))
+	fmt.Fprint(r.Human, core.Msgf("%s: %s v%s -> %d agent(s): %s\n",
+		label, det.Name, det.Version, len(det.Plans), strings.Join(det.Agents, ", ")))
 	for i := range det.Plans {
-		fmt.Fprintf(r.Human, "--- %s: %s (%s) ---\n", det.Plans[i].Agent, det.Plans[i].Target, det.Plans[i].Status)
+		fmt.Fprint(r.Human, core.Msgf("--- %s: %s (%s) ---\n", det.Plans[i].Agent, det.Plans[i].Target, det.Plans[i].Status))
 		printSkillTarget(r, &det.Plans[i])
 	}
 	if dry {
@@ -321,7 +321,7 @@ func printSkillSet(r *cli.Runner, label string, det *skill.Detection, dry bool) 
 
 func printSkillTarget(r *cli.Runner, plan *skill.Plan) {
 	for _, rel := range plan.Changed {
-		fmt.Fprintf(r.Human, "  + %s\n", rel)
+		fmt.Fprint(r.Human, core.Msgf("  + %s\n", rel))
 	}
 	switch plan.Status {
 	case skill.StatusKeep:
@@ -335,7 +335,7 @@ func printSkillTarget(r *cli.Runner, plan *skill.Plan) {
 
 func printSkillKeep(r *cli.Runner, plan *skill.Plan) {
 	if plan.ReceiptUpdated {
-		fmt.Fprintf(r.Human, "install: keep (receipt refreshed to v%s)\n", plan.Version)
+		fmt.Fprint(r.Human, core.Msgf("install: keep (receipt refreshed to v%s)\n", plan.Version))
 		return
 	}
 	fmt.Fprintln(r.Human, "install: keep (already up to date)")
@@ -343,17 +343,17 @@ func printSkillKeep(r *cli.Runner, plan *skill.Plan) {
 
 func printSkillBlocked(r *cli.Runner, plan *skill.Plan) {
 	if plan.TargetFile {
-		fmt.Fprintf(r.Human, "install: blocked (%s is not a directory — left untouched)\n", plan.Target)
+		fmt.Fprint(r.Human, core.Msgf("install: blocked (%s is not a directory — left untouched)\n", plan.Target))
 		return
 	}
-	fmt.Fprintf(r.Human,
-		"install: blocked (no %s receipt — foreign, left untouched; --force writes only verdict's payload files)\n",
-		skill.ReceiptName)
+	fmt.Fprint(r.Human,
+		core.Msgf("install: blocked (no %s receipt — foreign, left untouched; --force writes only verdict's payload files)\n",
+			skill.ReceiptName))
 }
 
 func printSkillWrote(r *cli.Runner, plan *skill.Plan) {
 	if plan.Written > 0 {
-		fmt.Fprintf(r.Human, "install: %d file(s) written (receipt v%s)\n", plan.Written, plan.ReceiptVersion)
+		fmt.Fprint(r.Human, core.Msgf("install: %d file(s) written (receipt v%s)\n", plan.Written, plan.ReceiptVersion))
 	}
 }
 

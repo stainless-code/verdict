@@ -514,7 +514,7 @@ func (req *Request) envMap() map[string]string {
 
 func (req *Request) warn(msg string) {
 	if req.Runtime != nil {
-		req.Diag("upgrade: " + msg)
+		req.Diag(core.Msgf("upgrade: %s", msg))
 	}
 }
 

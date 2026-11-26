@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -353,28 +354,28 @@ func (st *state) emitHuman(out *rollup, overlap *overlapRollup, corpus *corpusRo
 
 func (st *state) emitRollupHuman(out *rollup) {
 	if withheldTotal(out.withheld) > 0 {
-		st.human(fmt.Sprintf("withheld: exclusion=%d agent=%d below-severity=%d validation=%d",
+		st.human(core.Msgf("withheld: exclusion=%d agent=%d below-severity=%d validation=%d",
 			out.withheld["exclusion"], out.withheld["agent"], out.withheld["below-severity"], out.withheld["validation"]))
 	}
 	if out.bundles == 0 {
-		st.human("trend: " + st.req.Repo + " — no reviewed bundles (no .verdict/state/*/findings.json yet)")
+		st.human(core.Msgf("trend: %s — no reviewed bundles (no .verdict/state/*/findings.json yet)", st.req.Repo))
 		return
 	}
-	st.human(fmt.Sprintf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
+	st.human(core.Msgf("trend: %s — %d bundle(s), %d findings (open=%d addressed=%d closed=%d)",
 		st.req.Repo, out.bundles, out.findings, out.open, out.addressed, out.closed))
 	if out.bySource[sourceTool] > 0 {
-		st.human(fmt.Sprintf("by source: model %d, tool %d", out.bySource[sourceModel], out.bySource[sourceTool]))
+		st.human(core.Msgf("by source: model %d, tool %d", out.bySource[sourceModel], out.bySource[sourceTool]))
 	}
 	st.emitReviewHuman(out)
 	st.emitPeriodLines(out.periods)
-	st.human(fmt.Sprintf("tiers: critical=%d important=%d informational=%d untagged=%d",
+	st.human(core.Msgf("tiers: critical=%d important=%d informational=%d untagged=%d",
 		out.byTier[tierCritical], out.byTier[tierImportant], out.byTier[tierInformational], out.byTier[tierUntagged]))
-	st.human(fmt.Sprintf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
+	st.human(core.Msgf("status: open=%d addressed=%d wont-fix=%d false-positive=%d deferred=%d",
 		out.byStatus[statusOpen], out.byStatus[statusAddressed], out.byStatus[statusWontFix],
 		out.byStatus[statusFalsePositive], out.byStatus[statusDeferred]))
 	st.human(riskHumanLine(out.byRisk))
 	st.human(pairsHumanLine(out.byPair))
-	st.human("provenance: " + provenanceLine(out))
+	st.human(core.Msgf("provenance: %s", provenanceLine(out)))
 }
 
 func (st *state) emitPeriodLines(periods []period) {
@@ -384,7 +385,7 @@ func (st *state) emitPeriodLines(periods []period) {
 		if p.hasName {
 			name = p.name
 		}
-		st.human(fmt.Sprintf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
+		st.human(core.Msgf("%s  bundles=%d findings=%d open=%d addressed=%d closed=%d "+
 			"tiers critical=%d important=%d informational=%d untagged=%d",
 			name, p.bundles, p.findings, p.open, p.addressed, p.closed,
 			p.byTier[tierCritical], p.byTier[tierImportant], p.byTier[tierInformational], p.byTier[tierUntagged]))
@@ -565,7 +566,7 @@ func cleanCount(r *row) int {
 
 func (st *state) emitReviewHuman(out *rollup) {
 	if out.bundles > 0 {
-		st.human(fmt.Sprintf("reviews: %d (%d clean) — findings/review %.4f, clean rate %.1f%% (n=%d)", out.bundles, out.clean,
+		st.human(core.Msgf("reviews: %d (%d clean) — findings/review %.4f, clean rate %.1f%% (n=%d)", out.bundles, out.clean,
 			rateOrNil(out.findings, out.bundles), percentScale*float64(out.clean)/float64(out.bundles), out.bundles))
 	}
 }

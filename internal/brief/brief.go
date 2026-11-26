@@ -104,26 +104,27 @@ func FromRecord(rec *jq.Obj) *core.Brief {
 // Render writes the stored brief as the one block fix hands an agent — the
 // outcome, the affected sites, the approach, and the open questions — and
 // returns "" for a nil brief, so a finding without one prints nothing.
-// Handoff embeds this exact text, so the two verbs cannot diverge.
+// Handoff embeds this exact text, so the two verbs cannot diverge. A brief
+// is the agent's text, so core.Msgf folds each value to the line it sits in.
 func Render(b *core.Brief) string {
 	if b == nil {
 		return ""
 	}
 	var out strings.Builder
 	out.WriteString("brief:\n")
-	fmt.Fprintf(&out, "  outcome: %s\n", b.Outcome)
+	out.WriteString(core.Msgf("  outcome: %s\n", b.Outcome))
 	if len(b.Sites) > 0 {
-		fmt.Fprintf(&out, "  sites: %s\n", renderSites(b.Sites))
+		out.WriteString(core.Msgf("  sites: %s\n", renderSites(b.Sites)))
 	}
 	if b.Approach != "" {
-		fmt.Fprintf(&out, "  approach: %s\n", b.Approach)
+		out.WriteString(core.Msgf("  approach: %s\n", b.Approach))
 	}
 	if len(b.Questions) == 0 {
 		return out.String()
 	}
 	out.WriteString("  questions:\n")
 	for _, q := range b.Questions {
-		fmt.Fprintf(&out, "    - %s\n", q)
+		out.WriteString(core.Msgf("    - %s\n", q))
 	}
 	return out.String()
 }

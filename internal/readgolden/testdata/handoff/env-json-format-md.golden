@@ -18,9 +18,7 @@ fix: The retry path drops the first attempt.
 
 suggested code:
 
-```
-return retry(ctx, firstAttempt(ctx))
-```
+    return retry(ctx, firstAttempt(ctx))
 
 brief:
   outcome: Retry once before surfacing the error to the caller.

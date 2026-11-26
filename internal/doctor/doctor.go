@@ -47,7 +47,7 @@ func writeStamp(r *cli.Runner, now time.Time) {
 	if r.JSONMode {
 		return
 	}
-	fmt.Fprintf(r.Human, "doctor @ %s\n", core.NowUTC(now))
+	fmt.Fprint(r.Human, core.Msgf("doctor @ %s\n", core.NowUTC(now)))
 }
 
 // writeResponse renders one surface: the single envelope for --json, or the
@@ -63,7 +63,7 @@ func writeResponse(r *cli.Runner, resp *doctorcore.Response) {
 	if resp.Healthy {
 		verdict = "healthy"
 	}
-	fmt.Fprintf(r.Human, "Summary: %s — %d ok, %d warn, %d fail\n", verdict, ok, warn, fail)
+	fmt.Fprint(r.Human, core.Msgf("Summary: %s — %d ok, %d warn, %d fail\n", verdict, ok, warn, fail))
 }
 
 // runTime captures one clock read so the human run stamp and the envelope's

@@ -343,7 +343,7 @@ func (st *threadsRun) writeThreads(
 		if ref := postcore.ResolveThread(ctx, s.commander, provider, s.env, st.req.Repo, st.req.Pr, id); ref != nil {
 			return st.withWarnings(ref)
 		}
-		st.human("resolved " + id)
+		st.human(core.Msgf("resolved %s", id))
 	}
 	markResolved(feed, sel.resolved)
 	if err := threadscore.WriteFile(dir+suffixThreadsJSON, feed); err != nil {
@@ -368,7 +368,7 @@ func (st *threadsRun) writeThreads(
 			Message: core.Msgf("could not write %s/%s: %v", dir, threadscore.KeyResolveReceipt, err),
 		})
 	}
-	st.human(fmt.Sprintf("done: resolved %d thread(s) -> %s/%s",
+	st.human(core.Msgf("done: resolved %d thread(s) -> %s/%s",
 		len(sel.resolved), dir, threadscore.KeyResolveReceipt))
 	return nil
 }
@@ -391,15 +391,15 @@ func markResolved(feed *threadscore.File, ids []string) {
 // read the same before the first write.
 func (st *threadsRun) reportSelection(data *ThreadsResolveData) {
 	if data.DryRun {
-		st.human(fmt.Sprintf("dry-run: would resolve %d thread(s)", len(data.Resolved)))
+		st.human(core.Msgf("dry-run: would resolve %d thread(s)", len(data.Resolved)))
 	} else {
-		st.human(fmt.Sprintf("resolve: %d thread(s)", len(data.Resolved)))
+		st.human(core.Msgf("resolve: %d thread(s)", len(data.Resolved)))
 	}
 	for _, id := range data.Resolved {
-		st.human("  " + id)
+		st.human(core.Msgf("  %s", id))
 	}
 	for _, skip := range data.Skipped {
-		st.human(fmt.Sprintf("  skip %s (%s)", skip.ID, skip.Reason))
+		st.human(core.Msgf("  skip %s (%s)", skip.ID, skip.Reason))
 	}
 }
 

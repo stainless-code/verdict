@@ -341,7 +341,7 @@ func reportFindings(st *state) {
 		av, _ := m.Get("anchored")
 		pv, _ := m.Get(fieldPath)
 		hv, _ := m.Get("heading")
-		st.human(fmt.Sprintf("  %s  %s  %s  %s",
+		st.human(core.Msgf("  %s  %s  %s  %s",
 			readcommon.Prefix(jq.Interp(sv)),
 			jq.Interp(tv),
 			jq.Interp(av),

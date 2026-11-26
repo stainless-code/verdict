@@ -227,12 +227,12 @@ func (st *state) add(name, severity string, ok bool, detail string) {
 	st.checks = append(st.checks, Check{Name: name, Severity: severity, OK: ok, Detail: detail})
 	switch {
 	case ok:
-		st.human("ok   " + name + " — " + detail)
+		st.human(core.Msgf("ok   %s — %s", name, detail))
 	case severity == severityWarn:
-		st.human("WARN " + name + " — " + detail)
+		st.human(core.Msgf("WARN %s — %s", name, detail))
 		st.warnings = append(st.warnings, name+": "+detail)
 	default:
-		st.human("FAIL " + name + " — " + detail)
+		st.human(core.Msgf("FAIL %s — %s", name, detail))
 	}
 }
 

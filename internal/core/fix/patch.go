@@ -44,7 +44,7 @@ func (st *state) writePatch(ctx context.Context, dir string) (*string, *core.Ref
 			Message: core.Msgf("could not write %s: %v", path, err),
 		}
 	}
-	st.progressf("» patch: %s (%d bytes, %d file(s))\n",
+	st.humanf("» patch: %s (%d bytes, %d file(s))\n",
 		path, len(res.Stdout), patchFiles(res.Stdout))
 	return &path, nil
 }

@@ -812,12 +812,12 @@ func (st *state) preflight() {
 	nAddressed := recordcore.CountStatus(res.Entries, "addressed")
 	nTerminal := recordcore.CountStatus(res.Entries, "wont-fix") + recordcore.CountStatus(res.Entries, "false-positive")
 	commit := readcommon.ShortSHA(st.commitID)
-	st.human(fmt.Sprintf("preflight: body=%s (%d chars) | anchors: %d inline, %d moved | "+
+	st.human(core.Msgf("preflight: body=%s (%d chars) | anchors: %d inline, %d moved | "+
 		"findings: %d open, %d deferred, %d addressed, %d terminal | hunks indexed: %d | event=%s sha=%s",
 		res.Marker, len(st.body), res.NKept, res.NMoved, nOpen, nDeferred, nAddressed, nTerminal, res.HunkN, st.event, commit))
 	switch {
 	case nOpen > 0 && readcommon.ShortSHA(st.commitID) != "":
-		st.human(fmt.Sprintf("next: address open threads, then fetch --base-sha %s for the delta", readcommon.ShortSHA(st.commitID)))
+		st.human(core.Msgf("next: address open threads, then fetch --base-sha %s for the delta", readcommon.ShortSHA(st.commitID)))
 	case nOpen > 0:
 		st.human("next: address open threads")
 	default:
@@ -1088,6 +1088,6 @@ func (st *state) printProvenanceTable() {
 	}
 	truncated := provenance.MergeTruncated(st.provenanceReceipt, readcommon.BundleTruncation(st.dir))
 	for _, line := range provenance.FormatTable(st.provenanceReceipt, truncated) {
-		st.human(line)
+		st.human(core.Msgf("%s", line))
 	}
 }

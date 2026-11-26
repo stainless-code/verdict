@@ -159,7 +159,7 @@ func writePreview(out io.Writer, p *core.PreviewData) {
 // exits 3 (scripts treat it as broke), anything else exits 1.
 func refuseFetch(r *cli.Runner, err error) int {
 	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
-		fmt.Fprintf(r.Diag, "missing: %s\n", mt.Tool)
+		fmt.Fprint(r.Diag, core.Msgf("missing: %s\n", mt.Tool))
 		return cli.ExitRefused
 	}
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {

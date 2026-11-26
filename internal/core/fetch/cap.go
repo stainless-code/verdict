@@ -156,7 +156,7 @@ func printSplitCandidates(r *session, cands []any) {
 		if o, ok := c.(*jq.Obj); ok {
 			kind, _ := o.Get(keyKind)
 			sugg, _ := o.Get(keySuggestion)
-			fmt.Fprintf(r.Diag, "- [%v] %v\n", kind, sugg)
+			fmt.Fprint(r.Diag, core.Msgf("- [%v] %v\n", kind, sugg))
 		}
 	}
 }

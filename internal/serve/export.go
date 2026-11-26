@@ -38,7 +38,7 @@ func RunHTML(ctx context.Context, r *cli.Runner, args []string, version string) 
 	if err != nil {
 		return r.Refuse(err)
 	}
-	fmt.Fprintf(r.Human, "wrote %s\n", dest)
+	fmt.Fprint(r.Human, core.Msgf("wrote %s\n", dest))
 	return cli.ExitOK
 }
 

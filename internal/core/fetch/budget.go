@@ -316,7 +316,7 @@ func costEstimate(r *session, st *budgetState, res *config.Resolved) error {
 		return nil
 	}
 	st.estUSD = stat.mean
-	fmt.Fprintln(r.Human, estimateLine(st, tier)+st.basisNote())
+	fmt.Fprintln(r.Human, core.Msgf("%s%s", estimateLine(st, tier), st.basisNote()))
 	return nil
 }
 
@@ -333,7 +333,7 @@ func reportUnknownProjection(r *session, st *budgetState, tier string, tierRuns 
 	line := core.Msgf("» estimate: tier %s from %d comparable run(s) — projected cost unknown (none reported est_usd)",
 		tier, tierRuns)
 	if st.hasBudget {
-		line += fmt.Sprintf("; budget $%s (%s) unenforced on unknown", st.budgetUSD, st.budgetSrc)
+		line += core.Msgf("; budget $%s (%s) unenforced on unknown", st.budgetUSD, st.budgetSrc)
 	}
 	fmt.Fprintln(r.Human, line)
 }
@@ -346,9 +346,9 @@ func estimateLine(st *budgetState, tier string) string {
 		return line
 	}
 	if overBudget(st.estUSD, st.budgetUSD) {
-		return line + fmt.Sprintf(" — OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
+		return line + core.Msgf(" — OVER budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 	}
-	return line + fmt.Sprintf(" — within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
+	return line + core.Msgf(" — within budget $%s (%s)", st.budgetUSD, st.budgetSrc)
 }
 
 // recordBasis carries the measured split of the picked tier into the gate's

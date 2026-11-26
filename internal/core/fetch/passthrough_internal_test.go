@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/forgedline"
 )
 
 // forgingGH is a fake gh that fails every call with stderr carrying lines
@@ -56,4 +57,16 @@ func assertNoForgedLine(t *testing.T, out string) {
 			t.Errorf("forged line %q in human output:\n%s", line, out)
 		}
 	}
+}
+
+// TestBudgetSourceCannotForgeHumanLines pins the unknown-projection estimate
+// line: the budget's source label names a settings layer or file, and it
+// reads on that line.
+func TestBudgetSourceCannotForgeHumanLines(t *testing.T) {
+	t.Parallel()
+	var human bytes.Buffer
+	r := &session{Human: &human}
+	st := &budgetState{hasBudget: true, budgetUSD: "5", budgetSrc: forgedline.Value}
+	reportUnknownProjection(r, st, "standard", 2)
+	forgedline.AssertNoForgedLine(t, human.String(), "budget $5 ("+forgedline.Named+") unenforced")
 }

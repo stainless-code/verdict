@@ -131,7 +131,7 @@ func localScan(ctx context.Context, r *session, req *LocalRequest, f *LocalFlags
 // it read, the symlinks and special entries a walk never touches, and the file
 // count the bundle now carries.
 func scanWarnings(r *session, operands []string, files []scanFile, skips scanSkips) {
-	fmt.Fprintf(r.Human, "scan: %d file(s) from %s\n", len(files), strings.Join(operands, spaceSep))
+	fmt.Fprint(r.Human, core.Msgf("scan: %d file(s) from %s\n", len(files), strings.Join(operands, spaceSep)))
 	if skips.symlinks > 0 {
 		r.Warn(fmt.Sprintf("scan skipped %d symlink(s) — a scan never follows a link", skips.symlinks))
 	}

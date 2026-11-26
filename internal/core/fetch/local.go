@@ -45,7 +45,7 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest) (*c
 	}
 	r.iso = iso
 	defer iso.cleanup(ctx, r)
-	fmt.Fprintf(r.Human, "worktree: %s (temporary isolated checkout; removed on exit)\n", iso.dir)
+	fmt.Fprint(r.Human, core.Msgf("worktree: %s (temporary isolated checkout; removed on exit)\n", iso.dir))
 	return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 }
 
@@ -502,12 +502,13 @@ func localFinish(
 		return nil, "", err
 	}
 	shown := r.display(dir)
-	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
+	fmt.Fprint(r.Human, core.Msgf(
+		"done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total))
 	// The human next line names context.txt exactly as the envelope's next
 	// does: --context and --spec reach the agent through that file.
-	fmt.Fprintf(r.Human, "next: feed %s/procedure.md + "+
+	fmt.Fprint(r.Human, core.Msgf("next: feed %s/procedure.md + "+
 		"%s/source.json + %s%s%s to any agent; ask it to write %s/review.json\n",
-		dir, dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), contextFeed(dir), dir)
+		dir, dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), contextFeed(dir), dir))
 	return data, next, nil
 }
 

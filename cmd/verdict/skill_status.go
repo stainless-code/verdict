@@ -126,7 +126,7 @@ func finishSkillStatusSet(r *cli.Runner, set *skill.StatusSet, includeDiff bool)
 }
 
 func printSkillStatus(r *cli.Runner, st *skill.TargetStatus, includeDiff bool) {
-	fmt.Fprintf(r.Human, "skill status: %s v%s -> %s\n", st.Plan.Name, st.Plan.Version, st.Plan.Target)
+	fmt.Fprint(r.Human, core.Msgf("skill status: %s v%s -> %s\n", st.Plan.Name, st.Plan.Version, st.Plan.Target))
 	printSkillStatusTarget(r, st, includeDiff)
 	if !st.InSync {
 		fmt.Fprintln(r.Human, "status: drift (run `verdict skill install` to sync)")
@@ -134,11 +134,11 @@ func printSkillStatus(r *cli.Runner, st *skill.TargetStatus, includeDiff bool) {
 }
 
 func printSkillStatusSet(r *cli.Runner, set *skill.StatusSet, includeDiff bool) {
-	fmt.Fprintf(r.Human, "skill status: %s v%s -> %d agent(s): %s\n",
-		set.Name, set.Version, len(set.Targets), strings.Join(set.Agents, ", "))
+	fmt.Fprint(r.Human, core.Msgf("skill status: %s v%s -> %d agent(s): %s\n",
+		set.Name, set.Version, len(set.Targets), strings.Join(set.Agents, ", ")))
 	for i := range set.Targets {
-		fmt.Fprintf(r.Human, "--- %s: %s (%s) ---\n",
-			set.Targets[i].Plan.Agent, set.Targets[i].Plan.Target, set.Targets[i].Plan.Status)
+		fmt.Fprint(r.Human, core.Msgf("--- %s: %s (%s) ---\n",
+			set.Targets[i].Plan.Agent, set.Targets[i].Plan.Target, set.Targets[i].Plan.Status))
 		printSkillStatusChanged(r, &set.Targets[i], includeDiff)
 	}
 	if !set.InSync {
@@ -147,16 +147,16 @@ func printSkillStatusSet(r *cli.Runner, set *skill.StatusSet, includeDiff bool) 
 }
 
 func printSkillStatusTarget(r *cli.Runner, st *skill.TargetStatus, includeDiff bool) {
-	fmt.Fprintf(r.Human, "--- %s (%s) ---\n", st.Plan.Target, st.Plan.Status)
+	fmt.Fprint(r.Human, core.Msgf("--- %s (%s) ---\n", st.Plan.Target, st.Plan.Status))
 	printSkillStatusChanged(r, st, includeDiff)
 }
 
 func printSkillStatusChanged(r *cli.Runner, st *skill.TargetStatus, includeDiff bool) {
 	for _, rel := range st.Plan.Changed {
-		fmt.Fprintf(r.Human, "  ~ %s\n", rel)
+		fmt.Fprint(r.Human, core.Msgf("  ~ %s\n", rel))
 	}
 	if st.Plan.ReceiptVersion != "" && st.Plan.ReceiptVersion != st.Plan.Version {
-		fmt.Fprintf(r.Human, "receipt v%s -> embedded v%s\n", st.Plan.ReceiptVersion, st.Plan.Version)
+		fmt.Fprint(r.Human, core.Msgf("receipt v%s -> embedded v%s\n", st.Plan.ReceiptVersion, st.Plan.Version))
 	}
 	if !includeDiff {
 		return

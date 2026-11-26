@@ -5,7 +5,6 @@ package index
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -38,9 +37,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 			resp.Warnings, resp.Data.Wire())
 		return 0
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return 0
 }
 

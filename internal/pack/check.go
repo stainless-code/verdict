@@ -2,7 +2,6 @@ package pack
 
 import (
 	"context"
-	"fmt"
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
@@ -38,8 +37,6 @@ func runCheck(ctx context.Context, r *cli.Runner, read Request, path string) int
 		r.Emit(verbPack, "", "", resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return cli.ExitOK
 }

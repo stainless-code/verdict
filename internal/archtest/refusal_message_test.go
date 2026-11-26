@@ -63,9 +63,11 @@ func bad(v string) *Refusal { return &Refusal{Message: v} }
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const msgLocal = "local"
@@ -115,26 +117,48 @@ func progress(w io.Writer, v string) {
 	fmt.Fprintf(w, "» raw %s\n", v)
 	fmt.Println("» joined " + v)
 }
+
+type runner struct{ Human, Diag io.Writer }
+
+type svc struct{ r *runner }
+
+func (s *svc) human(line string) {}
+
+func lines(s *svc, r *runner, v string) {
+	s.human("constant")
+	s.human(core.Msgf("folded %s", v))
+	s.human("tagged:\n" + untrusted.Passthrough("  | ", v))
+	s.human(prebuilt(v))
+	fmt.Fprintln(r.Human, untrusted.Line(v))
+	s.human(fmt.Sprintf("raw %s", v))
+	s.human("joined " + v)
+	fmt.Fprintf(r.Diag, "raw %s\n", v)
+	fmt.Fprintln(r.Human, "joined "+v)
+}
 `)
 	sites, violations := scanRefusalMessages(t, root)
 	want := []string{
 		"internal/core/loop/loop.go:3 Message: v",
-		"internal/verb/verb.go:28 core.Msgf with a non-constant format: core.Msgf(format, v)",
-		"internal/verb/verb.go:32 ref.Message = v",
-		"internal/verb/verb.go:33 ref.Message += fmt.Sprintf(\" %s\", v)",
-		"internal/verb/verb.go:34 ref.Message assigned from a multi-value call",
-		"internal/verb/verb.go:36 Message: fmt.Sprintf(\"sprintf %s\", v)",
-		"internal/verb/verb.go:37 Message: \"concat \" + v",
-		"internal/verb/verb.go:38 Message: v",
-		"internal/verb/verb.go:39 Message: err.Error()",
-		"internal/verb/verb.go:40 core.Msgf with a non-constant format: core.Msgf(v)",
-		"internal/verb/verb.go:41 positional RefusalError literal",
-		"internal/verb/verb.go:43 refusef with a non-constant format: refusef(\"l\", v)",
-		"internal/verb/verb.go:44 core.Msgf format uses %w or a * width or precision: \"wrapped %w\"",
-		"internal/verb/verb.go:45 core.Msgf format uses %w or a * width or precision: \"%*d\"",
-		"internal/verb/verb.go:49 Message: \"unknown flag \" + v",
-		"internal/verb/verb.go:54 progress line formatted outside core.Msgf: fmt.Fprintf(w, \"» raw %s\\n\", v)",
-		"internal/verb/verb.go:55 progress line concatenates a value: \"» joined \" + v",
+		"internal/verb/verb.go:30 core.Msgf with a non-constant format: core.Msgf(format, v)",
+		"internal/verb/verb.go:34 ref.Message = v",
+		"internal/verb/verb.go:35 ref.Message += fmt.Sprintf(\" %s\", v)",
+		"internal/verb/verb.go:36 ref.Message assigned from a multi-value call",
+		"internal/verb/verb.go:38 Message: fmt.Sprintf(\"sprintf %s\", v)",
+		"internal/verb/verb.go:39 Message: \"concat \" + v",
+		"internal/verb/verb.go:40 Message: v",
+		"internal/verb/verb.go:41 Message: err.Error()",
+		"internal/verb/verb.go:42 core.Msgf with a non-constant format: core.Msgf(v)",
+		"internal/verb/verb.go:43 positional RefusalError literal",
+		"internal/verb/verb.go:45 refusef with a non-constant format: refusef(\"l\", v)",
+		"internal/verb/verb.go:46 core.Msgf format uses %w or a * width or precision: \"wrapped %w\"",
+		"internal/verb/verb.go:47 core.Msgf format uses %w or a * width or precision: \"%*d\"",
+		"internal/verb/verb.go:51 Message: \"unknown flag \" + v",
+		"internal/verb/verb.go:56 progress line formatted outside core.Msgf: fmt.Fprintf(w, \"» raw %s\\n\", v)",
+		"internal/verb/verb.go:57 progress line concatenates a value: \"» joined \" + v",
+		"internal/verb/verb.go:72 human line built outside core.Msgf: s.human(fmt.Sprintf(\"raw %s\", v))",
+		"internal/verb/verb.go:73 human line built outside core.Msgf: s.human(\"joined \" + v)",
+		"internal/verb/verb.go:74 human line built outside core.Msgf: fmt.Fprintf(r.Diag, \"raw %s\\n\", v)",
+		"internal/verb/verb.go:75 human line built outside core.Msgf: fmt.Fprintln(r.Human, \"joined \" + v)",
 	}
 	if !slices.Equal(violations, want) {
 		t.Fatalf("violations:\n%s\nwant:\n%s", strings.Join(violations, "\n"), strings.Join(want, "\n"))
@@ -360,6 +384,7 @@ func (s *messageScan) checkNode(scope funcScope, n ast.Node) bool {
 		s.checkAssign(scope.fileScope, n)
 	case *ast.CallExpr:
 		s.checkCall(scope, n)
+		s.checkHumanWrite(scope.fileScope, n)
 	case *ast.BinaryExpr:
 		return !s.checkProgressConcat(scope.fileScope, n)
 	default:
@@ -707,3 +732,143 @@ func (s *messageScan) flag(node ast.Node, what string) {
 }
 
 func (s *messageScan) text(expr ast.Expr) string { return types.ExprString(expr) }
+
+// untrustedPath is the package whose Line and Passthrough fold a value or a
+// block for a human stream.
+const untrustedPath = modulePath + "internal/untrusted"
+
+// humanSinks are the method names a service or an adapter writes one human
+// line through, and humanWriters the writer fields an adapter prints to.
+var (
+	humanSinks   = map[string]bool{"human": true, "Human": true, "diag": true, "Diag": true}
+	humanWriters = map[string]bool{"Human": true, "Diag": true, "human": true}
+)
+
+// checkHumanWrite flags a human-stream write whose line is built in place
+// from a value without a fold: a [fmt.Sprintf], a concatenation with a
+// variable, or an Fprintf with a verb. A line a builder function returned is
+// not visible here; its fold lives at the builder or the sink. internal/cli
+// owns the `error:` writer, whose message keeps its own lines by design.
+func (s *messageScan) checkHumanWrite(scope fileScope, call *ast.CallExpr) {
+	if scope.pkg == modulePath+"internal/cli" {
+		return
+	}
+	line, formatted := humanLine(call)
+	if line == nil {
+		return
+	}
+	if formatted && hasVerb(s.stringValue(scope, line)) || !formatted && !s.foldedLine(scope, line) {
+		s.flag(call, "human line built outside core.Msgf: "+s.text(call))
+	}
+}
+
+// humanLine is the line a human write carries, and whether it is an
+// Fprintf format rather than the finished line.
+func humanLine(call *ast.CallExpr) (ast.Expr, bool) {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return nil, false
+	}
+	if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "fmt" {
+		return sinkLine(sel, call), false
+	}
+	return writerLine(sel, call)
+}
+
+// sinkLine is the line a one-argument human sink method receives, or nil.
+func sinkLine(sel *ast.SelectorExpr, call *ast.CallExpr) ast.Expr {
+	if humanSinks[sel.Sel.Name] && len(call.Args) == 1 {
+		return call.Args[0]
+	}
+	return nil
+}
+
+// writerLine is the line an fmt print to a human writer carries, and
+// whether it is an Fprintf format.
+func writerLine(sel *ast.SelectorExpr, call *ast.CallExpr) (ast.Expr, bool) {
+	if len(call.Args) < 2 || !isHumanWriter(call.Args[0]) {
+		return nil, false
+	}
+	switch sel.Sel.Name {
+	case "Fprintf":
+		return call.Args[1], true
+	case "Fprint", "Fprintln":
+		if len(call.Args) == 2 {
+			return call.Args[1], false
+		}
+	}
+	return nil, false
+}
+
+func isHumanWriter(expr ast.Expr) bool {
+	sel, ok := expr.(*ast.SelectorExpr)
+	return ok && humanWriters[sel.Sel.Name]
+}
+
+// foldedLine reports whether a finished human line is not built in place
+// from an unfolded value: anything but a Sprintf call or a concatenation
+// passes, and a concatenation passes when each of its values is folded.
+func (s *messageScan) foldedLine(scope fileScope, line ast.Expr) bool {
+	switch line := ast.Unparen(line).(type) {
+	case *ast.CallExpr:
+		return !isFmtCall(line, "Sprintf")
+	case *ast.BinaryExpr:
+		if s.constant(scope, line) {
+			return true
+		}
+		return line.Op == token.ADD && s.foldedPart(scope, line.X) && s.foldedPart(scope, line.Y)
+	default:
+		return true
+	}
+}
+
+// foldedPart reports whether one operand of a concatenated human line is a
+// constant or a value folded by core.Msgf, untrusted.Line, or
+// untrusted.Passthrough.
+func (s *messageScan) foldedPart(scope fileScope, part ast.Expr) bool {
+	part = unwrapTrim(ast.Unparen(part))
+	if bin, ok := part.(*ast.BinaryExpr); ok && bin.Op == token.ADD {
+		return s.foldedPart(scope, bin.X) && s.foldedPart(scope, bin.Y)
+	}
+	if s.constant(scope, part) {
+		return true
+	}
+	call, ok := part.(*ast.CallExpr)
+	return ok && (s.isMsgf(scope, call.Fun) || isUntrustedFold(scope, call.Fun))
+}
+
+func isUntrustedFold(scope fileScope, fun ast.Expr) bool {
+	sel, ok := fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && scope.imports[pkg.Name] == untrustedPath && (sel.Sel.Name == "Line" || sel.Sel.Name == "Passthrough")
+}
+
+func isFmtCall(call *ast.CallExpr, name string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	pkg, ok := sel.X.(*ast.Ident)
+	return ok && pkg.Name == "fmt" && sel.Sel.Name == name
+}
+
+// unwrapTrim looks through a call to one of the strings package's Trim
+// functions to the text it trims, which
+// keeps whatever fold that text had.
+func unwrapTrim(expr ast.Expr) ast.Expr {
+	call, ok := expr.(*ast.CallExpr)
+	if !ok || len(call.Args) == 0 {
+		return expr
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return expr
+	}
+	if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "strings" && strings.HasPrefix(sel.Sel.Name, "Trim") {
+		return ast.Unparen(call.Args[0])
+	}
+	return expr
+}

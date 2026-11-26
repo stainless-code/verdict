@@ -409,7 +409,7 @@ func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outc
 	if mergedAt != "" {
 		merged = ", merged " + mergedAt
 	}
-	st.human(fmt.Sprintf("calibrate: %s#%s — review %s @ %s (%s), PR %s%s",
+	st.human(core.Msgf("calibrate: %s#%s — review %s @ %s (%s), PR %s%s",
 		st.req.Repo, st.req.Pr, reviewID, readcommon.ShortSHA(head0), stale, prState, merged))
 	for i := range outcomes {
 		o := &outcomes[i]
@@ -417,12 +417,12 @@ func (st *state) emitLiveHuman(reviewID, head0 string, live map[string]any, outc
 		if showKbSuffix(o.kb) {
 			kbText = kbRowText(o)
 		}
-		st.human(fmt.Sprintf("%s [%s] %s — %s%s", o.sig, o.result, o.locator, o.detail, kbText))
+		st.human(core.Msgf("%s [%s] %s — %s%s", o.sig, o.result, o.locator, o.detail, kbText))
 	}
-	st.human(fmt.Sprintf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)%s",
+	st.human(core.Msgf("precision: fixed=%d resolved-unfixed=%d open=%d unknown=%d (judged %d)%s",
 		p.fixed, p.resolvedUnfixed, p.open, p.unknown, p.judged, precisionCategorySuffix(&p)))
-	st.human(resolutionHuman(outcomes))
-	st.human(fmt.Sprintf("provenance: tool v%s prompts %s model %s",
+	st.human(core.Msgf("%s", resolutionHuman(outcomes)))
+	st.human(core.Msgf("provenance: tool v%s prompts %s model %s",
 		provOrUnmarked(dir, "tool_version"), provHashPrefix(dir), provOrUnmarked(dir, "model")))
 }
 

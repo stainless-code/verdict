@@ -447,7 +447,9 @@ func TestPreviewDryRunLines(t *testing.T) {
 	st.previewDryRun("---\n\n<!-- verdict-footer -->\n> Reviewed with Verdict")
 	want := []string{
 		"dry-run: payload NOT posted. body chars: 17, payload comment keys: path,line,body",
-		"footer preview:\n---\n\n<!-- verdict-footer -->\n> Reviewed with Verdict",
+		// The footer renders the repository's attribution template, so each
+		// of its lines is tagged and folded; a blank line drops.
+		"footer preview:\n  | ---\n  | <!-- verdict-footer -->\n  | > Reviewed with Verdict",
 		"diagram: rewritten — two blocks collapsed",
 	}
 	if strings.Join(human, "\n") != strings.Join(want, "\n") {

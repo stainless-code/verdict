@@ -107,16 +107,14 @@ func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcor
 // emit writes the per-dimension lines, then the envelope or the verdict.
 func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 	gate := resp.Gate
-	for _, line := range gateLines(gate) {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(gateLines(gate))
 	if r.JSONMode {
 		r.Emit("gate", req.Repo, req.Pr, resp.At, gateNext(gate),
 			resp.Warnings, gate.Wire())
 		return
 	}
 	if hint := gateHint(gate); hint != "" {
-		fmt.Fprintln(r.Human, "try: "+untrusted.Line(hint))
+		fmt.Fprintln(r.Human, core.Msgf("try: %s", hint))
 	}
 }
 

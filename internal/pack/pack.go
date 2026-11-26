@@ -5,7 +5,6 @@ package pack
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -105,9 +104,7 @@ func runList(ctx context.Context, r *cli.Runner, read Request) int {
 			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return cli.ExitOK
 }
 
@@ -128,9 +125,7 @@ func runSync(ctx context.Context, r *cli.Runner, read Request) int {
 			nil, resp.Data.Wire())
 		return cli.ExitOK
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return cli.ExitOK
 }
 
@@ -153,9 +148,7 @@ func runAdd(ctx context.Context, r *cli.Runner, read Request, source string) int
 			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return cli.ExitOK
 }
 
@@ -307,9 +300,7 @@ func renderTestResponse(r *cli.Runner, resp *packtest.TestResponse) {
 	if r.JSONMode {
 		r.Emit(verbPack, "", "", resp.At, resp.Next, r.Warnings, core.Wire(resp.Data))
 	} else {
-		for _, line := range resp.Human {
-			fmt.Fprintln(r.Human, line)
-		}
+		r.HumanLines(resp.Human)
 	}
 }
 

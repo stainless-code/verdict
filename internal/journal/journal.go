@@ -5,7 +5,6 @@ package journal
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -39,9 +38,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
-	for _, line := range resp.Human {
-		fmt.Fprintln(r.Human, line)
-	}
+	r.HumanLines(resp.Human)
 	return cli.ExitOK
 }
 

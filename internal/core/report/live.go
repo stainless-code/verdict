@@ -118,7 +118,7 @@ const errHeadBytes = 120
 
 func writeErrFile(st *state, path, stderr string) {
 	if err := atomic.WriteErrSidecar(path, []byte(stderr)); err != nil {
-		st.req.Diag(fmt.Sprintf("report: could not stage probe stderr in %s: %v", path, err))
+		st.req.Diag(core.Msgf("report: could not stage probe stderr in %s: %v", path, err))
 	}
 }
 

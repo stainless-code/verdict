@@ -5,7 +5,6 @@ package triage
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -32,7 +31,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Reque
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	fmt.Fprintln(r.Human, resp.Human)
+	r.HumanLine(resp.Human)
 	r.Emit("triage", r.Repo, r.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
