@@ -76,6 +76,7 @@
     "executionSource": {
       "type": "object",
       "properties": {
+        "merged": { "$ref": "#/$defs/sourceMerge" },
         "sig": { "type": "string" },
         "origins": {
           "type": "array",
@@ -95,6 +96,15 @@
         "index": { "type": "integer", "minimum": 0 }
       },
       "required": ["finding", "finder", "index"],
+      "additionalProperties": false
+    },
+    "sourceMerge": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "checker": { "enum": ["finder-1", "finder-2"] }
+      },
+      "required": ["sig", "checker"],
       "additionalProperties": false
     },
     "verifier": {

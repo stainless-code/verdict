@@ -28,7 +28,7 @@ var publishedSemantics = map[string]string{
 	// built-in secret floor records its own reason, and the published schema
 	// must name it.
 	"excluded.schema.json":    "1c7e6952ebc53b1d27760617e410383e5f0757dd430280add64dea1935502aa4",
-	"panel-plan.schema.json":  "0c07f920a8b899d683a8e344d1ed9d5ba707c745c8335ef9db88a94704ff4dd6",
+	"panel-plan.schema.json":  "db3d40e54a295475828201fe4fc4b7c550f943a9c914f3a1df4e06bd4855ac57",
 	"panel.schema.json":       "cc9b5ddf39449f0ab03c0152bcb00f26a9d6754d326511a9c345391d4d012c25",
 	"calibration.schema.json": "053bb6495d947663278044fa75308c89e0b72a93b8dbc0c0e84710cf17357f85",
 	// additive backtest.schema.json (new run-artifact document for the backtest
