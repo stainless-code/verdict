@@ -3,6 +3,8 @@ package readcommon
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
+	"slices"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -12,6 +14,7 @@ import (
 const (
 	codeMissingFindings = "missing-findings"
 	codeCorruptStore    = "corrupt-store"
+	codeBundleOutdated  = "bundle-outdated"
 	msgMissingFindings  = "missing %s/findings.json (run post or record first)"
 	msgCorruptStore     = "findings store %s/findings.json is unreadable or" +
 		" not a findings array (re-run post/record to rebuild, or restore the file)"
@@ -43,7 +46,36 @@ func LoadFindings(dir string) ([]any, error) {
 	if !ValidEntries(entries) {
 		return nil, corruptStore(dir)
 	}
+	if ref := OutdatedEntries(dir, entries); ref != nil {
+		return nil, ref
+	}
 	return entries, nil
+}
+
+// OutdatedEntries refuses a findings store an older verdict wrote: an entry
+// whose verification is the bare array of panel results (0.7.x and before)
+// rather than the {quote, panel} object. Nothing reads that shape, so the
+// store must be rebuilt by re-running the review, not read with its panel
+// silently dropped.
+func OutdatedEntries(dir string, entries []any) *core.RefusalError {
+	if !slices.ContainsFunc(entries, arrayVerification) {
+		return nil
+	}
+	return &core.RefusalError{Code: codeBundleOutdated, Message: fmt.Sprintf(
+		"findings store %s/findings.json was written by an older verdict (a finding's "+
+			"verification is a bare array) — re-run the review and record to rebuild it", filepath.ToSlash(dir))}
+}
+
+// arrayVerification reports whether one store entry carries the bare panel
+// array an older verdict wrote in place of the verification object.
+func arrayVerification(e any) bool {
+	m, ok := e.(*jq.Obj)
+	if !ok || m == nil {
+		return false
+	}
+	v, _ := m.Get("verification")
+	_, isArr := v.([]any)
+	return isArr
 }
 
 func corruptStore(dir string) *core.RefusalError {

@@ -79,6 +79,29 @@ func TestRunWithheldRefused(t *testing.T) {
 	}
 }
 
+// TestRunRefusesOutdatedStore pins the shared store gate: a findings.json an
+// older verdict wrote (a bare verification array) refuses bundle-outdated
+// before triage mutates it, and the store is untouched.
+func TestRunRefusesOutdatedStore(t *testing.T) {
+	t.Parallel()
+	root, path := withheldRoot(t)
+	old := `[{"sig":"` + testSig + `","status":"open","history":[],"verification":[{"model":"a","verdict":"refuted"}]}]`
+	if err := os.WriteFile(path, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := Run(t.Context(), withheldRequest(root, false))
+	if ref == nil || ref.Code != "bundle-outdated" {
+		t.Fatalf("Run = %v, want bundle-outdated", ref)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != old {
+		t.Errorf("findings = %s, want untouched", after)
+	}
+}
+
 // TestRunWithheldDefaultFlips pins the CLI default: without the opt-in, the
 // same withheld finding flips like any other.
 func TestRunWithheldDefaultFlips(t *testing.T) {

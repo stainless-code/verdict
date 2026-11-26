@@ -79,6 +79,7 @@ bind-required	try: address the cause above, then re-run the same command
 budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
 budget-unknown	try: address the cause above, then re-run the same command
 bundle-ambiguous	try: address the local bundle as local-<name>; the bare name resolves to a different directory than the discovered one
+bundle-outdated	try: re-create the bundle with this verdict — re-fetch a review bundle (verdict fetch, or verdict fetch-local), re-run the review and record, re-run a benchmark bundle — then re-run
 bundle-unreadable	try: make every bundle file a regular, readable file (a FIFO or device cannot be fingerprinted), then re-run the preview
 calibrate-failed	try: address the cause above, then re-run the same command
 canceled	try: address the cause above, then re-run the same command

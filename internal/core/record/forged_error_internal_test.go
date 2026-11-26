@@ -131,6 +131,7 @@ func TestCostNameValuesCannotForgeErrorLine(t *testing.T) {
 		writeCostFile(t, filepath.Join(dir, readcommon.CostFile), `{"models":[{"input":1}]}`)
 		writeCostFile(t, filepath.Join(dir, "run.json"),
 			`{"schema_version":"1","name":"x","base_sha":"abc","captured_at":"2026-01-01T00:00:00Z",
+			  "requires_evidence":true,"inputs_sha256":"sealed",
 			  "resolved":{
 			    "defaults":{"values":{"panel":["lead"]}},
 			    "files":[{"path":"`+forgedJSON+`","defaults":{"values":{"panel":["other"]}}}]}}`)

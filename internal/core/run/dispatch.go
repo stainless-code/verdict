@@ -201,7 +201,7 @@ func priceRow(row any, launchID, usd, source string) {
 func (st *state) spawnPolicy(dir string) (spend.Policy, *core.RefusalError) {
 	captured, _, err := config.ReadRunState(dir)
 	if err != nil {
-		return spend.Policy{}, st.refuse(codeRecordFailed, err.Error())
+		return spend.Policy{}, captureRefusal(err)
 	}
 	switch {
 	case captured != nil && captured.Resolved != nil:
