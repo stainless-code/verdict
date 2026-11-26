@@ -541,7 +541,8 @@ func LoadPersonal(path string) (*PersonalSettings, *core.RefusalError) {
 	if err != nil {
 		return nil, refuse(CodeBadConfig, "could not read personal settings at %s", path)
 	}
-	return ParsePersonal(raw)
+	settings, ref := ParsePersonal(raw)
+	return settings, namedRefusal("settings file "+path, ref)
 }
 
 // personalSections are the settings sections this parser owns.

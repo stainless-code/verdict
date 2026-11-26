@@ -122,3 +122,50 @@ func TestRunWithheldDefaultFlips(t *testing.T) {
 		t.Errorf("findings = %s, want the false-positive flip", raw)
 	}
 }
+
+// TestRunCreditSkipsBundledPackRule proves the triage flip end to end: a
+// finding citing a pack rule the bundle's kb-recall.json lists (no store row)
+// credits nothing and warns nothing, while its cite of a live store rule
+// still credits.
+func TestRunCreditSkipsBundledPackRule(t *testing.T) {
+	t.Parallel()
+	root, path := withheldRoot(t)
+	store := filepath.Join(root, ".verdict", "kb.jsonl")
+	writeTestFile(t, path, `[{"sig":"`+testSig+`","status":"open","history":[],"kb":["sec-injection","rec-rule"]}]`)
+	writeTestFile(t, filepath.Join(filepath.Dir(path), "kb-recall.json"),
+		`[{"id":"sec-injection","score":0.5,"hits":0,"judged":0,`+
+			`"severity":"critical","source":"pack:verdict/security@1.1.0"}]`)
+	writeTestFile(t, store, `{"id":"rec-rule","status":"active","hits":0,"false_hits":0,"judged":0}`+"\n")
+	req := withheldRequest(root, false)
+	req.Status = "addressed"
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if len(resp.Warnings) != 0 {
+		t.Errorf("warnings = %q, want none", resp.Warnings)
+	}
+	findings := readTestFile(t, path)
+	if !strings.Contains(findings, `"rule": "rec-rule"`) || strings.Contains(findings, `"rule": "sec-injection"`) {
+		t.Errorf("findings = %s, want kb_credit for rec-rule only", findings)
+	}
+	if got := readTestFile(t, store); !strings.Contains(got, `"hits":1`) || strings.Contains(got, "sec-injection") {
+		t.Errorf("kb.jsonl = %s, want rec-rule credited and no sec-injection row", got)
+	}
+}
+
+func writeTestFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}

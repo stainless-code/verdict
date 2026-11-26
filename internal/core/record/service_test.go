@@ -2,6 +2,7 @@ package recordcore_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"slices"
 	"strings"
@@ -202,6 +203,138 @@ func TestRunRecordKBCite(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(c2.Warnings, "\n"), "ignoring unknown kb rule 'nope-missing'") {
 		t.Errorf("warns = %v", c2.Warnings)
+	}
+}
+
+// bundledSecInjection is the kb-recall.json fetch writes when it recalls the
+// built-in sec-injection pack rule into kb.txt.
+const bundledSecInjection = `[{"id":"sec-injection","score":0.5,"hits":0,"judged":0,` +
+	`"severity":"critical","source":"pack:verdict/security@1.1.0"}]` + "\n"
+
+// findingKB reads the single finding's kb cites from the bundle's
+// findings.json, comma-joined.
+func findingKB(t *testing.T, slug string) string {
+	t.Helper()
+	raw, err := os.ReadFile(".verdict/state/" + slug + "/findings.json")
+	if err != nil {
+		t.Fatalf("read findings.json: %v", err)
+	}
+	var entries []struct {
+		KB []string `json:"kb"`
+	}
+	if err := json.Unmarshal(raw, &entries); err != nil || len(entries) != 1 {
+		t.Fatalf("findings.json = %s (%v), want one entry", raw, err)
+	}
+	return strings.Join(entries[0].KB, ",")
+}
+
+// TestRunRecordKBBundledPackCite proves a pack rule fetch recalled into the
+// bundle's kb.txt is a known cite: it stays on the finding with no warning,
+// with or without a store, while an id the bundle never listed still warns.
+func TestRunRecordKBBundledPackCite(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		store string
+	}{
+		{"no store", ""},
+		{"store without the rule", `{"id":"rec-rule","status":"active"}` + "\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundle(t, "local-kbp", reviewJSON(`,"kb":["sec-injection","nope-missing"]`))
+			testkit.WriteFile(t, ".verdict/state/local-kbp/kb-recall.json", bundledSecInjection)
+			if tc.store != "" {
+				testkit.WriteFile(t, ".verdict/kb.jsonl", tc.store)
+			}
+			checkBundledPackCite(t)
+		})
+	}
+}
+
+// TestRunRecordKBRetiredStoreRowBeatsBundle proves the store decides first:
+// a rule the store retired stays retired even when the bundle's manifest
+// lists a pack rule with the same id, so the cite warns and drops.
+func TestRunRecordKBRetiredStoreRowBeatsBundle(t *testing.T) {
+	bundle(t, "local-kbr", reviewJSON(`,"kb":["sec-injection"]`))
+	testkit.WriteFile(t, ".verdict/state/local-kbr/kb-recall.json", bundledSecInjection)
+	testkit.WriteFile(t, ".verdict/kb.jsonl", `{"id":"sec-injection","status":"retired"}`+"\n")
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kbr")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !slices.Contains(c.Warnings, "ignoring retired kb rule 'sec-injection' (restore it before citing)") {
+		t.Errorf("warnings = %q, want the retired-rule warning", c.Warnings)
+	}
+	if got := findingKB(t, "local-kbr"); got != "" {
+		t.Errorf("finding kb = %q, want the retired cite dropped", got)
+	}
+}
+
+// TestRunRecordKBWarnsAnUnreadableManifestOnce proves a bundle whose kb.txt
+// has no readable kb-recall.json says so once, at the first cite that falls
+// through to unknown, instead of dropping pack cites silently; a bundle with
+// neither file stays quiet.
+func TestRunRecordKBWarnsAnUnreadableManifestOnce(t *testing.T) {
+	const gap = "kb recall manifest .verdict/state/local-kbg/kb-recall.json is missing or unreadable — " +
+		"pack rules in kb.txt cannot be recognized as cites (re-fetch the bundle)"
+	for _, tc := range []struct {
+		name  string
+		kbTxt bool
+		want  int
+	}{
+		{"kb.txt without manifest", true, 1},
+		{"neither file", false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, warns := recordGapWarnings(t, tc.kbTxt, gap); got != tc.want {
+				t.Errorf("gap warning count = %d, want %d: %q", got, tc.want, warns)
+			}
+		})
+	}
+}
+
+// recordGapWarnings records local-kbg (with or without a kb.txt and never a
+// manifest) and counts the gap warning, returning every warning too.
+func recordGapWarnings(t *testing.T, kbTxt bool, gap string) (int, []string) {
+	t.Helper()
+	bundle(t, "local-kbg", reviewJSON(`,"kb":["sec-injection","nope-missing"]`))
+	if kbTxt {
+		testkit.WriteFile(t, ".verdict/state/local-kbg/kb.txt", "# kb recall\n# sec-injection — **/*.go\nbody\n")
+	}
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kbg")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	return countOf(c.Warnings, gap), c.Warnings
+}
+
+// countOf counts the exact occurrences of want in lines.
+func countOf(lines []string, want string) int {
+	n := 0
+	for _, line := range lines {
+		if line == want {
+			n++
+		}
+	}
+	return n
+}
+
+// checkBundledPackCite records local-kbp and pins the outcome: the bundled
+// pack cite is kept without a warning, the unknown cite warns.
+func checkBundledPackCite(t *testing.T) {
+	t.Helper()
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-kbp")); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if got := findingKB(t, "local-kbp"); got != "sec-injection" {
+		t.Errorf("finding kb = %q, want sec-injection", got)
+	}
+	warns := strings.Join(c.Warnings, "\n")
+	if strings.Contains(warns, "sec-injection") {
+		t.Errorf("bundled pack cite warned: %v", c.Warnings)
+	}
+	if !strings.Contains(warns, "ignoring unknown kb rule 'nope-missing'") {
+		t.Errorf("unknown cite did not warn: %v", c.Warnings)
 	}
 }
 
