@@ -70,7 +70,8 @@ func (c *coordinator) planCross(index int) (crossPlan, *core.RefusalError) {
 	}
 	binding := cloneUnionRow(c.binding)
 	binding.Delete(crossResults)
-	request := jq.NewObj(crossChecker, checker, "binding", binding, "candidates", batch)
+	request := jq.NewObj(crossChecker, checker, "binding", binding, "candidates", batch,
+		"own_findings", ownFindings(c.plan, c.review, checker))
 	if ref := writeCoordinator(output, "request.json", request); ref != nil {
 		return crossPlan{}, ref
 	}
@@ -201,7 +202,9 @@ func crossDirective(dir, output, artifact string) string {
 		"Check only incoming candidates. Do not discover, rewrite or delete findings. Return {\"results\":[...]}; "+
 		"each row has sig, verdict (confirmed, refuted or insufficient), evidence, and quote {path,side,line,text}, "+
 		"where side is "+crossSides+". "+
-		"Confirmed/refuted require an exact code quote. Write only %s. Work in this fresh process; "+
+		"Confirmed/refuted require an exact code quote. When a confirmed candidate is the same defect as one of "+
+		"your own_findings at overlapping or adjacent lines of the same file, add same_as with that finding's sig. "+
+		"Write only %s. Work in this fresh process; "+
 		"do not spawn sub-agents, post, merge or push.\n", dir, filepath.Join(output, "request.json"), artifact)
 }
 
@@ -268,7 +271,7 @@ func crossRows(raw []byte) ([]any, []core.Problem) {
 // parser every later reader of verdicts.json uses.
 func (c *coordinator) parseCross(rows []any) (*panelcore.File, []core.Problem) {
 	receipt := cloneUnionRow(c.binding)
-	receipt.Set(crossResults, rows)
+	receipt.Set(crossResults, withoutSameAs(rows))
 	file, warnings, err := panelcore.Parse(coordinatorBytes(receipt),
 		jq.StrOf(readcommon.FieldOf(c.binding, "head_sha")), panelcore.Findings(c.review))
 	if err != nil {
@@ -278,9 +281,25 @@ func (c *coordinator) parseCross(rows []any) (*panelcore.File, []core.Problem) {
 	var problems []core.Problem
 	for _, warning := range warnings {
 		problems = append(problems, crossProblem(crossResultsPath, core.ProblemCodeUnknownField, warning,
-			"remove the key: a row carries only sig, verdict, evidence, quote and checker"))
+			"remove the key: a row carries only sig, verdict, evidence, quote, checker and same_as"))
 	}
 	return file, problems
+}
+
+// withoutSameAs copies the rows the panel receipt parser reads: same_as is a
+// cross-phase field the coordinator consumes before the aggregate receipt is
+// written, so the parser never sees it.
+func withoutSameAs(rows []any) []any {
+	out := make([]any, 0, len(rows))
+	for _, row := range rows {
+		obj, ok := row.(*jq.Obj)
+		if ok {
+			obj = cloneUnionRow(obj)
+			obj.Delete(crossSameAs)
+		}
+		out = append(out, obj)
+	}
+	return out
 }
 
 // crossResultsPath is the JSONPath of the answer's rows.
@@ -349,9 +368,26 @@ func assignCrossRow(path string, row any, checker string, expected map[string]bo
 			"leave checker out, or set it to "+strconv.Quote(checker))
 		return &p
 	}
+	if !sameAsShape(obj) {
+		p := crossProblem(path+"."+crossSameAs, core.ProblemCodeWrongType, "same_as must be a string or null",
+			"set same_as to the sig of one of your own_findings, or leave it out")
+		return &p
+	}
 	delete(expected, signature)
 	obj.Set(crossChecker, checker)
 	return nil
+}
+
+// sameAsShape accepts a row whose same_as is absent, null, or a string. Whether
+// the named finding may merge is the coordinator's call after the phase; a
+// value of another type is a malformed answer the repair round can fix.
+func sameAsShape(row *jq.Obj) bool {
+	value, named := row.Get(crossSameAs)
+	if !named || value == nil {
+		return true
+	}
+	_, isString := value.(string)
+	return isString
 }
 
 // crossRowProblems checks the fields a repair can name exactly: the verdict
