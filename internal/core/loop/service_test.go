@@ -839,6 +839,10 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"an empty argument":  func(r *Request) { r.AgentArgs = []string{""} },
 		"empty after model":  func(r *Request) { r.AgentArgs = []string{"--model", "opus", ""} },
 		"claude has no -m":   func(r *Request) { r.AgentArgs = []string{"-m", "opus"} },
+		// No row's docs cite the inline form; pi ignores it and would run its
+		// default model while pricing records the named one.
+		"inline model":    func(r *Request) { r.AgentArgs = []string{"--model=opus"} },
+		"pi inline model": func(r *Request) { r.Agent, r.AgentArgs = "pi", []string{"--model=sonnet"} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -859,9 +863,8 @@ func TestLoopAcceptsTheModelFlag(t *testing.T) {
 		args  []string
 	}{
 		{agent: "claude", args: []string{"--model", "opus"}},
-		{agent: "claude", args: []string{"--model=opus"}},
 		{agent: "codex", args: []string{"-m", "gpt-5"}},
-		{agent: "codex", args: []string{"-m=gpt-5"}},
+		{agent: "pi", args: []string{"--model", "sonnet"}},
 	} {
 		h := newHarness(t, 1)
 		h.req.Print, h.req.Agent, h.req.AgentArgs = true, tc.agent, tc.args

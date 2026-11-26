@@ -92,6 +92,19 @@ In scope (highest priority first):
   `bwrap`, which can only protect paths that already exist (git honors it
   only when it runs in that subdirectory, as an editor or repository
   scanner that discovers nested repositories may).
+- `run --agent` and `loop` review launches: the shell denial every review
+  launch carries unless `--allow-shell` is set (`claude`, `pi`, `bob`; the
+  operator may not pass the flag the denial uses), and `claude`'s review write
+  grant, scoped to the launch's own directory inside the bundle, with the
+  pre-launch walk that refuses a symlink, a non-regular entry, or (on unix) a
+  hard-linked file in the bundle. A review launch that runs without the denial,
+  or a `claude` review write that lands outside the bundle, is a
+  vulnerability. **Only `claude`'s review writes are confined to the bundle:**
+  every other agent keeps its own edit and write tools during review, so a
+  prompt-injected review on those agents can edit the checkout. That is the
+  documented limitation, not a finding — review an untrusted pull request with
+  them in a disposable checkout, or render the command with `run --print` and
+  run the agent yourself.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

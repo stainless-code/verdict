@@ -149,126 +149,63 @@ func TestDiscoveryRestrictionResolution(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			checkRestriction(t, launchRow(t, tc.row), nil, false, tc.want)
+			checkRestriction(t, launchRow(t, tc.row), false, tc.want)
 		})
 	}
-	checkRestriction(t, launchRow(t, "claude"), nil, true, nil)
+	checkRestriction(t, launchRow(t, "claude"), true, nil)
 }
 
-// TestDiscoveryRestrictionSurvivesEveryOperatorFlag pins the unconditional
-// shell denial: no operator flag after `--` drops it — not an allow or deny
-// list, not a whole tool set (claude --tools, pi --tools/-t/--no-tools), not
-// pi's additive `--tools +codemode` — only --allow-shell does. An operator
-// spelling of the restriction's own denylist flag carries the merged denial
-// instead, so the restriction is not repeated beside it.
-func TestDiscoveryRestrictionSurvivesEveryOperatorFlag(t *testing.T) {
-	t.Parallel()
-	claude, pi, bob := launchRow(t, "claude"), launchRow(t, "pi"), launchRow(t, "bob")
-	keptClaude := []string{"--disallowedTools=Bash,PowerShell"}
-	keptPi := []string{"--exclude-tools", "bash,powershell"}
-	for _, tc := range []struct {
-		def  *agentcatalog.Launch
-		pass []string
-		want []string
-	}{
-		{def: claude, pass: []string{"--disallowedTools", "WebFetch"}, want: keptClaude},
-		{def: claude, pass: []string{"--allowedTools=mcp__x"}, want: keptClaude},
-		{def: claude, pass: []string{"--tools", ""}, want: keptClaude},
-		{def: claude, pass: []string{"--model", "opus", "--tools=Bash,Edit"}, want: keptClaude},
-		{def: pi, pass: []string{"-t", "read,bash"}, want: keptPi},
-		{def: pi, pass: []string{"--no-tools"}, want: keptPi},
-		{def: pi, pass: []string{"--no-builtin-tools"}, want: keptPi},
-		{def: pi, pass: []string{"--tools", "+codemode"}, want: keptPi},
-		{def: pi, pass: []string{"--tools", "-write"}, want: keptPi},
-		{def: bob, pass: merged(t, bob, "--disable-tool-groups", "mcp")},
-	} {
-		checkRestriction(t, tc.def, tc.pass, false, tc.want)
-	}
-	checkRestriction(t, claude, []string{"--tools", "Bash"}, true, nil)
-}
-
-// merged is mergeDenials over pass, failing on a refusal.
-func merged(t *testing.T, def *agentcatalog.Launch, pass ...string) []string {
-	t.Helper()
-	got, bad := mergeDenials(def, pass, false)
-	if bad != "" {
-		t.Fatalf("mergeDenials(%q) refused %q", pass, bad)
-	}
-	return got
-}
-
-// TestMergeDenialsKeepsTheShellDenial pins the additive denylist: the
-// operator's own spelling of the restriction's flag carries the restriction's
-// value too, in the spaced, inline, and short forms, every position kept; an
-// operand that only looks like the flag, --allow-shell, and a row without a
-// mergeable restriction are left as they are.
-func TestMergeDenialsKeepsTheShellDenial(t *testing.T) {
+// TestOwnedFlagRefusesEverySpelling pins the decision: on a review launch the
+// operator may not pass the flag the row's shell denial uses, in any
+// spelling, position, or operand — exact, `=`-joined, short, after `--`, or
+// inside another option's value. --allow-shell hands the flag back, and a
+// row whose denial uses its own argument (claude) owns no operator flag.
+func TestOwnedFlagRefusesEverySpelling(t *testing.T) {
 	t.Parallel()
 	pi, bob, claude := launchRow(t, "pi"), launchRow(t, "bob"), launchRow(t, "claude")
 	for _, tc := range []struct {
 		def        *agentcatalog.Launch
-		pass, want []string
+		want       string
+		pass       []string
 		allowShell bool
 	}{
-		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: []string{"--exclude-tools", "bash,powershell,markdown"}},
-		{def: pi, pass: []string{"--model", "m", "-xt=grep"}, want: []string{"--model", "m", "-xt=bash,powershell,grep"}},
-		{
-			def: pi, pass: []string{"-xt", "a", "--exclude-tools", "b"},
-			want: []string{"-xt", "bash,powershell,a", "--exclude-tools", "bash,powershell,b"},
-		},
-		{def: bob, pass: []string{"--disable-tool-groups", "mcp"}, want: []string{"--disable-tool-groups", "execute,mcp,mcp"}},
-		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: []string{"--exclude-tools", "markdown"}, allowShell: true},
-		{def: claude, pass: []string{"--disallowedTools", "WebFetch"}, want: []string{"--disallowedTools", "WebFetch"}},
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--exclude-tools=markdown"}, want: "--exclude-tools=markdown"},
+		{def: pi, pass: []string{"--model", "m", "-xt=grep"}, want: "-xt=grep"},
+		{def: pi, pass: []string{"--", "--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--append-system-prompt", "--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--append-system-prompt=use --exclude-tools x"}, want: "--append-system-prompt=use --exclude-tools x"},
+		{def: bob, pass: []string{"--disable-tool-groups", "mcp"}, want: "--disable-tool-groups"},
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, allowShell: true},
+		{def: pi, pass: []string{"--model", "m", "--tools", "+codemode"}},
+		{def: claude, pass: []string{"--disallowedTools", "WebFetch", "--tools", "Bash"}},
 	} {
-		if got := merged(t, tc.def, tc.pass...); tc.allowShell {
-			if got, _ := mergeDenials(tc.def, tc.pass, true); !slices.Equal(got, tc.want) {
-				t.Errorf("%s %q with --allow-shell = %q, want %q", tc.def.Name, tc.pass, got, tc.want)
-			}
-		} else if !slices.Equal(got, tc.want) {
-			t.Errorf("%s %q = %q, want %q", tc.def.Name, tc.pass, got, tc.want)
+		if got := ownedFlagArg(tc.def, tc.pass, tc.allowShell); got != tc.want {
+			t.Errorf("%s %q (allow-shell %v) = %q, want %q", tc.def.Name, tc.pass, tc.allowShell, got, tc.want)
 		}
 	}
 }
 
-// TestMergeDenialsRefusesAFlagWithNoValue pins the usage error: the
-// restriction's own denylist flag takes a value, so a spelling without one —
-// dangling at the end, followed by another option, repeated bare, empty
-// inline, or in a position another option could claim — refuses rather than
-// dropping or misplacing the denial.
-func TestMergeDenialsRefusesAFlagWithNoValue(t *testing.T) {
+// TestRunRefusesAnOwnedDenialFlag proves the review-round repros end to end:
+// each spelling pi would drop or misread refuses bad-flags before any agent
+// starts.
+func TestRunRefusesAnOwnedDenialFlag(t *testing.T) {
 	t.Parallel()
-	pi, bob := launchRow(t, "pi"), launchRow(t, "bob")
-	for _, tc := range []struct {
-		def  *agentcatalog.Launch
-		bad  string
-		pass []string
-	}{
-		{def: pi, pass: []string{"--exclude-tools", "--model", "m"}, bad: "--exclude-tools"},
-		{def: pi, pass: []string{"--model", "m", "--exclude-tools"}, bad: "--exclude-tools"},
-		{def: pi, pass: []string{"--exclude-tools", "--exclude-tools", "x"}, bad: "--exclude-tools"},
-		{def: pi, pass: []string{"-xt="}, bad: "-xt="},
-		{def: pi, pass: []string{"--append-system-prompt", "--exclude-tools"}, bad: "--exclude-tools"},
-		{def: bob, pass: []string{"--disable-tool-groups", "--model", "m"}, bad: "--disable-tool-groups"},
+	for _, pass := range [][]string{
+		{"--exclude-tools=markdown"},
+		{"--", "--exclude-tools", "markdown"},
+		{"--append-system-prompt", "--exclude-tools", "markdown"},
 	} {
-		if got, bad := mergeDenials(tc.def, tc.pass, false); bad != tc.bad || !slices.Equal(got, tc.pass) {
-			t.Errorf("%s %q = %q, bad %q; want unchanged, bad %q", tc.def.Name, tc.pass, got, bad, tc.bad)
+		root := fixtureRoot(t)
+		cmdr := &scripted{}
+		req := request(root, cmdr)
+		req.Agent, req.PassThrough = "pi", pass
+		if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codeBadFlags {
+			t.Errorf("pi %q: ref = %v, want bad-flags", pass, ref)
 		}
-	}
-}
-
-// TestRunRefusesADanglingDenylistFlag proves the launch end to end: pi with a
-// bare --exclude-tools refuses bad-flags before any agent starts.
-func TestRunRefusesADanglingDenylistFlag(t *testing.T) {
-	t.Parallel()
-	root := fixtureRoot(t)
-	cmdr := &scripted{}
-	req := request(root, cmdr)
-	req.Agent, req.PassThrough = "pi", []string{"--exclude-tools", "--model", "m"}
-	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codeBadFlags {
-		t.Fatalf("ref = %v, want bad-flags", ref)
-	}
-	if cmdr.calls != 0 {
-		t.Errorf("spawns = %d, want none", cmdr.calls)
+		if cmdr.calls != 0 {
+			t.Errorf("pi %q: spawns = %d, want none", pass, cmdr.calls)
+		}
 	}
 }
 
@@ -310,29 +247,6 @@ func containsRun(argv, want []string) bool {
 	return false
 }
 
-// TestPiDenylistLaunchKeepsTheShellDenial proves the launch end to end: pi
-// with the operator's own --exclude-tools still excludes bash and powershell,
-// once, at the operator's position.
-func TestPiDenylistLaunchKeepsTheShellDenial(t *testing.T) {
-	t.Parallel()
-	root := fixtureRoot(t)
-	dir := bundleDir(root)
-	cmdr := &scripted{write: func() { writeReview(t, dir) }}
-	req := request(root, cmdr)
-	req.Agent = "pi"
-	req.PassThrough = []string{"--exclude-tools", "markdown"}
-	if _, ref := Run(t.Context(), req); ref != nil {
-		t.Fatalf("run refused: %v", ref)
-	}
-	argv := cmdr.cmd.Argv
-	if want := []string{"pi", "-p", "--exclude-tools", "bash,powershell,markdown"}; !slices.Equal(argv[:4], want) {
-		t.Errorf("argv = %q, want the prefix %q", argv[:len(argv)-1], want)
-	}
-	if n := countArg(argv, "--exclude-tools"); n != 1 {
-		t.Errorf("argv carries --exclude-tools %d times, want once", n)
-	}
-}
-
 // launchRow resolves one shipped launch definition, failing on a name the
 // catalog lost.
 func launchRow(t *testing.T, name string) *agentcatalog.Launch {
@@ -345,9 +259,9 @@ func launchRow(t *testing.T, name string) *agentcatalog.Launch {
 }
 
 // checkRestriction compares one resolver call with its literal expectation.
-func checkRestriction(t *testing.T, def *agentcatalog.Launch, passthrough []string, allowShell bool, want []string) {
+func checkRestriction(t *testing.T, def *agentcatalog.Launch, allowShell bool, want []string) {
 	t.Helper()
-	if got := discoveryRestriction(def, passthrough, allowShell); !slices.Equal(got, want) {
+	if got := discoveryRestriction(def, allowShell); !slices.Equal(got, want) {
 		t.Fatalf("restriction = %q, want %q", got, want)
 	}
 }

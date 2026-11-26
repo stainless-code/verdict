@@ -4227,32 +4227,40 @@ because that is the binary its installer still puts on `PATH`.
 
 ### Discovery restrictions
 
-Discovery is read-only. An external harness handed an unconstrained shell spends
-its budget on builds, tests, and cross-compiles, so `run` adds the row's own
-documented tool flags to every launch it makes — finders, opposite-finder
+Discovery denies the shell. An external harness handed an unconstrained shell
+spends its budget on builds, tests, and cross-compiles, so `run` adds the row's
+own documented tool flags to every launch it makes — finders, opposite-finder
 cross-checks, repair rounds, and drain — while leaving file reads and the
 artifact write (`review.json`, `verdicts.json`, `drain.replies.json`) intact.
 Only rows whose CLI documents the exact spelling carry one; a row without one is
 launched unchanged. The denial is unconditional: only `--allow-shell`
 restores the row's own tool set, and no flag you pass after `--` drops it —
 not an allow or deny list, not a whole tool set (`claude --tools`, pi
-`--tools`/`--no-tools`), not pi's additive `--tools +name`. `claude`'s
-restriction is its own argument, and a deny rule beats any allow. pi applies
-`--exclude-tools` after every other tool selection, but a later
-`--exclude-tools` replaces an earlier one, and Bob documents nothing about a
-repeated `--disable-tool-groups`; so an operator spelling of the restriction's
-own flag (the third column) gets the restriction's value merged into it —
-`--exclude-tools markdown` launches as `--exclude-tools bash,powershell,markdown`,
-at your position, once — and a spelling with no value (dangling at the end,
-followed by another option, or `--flag=`) refuses `bad-flags`.
+`--tools`/`--no-tools`), not pi's additive `--tools +name`. verdict's denial
+is its own argument, placed ahead of your `--` arguments, so none of them can
+turn it into a message. `claude`'s deny rule beats any allow. For pi and bob
+the denial uses a flag you might also pass (the third column): a later
+`--exclude-tools` replaces an earlier one, and a spelling pi does not parse
+would silently drop it, so on a review launch verdict owns that flag — any
+spelling of it after `--`, `=`-joined, short, after a further `--`, or inside
+another option's value, refuses `bad-flags` (pass `--allow-shell` to own the
+tool set yourself).
+
+**The denial is not a write boundary.** Only `claude`'s review writes are
+confined to the bundle (its scoped grant, below). Every other agent keeps its
+own edit and write tools during review, so a prompt-injected review on
+`pi`, `opencode`, `cline` and the rest can edit files in the checkout without
+a shell. Review an untrusted pull request with those agents in a disposable
+checkout, or render the command with `run --print` and run the agent yourself
+somewhere it can do no harm.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                     | Operator spellings merged into it | Source                                                                                     |
-| -------- | ----------------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`           | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | none (its own argument)           | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`          | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                     | Flag verdict owns on review launches | Source                                                                                     |
+| -------- | ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | none (a deny rule beats any allow)   | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
@@ -4274,13 +4282,15 @@ else: a review of an untrusted change still cannot edit source.
 
 The grant never widens past that directory. `run` refuses a bundle whose
 `.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,
-as `record` and `post` do), and a symlink at any path the launch writes or
-reads back — the artifact (`review.json`, `verdicts.json`,
-`drain.replies.json`), `launcher.json`, `.run.out` — refuses
-`artifact-path-unsafe` before any agent starts (a checked-in
-`review.json -> ../../../src/main.go` would aim the agent's write at that
-source file); after the agent exits the artifact is inspected without
-following links, and the rule path is built from the resolved
+as `record` and `post` do), and since the grant covers the whole bundle, `run`
+walks it before any agent starts: a symlink, a non-regular entry (a FIFO, a
+socket, a device), or a regular file with a second hard link anywhere in it
+refuses `artifact-path-unsafe` (a checked-in `review.json -> ../../../src/main.go`
+or a `cost.json` link would aim the agent's write at that source file). Only
+unix reports a link count, so on Windows the hard-link check does not apply;
+the symlink and non-regular checks do. After the agent exits the artifact is
+read without following a link at any component below the bundle, and the
+rule path is built from the resolved
 directory, which must lie strictly under the resolved `.verdict/state` and
 must not hold the agent's working directory. A directory that fails that, or
 whose path holds a character the rule syntax reads as syntax (a space, a
@@ -7862,8 +7872,9 @@ own scoped review-write grant. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
 grant. They also reach the review of untrusted content, so they are an
 allowlist, not a denylist: only the agent row's model flag with one value
-(`--model opus` or `--model=opus`, plus a documented alias such as codex's
-`-m`) is accepted, and any other argument — an empty one included, or a
+(`--model opus`, or a documented alias such as codex's `-m opus`), in the
+spaced form only — no row's docs cite `--model=opus`, and pi ignores it — is
+accepted, and any other argument — an empty one included, or a
 tool set, a permission mode, a sandbox, an approval bypass, a config override
 — refuses `bad-flags` before anything runs, naming what is allowed. (`verdict
 run --` keeps passing your arguments as they are: there you own them.) A

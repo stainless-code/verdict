@@ -416,7 +416,7 @@ func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds
 // the 32 MiB agent-input cap record uses. A read failure after a passing
 // stat keeps the artifact family: the contract path did not deliver bytes.
 func readRoundReview(args *launchArgs, res *core.Result) ([]byte, *core.RefusalError) {
-	f, err := openNoFollow(args.abs)
+	f, err := openNoFollow(args.bundleRoot(), args.abs)
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
@@ -551,8 +551,8 @@ func (st *state) writeRoundOut(args *launchArgs, k int, res *core.Result) {
 // file can become a FIFO between the two calls, and a path the child controls
 // has no size ceiling. A file that does not open, is not regular once opened,
 // or outgrew the review cap yields nothing to copy.
-func crashReviewBytes(path string) ([]byte, bool) {
-	f, err := openNoFollow(path)
+func crashReviewBytes(root, path string) ([]byte, bool) {
+	f, err := openNoFollow(root, path)
 	if err != nil {
 		return nil, false
 	}
@@ -568,28 +568,42 @@ func crashReviewBytes(path string) ([]byte, bool) {
 	return raw, true
 }
 
-// openNoFollow opens the regular file at path without following a link at
-// its final element, and proves the opened file is the one inspected: an
-// agent that swaps the artifact for a link between the check and the read
-// gets a refusal, never the bytes the link names.
-func openNoFollow(path string) (*os.File, error) {
-	root, err := os.OpenRoot(filepath.Dir(path))
-	if err != nil {
-		return nil, jq.Sealed("open artifact directory", err)
+// openNoFollow opens the regular file at path, which lies under the bundle
+// root, without following a link at any component below that root — a
+// symlinked phase directory included — and proves the opened file is the
+// one inspected: an agent that swaps the artifact, or a directory above it,
+// for a link between the check and the read gets a refusal, never the bytes
+// the link names.
+func openNoFollow(root, path string) (*os.File, error) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil || !filepath.IsLocal(rel) {
+		return nil, jq.NewErrf("artifact %s is not under the bundle %s", path, root)
 	}
-	defer func() { _ = root.Close() }()
-	f, err := readcommon.OpenRegularNoSymlinkIn(root, filepath.Base(path))
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, jq.Sealed("open bundle", err)
+	}
+	defer func() { _ = dir.Close() }()
+	f, err := readcommon.OpenRegularNoSymlinkIn(dir, filepath.ToSlash(rel))
 	if err != nil {
 		return nil, jq.Sealed("open artifact", err)
 	}
 	return f, nil
 }
 
+// bundleRoot is the bundle directory this launch's artifacts live under.
+func (a *launchArgs) bundleRoot() string {
+	if a.target.evidence != "" {
+		return a.target.evidence
+	}
+	return a.dir
+}
+
 // writeCrashRoundReview keeps the review bytes a failed round left, when they
 // are safe to read: evidence for a crash, timeout, or artifact failure that
 // stops the loop before the shape check. The round's own refusal is unaffected.
 func (st *state) writeCrashRoundReview(args *launchArgs, k int) {
-	raw, ok := crashReviewBytes(args.abs)
+	raw, ok := crashReviewBytes(args.bundleRoot(), args.abs)
 	if !ok {
 		return
 	}

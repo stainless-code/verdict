@@ -51,12 +51,12 @@ type Launch struct {
 	ReviewWriteCitation string
 	ProbeArgs           []string
 	DiscoveryArgs       []string
-	// DiscoveryMergeFlags are the spellings of the restriction's own
-	// denylist flag (DiscoveryArgs is that flag and its comma-separated
-	// value). A later spelling may replace an earlier one, so run merges the
-	// restriction's value into an operator spelling instead of repeating the
-	// restriction, and refuses a spelling with no value.
-	DiscoveryMergeFlags []string
+	// DiscoveryOwnedFlags are the spellings of the flag the restriction
+	// itself uses (DiscoveryArgs is that flag and its value). A later
+	// spelling may replace verdict's, and one the agent does not parse drops
+	// it, so on a review launch verdict owns the flag: an operator spelling
+	// after `--`, in any form, refuses unless --allow-shell is set.
+	DiscoveryOwnedFlags []string
 	ResumeArgs          []string
 	// DiscoveryOverrideFlags are the flags that decide the agent's whole tool
 	// set. They never drop the shell denial — only --allow-shell does — but
@@ -252,7 +252,7 @@ var catalog = []Agent{
 			// The execute group is the shell; the write path stays open.
 			DiscoveryArgs:       []string{flagDisableToolGroups, "execute,mcp"},
 			DiscoveryCitation:   docBobShell,
-			DiscoveryMergeFlags: []string{flagDisableToolGroups},
+			DiscoveryOwnedFlags: []string{flagDisableToolGroups},
 			Install:             "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 		},
 	},
@@ -771,7 +771,7 @@ var catalog = []Agent{
 			// go: `bash` on Unix, `powershell` on Windows.
 			DiscoveryArgs:       []string{"--exclude-tools", "bash,powershell"},
 			DiscoveryCitation:   docPiCLI,
-			DiscoveryMergeFlags: []string{"--exclude-tools", "-xt"},
+			DiscoveryOwnedFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
@@ -896,7 +896,7 @@ func All() []Agent {
 			v.ProbeArgs = slices.Clone(v.ProbeArgs)
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
-			v.DiscoveryMergeFlags = slices.Clone(v.DiscoveryMergeFlags)
+			v.DiscoveryOwnedFlags = slices.Clone(v.DiscoveryOwnedFlags)
 			v.ModelFlagAliases = slices.Clone(v.ModelFlagAliases)
 			v.EditArgs = slices.Clone(v.EditArgs)
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)

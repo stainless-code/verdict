@@ -104,13 +104,15 @@ func usageText() string {
 		"    controls it seals, prompts_hash, agent, finder count) and the bound artifacts, reuses\n" +
 		"    every finder and cross-check that still passes, re-runs only the incomplete phases,\n" +
 		"    and fails closed with resume-drift or cannot-resume before launching anything.\n" +
-		"    Discovery is read-only: every launch -- finders, cross-checks, repair rounds, drain --\n" +
+		"    Discovery denies the shell: every launch -- finders, cross-checks, repair rounds, drain --\n" +
 		"    carries the row's documented tool restrictions (claude: --disallowedTools=Bash,PowerShell, bob:\n" +
 		"    --disable-tool-groups execute,mcp, pi: --exclude-tools bash,powershell), which block shell\n" +
 		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
-		"    row's own tools; no flag after '--' drops the restriction (pi's --exclude-tools and bob's\n" +
-		"    --disable-tool-groups get its value merged in; one with no value is bad-flags). verify\n" +
-		"    --sandbox is untouched.\n" +
+		"    row's own tools; no flag after '--' drops the restriction, and the flag it uses (pi's\n" +
+		"    --exclude-tools, bob's --disable-tool-groups) is verdict's on review launches: passing it is\n" +
+		"    bad-flags. Only claude's review writes are confined to the bundle; other agents can edit the\n" +
+		"    checkout, so review untrusted PRs with them in a disposable checkout. verify --sandbox is\n" +
+		"    untouched.\n" +
 		"    claude launches also carry a write grant scoped to the launch's own bundle directory\n" +
 		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +
 		"    flag; your own permission flag after '--' drops it, and a symlinked bundle is refused.\n" +

@@ -109,8 +109,8 @@ type discoveryRow struct {
 	args      []string
 	citation  string
 	overrides []string
-	// merges are the restriction's own denylist spellings run merges into.
-	merges []string
+	// owned are the spellings of the denial's own flag verdict owns.
+	owned []string
 }
 
 // TestDiscoveryRestrictionsCiteAgentDocs pins the discovery-phase tool
@@ -128,7 +128,7 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 		"bob": {
 			args:     []string{"--disable-tool-groups", "execute,mcp"},
 			citation: docBobShell,
-			merges:   []string{"--disable-tool-groups"},
+			owned:    []string{"--disable-tool-groups"},
 		},
 		"claude": {
 			args:      []string{"--disallowedTools=Bash,PowerShell"},
@@ -138,7 +138,7 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 		"pi": {
 			args:     []string{"--exclude-tools", "bash,powershell"},
 			citation: docPiCLI,
-			merges:   []string{"--exclude-tools", "-xt"},
+			owned:    []string{"--exclude-tools", "-xt"},
 			overrides: []string{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
@@ -172,8 +172,8 @@ func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want *discovery
 	if !slices.Equal(launch.DiscoveryOverrideFlags, want.overrides) {
 		t.Errorf("%s discovery override flags = %q, want %q", agent.Name, launch.DiscoveryOverrideFlags, want.overrides)
 	}
-	if !slices.Equal(launch.DiscoveryMergeFlags, want.merges) {
-		t.Errorf("%s discovery merge flags = %q, want %q", agent.Name, launch.DiscoveryMergeFlags, want.merges)
+	if !slices.Equal(launch.DiscoveryOwnedFlags, want.owned) {
+		t.Errorf("%s discovery owned flags = %q, want %q", agent.Name, launch.DiscoveryOwnedFlags, want.owned)
 	}
 	checkDiscoveryManualRow(t, manual, agent)
 }

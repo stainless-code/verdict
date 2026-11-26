@@ -307,7 +307,7 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 	if out.ref != nil {
 		out.failure, out.cause, out.ref = out.ref.Code, out.ref, nil
 	}
-	out.review = readDiscovery(args.abs)
+	out.review = readDiscovery(args.bundleRoot(), args.abs)
 	if out.review == nil && out.failure == "" {
 		out.failure = codeNoArtifact
 	}
@@ -318,8 +318,8 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 	return out
 }
 
-func readDiscovery(path string) *jq.Obj {
-	raw, ok := crashReviewBytes(path)
+func readDiscovery(root, path string) *jq.Obj {
+	raw, ok := crashReviewBytes(root, path)
 	if !ok {
 		return nil
 	}

@@ -551,9 +551,6 @@ func TestRunRefusesAnUnsafeBundleEntry(t *testing.T) {
 		"symlinked validation.json": func(_ *testing.T, bundle, source string) error {
 			return os.Symlink(source, filepath.Join(bundle, "validation.json"))
 		},
-		"hard-linked review.json": func(_ *testing.T, bundle, source string) error {
-			return os.Link(source, filepath.Join(bundle, reviewFile))
-		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -587,19 +584,32 @@ func assertUnsafeBundleRefused(t *testing.T, plant func(t *testing.T, bundle, so
 // check is refused rather than read.
 func TestArtifactReadsNeverFollowALink(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	target := filepath.Join(dir, "elsewhere.json")
-	if err := os.WriteFile(target, []byte(coveredReviewDoc), 0o600); err != nil {
+	bundle := t.TempDir()
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, reviewFile), []byte(coveredReviewDoc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(dir, reviewFile)
-	if err := os.Symlink(target, link); err != nil {
+	if err := os.Symlink(filepath.Join(outside, reviewFile), filepath.Join(bundle, reviewFile)); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
-	if raw, ref := readRoundReview(&launchArgs{abs: link, artifact: reviewFile}, &core.Result{}); ref == nil {
-		t.Errorf("readRoundReview read %d bytes through a link", len(raw))
+	// A symlinked phase directory: the leaf is a regular file, the link is
+	// one component up.
+	if err := os.Symlink(outside, filepath.Join(bundle, "x-cross-1")); err != nil {
+		t.Fatalf("symlink: %v", err)
 	}
-	if raw, ok := crashReviewBytes(link); ok {
-		t.Errorf("crashReviewBytes read %d bytes through a link", len(raw))
+	for _, path := range []string{filepath.Join(bundle, reviewFile), filepath.Join(bundle, "x-cross-1", reviewFile)} {
+		assertNoReadThroughLink(t, bundle, path)
+	}
+}
+
+// assertNoReadThroughLink proves both artifact readers refuse path.
+func assertNoReadThroughLink(t *testing.T, bundle, path string) {
+	t.Helper()
+	args := &launchArgs{abs: path, artifact: reviewFile, target: launchTarget{evidence: bundle}}
+	if raw, ref := readRoundReview(args, &core.Result{}); ref == nil {
+		t.Errorf("readRoundReview read %d bytes of %s through a link", len(raw), path)
+	}
+	if raw, ok := crashReviewBytes(bundle, path); ok {
+		t.Errorf("crashReviewBytes read %d bytes of %s through a link", len(raw), path)
 	}
 }

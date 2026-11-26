@@ -1086,7 +1086,7 @@ func (c *coordinator) readArtifact(artifact string) ([]byte, *core.RefusalError)
 	}
 	// No-follow, and the same file the Lstat saw: a link swapped in after
 	// the check is refused, never read.
-	f, err := openNoFollow(path)
+	f, err := openNoFollow(c.dir, path)
 	if err != nil {
 		return nil, snapshotUnreadable(artifact)
 	}

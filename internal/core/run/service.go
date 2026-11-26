@@ -142,7 +142,7 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
-	if ref := st.mergeDenials(&def); ref != nil {
+	if ref := st.refuseOwnedFlag(&def); ref != nil {
 		return nil, ref
 	}
 	timeout, ref := st.timeout()
@@ -196,7 +196,7 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 		return nil, ref
 	}
 	args.bin = bin
-	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	args.restriction = discoveryRestriction(def, st.req.AllowShell)
 	if ref := st.refuseLinkedPaths(&target); ref != nil {
 		return nil, ref
 	}
@@ -213,21 +213,16 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	return args, nil
 }
 
-// mergeDenials rewrites the request's pass-through once, before any launch
-// is composed or sealed, so every launch, the recorded argv, and the resume
-// fingerprint read the same merged denylist.
-func (st *state) mergeDenials(def *agentcatalog.Launch) *core.RefusalError {
-	merged, bad := mergeDenials(def, st.req.PassThrough, st.req.AllowShell)
-	if bad != "" {
-		return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s takes a value, and verdict merges its shell denial "+
-			"into it; got '%s' with none (pass a value, or --allow-shell to drop the denial)", def.Name, bad, bad))
+// refuseOwnedFlag refuses a review launch whose `--` tail spells the flag the
+// row's shell denial uses: verdict owns that flag on review launches.
+func (st *state) refuseOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
+	arg := ownedFlagArg(def, st.req.PassThrough, st.req.AllowShell)
+	if arg == "" {
+		return nil
 	}
-	if !slices.Equal(merged, st.req.PassThrough) {
-		req := *st.req
-		req.PassThrough = merged
-		st.req = &req
-	}
-	return nil
+	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s is verdict's shell denial on a review launch; got '%s' "+
+		"after -- (drop it, or pass --allow-shell to own the agent's tool set)", def.Name,
+		strings.Join(def.DiscoveryOwnedFlags, "/"), arg))
 }
 
 // refuseLinkedPaths refuses a launch whose bundle holds a symlink, a
