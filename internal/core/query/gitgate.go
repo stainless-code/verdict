@@ -123,9 +123,11 @@ func (g *trustGate) indexPath(root string) (string, *core.RefusalError) {
 
 // scan lists the tracked entries at or under .verdict and refuses the first
 // symlink or gitlink. The pathspec matches a tracked .verdict link itself,
-// whose children git would not list.
+// whose children git would not list, and matches case-insensitively: on a
+// case-insensitive filesystem a tracked .Verdict is the directory the
+// readers open as .verdict.
 func (g *trustGate) scan(root string) *core.RefusalError {
-	res, ref := g.git(root, "ls-files", "-s", "-z", "--", config.VerdictDir)
+	res, ref := g.git(root, "--icase-pathspecs", "ls-files", "-s", "-z", "--", config.VerdictDir)
 	if ref != nil {
 		return ref
 	}
@@ -147,13 +149,14 @@ func (g *trustGate) scan(root string) *core.RefusalError {
 // git runs one gate call, refusing typed when it cannot answer.
 func (g *trustGate) git(root string, args ...string) (*core.Result, *core.RefusalError) {
 	res, err := g.run(g.base, root, args...)
+	sub := gitcmd.Subcommand(gitcmd.Argv(root, args...))
 	switch {
 	case err != nil:
-		return nil, gateFailure(args[0], err.Error())
+		return nil, gateFailure(sub, err.Error())
 	case res.StdoutTruncated:
-		return nil, gateFailure(args[0], "output exceeds the read cap")
+		return nil, gateFailure(sub, "output exceeds the read cap")
 	case res.ExitCode != 0:
-		return nil, gateFailure(args[0], strings.TrimSpace(res.Stderr))
+		return nil, gateFailure(sub, strings.TrimSpace(res.Stderr))
 	}
 	return res, nil
 }

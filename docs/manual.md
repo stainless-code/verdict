@@ -2618,9 +2618,11 @@ the network. Bundle names resolve inside the served root through the same
 guard every verb shares, so a traversal name refuses `bad-flags` and a missing
 bundle refuses `not-found`; a `.verdict` or `.verdict/state` that resolves
 outside the served root serves no bundles at all. In a git checkout, any symlink
-or gitlink the repository commits at or under `.verdict` (checked once per
-served root against `git ls-files -s -- .verdict`, cached by the index file's
-mtime and size) refuses that root's verdict data everywhere: the listing, every
+or gitlink the repository commits at or under `.verdict`, matched without
+regard to case (a tracked `.Verdict` is the same directory on a
+case-insensitive filesystem; checked once per served root against
+`git --icase-pathspecs ls-files -s -- .verdict`, cached by the index file's
+mtime and size), refuses that root's verdict data everywhere: the listing, every
 bundle read, overrides, sources, and the `serve` watcher, which emits nothing
 for it. The refusal is `bad-config` and names the tracked link. A root inside a
 checkout whose git call fails refuses the same way, naming the git error. A link

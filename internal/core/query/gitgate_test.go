@@ -219,3 +219,32 @@ func TestGitGateFailsClosedOnABrokenCheckout(t *testing.T) {
 		t.Fatalf("Detail in a broken checkout = %v, want bad-config naming the git failure", err)
 	}
 }
+
+// TestGitGateRefusesACaseVariantTrackedLink proves the gate matches .verdict
+// case-insensitively: on a case-insensitive filesystem a tracked .Verdict is
+// the very directory the readers open as .verdict, so a link committed there
+// refuses the root like one under .verdict.
+func TestGitGateRefusesACaseVariantTrackedLink(t *testing.T) {
+	t.Parallel()
+	dir := gitFixture(t)
+	if !caseInsensitive(t, dir) {
+		t.Skip("this filesystem is case-sensitive: .Verdict and .verdict are different directories")
+	}
+	rel := ".Verdict/state/1234/findings.json"
+	trackLink(t, dir, rel, canaryTarget(t, rel))
+	assertRootRefused(t, newLayer(dir), dir, rel)
+}
+
+// caseInsensitive reports whether dir's filesystem folds case.
+func caseInsensitive(t *testing.T, dir string) bool {
+	t.Helper()
+	probe := filepath.Join(dir, "case-probe")
+	if err := os.WriteFile(probe, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(filepath.Join(dir, "CASE-PROBE"))
+	if rerr := os.Remove(probe); rerr != nil {
+		t.Fatal(rerr)
+	}
+	return err == nil
+}
