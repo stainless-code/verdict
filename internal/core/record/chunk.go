@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 //nolint:revive // chunk snapshot, dry-run, and coverage gates read as one block
@@ -77,7 +78,8 @@ func readChunkManifest(manifest, refetch string, allowEmpty bool) ([]chunk, []st
 		if schema == "" {
 			schema = "missing"
 		}
-		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkUnreadable, manifest, schema, refetch)}
+		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
+			msgChunkUnreadable, manifest, untrusted.Line(schema), refetch)}
 	}
 	chunks := parseChunks(jq.Elements(manMap[fieldChunks]))
 	sortChunks(chunks)
@@ -178,7 +180,7 @@ func resolveChunkDiffs(st *state, chunks []chunk, refetch string) ([]string, []h
 			removeBestEffort(chunkHunks)
 		}
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(
-			msgChunkSnapMissing, strings.Join(missing, " "), refetch)}
+			msgChunkSnapMissing, untrusted.Line(strings.Join(missing, " ")), refetch)}
 	}
 	return diffs, allHunks, nil
 }
@@ -250,7 +252,7 @@ func checkChunkCoverageTail(st *state, manifest string, in coverageInput, refetc
 			removeBestEffort(chunkHunks)
 		}
 		return "", &core.RefusalError{Code: codeMissingChunkCov, Message: fmt.Sprintf(
-			msgChunkCoverage, len(names)-nMiss, len(names), strings.Join(missingDescs, ", "), refetch)}
+			msgChunkCoverage, len(names)-nMiss, len(names), untrusted.Line(strings.Join(missingDescs, ", ")), refetch)}
 	}
 	return chunkHunks, nil
 }

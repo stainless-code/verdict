@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // queryResolveThread is GitHub's one resolve mutation: the thread id is a
@@ -59,11 +60,11 @@ func (githubHost) resolveThread(ctx context.Context, cmdr Commander, _ map[strin
 	}
 	if res.ExitCode != 0 {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not resolve thread %s: %s", threadID, firstReason(res.Stderr))}
+			"github did not resolve thread %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
 	}
 	if !githubResolved(res.Stdout) {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not confirm thread %s resolved", threadID)}
+			"github did not confirm thread %s resolved", untrusted.Line(threadID))}
 	}
 	return nil
 }

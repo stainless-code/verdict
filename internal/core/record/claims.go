@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func (st *state) applyVerification() error {
@@ -184,10 +185,11 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 	// addressed is the one status a rationale cannot buy: it comes only from a
 	// VERIFIED claim backed by the verify receipt (applyVerdict).
 	if claim.status == outcomeAddressed {
-		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgTriageAddressed, readcommon.Prefix(claim.sig))}
+		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(
+			msgTriageAddressed, untrusted.Line(readcommon.Prefix(claim.sig)))}
 	}
 	if !isTriageStatus(claim.status) {
-		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
+		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, untrusted.Line(claim.status))}
 	}
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {

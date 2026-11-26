@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Bitbucket Cloud has no CLI: every read and write is one API call through
@@ -205,12 +206,13 @@ func bitbucketPRRead(
 	return bitbucketPR{head: pull.Source.Commit.Hash, htmlURL: bitbucket.DecodePullHTML(raw)}, postAttempt{}, true
 }
 
-// shortOrUnknown shortens one SHA for an operator sentence.
+// shortOrUnknown shortens one SHA for an operator sentence. The live head is
+// the host's text, so it is folded onto the sentence's line.
 func shortOrUnknown(sha string) string {
 	if sha == "" {
 		return "unknown"
 	}
-	return readcommon.ShortSHA(sha)
+	return untrusted.Line(readcommon.ShortSHA(sha))
 }
 
 // bitbucketInlineComments posts one anchored comment per finding in
