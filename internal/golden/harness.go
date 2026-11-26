@@ -343,6 +343,34 @@ var versionScrub = sync.OnceValue(func() func(string) string {
 	}
 })
 
+// pinCommentRe matches the release tag commented beside a pinned
+// setup-verdict action (`setup-verdict@<sha> # v0.7.0`). That tag is a fixed
+// constant, not the binary's version, so it must survive the version scrub:
+// otherwise a golden recorded while the manifest equals the pinned tag breaks
+// on the release branch, where the manifest has moved on.
+var pinCommentRe = regexp.MustCompile(`setup-verdict@[0-9a-f]{40} # v[0-9][0-9A-Za-z.+-]*`)
+
+// scrubVersionKeepPins applies the version scrub everywhere except inside
+// setup-verdict pin comments, which stay byte-exact.
+func scrubVersionKeepPins(s string) string {
+	pins := pinCommentRe.FindAllString(s, -1)
+	if len(pins) == 0 {
+		return versionScrub()(s)
+	}
+	parts := pinCommentRe.Split(s, -1)
+	for i, p := range parts {
+		parts[i] = versionScrub()(p)
+	}
+	var b strings.Builder
+	for i, p := range parts {
+		b.WriteString(p)
+		if i < len(pins) {
+			b.WriteString(pins[i])
+		}
+	}
+	return b.String()
+}
+
 // repoRoot walks up from this source file to the checkout carrying
 // package.json.
 func repoRoot() string {
@@ -492,7 +520,7 @@ func Scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 	s = scrubNonce(s)
 	s = fenceNonceRe.ReplaceAllString(s, "${1}NONCE")
-	s = versionScrub()(s)
+	s = scrubVersionKeepPins(s)
 	s = curlMsRe.ReplaceAllString(s, "${1}0${2}")
 	return scrubEmbeddedProcedures(s)
 }
