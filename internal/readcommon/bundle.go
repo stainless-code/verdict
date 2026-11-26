@@ -82,7 +82,7 @@ func ResolveWritableBundleDir(root, pr string) (string, *core.RefusalError) {
 		return "", ref
 	}
 	if err := config.NewLayout(root).RefuseBundleSymlink(filepath.Base(dir)); err != nil {
-		return "", &core.RefusalError{Code: "bad-config", Message: fmt.Sprintf("could not prepare %s: %v", dir, err)}
+		return "", &core.RefusalError{Code: "bad-config", Message: core.Msgf("could not prepare %s: %v", dir, err)}
 	}
 	return dir, nil
 }

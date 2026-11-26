@@ -20,7 +20,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // eventApprove is the positive binding event the payload and gates name.
@@ -108,7 +107,7 @@ func (st *state) checkApproveFlag() *core.RefusalError {
 	if st.flags.Approve == approveTrue || st.flags.Approve == approveFalse {
 		return nil
 	}
-	return &core.RefusalError{Code: "bad-approve", Message: fmt.Sprintf(msgBadApprove, st.flags.Approve)}
+	return &core.RefusalError{Code: "bad-approve", Message: core.Msgf(msgBadApprove, st.flags.Approve)}
 }
 
 // checkSummaryFlag refuses --summary values outside comment|off.
@@ -117,7 +116,7 @@ func (st *state) checkSummaryFlag() *core.RefusalError {
 	case "", summaryOff, summaryComment:
 		return nil
 	default:
-		return &core.RefusalError{Code: "bad-flags", Message: fmt.Sprintf(msgBadSummary, st.flags.Summary)}
+		return &core.RefusalError{Code: "bad-flags", Message: core.Msgf(msgBadSummary, st.flags.Summary)}
 	}
 }
 
@@ -267,7 +266,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("post failed: %v", err)}
+	return &core.RefusalError{Code: codePostFailed, Message: core.Msgf("post failed: %v", err)}
 }
 
 // pinBundleHost pins every host call of this post to the host the bundle was
@@ -330,7 +329,7 @@ func forgejoHostRefusal(host, configured string) *core.RefusalError {
 }
 
 func hostMismatch(format string, a ...any) *core.RefusalError {
-	return &core.RefusalError{Code: core.CodeHostMismatch, Message: fmt.Sprintf(format, a...)}
+	return &core.RefusalError{Code: core.CodeHostMismatch, Message: core.Msgf(format, a...)}
 }
 
 // openBundle resolves the request's bundle under the shared name guard and
@@ -406,7 +405,7 @@ func (st *state) pinnedContentGate() *core.RefusalError {
 	if st.flags.DryRun || pinned == "" || pinned == st.postedHash {
 		return nil
 	}
-	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.postedHash)}
+	return &core.RefusalError{Code: codePostContentChanged, Message: core.Msgf(msgPostContentChanged, pinned, st.postedHash)}
 }
 
 func (st *state) checkBundle() *core.RefusalError {
@@ -414,16 +413,16 @@ func (st *state) checkBundle() *core.RefusalError {
 		return &core.RefusalError{Code: "no-pr-target", Message: msgNoPRTarget}
 	}
 	if prov := st.provider(); !core.CapabilitiesFor(prov).Post {
-		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(msgProviderUnimplemented, untrusted.Line(prov))}
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: core.Msgf(msgProviderUnimplemented, prov)}
 	}
 	if !readcommon.IsDir(st.dir) {
-		return &core.RefusalError{Code: codeMissingBundle, Message: fmt.Sprintf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}
+		return &core.RefusalError{Code: codeMissingBundle, Message: core.Msgf(msgMissingBundlePost, st.dir, st.req.Repo, st.req.Pr)}
 	}
 	if !exists(st.flags.ReviewFile) {
-		return &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.flags.ReviewFile)}
+		return &core.RefusalError{Code: codeMissingReviewFile, Message: core.Msgf(msgReviewMissing, st.flags.ReviewFile)}
 	}
 	if !exists(st.dir + "/full.diff") {
-		return &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiffPost, st.dir)}
+		return &core.RefusalError{Code: codeMissingDiff, Message: core.Msgf(msgMissingDiffPost, st.dir)}
 	}
 	if err := recordcore.EnsureStore(st.dir); err != nil {
 		return refusalOrFailed(err)
@@ -433,7 +432,7 @@ func (st *state) checkBundle() *core.RefusalError {
 		st.warn("PR state unknown (re-fetch to record it) — proceeding")
 	case statusOpen:
 	default:
-		return &core.RefusalError{Code: "pr-not-open", Message: fmt.Sprintf(msgPRNotOpen, untrusted.Line(prState))}
+		return &core.RefusalError{Code: "pr-not-open", Message: core.Msgf(msgPRNotOpen, prState)}
 	}
 	return st.gateControls()
 }
@@ -683,7 +682,7 @@ func (st *state) approveGate() *core.RefusalError {
 	nOpen := recordcore.CountStatus(st.merged.Entries, statusOpen)
 	nDeferred := recordcore.CountStatus(st.merged.Entries, "deferred")
 	if nOpen+nDeferred > 0 && !st.flags.Force {
-		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlocked, nOpen, nDeferred)}
+		return &core.RefusalError{Code: "approve-blocked", Message: core.Msgf(msgApproveBlocked, nOpen, nDeferred)}
 	}
 	if ref := st.approvalBlockers(); ref != nil {
 		return ref
@@ -788,7 +787,7 @@ func (st *state) legacyRecheckGate(ctx context.Context) *core.RefusalError {
 	blocked := liveOpen > storedOpen
 	if blocked && !st.flags.Force {
 		nOpen := storedOpen
-		return &core.RefusalError{Code: "approve-blocked", Message: fmt.Sprintf(msgApproveBlockedLive, liveOpen, nOpen, liveOpen-nOpen)}
+		return &core.RefusalError{Code: "approve-blocked", Message: core.Msgf(msgApproveBlockedLive, liveOpen, nOpen, liveOpen-nOpen)}
 	}
 	return nil
 }
@@ -910,9 +909,9 @@ func (st *state) sameSHARefusal() (*core.RefusalError, core.ForcedPost) {
 			st.warn("post record carries no head — proceeding, will refresh it on success")
 		case storedHead == st.commitID:
 			storedAt := st.postedAt()
-			return &core.RefusalError{Code: codeAlreadyPosted, Message: fmt.Sprintf(msgAlreadyPosted,
-					untrusted.Line(readcommon.ShortSHA(st.commitID)), untrusted.Line(storedAt), st.req.Repo, st.req.Pr,
-					untrusted.Line(readcommon.ShortSHA(storedHead)))},
+			return &core.RefusalError{Code: codeAlreadyPosted, Message: core.Msgf(msgAlreadyPosted,
+					readcommon.ShortSHA(st.commitID), storedAt, st.req.Repo, st.req.Pr,
+					readcommon.ShortSHA(storedHead))},
 				core.ForcedPost{Reason: codeAlreadyPosted, PreviousHead: &storedHead}
 		}
 	}
@@ -961,10 +960,10 @@ func (st *state) patchGuard(ctx context.Context) *core.RefusalError {
 		st.forceBypass("already-reviewed-patch", cur.PatchID, &match.bundle, &match.head)
 		return nil
 	}
-	return &core.RefusalError{Code: "already-reviewed-patch", Message: fmt.Sprintf(
+	return &core.RefusalError{Code: "already-reviewed-patch", Message: core.Msgf(
 		"already-reviewed-patch: patch %s was posted from %s at head %s (%s) — "+
 			"refusing a duplicate review of the same change (pass --force to post again)",
-		*cur.PatchID, untrusted.Line(filepath.ToSlash(filepath.Join(filepath.Dir(st.dir), match.bundle))),
+		*cur.PatchID, filepath.ToSlash(filepath.Join(filepath.Dir(st.dir), match.bundle)),
 		readcommon.ShortSHA(match.head), match.postedAt)}
 }
 

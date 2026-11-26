@@ -205,7 +205,7 @@ func groupOverGuardError(sum *config.GroupSpendReport) error {
 			worst = *group
 		}
 	}
-	return &core.RefusalError{Code: "budget-exceeded", Message: fmt.Sprintf(
+	return &core.RefusalError{Code: "budget-exceeded", Message: core.Msgf(
 		"projected %s effort for group %s ~$%s exceeds its budget $%s%s — consent required before this run starts",
 		worst.Effort, worst.GroupID, worst.Projection, worst.GuardUSD, groupBasisNote(sum))}
 }
@@ -224,12 +224,12 @@ func firstGroupID(sum *config.GroupSpendReport) string {
 // on the exact aggregate or on a known subtotal with unknown groups.
 func groupPersonalError(sum *config.GroupSpendReport) error {
 	if sum.TotalKnown {
-		return &core.RefusalError{Code: codeSpendCapped, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeSpendCapped, Message: core.Msgf(
 			"projected groups ~$%s total exceeds the personal spend ceiling %s — consent before this run "+
 				"starts, or raise the ceiling in settings and narrow the run",
 			sum.Total, groupLimitNote(sum))}
 	}
-	return &core.RefusalError{Code: codeSpendCapped, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeSpendCapped, Message: core.Msgf(
 		"known group projections already exceed the personal spend ceiling %s while %s unknown — the "+
 			"subtotal is a lower bound, so consent covers an unbounded remainder",
 		groupLimitNote(sum), strings.Join(unknownGroupIDs(sum), ", "))}
@@ -245,7 +245,7 @@ func gateGroupedUnknown(st *budgetState, res *config.Resolved, consent bool) err
 	if res == nil || !res.Spend.RequireKnownEstimate {
 		return nil
 	}
-	return &core.RefusalError{Code: "budget-unknown", Message: fmt.Sprintf(
+	return &core.RefusalError{Code: "budget-unknown", Message: core.Msgf(
 		"no cost history attributable to this capture prices %s — require_known_estimate refuses the run "+
 			"until the operator consents to an unknown group projection",
 		strings.Join(unknownGroupIDs(&st.groupSpend.report), ", "))}

@@ -56,8 +56,8 @@ var waitHosts = map[string]func(*WaitProbe, context.Context, *core.ReadRequest, 
 // waitUnsupported refuses a host with no live reads, naming the ones that have
 // them, before any host command runs.
 func waitUnsupported(provider string) *core.RefusalError {
-	return &core.RefusalError{Code: "provider-unimplemented", Message: "pr-wait has no live reads for " + provider +
-		" — supported hosts: " + strings.Join(core.PRWaitProviders(), ", ")}
+	return &core.RefusalError{Code: "provider-unimplemented", Message: core.Msgf("pr-wait has no live reads for %s"+
+		" — supported hosts: %s", provider, strings.Join(core.PRWaitProviders(), ", "))}
 }
 
 // Read reads a complete observation without writing local files. Hosts the

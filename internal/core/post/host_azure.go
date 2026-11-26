@@ -138,7 +138,7 @@ func (azureHost) auth(env map[string]string) *core.RefusalError {
 // own, so the published code and the operator sentence cross the seam
 // unchanged and stay inspectable without a wrap.
 func azureRefusalOf(ref *core.RefusalError) *core.RefusalError {
-	return &core.RefusalError{Code: ref.Code, Message: ref.Message}
+	return &core.RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
 }
 
 // azurePostPayload is the part of the hosted payload an Azure write reads:

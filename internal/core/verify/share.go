@@ -237,7 +237,7 @@ func shareOutsideContent(ctx context.Context, g contenttree.Git, rel string) *co
 }
 
 func shareRefusal(rel, why string) *core.RefusalError {
-	return &core.RefusalError{Code: config.CodeBadConfig, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: config.CodeBadConfig, Message: core.Msgf(
 		"%s verify.share entry %q %s; nothing ran", config.ConfigPath, rel, why)}
 }
 

@@ -1,7 +1,6 @@
 package serve
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 
@@ -144,7 +143,7 @@ func (s *Server) aggregateDimension(w http.ResponseWriter, r *http.Request, view
 	values, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(values) != 1 || len(values["by"]) != 1 {
 		s.writeRefusal(w, verbServe, "", &core.RefusalError{
-			Code: "bad-by", Message: fmt.Sprintf("serve %s accepts one by query parameter", view),
+			Code: "bad-by", Message: core.Msgf("serve %s accepts one by query parameter", view),
 		})
 		return "", false
 	}

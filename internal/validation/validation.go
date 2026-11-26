@@ -93,7 +93,7 @@ func (p *Policy) WithRequireRigor(flags []string) *core.RefusalError {
 		tier, rung, ok := strings.Cut(flag, "=")
 		dst := p.tierFloor(tier)
 		if !ok || dst == nil || !slices.Contains(core.RungValues, rung) {
-			return &core.RefusalError{Code: CodeBadPolicy, Message: fmt.Sprintf(
+			return &core.RefusalError{Code: CodeBadPolicy, Message: core.Msgf(
 				"--require-rigor: want %s|%s|%s=<one of %s>, got %q",
 				severityCritical, severityImportant, severityInformational,
 				strings.Join(core.RungValues, "|"), flag)}
@@ -218,7 +218,7 @@ func BelowFloor(violations []Violation) *core.RefusalError {
 	for _, violation := range violations {
 		details = append(details, violation.Detail())
 	}
-	return &core.RefusalError{Code: CodeBelowFloor, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeBelowFloor, Message: core.Msgf(
 		"%d finding(s) below the required evidence floor — %s", len(details), strings.Join(details, ", "))}
 }
 
@@ -231,7 +231,7 @@ func Load(dir, head string, findings []any) (*core.ValidationFile, string, *core
 		return nil, "", nil
 	}
 	if err != nil {
-		return nil, "", &core.RefusalError{Code: CodeBad, Message: FileName + ": " + err.Error()}
+		return nil, "", &core.RefusalError{Code: CodeBad, Message: core.Msgf(FileName+": %s", err.Error())}
 	}
 	file, ref := Parse(raw, head, findings)
 	if ref != nil {
@@ -297,7 +297,7 @@ func checkHead(written, head string) *core.RefusalError {
 	if written == head {
 		return nil
 	}
-	return &core.RefusalError{Code: CodeStale, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeStale, Message: core.Msgf(
 		"validation.json was written for head %s, not the bundle head %s",
 		readcommon.ShortSHA(written), readcommon.ShortSHA(head))}
 }
@@ -362,5 +362,5 @@ func checkDowngrade(r *core.ValidationResult) *core.RefusalError {
 }
 
 func bad(format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: CodeBad, Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: CodeBad, Message: core.Msgf(format, args...)}
 }

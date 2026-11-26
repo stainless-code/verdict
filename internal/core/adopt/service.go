@@ -79,7 +79,7 @@ func (st *state) warn(msg string) {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
 func (st *state) response() *Response {

@@ -139,7 +139,7 @@ func LoadCatalog(path string) (*Catalog, *core.RefusalError) {
 }
 
 func invalidCatalog(path, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: "fixtures-invalid", Message: "fixtures catalog " + path + isText + reason}
+	return &core.RefusalError{Code: "fixtures-invalid", Message: core.Msgf("fixtures catalog %s"+isText+"%s", path, reason)}
 }
 
 func validateCatalog(c *Catalog, path string) *core.RefusalError {
@@ -401,5 +401,5 @@ func decodeRecordingMeta(path string, raw []byte) (*RecordingMeta, *core.Refusal
 }
 
 func invalidRecording(dir, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: "fixtures-recording-invalid", Message: "recording " + dir + isText + reason}
+	return &core.RefusalError{Code: "fixtures-recording-invalid", Message: core.Msgf("recording %s"+isText+"%s", dir, reason)}
 }

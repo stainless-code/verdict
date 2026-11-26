@@ -2,7 +2,6 @@ package readcommon
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -30,7 +29,7 @@ func LoadFindings(dir string) ([]any, error) {
 		if errors.Is(err, jq.ErrTooLarge) {
 			return nil, corruptStore(dir)
 		}
-		return nil, &core.RefusalError{Code: codeMissingFindings, Message: fmt.Sprintf(msgMissingFindings, dir)}
+		return nil, &core.RefusalError{Code: codeMissingFindings, Message: core.Msgf(msgMissingFindings, dir)}
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
@@ -47,7 +46,7 @@ func LoadFindings(dir string) ([]any, error) {
 }
 
 func corruptStore(dir string) *core.RefusalError {
-	return &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptStore, dir)}
+	return &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptStore, dir)}
 }
 
 // ValidEntries enforces the entry shape shared by the readers: every entry

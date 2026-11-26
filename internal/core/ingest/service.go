@@ -151,7 +151,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}
 	data := st.mergeResults(parsed)
 	if err := persistStore(st, data); err != nil {
-		return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("writing %s/findings.json: %v", st.dir, err)}
+		return nil, &core.RefusalError{Code: codeIngestFailed, Message: core.Msgf("writing %s/findings.json: %v", st.dir, err)}
 	}
 	return &Response{
 		At:       st.now,
@@ -197,7 +197,7 @@ func validateSource(from string) *core.RefusalError {
 	default:
 		return &core.RefusalError{
 			Code:    codeBadFrom,
-			Message: fmt.Sprintf("unknown --from %q for ingest (want %s)", from, SourceSARIF),
+			Message: core.Msgf("unknown --from %q for ingest (want %s)", from, SourceSARIF),
 		}
 	}
 }
@@ -225,7 +225,7 @@ func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {
 		return nil, &core.RefusalError{
 			Code:    codeBadSARIF,
-			Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
+			Message: core.Msgf("SARIF path %s must be a regular file (not a symlink or directory)", path),
 		}
 	}
 	raw, err := readcommon.ReadRegularCapped(path, MaxSARIFBytes)
@@ -239,7 +239,7 @@ func validateInlineSARIF(raw []byte) ([]byte, *core.RefusalError) {
 	if len(raw) > MaxSARIFBytes {
 		return nil, &core.RefusalError{
 			Code:    codeSARIFTooLarge,
-			Message: fmt.Sprintf("SARIF input exceeds maximum size of %d bytes", MaxSARIFBytes),
+			Message: core.Msgf("SARIF input exceeds maximum size of %d bytes", MaxSARIFBytes),
 		}
 	}
 	if len(raw) == 0 {
@@ -253,22 +253,22 @@ func classifySARIFReadErr(path string, err error) *core.RefusalError {
 	case errors.Is(err, jq.ErrTooLarge):
 		return &core.RefusalError{
 			Code:    codeSARIFTooLarge,
-			Message: fmt.Sprintf("SARIF file %s exceeds maximum size of %d bytes", path, MaxSARIFBytes),
+			Message: core.Msgf("SARIF file %s exceeds maximum size of %d bytes", path, MaxSARIFBytes),
 		}
 	case errors.Is(err, readcommon.ErrNotRegular):
 		return &core.RefusalError{
 			Code:    codeBadSARIF,
-			Message: fmt.Sprintf("SARIF path %s must be a regular file (not a symlink or directory)", path),
+			Message: core.Msgf("SARIF path %s must be a regular file (not a symlink or directory)", path),
 		}
 	case errors.Is(err, fs.ErrNotExist):
 		return &core.RefusalError{
 			Code:    codeMissingSARIF,
-			Message: "missing SARIF file " + path,
+			Message: core.Msgf("missing SARIF file %s", path),
 		}
 	default:
 		return &core.RefusalError{
 			Code:    codeIngestFailed,
-			Message: fmt.Sprintf("reading SARIF file %s: %v", path, err),
+			Message: core.Msgf("reading SARIF file %s: %v", path, err),
 		}
 	}
 }
@@ -318,13 +318,13 @@ func checkBundleFiles(req *Request, dir string) *core.RefusalError {
 	if _, err := os.Stat(dir); err != nil {
 		return &core.RefusalError{
 			Code:    codeMissingBundle,
-			Message: fmt.Sprintf("missing bundle directory %s (run fetch first)", dir),
+			Message: core.Msgf("missing bundle directory %s (run fetch first)", dir),
 		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "full.diff")); err != nil {
 		return &core.RefusalError{
 			Code:    codeMissingDiff,
-			Message: fmt.Sprintf("missing %s/full.diff (run fetch first)", dir),
+			Message: core.Msgf("missing %s/full.diff (run fetch first)", dir),
 		}
 	}
 	var rt core.Runtime
@@ -335,7 +335,7 @@ func checkBundleFiles(req *Request, dir string) *core.RefusalError {
 		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 			return ref
 		}
-		return &core.RefusalError{Code: codeIngestFailed, Message: err.Error()}
+		return &core.RefusalError{Code: codeIngestFailed, Message: core.Msgf("%v", err)}
 	}
 	return nil
 }
@@ -344,12 +344,12 @@ func loadHunks(dir string) ([]hunks.Hunk, *core.RefusalError) {
 	path := filepath.Join(dir, "hunks.tsv")
 	raw, err := readcommon.ReadRegularCapped(path, jq.MaxFindingsBytes)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("reading %s: %v", path, err)}
+		return nil, &core.RefusalError{Code: codeIngestFailed, Message: core.Msgf("reading %s: %v", path, err)}
 	}
 	if len(raw) == 0 {
 		diffRaw, err := readcommon.ReadRegularCapped(filepath.Join(dir, "full.diff"), jq.MaxFindingsBytes)
 		if err != nil {
-			return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("reading %s/full.diff: %v", dir, err)}
+			return nil, &core.RefusalError{Code: codeIngestFailed, Message: core.Msgf("reading %s/full.diff: %v", dir, err)}
 		}
 		return hunks.Parse(string(diffRaw)), nil
 	}
@@ -362,7 +362,7 @@ func loadHunks(dir string) ([]hunks.Hunk, *core.RefusalError) {
 func loadDiffIndex(dir string) (*evidence.DiffIndex, *core.RefusalError) {
 	raw, err := readcommon.ReadRegularCapped(filepath.Join(dir, "full.diff"), jq.MaxFindingsBytes)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("reading %s/full.diff: %v", dir, err)}
+		return nil, &core.RefusalError{Code: codeIngestFailed, Message: core.Msgf("reading %s/full.diff: %v", dir, err)}
 	}
 	return evidence.IndexDiff(raw), nil
 }
@@ -377,7 +377,7 @@ func loadStore(dir string) (entries []any, existed bool, ref *core.RefusalError)
 		if rerr, ok := errors.AsType[*core.RefusalError](err); ok {
 			return nil, true, rerr
 		}
-		return nil, true, &core.RefusalError{Code: codeCorruptStore, Message: err.Error()}
+		return nil, true, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf("%v", err)}
 	}
 	backfillStoreEntries(loaded)
 	return loaded, true, nil

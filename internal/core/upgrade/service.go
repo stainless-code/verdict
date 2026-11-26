@@ -147,7 +147,7 @@ func Run(ctx context.Context, req *Request) (Response, *core.RefusalError) {
 		return plan(req, det), nil
 	}
 	if det.Code != "" {
-		return Response{}, &core.RefusalError{Code: det.Code, Message: det.Reason}
+		return Response{}, &core.RefusalError{Code: det.Code, Message: core.Msgf("%s", det.Reason)}
 	}
 	if err := ctx.Err(); err != nil {
 		return Response{}, canceled(err)
@@ -221,7 +221,7 @@ func detect(req *Request) (*detection, *core.RefusalError) {
 	if err != nil || exe == "" {
 		return nil, &core.RefusalError{
 			Code:    codeUnidentified,
-			Message: "could not resolve the running verdict binary: " + errText(err) + "; reinstall with: " + installerCommand(),
+			Message: core.Msgf("could not resolve the running verdict binary: %s; reinstall with: %s", errText(err), installerCommand()),
 		}
 	}
 	det := &detection{Channel: ChannelUnknown, exe: exe, InstallDir: req.installDir()}
@@ -255,7 +255,7 @@ func detectOverride(req *Request, det *detection, method string) (*detection, *c
 	if !ok {
 		return nil, &core.RefusalError{
 			Code: codeBadMethod,
-			Message: fmt.Sprintf("VERDICT_INSTALL_METHOD=%s is not one of "+
+			Message: core.Msgf("VERDICT_INSTALL_METHOD=%s is not one of "+
 				"installer-managed|npm|pnpm|bun|yarn|homebrew|project-local|skill|unknown", method),
 		}
 	}
@@ -610,7 +610,7 @@ func canonical(path string) string {
 }
 
 func canceled(err error) *core.RefusalError {
-	return &core.RefusalError{Code: codeCanceled, Message: "canceled before upgrade completed: " + err.Error()}
+	return &core.RefusalError{Code: codeCanceled, Message: core.Msgf("canceled before upgrade completed: %s", err.Error())}
 }
 
 func errText(err error) string {

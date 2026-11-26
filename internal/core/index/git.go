@@ -105,10 +105,10 @@ func (st *state) gitCapped(
 		}
 		if capErr, ok := errors.AsType[*core.OutputCappedError](err); ok {
 			return "", 0, "", &core.RefusalError{
-				Code: codeIndexCapped, Message: capMessage("git output", capErr),
+				Code: codeIndexCapped, Message: core.Msgf("%s", capMessage("git output", capErr)),
 			}
 		}
-		return "", 0, "", &core.RefusalError{Code: codeIndexFailed, Message: "git " + args[0] + " failed: " + err.Error()}
+		return "", 0, "", &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git %s failed: %s", args[0], err.Error())}
 	}
 	return res.Stdout, res.ExitCode, res.Stderr, nil
 }
@@ -119,7 +119,7 @@ func asRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: codeIndexFailed, Message: err.Error()}
+	return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("%v", err)}
 }
 
 // gitBatch runs one `git cat-file --batch` over blobs and returns the bytes
@@ -140,7 +140,7 @@ func (st *state) gitBatch(ctx context.Context, dir string, blobs []string) (map[
 		return nil, batchRefusal(err)
 	}
 	if res.ExitCode != 0 {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + firstLine(res.Stderr)}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git cat-file failed: %s", firstLine(res.Stderr))}
 	}
 	objects, ref := parseBatch(res.Stdout)
 	if ref != nil {
@@ -156,9 +156,9 @@ func batchRefusal(err error) *core.RefusalError {
 		return &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
 	}
 	if capErr, ok := errors.AsType[*core.OutputCappedError](err); ok {
-		return &core.RefusalError{Code: codeIndexCapped, Message: capMessage("git cat-file output", capErr)}
+		return &core.RefusalError{Code: codeIndexCapped, Message: core.Msgf("%s", capMessage("git cat-file output", capErr))}
 	}
-	return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file failed: " + err.Error()}
+	return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git cat-file failed: %s", err.Error())}
 }
 
 // capMessage renders one over-cap refusal: the cap, and the bytes git
@@ -293,11 +293,11 @@ func (st *state) revParse(ctx context.Context, dir, spec, kind string) (string, 
 		return "", asRefusal(err)
 	}
 	if exit != 0 {
-		return "", &core.RefusalError{Code: "bad-at", Message: "cannot resolve " + spec + ": " + firstLine(stderr)}
+		return "", &core.RefusalError{Code: "bad-at", Message: core.Msgf("cannot resolve %s: %s", spec, firstLine(stderr))}
 	}
 	sha := strings.TrimSpace(firstLine(out))
 	if !shaRe.MatchString(sha) {
-		return "", &core.RefusalError{Code: "bad-at", Message: "cannot resolve " + spec + " to a " + kind}
+		return "", &core.RefusalError{Code: "bad-at", Message: core.Msgf("cannot resolve %s to a %s", spec, kind)}
 	}
 	return sha, nil
 }
@@ -331,7 +331,7 @@ func (st *state) lsTree(ctx context.Context, dir, tree string) ([]treeEntry, *co
 		return nil, asRefusal(err)
 	}
 	if exit != 0 {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git ls-tree failed: " + firstLine(stderr)}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git ls-tree failed: %s", firstLine(stderr))}
 	}
 	return parseLsTree(out)
 }

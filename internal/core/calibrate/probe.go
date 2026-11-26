@@ -59,7 +59,7 @@ func knownSigs(entries []any) []any {
 }
 
 func judgeUnreadable(path string) *core.RefusalError {
-	return &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeBadJudgment, Message: core.Msgf(
 		"judge file '%s' is missing or unreadable (write one {\"sig\": ..., \"agent_verdict\": ...} "+
 			"object per line, or a JSON array of them)", path)}
 }
@@ -96,7 +96,7 @@ func readJudgeDocs(path string) ([]any, error) {
 
 func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge, error) {
 	if unknown := firstUnknown(out, known); unknown != "" {
-		return nil, &core.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeUnknownJudgment, Message: core.Msgf(
 			"judge file '%s' sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", path, unknown, dir)}
 	}
 	return out, nil
@@ -105,7 +105,7 @@ func checkJudgeDocs(path string, out []judge, known []any, dir string) ([]judge,
 func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 	docs, err := jq.DecodeSlurp(strings.NewReader(string(raw)))
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: codeBadJudgment, Message: core.Msgf(
 			"judge file '%s' is not valid JSON or JSONL (one {\"sig\": ..., \"agent_verdict\": ...} per line, or a JSON array)", path)}
 	}
 	if len(docs) == 1 {
@@ -127,7 +127,7 @@ func readable(path string) bool {
 
 func checkJudgeEntry(path string, i int, doc any) (judge, error) {
 	fail := func(detail string) (judge, error) {
-		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: fmt.Sprintf("judge file '%s' entry %d: %s", path, i, detail)}
+		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: core.Msgf("judge file '%s' entry %d: %s", path, i, detail)}
 	}
 	m, ok := doc.(map[string]any)
 	if !ok {
@@ -198,7 +198,7 @@ func parseJudgeSpecs(specs []string, known []any, dir string) ([]judge, error) {
 
 func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 	bad := func(detail string) (judge, error) {
-		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: detail}
+		return judge{}, &core.RefusalError{Code: codeBadJudgment, Message: core.Msgf("%s", detail)}
 	}
 	sig, rest, found := strings.Cut(spec, ":")
 	if !found || sig == "" {
@@ -212,7 +212,7 @@ func checkJudgeSpec(spec string, known []any, dir string) (judge, error) {
 		return bad(fmt.Sprintf("malformed --judge '%s': helpful '%s' (want true|false|null)", spec, helpful))
 	}
 	if !containsSig(known, sig) {
-		return judge{}, &core.RefusalError{Code: codeUnknownJudgment, Message: fmt.Sprintf(
+		return judge{}, &core.RefusalError{Code: codeUnknownJudgment, Message: core.Msgf(
 			"judgment sig '%s' matches no finding in %s/findings.json (copy the full sig from report output)", sig, dir)}
 	}
 	return buildSpecJudge(sig, verdict, helpful), nil
@@ -393,7 +393,7 @@ func writeGrades(dir string, grades []*jq.Obj) error {
 		sb.WriteByte('\n')
 	}
 	if err := atomic.WriteFileMode(dir+"/kb-grades.jsonl", []byte(sb.String()), gradesFilePerm); err != nil {
-		return &core.RefusalError{Code: codeCalibrateFailed, Message: fmt.Sprintf("could not write %s/kb-grades.jsonl: %v", dir, err)}
+		return &core.RefusalError{Code: codeCalibrateFailed, Message: core.Msgf("could not write %s/kb-grades.jsonl: %v", dir, err)}
 	}
 	return nil
 }

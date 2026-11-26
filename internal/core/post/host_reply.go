@@ -2,12 +2,10 @@ package postcore
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]string,
@@ -23,8 +21,8 @@ func (githubHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 		return "", jq.NewErrf("github reply thread: %v", err)
 	}
 	if res.ExitCode != 0 {
-		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not reply to comment %s: %s", untrusted.Line(rootID), firstReason(res.Stderr))}
+		return "", &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"github did not reply to comment %s: %s", rootID, firstReason(res.Stderr))}
 	}
 	return replyID(res.Stdout)
 }
@@ -43,8 +41,8 @@ func (gitlabHost) replyThread(ctx context.Context, cmdr Commander, _ map[string]
 		return "", err
 	}
 	if res.ExitCode != 0 {
-		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"gitlab did not reply to discussion %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
+		return "", &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"gitlab did not reply to discussion %s: %s", threadID, firstReason(res.Stderr))}
 	}
 	return replyID(res.Stdout)
 }

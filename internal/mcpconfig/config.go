@@ -841,5 +841,5 @@ func headerParts(line string) ([]string, bool) {
 }
 
 func refuse(code, message string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: message}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", message)}
 }

@@ -389,14 +389,14 @@ func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds
 	if noProgress {
 		return &core.RefusalError{
 			Code:              codeRepairExhausted,
-			Message:           fmt.Sprintf("%s with %d error(s) — fix every error, then re-run", note, errorCount),
+			Message:           core.Msgf("%s with %d error(s) — fix every error, then re-run", note, errorCount),
 			Problems:          attempt.Problems,
 			ProblemsTruncated: attempt.Truncated,
 		}
 	}
 	return &core.RefusalError{
 		Code: recordcore.CodeBadReviewInput,
-		Message: fmt.Sprintf("repair exhausted after %d round(s): review.json still has %d error(s) — "+
+		Message: core.Msgf("repair exhausted after %d round(s): review.json still has %d error(s) — "+
 			"fix every error, then re-run", rounds, errorCount),
 		Problems:          attempt.Problems,
 		ProblemsTruncated: attempt.Truncated,
@@ -411,27 +411,27 @@ func readRoundReview(args *launchArgs, res *core.Result) ([]byte, *core.RefusalE
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
-			Message: fmt.Sprintf("%s is unreadable after exit %d: %v", args.artifact, res.ExitCode, err),
+			Message: core.Msgf("%s is unreadable after exit %d: %v", args.artifact, res.ExitCode, err),
 		}
 	}
 	defer func() { _ = f.Close() }()
 	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > maxRoundReviewBytes {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
-			Message: fmt.Sprintf("%s exceeds the 32 MiB agent-input cap after exit %d", args.artifact, res.ExitCode),
+			Message: core.Msgf("%s exceeds the 32 MiB agent-input cap after exit %d", args.artifact, res.ExitCode),
 		}
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxRoundReviewBytes+1))
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
-			Message: fmt.Sprintf("%s is unreadable after exit %d: %v", args.artifact, res.ExitCode, err),
+			Message: core.Msgf("%s is unreadable after exit %d: %v", args.artifact, res.ExitCode, err),
 		}
 	}
 	if len(raw) > maxRoundReviewBytes {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,
-			Message: fmt.Sprintf("%s exceeds the 32 MiB agent-input cap after exit %d", args.artifact, res.ExitCode),
+			Message: core.Msgf("%s exceeds the 32 MiB agent-input cap after exit %d", args.artifact, res.ExitCode),
 		}
 	}
 	return raw, nil

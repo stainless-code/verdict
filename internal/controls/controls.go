@@ -683,7 +683,7 @@ func regularPackEntry(path string, entry fs.DirEntry) *core.RefusalError {
 }
 
 func refuse(code, message string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: message}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", message)}
 }
 
 func hash(raw []byte) string {

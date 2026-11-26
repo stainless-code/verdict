@@ -1,8 +1,6 @@
 package readycore
 
 import (
-	"fmt"
-
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
@@ -39,7 +37,7 @@ func filterGate(req *Request) *core.RefusalError {
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeMissingBundle,
-			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
+			Message: core.Msgf("missing %s/PR.json (run fetch %s %s first)", dir, st.repo, st.pr),
 		})
 	}
 	if ref := st.filterTrigger(dir); ref != nil {
@@ -78,7 +76,7 @@ func (st *state) filterTrigger(dir string) *core.RefusalError {
 	if !run {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeFilteredOut,
-			Message: fmt.Sprintf("filtered out by %s (policy: %s at the PR base)", reason, config.ConfigPath),
+			Message: core.Msgf("filtered out by %s (policy: %s at the PR base)", reason, config.ConfigPath),
 		})
 	}
 	return nil
@@ -86,9 +84,9 @@ func (st *state) filterTrigger(dir string) *core.RefusalError {
 
 func triggerFailure(what string, cause error) *core.RefusalError {
 	if cause == nil {
-		return &core.RefusalError{Code: codeTriggerFail, Message: what}
+		return &core.RefusalError{Code: codeTriggerFail, Message: core.Msgf("%s", what)}
 	}
-	return &core.RefusalError{Code: codeTriggerFail, Message: what + ": " + cause.Error()}
+	return &core.RefusalError{Code: codeTriggerFail, Message: core.Msgf("%s: %s", what, cause.Error())}
 }
 
 func baseTrigger(dir string) (*core.ConfigTrigger, *core.RefusalError) {

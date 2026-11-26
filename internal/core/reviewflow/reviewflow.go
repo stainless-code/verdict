@@ -12,7 +12,6 @@ package reviewflow
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -183,5 +182,5 @@ func FetchRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)}
+	return &core.RefusalError{Code: codeFetchFailed, Message: core.Msgf("fetch failed: %v", err)}
 }

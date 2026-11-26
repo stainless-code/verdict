@@ -71,13 +71,13 @@ type contextReader struct {
 // contextRefusal builds the context-invalid refusal for one failed
 // context input.
 func contextRefusal(format string, args ...any) error {
-	return &core.RefusalError{Code: "context-invalid", Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: "context-invalid", Message: core.Msgf(format, args...)}
 }
 
 // contextWriteFailure builds the fetch-failed refusal for one failed write of
 // the bundle's context artifacts.
 func contextWriteFailure(format string, args ...any) error {
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(format, args...)}
 }
 
 // resolvedContextInput returns the absolute path displayed for a context
@@ -166,7 +166,7 @@ func checkSpecItemCap(files []contextFile) error {
 	if len(items) > evidence.MaxSpecItems {
 		return &core.RefusalError{
 			Code:    "spec-too-large",
-			Message: fmt.Sprintf("spec checklist has %d items, over the %d-item cap", len(items), evidence.MaxSpecItems),
+			Message: core.Msgf("spec checklist has %d items, over the %d-item cap", len(items), evidence.MaxSpecItems),
 		}
 	}
 	return nil

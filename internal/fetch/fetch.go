@@ -165,7 +165,7 @@ func refuseFetch(r *cli.Runner, err error) int {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return r.RefuseTyped(ref)
 	}
-	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)})
+	return r.Refuse(&core.RefusalError{Code: fetchcore.CodeFetchFailed, Message: core.Msgf("fetch failed: %v", err)})
 }
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A value flag

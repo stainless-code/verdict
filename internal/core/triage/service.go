@@ -92,7 +92,7 @@ func (st *state) warn(msg string) {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
 func (st *state) response() *Response {
@@ -238,7 +238,7 @@ func requireFindingsFile(dir string) *core.RefusalError {
 	if !readcommon.IsFile(dir + findingsSuffix) {
 		return &core.RefusalError{
 			Code:    "missing-findings",
-			Message: fmt.Sprintf("missing %s%s (run post or record first)", dir, findingsSuffix),
+			Message: core.Msgf("missing %s%s (run post or record first)", dir, findingsSuffix),
 		}
 	}
 	return nil
@@ -251,7 +251,7 @@ func checkStatus(status string) *core.RefusalError {
 	default:
 		return &core.RefusalError{
 			Code: "bad-triage-status",
-			Message: fmt.Sprintf("refusing triage: unknown status '%s' "+
+			Message: core.Msgf("refusing triage: unknown status '%s' "+
 				"(want open|addressed|wont-fix|false-positive|deferred)", status),
 		}
 	}
@@ -272,7 +272,7 @@ func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
 func corruptStore(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: "corrupt-store",
-		Message: fmt.Sprintf("findings store %s%s is unreadable or not a findings array "+
+		Message: core.Msgf("findings store %s%s is unreadable or not a findings array "+
 			"(re-run record to rebuild, or restore the file)", dir, findingsSuffix),
 	}
 }

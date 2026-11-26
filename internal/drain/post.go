@@ -136,7 +136,7 @@ func postPreflight(req Request, fl *flags) (string, *draincore.File, []byte, *co
 func checkThreadReplyCap(provider string) *core.RefusalError {
 	caps := core.CapabilitiesFor(provider)
 	if !caps.ThreadReply {
-		return &core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: "provider-unimplemented", Message: core.Msgf(
 			"thread replies on %s are not implemented (%s)", provider, caps.ThreadReplyReason())}
 	}
 	return nil
@@ -363,7 +363,7 @@ func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 	fmt.Fprintf(r.Human, "» %d posted, %d failed -> %s/%s\n",
 		len(result.Posted), len(plan.Failed), dir, draincore.KeyPlanJSON)
 	if result.Incomplete {
-		ref := &core.RefusalError{Code: "drain-incomplete", Message: fmt.Sprintf(
+		ref := &core.RefusalError{Code: "drain-incomplete", Message: core.Msgf(
 			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(plan.Failed))}
 		if !r.JSONMode {
 			return r.Refuse(ref)

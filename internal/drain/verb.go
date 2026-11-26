@@ -287,7 +287,7 @@ func preflight(req Request) *core.RefusalError {
 }
 
 func drainFailed(msg string) *core.RefusalError {
-	return &core.RefusalError{Code: "drain-failed", Message: msg}
+	return &core.RefusalError{Code: "drain-failed", Message: core.Msgf("%s", msg)}
 }
 
 func parseLimit(r *cli.Runner, text string) (int, int, bool) {
@@ -439,7 +439,7 @@ func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir strin
 	r.Warnings = res.Warnings
 	raw, err := jq.CappedFile(dir+pathSep+draincore.KeyDraftsJSON, jq.MaxPRBytes)
 	if err != nil {
-		return r.Refuse(&core.RefusalError{Code: "no-review-artifact", Message: err.Error()}), true
+		return r.Refuse(&core.RefusalError{Code: "no-review-artifact", Message: core.Msgf("%v", err)}), true
 	}
 	summary, skipped, ref := draincore.CheckDrafts(raw, plan)
 	if ref != nil {

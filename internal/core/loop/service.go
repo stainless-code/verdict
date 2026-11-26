@@ -208,7 +208,7 @@ func validate(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeBadFlags, Message: "loop needs --agent <name> (any name from " +
 			"`verdict run`'s agent table or your settings.json agents)"}
 	case req.MaxRounds < 1 || req.MaxRounds > maxRounds:
-		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-rounds must be a whole number from 1 to %d", maxRounds)}
 	case req.Timeout <= 0:
 		return &core.RefusalError{Code: codeBadFlags, Message: "--timeout must be a positive duration"}
@@ -216,7 +216,7 @@ func validate(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are " +
 			"mutually exclusive (pick one sandbox for the verify step)"}
 	case req.MaxCostUSD != "" && !positiveDecimal(req.MaxCostUSD):
-		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-cost-usd must be a positive dollar amount, got '%s'", req.MaxCostUSD)}
 	}
 	return nil
@@ -278,15 +278,15 @@ func (lp *loop) now() time.Time {
 // from two invocations in one directory would read as one run.
 func (lp *loop) createOutput() *core.RefusalError {
 	if err := os.MkdirAll(filepath.Dir(lp.output), dirMode); err != nil {
-		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"cannot create the receipts directory's parent: %v", err)}
 	}
 	if err := os.Mkdir(lp.output, dirMode); err != nil {
 		if errors.Is(err, fs.ErrExist) {
-			return &core.RefusalError{Code: codeBadFlags, Message: "--output " + lp.output +
-				" already exists — pass a new directory for each loop"}
+			return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("--output %s"+
+				" already exists — pass a new directory for each loop", lp.output)}
 		}
-		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf("cannot create %s: %v", lp.output, err)}
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("cannot create %s: %v", lp.output, err)}
 	}
 	lp.data.Output = &lp.output
 	return nil
@@ -527,7 +527,7 @@ func (lp *loop) verifyFix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bu
 	lp.warnAll(warnings)
 	rd.Fix.Verify = verify
 	if (verify.Refusal != nil && verify.Refusal.Code == codeCanceled) || dctx.Err() != nil {
-		return lp.refused(ctx, &core.RefusalError{Code: codeCanceled, Message: verifyCanceled(verify)})
+		return lp.refused(ctx, &core.RefusalError{Code: codeCanceled, Message: core.Msgf("%s", core.Trusted(verifyCanceled(verify)))})
 	}
 	return "", nil
 }
@@ -656,7 +656,7 @@ func (lp *loop) name(n int) string {
 func (lp *loop) writeReceipt(name string, v any) *core.RefusalError {
 	body := jq.PrettyOrdered(core.Wire(v))
 	if err := atomic.WriteFileMode(filepath.Join(lp.output, name), []byte(body), fileMode); err != nil {
-		return &core.RefusalError{Code: "record-failed", Message: fmt.Sprintf("cannot write %s: %v", name, err)}
+		return &core.RefusalError{Code: "record-failed", Message: core.Msgf("cannot write %s: %v", name, err)}
 	}
 	return nil
 }

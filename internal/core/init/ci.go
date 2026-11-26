@@ -468,7 +468,7 @@ func RenderWorkflowSpec(spec WorkflowSpec) ([]byte, *core.RefusalError) {
 	if !ok {
 		return nil, &core.RefusalError{
 			Code:    codeBadSettings,
-			Message: fmt.Sprintf("unknown --ci '%s' (want %s)", spec.CI, CIValues()),
+			Message: core.Msgf("unknown --ci '%s' (want %s)", spec.CI, CIValues()),
 		}
 	}
 	if spec.CommentTrigger {
@@ -495,7 +495,7 @@ func wiredOptions(agent, keySecret string) (renderOptions, *core.RefusalError) {
 	if keySecret != "" && !keySecretName.MatchString(keySecret) {
 		return renderOptions{}, &core.RefusalError{
 			Code: codeBadSettings,
-			Message: fmt.Sprintf("invalid --key-secret '%s' "+
+			Message: core.Msgf("invalid --key-secret '%s' "+
 				"(want an env name like ANTHROPIC_API_KEY)", keySecret),
 		}
 	}
@@ -503,14 +503,14 @@ func wiredOptions(agent, keySecret string) (renderOptions, *core.RefusalError) {
 	if !ok || row.Launch == nil {
 		return renderOptions{}, &core.RefusalError{
 			Code:    codeUnknownAgent,
-			Message: fmt.Sprintf("unknown agent '%s' (known: %s)", agent, launchNames()),
+			Message: core.Msgf("unknown agent '%s' (known: %s)", agent, launchNames()),
 		}
 	}
 	secret := firstNonEmpty(keySecret, row.Launch.KeyEnv)
 	if secret == "" {
 		return renderOptions{}, &core.RefusalError{
 			Code: codeBadSettings,
-			Message: fmt.Sprintf("agent '%s' has no documented key variable; "+
+			Message: core.Msgf("agent '%s' has no documented key variable; "+
 				"pass --key-secret <NAME> naming the repository secret that holds its key", agent),
 		}
 	}

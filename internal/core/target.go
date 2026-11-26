@@ -1,7 +1,6 @@
 package core
 
 import (
-	"fmt"
 	"net/url"
 	"path"
 	"regexp"
@@ -87,11 +86,11 @@ func ParseTargetURL(raw string, env map[string]string) (Target, *RefusalError) {
 // TargetUnresolved is the refusal for an omitted target verdict could not
 // infer; the message names the exact arguments to pass.
 func TargetUnresolved(format string, a ...any) *RefusalError {
-	return &RefusalError{Code: CodeTargetUnresolved, Message: fmt.Sprintf(format, a...)}
+	return &RefusalError{Code: CodeTargetUnresolved, Message: Msgf(format, a...)}
 }
 
 func badURL(format string, a ...any) *RefusalError {
-	return &RefusalError{Code: CodeBadTargetURL, Message: fmt.Sprintf(format, a...)}
+	return &RefusalError{Code: CodeBadTargetURL, Message: Msgf(format, a...)}
 }
 
 // parseURLShape accepts one http(s) URL with a host and no credentials.

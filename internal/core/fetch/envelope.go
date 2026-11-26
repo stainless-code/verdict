@@ -175,26 +175,26 @@ func readFetchStats(ctx2 *fetchRunCtx) (fetchStats, error) {
 	var st fetchStats
 	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
-		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("missing %s/PR.json (fetch the PR first)", dir)}
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgUnreadablePR, dir)}
 	}
 	m, ok := jq.AsMap(doc)
 	if !ok {
-		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgUnreadablePR, dir)}
 	}
 	if err := statFiles(&st, dir, m); err != nil {
 		return st, err
 	}
 	adds, ok := envelopeNum(m[keyAdditions])
 	if !ok {
-		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgUnreadablePR, dir)}
 	}
 	dels, ok := envelopeNum(m[keyDeletions])
 	if !ok {
-		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+		return st, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgUnreadablePR, dir)}
 	}
 	st.adds, st.dels = adds, dels
 	st.hunks = countHunkLines(dir + suffixFullDiff)
@@ -341,7 +341,7 @@ func statFiles(st *fetchStats, dir string, m map[string]any) error {
 		st.filesStr, st.files = "0", 0
 		return nil
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgUnreadablePR, dir)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgUnreadablePR, dir)}
 }
 
 func addFetchExtras(data *core.FetchData, budget *budgetState, fcap *fetchCap, chunkJSON any) {

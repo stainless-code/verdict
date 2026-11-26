@@ -2,12 +2,10 @@ package postcore
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // queryResolveThread is GitHub's one resolve mutation: the thread id is a
@@ -59,12 +57,12 @@ func (githubHost) resolveThread(ctx context.Context, cmdr Commander, _ map[strin
 		return jq.Sealed("github resolve thread", err)
 	}
 	if res.ExitCode != 0 {
-		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not resolve thread %s: %s", untrusted.Line(threadID), firstReason(res.Stderr))}
+		return &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"github did not resolve thread %s: %s", threadID, firstReason(res.Stderr))}
 	}
 	if !githubResolved(res.Stdout) {
-		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"github did not confirm thread %s resolved", untrusted.Line(threadID))}
+		return &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"github did not confirm thread %s resolved", threadID)}
 	}
 	return nil
 }

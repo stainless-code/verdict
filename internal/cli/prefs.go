@@ -45,11 +45,11 @@ func ResolvePrefs(r *Runner, env map[string]string, readFile func(string) ([]byt
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return nil, &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgNotJSON, path)}
+		return nil, &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgNotJSON, path)}
 	}
 	obj, ok := jq.AsMap(doc)
 	if !ok {
-		return nil, &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgNotObject, path,
+		return nil, &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgNotObject, path,
 			strings.Join(core.SettingsTopKeys(), ", "))}
 	}
 	return resolveSettingsFile(r, path, obj, doc, &eff)
@@ -100,7 +100,7 @@ func gateMissingFile(eff *Effective, path string) (*PrefsResult, error) {
 // split out of resolveSettingsFile so each refusal stays one readable step.
 func checkSettingsShape(path string, obj map[string]any, doc any) error {
 	if n := countCredKeys(doc); n > 0 {
-		return &RefusalError{Code: "bad-settings-credentials", Message: fmt.Sprintf(msgCredKey, path)}
+		return &RefusalError{Code: "bad-settings-credentials", Message: core.Msgf(msgCredKey, path)}
 	}
 	if ref := checkTopKeys(path, obj); ref != nil {
 		return ref
@@ -134,7 +134,7 @@ func checkTopKeys(path string, obj map[string]any) error {
 	accepted := core.SettingsTopKeys()
 	for _, k := range SortedKeys(obj) {
 		if !slices.Contains(accepted, k) {
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k,
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgTopKey, path, k,
 				strings.Join(accepted, ", "))}
 		}
 	}
@@ -144,7 +144,7 @@ func checkTopKeys(path string, obj map[string]any) error {
 func checkSchemaKey(path string, obj map[string]any) error {
 	if _, ok := obj["$schema"]; ok {
 		if _, isStr := obj["$schema"].(string); !isStr {
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgSchemaType, path)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgSchemaType, path)}
 		}
 	}
 	return nil
@@ -157,11 +157,11 @@ func resolveOutputFile(r *Runner, path string, obj map[string]any) error {
 	}
 	vo, isObj := jq.AsMap(v)
 	if !isObj {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgOutputObj, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgOutputObj, path)}
 	}
 	for _, k := range SortedKeys(vo) {
 		if k != "format" {
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgOutputKey, path, k)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgOutputKey, path, k)}
 		}
 	}
 	f, ok := vo["format"]
@@ -182,7 +182,7 @@ func applyOutputFormat(r *Runner, path string, f any) error {
 		r.JSONMode = fs == formatJSON || r.JSONPeeked
 		return nil
 	default:
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgOutputFormat, path, jq.Str(f))}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgOutputFormat, path, jq.Str(f))}
 	}
 }
 
@@ -193,11 +193,11 @@ func resolveLayoutFile(path string, obj map[string]any, eff *Effective) error {
 	}
 	vo, isObj := jq.AsMap(v)
 	if !isObj {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgLayoutObj, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgLayoutObj, path)}
 	}
 	for _, k := range SortedKeys(vo) {
 		if k != "compact" {
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgLayoutKey, path, k)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgLayoutKey, path, k)}
 		}
 	}
 	if c, ok := vo["compact"]; ok {
@@ -209,7 +209,7 @@ func resolveLayoutFile(path string, obj map[string]any, eff *Effective) error {
 func applyCompact(path string, c any, eff *Effective) error {
 	b, isBool := c.(bool)
 	if !isBool {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgLayoutBool, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgLayoutBool, path)}
 	}
 	if b {
 		eff.Compact = FlagOn
@@ -226,11 +226,11 @@ func resolveColorFile(r *Runner, path string, obj map[string]any, eff *Effective
 	}
 	vo, isObj := jq.AsMap(v)
 	if !isObj {
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgColorObj, path)}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgColorObj, path)}
 	}
 	for _, k := range SortedKeys(vo) {
 		if k != "mode" {
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgColorKey, path, k)}
+			return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgColorKey, path, k)}
 		}
 	}
 	if m, ok := vo["mode"]; ok {
@@ -250,7 +250,7 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 		r.PrefColorSet = true
 		return nil
 	default:
-		return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgColorMode, path, jq.Str(m))}
+		return &RefusalError{Code: codeBadSettings, Message: core.Msgf(msgColorMode, path, jq.Str(m))}
 	}
 }
 
@@ -260,7 +260,7 @@ func applyColorMode(r *Runner, path string, m any, eff *Effective) error {
 // section violation refuses with its typed configuration code.
 func validatePersonalSections(obj map[string]any) error {
 	if ref := config.ValidatePersonalSections(obj); ref != nil {
-		return &RefusalError{Code: ref.Code, Message: ref.Message}
+		return &RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
 	}
 	return nil
 }

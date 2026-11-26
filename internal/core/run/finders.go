@@ -94,7 +94,7 @@ func readFinderCaptureForPolicy(dir string, req *core.RunRequest) (*config.RunSt
 func readFinderCapture(dir string) (*config.RunState, *core.RefusalError) {
 	captured, _, err := config.ReadRunState(dir)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeRecordFailed, Message: err.Error()}
+		return nil, &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("%v", err)}
 	}
 	if captured != nil && captured.RequiresEvidence {
 		return config.VerifyRunState(dir)

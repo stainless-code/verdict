@@ -264,7 +264,7 @@ func resolveDirectoryPack(dir string) (*packcore.Pack, *packcore.Set, []string, 
 	if p == nil {
 		return nil, nil, nil, &core.RefusalError{
 			Code: packcore.CodeBadPack,
-			Message: fmt.Sprintf("pack directory %q carries no %s", dir,
+			Message: core.Msgf("pack directory %q carries no %s", dir,
 				packcore.ManifestFile),
 		}
 	}
@@ -297,7 +297,7 @@ func resolveInstalledPack(ctx context.Context, read Request, name string) (*pack
 	if p == nil {
 		return nil, nil, nil, &core.RefusalError{
 			Code:    packcore.CodeBadPack,
-			Message: fmt.Sprintf("pack %q is not installed", name),
+			Message: core.Msgf("pack %q is not installed", name),
 		}
 	}
 	return p, set, warnings, nil

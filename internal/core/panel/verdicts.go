@@ -131,7 +131,10 @@ func parseResults(rows, findings []any, warnings *[]string) ([]Result, error) {
 	return results, nil
 }
 
-func bad(message string) error { return &core.RefusalError{Code: CodeBad, Message: message} }
+func bad(message string) error {
+	return &core.RefusalError{Code: CodeBad, Message: core.Msgf("%s", message)}
+}
+
 func warnExtras(m map[string]any, allowed []string, warnings *[]string) {
 	for _, key := range slices.Sorted(maps.Keys(m)) {
 		if !slices.Contains(allowed, key) {

@@ -93,7 +93,7 @@ func slicePlan(fullDiff, kept, cdir string, plan []chunkEntry) error {
 	if serr := sliceChunks(kept, cdir, plan); serr != nil {
 		cwe, _ := errors.AsType[*chunkWriteError](serr)
 		if cwe != nil {
-			return &core.RefusalError{Code: "chunk-write-failed", Message: fmt.Sprintf(
+			return &core.RefusalError{Code: "chunk-write-failed", Message: core.Msgf(
 				"chunk %s missing after slicing %s (re-run the fetch)", cwe.name, fullDiff)}
 		}
 		return serr

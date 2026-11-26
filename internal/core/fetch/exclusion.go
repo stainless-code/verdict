@@ -191,7 +191,7 @@ func exclusionControl(r *session, name string) ([]byte, error) {
 	}
 	raw, err := readcommon.ReadConfined(r.controls.Path(name), maxFetchRead)
 	if err != nil {
-		return nil, &core.RefusalError{Code: "bad-ignore", Message: "cannot read exclusion control: " + err.Error()}
+		return nil, &core.RefusalError{Code: "bad-ignore", Message: core.Msgf("cannot read exclusion control: %s", err.Error())}
 	}
 	return raw, nil
 }
@@ -222,9 +222,9 @@ func writeExcludedDiff(dir string, raw []byte, filtered string, receipt *Exclude
 
 func ignoreRefusal(err error) *core.RefusalError {
 	if errors.Is(err, exclude.ErrTooLarge) {
-		return &core.RefusalError{Code: "ignore-too-large", Message: err.Error()}
+		return &core.RefusalError{Code: "ignore-too-large", Message: core.Msgf("%v", err)}
 	}
-	return &core.RefusalError{Code: "bad-ignore", Message: err.Error()}
+	return &core.RefusalError{Code: "bad-ignore", Message: core.Msgf("%v", err)}
 }
 
 type diffExclusions struct {
@@ -277,7 +277,7 @@ func (c *fetchRunCtx) rawDiff() ([]byte, *core.RefusalError) {
 	}
 	raw, err := readcommon.ReadConfined(c.dir+suffixFullDiff, maxFetchRead)
 	if err != nil {
-		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("%v", err)}
 	}
 	return raw, nil
 }

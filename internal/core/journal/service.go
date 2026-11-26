@@ -2,7 +2,6 @@ package journal
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -44,7 +43,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if !readcommon.IsDir(dir) {
 		return nil, &core.RefusalError{
 			Code:    codeMissingBundle,
-			Message: "no bundle at " + readcommon.DisplayPath(req.RepoRootPath(), dir),
+			Message: core.Msgf("no bundle at %s", readcommon.DisplayPath(req.RepoRootPath(), dir)),
 		}
 	}
 	bundleName := readcommon.BundleName(dir)
@@ -57,7 +56,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeCorruptStore,
-			Message: fmt.Sprintf("could not read %s: %v", journalPath, err),
+			Message: core.Msgf("could not read %s: %v", journalPath, err),
 		}
 	}
 	warnings := append([]string{}, req.Warnings...)

@@ -436,7 +436,7 @@ func (s *Server) Preflight() *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](last); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: codeMissingBundle, Message: missingBundleMessage(s.cfg.Bundle)}
+	return &core.RefusalError{Code: codeMissingBundle, Message: core.Msgf("%s", missingBundleMessage(s.cfg.Bundle))}
 }
 
 // resolveAnywhere returns nil when bundle resolves under some root, else the

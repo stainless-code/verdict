@@ -216,7 +216,7 @@ type state struct { // fix service state is allocated once per invocation
 // Run executes one fix pass, one batch pass, or reports completion.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if msg := req.comboFault(); msg != "" {
-		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: msg}
+		return nil, &core.RefusalError{Code: core.CodeBadFlags, Message: core.Msgf("%s", msg)}
 	}
 	st := &state{req: req}
 	if err := ctx.Err(); err != nil {
@@ -306,7 +306,7 @@ func (st *state) warn(msg string) {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
 func (st *state) humanf(format string, args ...any) {
@@ -795,7 +795,7 @@ func writeLedger(path string, store *ledgerDoc) *core.RefusalError {
 	if err := atomic.WriteFile(path, []byte(store.obj.MarshalCompact()+"\n")); err != nil {
 		return &core.RefusalError{
 			Code:    codeFixFailed,
-			Message: fmt.Sprintf("could not write %s: %v", path, err),
+			Message: core.Msgf("could not write %s: %v", path, err),
 		}
 	}
 	return nil

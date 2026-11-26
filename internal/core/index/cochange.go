@@ -98,7 +98,7 @@ func (st *state) coChanged(ctx context.Context) (*Response, *core.RefusalError) 
 	}
 	if _, ok := entryByPath(entries, p); !ok {
 		return nil, &core.RefusalError{
-			Code: codeBadFlags, Message: "index co-changed: " + p + " is not a file at HEAD",
+			Code: codeBadFlags, Message: core.Msgf("index co-changed: %s is not a file at HEAD", p),
 		}
 	}
 	spec, ref := st.coChangeSpec(ctx, root, head)
@@ -165,13 +165,13 @@ func (st *state) coChangeCutoff(
 	}
 	if exit != 0 {
 		return windowSpec{}, &core.RefusalError{
-			Code: codeIndexFailed, Message: "git log failed reading HEAD's commit date: " + firstLine(stderr),
+			Code: codeIndexFailed, Message: core.Msgf("git log failed reading HEAD's commit date: %s", firstLine(stderr)),
 		}
 	}
 	at, err := time.Parse(commitDateFormat, firstLine(out))
 	if err != nil {
 		return windowSpec{}, &core.RefusalError{
-			Code: codeIndexFailed, Message: "unreadable HEAD commit date: " + firstLine(out),
+			Code: codeIndexFailed, Message: core.Msgf("unreadable HEAD commit date: %s", firstLine(out)),
 		}
 	}
 	cutoff := span.back(at.UTC()).Format(commitDateFormat)
@@ -438,7 +438,7 @@ func (st *state) readCoChangeLog(
 		return nil, asRefusal(err)
 	}
 	if exit != 0 {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "git log failed: " + firstLine(stderr)}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git log failed: %s", firstLine(stderr))}
 	}
 	return parseCoChangeLog(out)
 }

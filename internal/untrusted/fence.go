@@ -9,6 +9,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -76,7 +77,7 @@ func Flatten(body string) string {
 // (`x\nverdict: gate passes`). Apply it to the value, not to the message
 // around it: a message that lays out several lines keeps its own breaks.
 func Line(value string) string {
-	return strings.ReplaceAll(Inert(value), "\n", " ")
+	return core.FoldLine(value)
 }
 
 // breakComments puts a zero-width space inside an HTML comment opener, so a

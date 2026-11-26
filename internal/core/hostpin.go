@@ -314,7 +314,7 @@ func hostFreeRepo(repo string) bool {
 }
 
 func unpinnable(argv []string, host, why string) *RefusalError {
-	return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+	return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 		"refusing `%s %s`: the target is on %s, but %s, so the call could reach the tool's default host instead",
 		argv[0], argv[1], host, why)}
 }
@@ -352,7 +352,7 @@ func endpointConflict(host, name string, getenv func(string) string) *RefusalErr
 	if configured == "" || strings.EqualFold(configured, host) {
 		return nil
 	}
-	return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+	return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 		"the target is on %s, but %s names %s and %s; unset %s, or set it to %s",
 		host, name, configured, glabEndpointNote, name, host)}
 }
@@ -398,29 +398,29 @@ func GlabDefaultConflict(host string, getenv func(string) string) *RefusalError 
 	configured := EnvHostAuthority(getenv(envGitLabHost))
 	switch {
 	case configured != host:
-		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 			"the target is on %s, but glab's --hostname takes no port, so verdict can run glab for it only when "+
 				"glab's own default host is exactly that, and GITLAB_HOST is %s; set GITLAB_HOST to %s",
 			host, orUnset(configured), host)}
 	case hostEnvHasPath(getenv(envGitLabHost)):
-		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 			"the target is on %s, but GITLAB_HOST carries a path, which glab reads as a subfolder of its default "+
 				"host; set GITLAB_HOST to %s alone", host, host)}
 	case strings.TrimSpace(getenv(envGlabRepo)) != "":
-		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 			"the target is on %s, but GITLAB_REPO is set and glab would take its host from that repository on a call "+
 				"with no -R; unset GITLAB_REPO", host)}
 	}
 	// GITLAB_API_HOST is checked even under CI auto-login, which makes glab
 	// ignore it: a refusal there only over-refuses, never reaches another host.
 	if api := strings.TrimSpace(getenv(envGlabAPIHost)); api != "" && !strings.EqualFold(api, host) {
-		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 			"the target is on %s, but GITLAB_API_HOST is %q and glab reads it as a bare host:port (a scheme or a "+
 				"path makes it a different server or a subfolder) and %s; unset GITLAB_API_HOST, or set it to %s",
 			host, api, glabEndpointNote, host)}
 	}
 	if fqdn := strings.TrimSpace(getenv(envCIServerFQDN)); glabCIAutologin(getenv) && !strings.EqualFold(fqdn, host) {
-		return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		return &RefusalError{Code: CodeHostMismatch, Message: Msgf(
 			"the target is on %s, but under glab's CI auto-login its default host is CI_SERVER_FQDN (%s), "+
 				"not GITLAB_HOST, and glab reads it as a bare host:port; set CI_SERVER_FQDN to %s", host, orUnset(fqdn), host)}
 	}

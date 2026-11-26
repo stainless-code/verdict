@@ -1,7 +1,6 @@
 package recordcore
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -90,7 +89,7 @@ func (st *state) countHunks() {
 
 func writeFindings(st *state) error {
 	if err := atomic.WriteFile(st.findingsFile, []byte(jq.PrettyOrdered(st.entries))); err != nil {
-		return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", st.findingsFile, err)}
+		return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("could not write %s: %v", st.findingsFile, err)}
 	}
 	return nil
 }

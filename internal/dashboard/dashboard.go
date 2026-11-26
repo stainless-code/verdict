@@ -28,6 +28,8 @@ const (
 	codeNoTTY   = "dashboard-no-tty"
 	codeNoVT    = "dashboard-no-vt"
 	codeBadRoot = "bad-root"
+	// msgErrText is a refusal that is an error's own text, folded to one line.
+	msgErrText = "%v"
 
 	keyEsc = 0x1b
 	// keyBuf holds one read's worth of keys; a paste longer than this is
@@ -71,7 +73,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // neither the live view nor --once has a JSON form.
 func preflight(r *cli.Runner, opts *options, inTTY, outTTY bool) (int, bool) {
 	if !opts.once && (!inTTY || !outTTY) {
-		return r.Refuse(&cli.RefusalError{Code: codeNoTTY, Message: errNoTTY.Error()}), true
+		return r.Refuse(&cli.RefusalError{Code: codeNoTTY, Message: core.Msgf(msgErrText, errNoTTY)}), true
 	}
 	if r.JSONMode {
 		return usage(r, "dashboard: draws a terminal frame and has no --json form; "+
@@ -147,10 +149,10 @@ func onceSize(opts *options, out *os.File) (cols, rows int) {
 func runLive(ctx context.Context, r *cli.Runner, src source, opts *options, req Request, out *os.File) int {
 	t, err := openTTY(req.In, out)
 	if errors.Is(err, errNoVT) {
-		return r.Refuse(&cli.RefusalError{Code: codeNoVT, Message: err.Error()})
+		return r.Refuse(&cli.RefusalError{Code: codeNoVT, Message: core.Msgf(msgErrText, err)})
 	}
 	if err != nil {
-		return r.Refuse(&cli.RefusalError{Code: codeNoTTY, Message: err.Error()})
+		return r.Refuse(&cli.RefusalError{Code: codeNoTTY, Message: core.Msgf(msgErrText, err)})
 	}
 	lk := pickLook(r.Effective.Color, req.Term)
 	err = live(ctx, t, out, lk, opts, src)
@@ -202,7 +204,7 @@ func openLayer(ctx context.Context, r *cli.Runner, opts *options, req Request) (
 	}
 	discovery, err := discover(root, r.Now)
 	if err != nil {
-		return nil, &cli.RefusalError{Code: codeBadRoot, Message: "dashboard: discover repositories: " + err.Error()}
+		return nil, &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf("dashboard: discover repositories: %s", err.Error())}
 	}
 	return query.New(query.Snapshot{
 		Version: req.Version, Roots: discovery.Roots, Runtime: runtime, Discovery: discovery,
@@ -233,12 +235,12 @@ func probeRoot(ctx context.Context) (string, *cli.RefusalError) {
 		if ctx.Err() != nil {
 			return "", &cli.RefusalError{Code: cli.CodeCanceled, Message: "canceled before dashboard completed"}
 		}
-		return "", &cli.RefusalError{Code: "not-a-repo", Message: err.Error()}
+		return "", &cli.RefusalError{Code: "not-a-repo", Message: core.Msgf(msgErrText, err)}
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
 		return "", &cli.RefusalError{
-			Code: codeBadRoot, Message: "dashboard: repository root " + root + " is not addressable: " + err.Error(),
+			Code: codeBadRoot, Message: core.Msgf("dashboard: repository root %s is not addressable: %s", root, err.Error()),
 		}
 	}
 	return abs, nil
@@ -247,10 +249,11 @@ func probeRoot(ctx context.Context) (string, *cli.RefusalError) {
 func givenRoot(given string) (string, *cli.RefusalError) {
 	abs, err := filepath.Abs(given)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "dashboard: --root " + given + " is not addressable: " + err.Error()}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf(
+			"dashboard: --root %s is not addressable: %s", given, err.Error())}
 	}
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "dashboard: --root " + abs + " is not an existing directory"}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf("dashboard: --root %s is not an existing directory", abs)}
 	}
 	return abs, nil
 }

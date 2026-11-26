@@ -68,15 +68,15 @@ func loadCoverageReview(dir string) (*jq.Obj, *core.RefusalError) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, &core.RefusalError{Code: codeReportFailed, Message: fmt.Sprintf("could not read %s%s: %v", dir, reviewSuffix, err)}
+		return nil, &core.RefusalError{Code: codeReportFailed, Message: core.Msgf("could not read %s%s: %v", dir, reviewSuffix, err)}
 	}
 	doc, derr := jq.DecodeOrdered(raw)
 	if derr != nil {
-		return nil, &core.RefusalError{Code: codeReportFailed, Message: fmt.Sprintf(msgCoverageBadJSON, derr)}
+		return nil, &core.RefusalError{Code: codeReportFailed, Message: core.Msgf(msgCoverageBadJSON, derr)}
 	}
 	obj, ok := doc.(*jq.Obj)
 	if !ok {
-		return nil, &core.RefusalError{Code: codeReportFailed, Message: fmt.Sprintf(msgCoverageBadJSON, "not a JSON object")}
+		return nil, &core.RefusalError{Code: codeReportFailed, Message: core.Msgf(msgCoverageBadJSON, "not a JSON object")}
 	}
 	return obj, nil
 }

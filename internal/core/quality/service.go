@@ -181,7 +181,7 @@ func validateFixtureID(catalog *Catalog, id string) *core.RefusalError {
 	slices.Sort(ids)
 	return &core.RefusalError{
 		Code:    "fixtures-invalid",
-		Message: "unknown fixture '" + id + "' (valid ids: " + strings.Join(ids, ", ") + ")",
+		Message: core.Msgf("unknown fixture '%s' (valid ids: %s)", id, strings.Join(ids, ", ")),
 	}
 }
 
@@ -250,7 +250,7 @@ func response(req *Request, report *Report) *Response {
 }
 
 func canceled(err error) *core.RefusalError {
-	return &core.RefusalError{Code: "canceled", Message: "backtest fixtures canceled: " + err.Error()}
+	return &core.RefusalError{Code: "canceled", Message: core.Msgf("backtest fixtures canceled: %s", err.Error())}
 }
 
 func recordingsRoot(root, override string) string {
@@ -511,10 +511,10 @@ func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationRe
 func writeReport(root string, report *Report) *core.RefusalError {
 	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
 	if err := os.MkdirAll(filepath.Dir(path), dirPermissions); err != nil {
-		return &core.RefusalError{Code: "fixtures-failed", Message: "cannot create fixtures report directory: " + err.Error()}
+		return &core.RefusalError{Code: "fixtures-failed", Message: core.Msgf("cannot create fixtures report directory: %s", err.Error())}
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(report.Wire()))); err != nil {
-		return &core.RefusalError{Code: "fixtures-failed", Message: "cannot write fixtures report: " + err.Error()}
+		return &core.RefusalError{Code: "fixtures-failed", Message: core.Msgf("cannot write fixtures report: %s", err.Error())}
 	}
 	return nil
 }

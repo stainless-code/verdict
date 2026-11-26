@@ -51,7 +51,7 @@ func gitlabReadLive(ctx context.Context, st *state) (string, *core.RefusalError)
 	if !ok {
 		return stderr, st.withWarnings(&core.RefusalError{
 			Code:    waitReadCode,
-			Message: "could not read live merge request state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
+			Message: core.Msgf("could not read live merge request state for %s"+hashSep+"%s: %s", st.repo, st.pr, firstLine(stderr)),
 		})
 	}
 	doc, derr := jq.Decode([]byte(stdout))
@@ -227,14 +227,14 @@ func gitlabThreads(ctx context.Context, st *state) *core.RefusalError {
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
+			Message: core.Msgf("could not read live review threads for %s"+hashSep+"%s", st.repo, st.pr),
 		})
 	}
 	open, malformed, err := gitlabThreadCounts(stdout)
 	if err != nil {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: "could not read live review threads for " + st.repo + hashSep + st.pr,
+			Message: core.Msgf("could not read live review threads for %s"+hashSep+"%s", st.repo, st.pr),
 		})
 	}
 	applyThreadCounts(st, open, malformed)

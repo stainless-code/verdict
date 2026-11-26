@@ -33,14 +33,14 @@ const (
 func missingPatchRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeMissingPatch,
-		Message: fmt.Sprintf("missing %s/patch.json (nothing claimed to verify)", dir),
+		Message: core.Msgf("missing %s/patch.json (nothing claimed to verify)", dir),
 	}
 }
 
 func corruptStoreRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    "corrupt-store",
-		Message: fmt.Sprintf("patch store %s/patch.json is unreadable (restore it from backup, then re-run)", dir),
+		Message: core.Msgf("patch store %s/patch.json is unreadable (restore it from backup, then re-run)", dir),
 	}
 }
 
@@ -99,7 +99,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}
 	timeout, ok := parseTimeout(req.TimeoutRaw)
 	if !ok {
-		return nil, st.withWarnings(&core.RefusalError{Code: codeBadTimeout, Message: fmt.Sprintf(
+		return nil, st.withWarnings(&core.RefusalError{Code: codeBadTimeout, Message: core.Msgf(
 			"timeout must be a positive number of seconds, got '%s'", req.TimeoutRaw)})
 	}
 	if ref := Check(vcmd); ref != nil {
@@ -330,7 +330,7 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 }
 
 func failed(err error) *core.RefusalError {
-	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
+	return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(msgVerifyFailed, err)}
 }
 
 func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *sandbox,
@@ -468,7 +468,7 @@ func recordOutcome(bundle *bundleHandle, now string, exit int, timedOut bool, ta
 		m.Delete("sandboxMechanism")
 	}
 	if err := atomic.WriteFileIn(bundle.root, patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf("could not write %s/patch.json: %v", dir, err)}
 	}
 	return nil
 }

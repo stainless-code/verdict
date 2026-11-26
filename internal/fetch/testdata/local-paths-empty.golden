@@ -2,9 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
-error: git diff failed: fatal: ambiguous argument 'missing.txt': unknown revision or path not in the working tree.
-Use '--' to separate paths from revisions, like this:
-'git <command> [<revision>...] -- [<file>...]'
+error: git diff failed: fatal: ambiguous argument 'missing.txt': unknown revision or path not in the working tree. Use '--' to separate paths from revisions, like this: 'git <command> [<revision>...] -- [<file>...]'
 try: address the cause above, then re-run the same command
 --- files ---
 --- file C/.verdict/.gitignore ---

@@ -3,7 +3,6 @@ package query
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"slices"
 	"time"
@@ -32,7 +31,7 @@ type precisionBucket struct {
 // changed-file evidence.
 func (l *Layer) Precision(ctx context.Context, by string) (*View, error) {
 	if !slices.Contains(precisionDimensions, by) {
-		return nil, &core.RefusalError{Code: "bad-by", Message: fmt.Sprintf(
+		return nil, &core.RefusalError{Code: "bad-by", Message: core.Msgf(
 			"serve precision by %q is unsupported (want category or tier)", by)}
 	}
 	aggregate := &precisionAggregate{view: l.newView(), tier: by == precisionTier, buckets: map[string]*precisionBucket{}}

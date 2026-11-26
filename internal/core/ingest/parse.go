@@ -141,7 +141,7 @@ type parseOutput struct {
 }
 
 func badSARIF(msg string) *core.RefusalError {
-	return &core.RefusalError{Code: codeBadSARIF, Message: msg}
+	return &core.RefusalError{Code: codeBadSARIF, Message: core.Msgf("%s", msg)}
 }
 
 // parseSARIF decodes, validates, and normalizes an untrusted SARIF 2.1.0 byte

@@ -182,7 +182,7 @@ func (r *Runner) Refuse(err error) int {
 func (r *Runner) RefuseExit(err error, code int) int {
 	ref, ok := refusalOf(err)
 	if !ok {
-		ref = &RefusalError{Code: "internal", Message: err.Error()}
+		ref = &RefusalError{Code: "internal", Message: core.Msgf("%v", err)}
 	}
 	r.refusal = ref.Code
 	code = ExitFor(ref, code)
@@ -215,9 +215,9 @@ func (r *Runner) WriteRentry() {
 }
 
 // writeErrorLine writes the `error:` line, its controls folded like a
-// warning's; the line breaks the message means to carry survive. A caller that
-// interpolates a stranger's value into msg folds its newlines with
-// [untrusted.Line] first.
+// warning's; the line breaks the message means to carry survive. A value
+// interpolated into a refusal message cannot add one: [core.Msgf] builds
+// every message and folds each argument to one line.
 func (r *Runner) writeErrorLine(msg string) {
 	msg = untrusted.Inert(msg)
 	if r.Effective.Color == colorAlways {
@@ -302,7 +302,7 @@ func (r *Runner) Canceled(ctx context.Context, verb string) (int, bool) {
 	if ctx.Err() == nil {
 		return 0, false
 	}
-	return r.RefuseExit(&RefusalError{Code: CodeCanceled, Message: "canceled before " + verb + " completed"}, ExitBroke), true
+	return r.RefuseExit(&RefusalError{Code: CodeCanceled, Message: core.Msgf("canceled before %s completed", verb)}, ExitBroke), true
 }
 
 func (r *Runner) refusalObject(ref *RefusalError, msg string) *jq.Obj {

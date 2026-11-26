@@ -33,13 +33,13 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 		)
 		core.ScanCut(true, len(files)).Apply(note)
 		if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
-			return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
+			return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/filesource.json: %v", dir, err)}
 		}
 		return nil
 	}
 	replaceFiles(ordered, paged)
 	if err := atomic.WriteFile(dir+suffixPRJSON, []byte(jq.PrettyOrdered(ordered))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/PR.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/PR.json: %v", dir, err)}
 	}
 	note := jq.NewObj(
 		keySource, "paged",
@@ -49,7 +49,7 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	)
 	core.ScanCut(truncated, len(paged)).Apply(note)
 	if err := atomic.WriteFile(dir+"/filesource.json", []byte(jq.PrettyOrdered(note))); err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/filesource.json: %v", dir, err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/filesource.json: %v", dir, err)}
 	}
 	fmt.Fprintf(ctx2.runner.Human, "» file list paged past the CLI cap (%d files, provider ceiling %d)\n", len(paged), providerFileCeiling)
 	return nil
@@ -220,7 +220,7 @@ func replaceFiles(ordered *jq.Obj, paged []any) {
 
 func discardFileSource(dir string) error {
 	if err := os.Remove(dir + "/filesource.json"); err != nil && !os.IsNotExist(err) {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not remove filesource.json: %v", err)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not remove filesource.json: %v", err)}
 	}
 	return nil
 }

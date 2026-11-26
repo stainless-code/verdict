@@ -56,7 +56,7 @@ type liveResult struct { //nolint:govet // field grouping documents the loaded d
 
 func (st *state) liveBundle(dir string) ([]any, string, string, *core.RefusalError) {
 	if !isRegular(dir + postFileSuffix) {
-		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: fmt.Sprintf(
+		return nil, "", "", st.withWarnings(&core.RefusalError{Code: codeMissingPost, Message: core.Msgf(
 			"missing %s/post.json (post for real first — calibration needs a posted review id)", dir)})
 	}
 	return st.liveFindings(dir)

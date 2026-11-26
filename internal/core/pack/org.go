@@ -31,7 +31,7 @@ func VerifyOrgPin(root string, pin *OrgPin) *core.RefusalError {
 	}
 	entry := findOrgEntry(lock, pin)
 	if entry == nil {
-		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 			"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
 			pin.Repo, pin.Ref, LockFile)}
 	}
@@ -127,22 +127,22 @@ func verifyOrgEntry(root string, entry *LockEntry, pin *OrgPin) *core.RefusalErr
 		return ref
 	}
 	if p == nil || p.Name != entry.Name {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found no vendored pack — run 'verdict pack sync'",
 			entry.Name, LockFile, "tree", entry.Hash)}
 	}
 	if p.Hash != entry.Hash {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found %s — run 'verdict pack sync'",
 			entry.Name, LockFile, "tree", entry.Hash, p.Hash)}
 	}
 	if want := LockSig(entry); entry.Sig != want {
-		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockDrift, Message: core.Msgf(
 			"org pack %s drift: %s records %s %s, found %s — run 'verdict pack sync'",
 			entry.Name, LockFile, "sig", entry.Sig, want)}
 	}
 	if !orgPathMatch(entry, pin) {
-		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 			"org pack %s@%s path %q does not match lock — run 'verdict pack sync'",
 			pin.Repo, pin.Ref, orgPinPath(pin))}
 	}
@@ -178,7 +178,7 @@ func orgRefRefusal(entry *LockEntry, pin *OrgPin) *core.RefusalError {
 	if locked == "" {
 		locked = "none"
 	}
-	return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeLockMissing, Message: core.Msgf(
 		"org pack %s drift: %s records org_ref %s, the pin reads %s — run 'verdict pack sync' to vendor and lock the new ref",
 		entry.Name, LockFile, locked, pin.Ref)}
 }

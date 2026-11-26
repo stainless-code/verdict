@@ -106,14 +106,14 @@ func pathTestPlan(pkgs map[string]*packageInfo, t *treeIndex, rawPath string) (*
 	if f == nil || f.Oversize || f.Error != "" {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
+			Message: core.Msgf("index tests-for: %s is not an indexed source file at %s", p, t.Tree),
 		}
 	}
 	pkg := pkgs[path.Dir(p)]
 	if pkg == nil {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "index tests-for: " + p + " is not an indexed source file at " + t.Tree,
+			Message: core.Msgf("index tests-for: %s is not an indexed source file at %s", p, t.Tree),
 		}
 	}
 	plan := &testPlan{path: p, dirs: []string{pkg.dir}, lang: fileLanguage(f)}
@@ -140,7 +140,7 @@ func symbolTestPlan(pkgs map[string]*packageInfo, symbol string) (*testPlan, *co
 	}
 	if len(targets) == 0 {
 		return nil, &core.RefusalError{
-			Code: codeBadFlags, Message: "index tests-for: no declaration of " + symbol,
+			Code: codeBadFlags, Message: core.Msgf("index tests-for: no declaration of %s", symbol),
 		}
 	}
 	var dirs []string
@@ -518,7 +518,7 @@ func boundedValue(query, flag string, v, def, bound int) (int, *core.RefusalErro
 	if v < 1 || v > bound {
 		return 0, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: fmt.Sprintf("index %s wants %s from 1 to %d", query, flag, bound),
+			Message: core.Msgf("index %s wants %s from 1 to %d", query, flag, bound),
 		}
 	}
 	return v, nil

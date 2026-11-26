@@ -41,6 +41,8 @@ const (
 	// shutdownTimeout bounds the graceful drain on cancellation.
 	shutdownTimeout  = 5 * time.Second
 	minWatchInterval = 100 * time.Millisecond
+	// msgErrText is a refusal that is an error's own text, folded to one line.
+	msgErrText = "%v"
 
 	flagRoot       = "--root"
 	flagHost       = "--host"
@@ -536,7 +538,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if opts.root != "" {
 		layer, err := discoveryLayer(root, r.Now, req, &opts)
 		if err != nil {
-			return r.Refuse(&cli.RefusalError{Code: codeBadRoot, Message: err.Error()})
+			return r.Refuse(&cli.RefusalError{Code: codeBadRoot, Message: core.Msgf(msgErrText, err)})
 		}
 		opts.layer = layer
 	}
@@ -622,12 +624,12 @@ func start(
 	})
 	if err != nil {
 		if errors.Is(err, errAllowPostReadOnly) || errors.Is(err, errAllowPostNonLoopback) {
-			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: err.Error()}), false
+			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: core.Msgf(msgErrText, err)}), false
 		}
-		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
+		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: core.Msgf(msgErrText, err)}), false
 	}
 	if err := server.Listen(ctx); err != nil {
-		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
+		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: core.Msgf(msgErrText, err)}), false
 	}
 	return server, 0, true
 }
@@ -672,14 +674,14 @@ func resolveRoot(ctx context.Context, given string) (string, *cli.RefusalError) 
 func resolveGivenRoot(given string) (string, *cli.RefusalError) {
 	abs, err := filepath.Abs(given)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "serve: --root " + given + " is not addressable: " + err.Error()}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf("serve: --root %s is not addressable: %s", given, err.Error())}
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "serve: --root " + abs + " does not exist or is unreadable"}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf("serve: --root %s does not exist or is unreadable", abs)}
 	}
 	if !info.IsDir() {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "serve: --root " + abs + " is not a directory"}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf("serve: --root %s is not a directory", abs)}
 	}
 	return abs, nil
 }
@@ -691,11 +693,12 @@ func resolveProbeRoot(ctx context.Context) (string, *cli.RefusalError) {
 		if ctx.Err() != nil {
 			return "", &cli.RefusalError{Code: cli.CodeCanceled, Message: "canceled before serve completed"}
 		}
-		return "", &cli.RefusalError{Code: "not-a-repo", Message: err.Error()}
+		return "", &cli.RefusalError{Code: "not-a-repo", Message: core.Msgf(msgErrText, err)}
 	}
 	abs, aerr := filepath.Abs(root)
 	if aerr != nil {
-		return "", &cli.RefusalError{Code: codeBadRoot, Message: "serve: repository root " + root + " is not addressable: " + aerr.Error()}
+		return "", &cli.RefusalError{Code: codeBadRoot, Message: core.Msgf(
+			"serve: repository root %s is not addressable: %s", root, aerr.Error())}
 	}
 	return abs, nil
 }

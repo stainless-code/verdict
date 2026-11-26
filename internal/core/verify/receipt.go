@@ -112,7 +112,7 @@ func (b *bundleHandle) patchSig() string {
 // than an earlier pass. A receipt that cannot be removed refuses the run.
 func (b *bundleHandle) dropReceipt() *core.RefusalError {
 	if err := b.root.Remove(ReceiptFile); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 			"could not clear the previous %s/%s: %v", b.dir, ReceiptFile, err)}
 	}
 	return nil
@@ -126,7 +126,7 @@ func (b *bundleHandle) unchanged() *core.RefusalError {
 	if err == nil && now.IsDir() && os.SameFile(now, b.info) {
 		return nil
 	}
-	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 		"bundle directory %s changed while the command ran — nothing was recorded and no receipt was written; "+
 			"restore the bundle and re-run verify", b.dir)}
 }
@@ -142,7 +142,7 @@ func (b *bundleHandle) writeReceipt(receipt *core.VerifyReceipt) *core.RefusalEr
 		return failed(err)
 	}
 	if err := atomic.WriteFileIn(b.root, ReceiptFile, append(raw, '\n')); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeVerifyFailed, Message: core.Msgf(
 			"could not write %s/%s: %v", b.dir, ReceiptFile, err)}
 	}
 	return nil

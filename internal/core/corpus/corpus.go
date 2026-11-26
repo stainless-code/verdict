@@ -117,7 +117,7 @@ func LoadFile(path string) (*core.CorpusCase, *core.RefusalError) {
 
 // invalid builds the corpus-invalid refusal.
 func invalid(path, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeCorpusInvalid, Message: core.Msgf(
 		"corpus manifest %s is %s (write a schemas/corpus.schema.json case: id, kind, "+
 			"provenance, bugs (empty for controls); try: copy bench/corpus/<id>/case.json)", path, reason)}
 }
@@ -130,7 +130,7 @@ func invalidDiff(dir, path, reason string) *core.RefusalError {
 	if _, err := os.Stat(filepath.Join(dir, readcommon.BacktestMarkerFile)); err == nil {
 		remedy = "rebuild it with 'backtest replay', then score again"
 	}
-	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeCorpusInvalid, Message: core.Msgf(
 		"corpus bundle %s is %s; a real case must grade against its reviewed "+
 			"full.diff (%s)", path, reason, remedy)}
 }
@@ -341,7 +341,7 @@ func unusableVocabulary(c *core.CorpusCase, diff []byte, path string) *core.Refu
 // invalidVocabulary refuses a valid manifest whose vocabulary cannot grade. It
 // carries no case-authoring template: the manifest shape is not the problem.
 func invalidVocabulary(path, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: codeCorpusInvalid, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeCorpusInvalid, Message: core.Msgf(
 		"corpus manifest %s is unusable: %s", path, reason)}
 }
 

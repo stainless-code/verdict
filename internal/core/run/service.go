@@ -112,13 +112,13 @@ func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 		if _, ok := lookupAgent(def.Name); ok {
 			return &core.RefusalError{
 				Code:    codeBadSettings,
-				Message: path + ": collides with a built-in agent; pick another name",
+				Message: core.Msgf("%s: collides with a built-in agent; pick another name", path),
 			}
 		}
 		if seen[def.Name] {
 			return &core.RefusalError{
 				Code:    codeBadSettings,
-				Message: path + ": defined twice; use one agent per name",
+				Message: core.Msgf("%s: defined twice; use one agent per name", path),
 			}
 		}
 		seen[def.Name] = true
@@ -534,7 +534,7 @@ func (st *state) artifactName() string {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg)}
 }
 
 // pipeline resolves the run's declared pipeline and folds in the warnings it

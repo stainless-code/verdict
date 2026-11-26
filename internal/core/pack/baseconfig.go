@@ -2,7 +2,6 @@ package pack
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -179,7 +178,7 @@ func baseAgainst(ctx context.Context, cmdr core.Commander, root, candidate strin
 // with HEAD, naming the branch and the read that failed without echoing git's
 // own text.
 func baseUnresolved(ref string) *core.RefusalError {
-	return &core.RefusalError{Code: CodePackGitFailed, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodePackGitFailed, Message: core.Msgf(
 		"git merge-base failed: %q resolves but shares no merge base with %s — "+
 			"check that the checkout is a full clone of its default branch, then re-run",
 		ref, gitHeadRef)}

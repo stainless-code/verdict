@@ -94,11 +94,11 @@ func githubView(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 		if ref := truncateEmpty(dir + suffixPRJSON); ref != nil {
 			return ref
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"gh pr view failed for %s#%s (auth? PR number?)", repo, pr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixPRJSON, []byte(viewRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/PR.json: %v", dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/PR.json: %v", dir, werr)}
 	}
 	return nil
 }
@@ -113,7 +113,7 @@ func githubDiff(ctx context.Context, r *session, dir, repo, pr string) *core.Ref
 		return githubAPIDiff(ctx, r, dir, repo, pr, diffRes.Stderr)
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -130,11 +130,11 @@ func githubAPIDiff(ctx context.Context, r *session, dir, repo, pr, cliStderr str
 		if upErr := upstreamDiffRefusal(cliStderr + newline + apiRes.Stderr); upErr != nil {
 			return upErr
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not fetch diff for %s#%s via CLI or API", repo, pr)}
 	}
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(apiRes.Stdout)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteFullDiff, dir, werr)}
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func githubReviews(ctx context.Context, r *session, dir, repo, pr string) *core.
 		r.Warn("github review read failed — reviews.json is empty; re-fetch after confirming gh auth")
 	}
 	if werr := atomic.WriteFile(dir+suffixReviewsJSON, []byte(reviewsBody)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteReviews, dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteReviews, dir, werr)}
 	}
 	inlineOK, ref := githubInline(ctx, r, dir, repo, pr)
 	if ref != nil {
@@ -238,7 +238,7 @@ func githubInline(ctx context.Context, r *session, dir, repo, pr string) (bool, 
 		r.Warn("github inline-comment read failed — inline.json is empty; re-fetch after confirming gh auth")
 	}
 	if werr := atomic.WriteFile(dir+suffixInlineJSON, []byte(body)); werr != nil {
-		return false, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteInline, dir, werr)}
+		return false, &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(msgWriteInline, dir, werr)}
 	}
 	if !readOK {
 		return false, nil
@@ -260,7 +260,7 @@ func clearStaleIncremental(dir string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code:    CodeFetchFailed,
-		Message: fmt.Sprintf("could not clear %s%s: %v", dir, suffixIncremental, err),
+		Message: core.Msgf("could not clear %s%s: %v", dir, suffixIncremental, err),
 	}
 }
 
@@ -287,7 +287,7 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f *Fla
 	if werr := atomic.WriteFile(dir+suffixIncremental, []byte(res.Stdout)); werr != nil {
 		return incBase, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixIncremental, werr),
+			Message: core.Msgf("could not write %s%s: %v", dir, suffixIncremental, werr),
 		}
 	}
 	return f.BaseSHA, nil
@@ -314,7 +314,7 @@ func writeIncrementalNote(r *session, dir, reason string) *core.RefusalError {
 	}
 	note := "incrementalUnavailable: " + strings.TrimRight(head, newline)
 	if werr := atomic.WriteFile(dir+"/incremental.diff.note", []byte(note+newline)); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/incremental.diff.note: %v", dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/incremental.diff.note: %v", dir, werr)}
 	}
 	fmt.Fprintln(r.Human, note)
 	_ = os.Remove(dir + "/incremental.diff")
@@ -496,7 +496,7 @@ func upstreamDiffRefusal(combined string) *core.RefusalError {
 	if !upstreamRefusalRe.MatchString(combined) {
 		return nil
 	}
-	return &core.RefusalError{Code: "upstream-diff-too-large", Message: fmt.Sprintf(
+	return &core.RefusalError{Code: "upstream-diff-too-large", Message: core.Msgf(
 		"upstream refused the diff over %d files (host will not render it) — re-fetch narrowed to a range "+
 			"via --base-sha/--since, or narrow with a paths filter, then re-run", upstreamFileLimit)}
 }

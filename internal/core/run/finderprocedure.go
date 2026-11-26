@@ -28,7 +28,7 @@ func finderProcedure(dir, output string, index int) ([]byte, *core.RefusalError)
 	for _, name := range files {
 		raw, err := skillfs.Read("prompts/handoff/" + name)
 		if err != nil {
-			return nil, &core.RefusalError{Code: codeMissingBundle, Message: "finder contract unavailable: " + name}
+			return nil, &core.RefusalError{Code: codeMissingBundle, Message: core.Msgf("finder contract unavailable: %s", name)}
 		}
 		fragments.WriteString(string(raw) + "\n\n")
 	}

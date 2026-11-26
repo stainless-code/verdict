@@ -239,7 +239,7 @@ func (st *state) secretGate(sites []secretSite) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code:    codeSecretShaped,
-		Message: fmt.Sprintf(msgSecretRefusal, located, AllowSecretValuesFlag),
+		Message: core.Msgf(msgSecretRefusal, located, AllowSecretValuesFlag),
 	}
 }
 

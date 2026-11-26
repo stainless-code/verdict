@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/lsp"
 	"github.com/stainless-code/verdict/internal/posture"
@@ -290,17 +291,18 @@ func fallbackLSPRoot(ctx context.Context) string {
 func resolveLSPRoot(given string) (string, *cli.RefusalError) {
 	abs, err := filepath.Abs(given)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + given + " is not addressable: " + err.Error()}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: core.Msgf(
+			lspRootPrefix+"%s is not addressable: %s", given, err.Error())}
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + abs + " does not exist or is unreadable"}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: core.Msgf(lspRootPrefix+"%s does not exist or is unreadable", abs)}
 	}
 	if !info.IsDir() {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + abs + " is not a directory"}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: core.Msgf(lspRootPrefix+"%s is not a directory", abs)}
 	}
 	if problem := lsp.CheckoutProblem(abs); problem != "" {
-		return "", &cli.RefusalError{Code: codeLSPNotARepo, Message: lspRootPrefix + abs + " cannot be served: " + problem}
+		return "", &cli.RefusalError{Code: codeLSPNotARepo, Message: core.Msgf(lspRootPrefix+"%s cannot be served: %s", abs, problem)}
 	}
 	return abs, nil
 }

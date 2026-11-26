@@ -54,7 +54,7 @@ func incidentAudit(st *state) (*incidentRollup, *core.RefusalError) {
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    "corrupt-store",
-			Message: fmt.Sprintf(msgIncidentLedger, filepath.ToSlash(incident.File)),
+			Message: core.Msgf(msgIncidentLedger, filepath.ToSlash(incident.File)),
 		}
 	}
 	slices.SortStableFunc(rows, incident.CompareRows)

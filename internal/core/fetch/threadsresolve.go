@@ -116,13 +116,13 @@ func (st *threadsRun) resolveBundle(dir string) *core.RefusalError {
 	if !fileExists(dir + suffixPRJSON) {
 		return st.withWarnings(&core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir),
+			Message: core.Msgf("missing %s/PR.json (fetch the PR first)", dir),
 		})
 	}
 	if !fileExists(dir + suffixThreadsJSON) {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("missing %s/threads.json (run threads first)", dir),
+			Message: core.Msgf("missing %s/threads.json (run threads first)", dir),
 		})
 	}
 	return nil
@@ -135,13 +135,13 @@ func (st *threadsRun) resolveFeed(dir string) (*threadscore.File, *core.RefusalE
 	if err != nil {
 		return nil, st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("unreadable %s/threads.json: %v", dir, err),
+			Message: core.Msgf("unreadable %s/threads.json: %v", dir, err),
 		})
 	}
 	if feed.Truncated {
 		return nil, st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: dir + "/threads.json is truncated — refresh threads before resolving",
+			Message: core.Msgf("%s/threads.json is truncated — refresh threads before resolving", dir),
 		})
 	}
 	return feed, nil
@@ -156,7 +156,7 @@ func (st *threadsRun) resolveProvider(ctx context.Context, dir string) (string, 
 	}
 	caps := core.CapabilitiesFor(provider)
 	if !caps.ThreadResolution {
-		return "", st.withWarnings(&core.RefusalError{Code: "provider-unimplemented", Message: fmt.Sprintf(
+		return "", st.withWarnings(&core.RefusalError{Code: "provider-unimplemented", Message: core.Msgf(
 			"thread resolution on %s is not implemented (%s)",
 			provider, caps.ReasonFor(core.CapabilityThreadResolution))})
 	}
@@ -174,7 +174,7 @@ func (st *threadsRun) resolveSelfLogin(ctx context.Context, provider string) (st
 	if err != nil || self == "" {
 		return "", st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("could not read authenticated login for %s: %v", provider, err),
+			Message: core.Msgf("could not read authenticated login for %s: %v", provider, err),
 		})
 	}
 	return self, nil
@@ -191,7 +191,7 @@ func (st *threadsRun) findingsStore(dir string) (map[string]string, *core.Refusa
 		}
 		return nil, st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("unreadable %s/findings.json: %v", dir, err),
+			Message: core.Msgf("unreadable %s/findings.json: %v", dir, err),
 		})
 	}
 	store := make(map[string]string, len(entries))
@@ -304,7 +304,7 @@ func (st *threadsRun) selectNamed(feed *threadscore.File, self string) (resolveS
 func (st *threadsRun) namedID(byID map[string]*threadscore.Thread, id, self string) (bool, *core.RefusalError) {
 	thread, ok := byID[id]
 	if !ok {
-		return false, st.withWarnings(&core.RefusalError{Code: "unknown-thread", Message: fmt.Sprintf(
+		return false, st.withWarnings(&core.RefusalError{Code: "unknown-thread", Message: core.Msgf(
 			"no thread %q in threads.json (refresh threads first)", id)})
 	}
 	return st.namedSelection(thread, id, self)
@@ -314,11 +314,11 @@ func (st *threadsRun) namedID(byID map[string]*threadscore.Thread, id, self stri
 // refuses the whole run, and an already-resolved thread is a skip.
 func (st *threadsRun) namedSelection(thread *threadscore.Thread, id, self string) (bool, *core.RefusalError) {
 	if thread.AuthorKind != threadscore.AuthorVerdict {
-		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
+		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: core.Msgf(
 			"thread %q is %s-authored, not verdict-authored — refusing to resolve it", id, thread.AuthorKind)})
 	}
 	if thread.Author != self {
-		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: fmt.Sprintf(
+		return false, st.withWarnings(&core.RefusalError{Code: "not-verdict-authored", Message: core.Msgf(
 			"thread %q is not self-authored (root author %q) — refusing to resolve it", id, thread.Author)})
 	}
 	return thread.Resolved, nil
@@ -349,7 +349,7 @@ func (st *threadsRun) writeThreads(
 	if err := threadscore.WriteFile(dir+suffixThreadsJSON, feed); err != nil {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("could not write %s/threads.json: %v", dir, err),
+			Message: core.Msgf("could not write %s/threads.json: %v", dir, err),
 		})
 	}
 	receipt := &threadscore.ResolveReceipt{
@@ -365,7 +365,7 @@ func (st *threadsRun) writeThreads(
 	if err := threadscore.WriteResolveReceipt(dir+"/"+threadscore.KeyResolveReceipt, receipt); err != nil {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
-			Message: fmt.Sprintf("could not write %s/%s: %v", dir, threadscore.KeyResolveReceipt, err),
+			Message: core.Msgf("could not write %s/%s: %v", dir, threadscore.KeyResolveReceipt, err),
 		})
 	}
 	st.human(fmt.Sprintf("done: resolved %d thread(s) -> %s/%s",

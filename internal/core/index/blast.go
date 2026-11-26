@@ -126,7 +126,7 @@ func checkBlastPaths(entries []treeEntry, paths []string, tree string) *core.Ref
 	for _, p := range paths {
 		if _, ok := entryByPath(entries, p); !ok {
 			return &core.RefusalError{
-				Code: codeBadFlags, Message: fmt.Sprintf(blastUnknownPath, p, tree),
+				Code: codeBadFlags, Message: core.Msgf(blastUnknownPath, p, tree),
 			}
 		}
 	}
@@ -294,13 +294,13 @@ func (st *state) bundleInput(ctx context.Context) (BlastInput, []blastChange, *c
 	}
 	if !readcommon.IsDir(dir) {
 		return BlastInput{}, nil, &core.RefusalError{
-			Code: "missing-bundle", Message: fmt.Sprintf(blastMissingDir, dir),
+			Code: "missing-bundle", Message: core.Msgf(blastMissingDir, dir),
 		}
 	}
 	raw, err := os.ReadFile(dir + blastDiffSuffix)
 	if err != nil {
 		return BlastInput{}, nil, &core.RefusalError{
-			Code: "missing-diff", Message: fmt.Sprintf(blastMissingDiff, dir),
+			Code: "missing-diff", Message: core.Msgf(blastMissingDiff, dir),
 		}
 	}
 	changes := blastChanges(string(raw))

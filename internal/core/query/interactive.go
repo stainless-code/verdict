@@ -1,8 +1,6 @@
 package query
 
 import (
-	"fmt"
-
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -40,14 +38,14 @@ func (l *Layer) ResolveBundle(rootID, bundle string) (string, string, error) {
 	if !insideRoot(root.Path, dir) {
 		return "", "", &core.RefusalError{
 			Code: config.CodeBadConfig,
-			Message: fmt.Sprintf("serve: bundle %q resolves outside this served root "+
+			Message: core.Msgf("serve: bundle %q resolves outside this served root "+
 				"— refusing to write through it", bundle),
 		}
 	}
 	if serr := config.NewLayout(root.Path).RefuseBundleSymlink(bundle); serr != nil {
 		return "", "", &core.RefusalError{
 			Code:    config.CodeBadConfig,
-			Message: fmt.Sprintf("serve: bundle %q cannot be written: %v", bundle, serr),
+			Message: core.Msgf("serve: bundle %q cannot be written: %v", bundle, serr),
 		}
 	}
 	return root.Path, dir, nil

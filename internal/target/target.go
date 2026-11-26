@@ -152,7 +152,7 @@ func missingTarget(q *Request, out *Resolved) *core.RefusalError {
 func fromURL(q *Request, out *Resolved) {
 	out.Repo, out.Pr = "", ""
 	if q.Pr != "" {
-		out.Refusal = &core.RefusalError{Code: core.CodeBadTargetURL, Message: fmt.Sprintf(
+		out.Refusal = &core.RefusalError{Code: core.CodeBadTargetURL, Message: core.Msgf(
 			"the pull request URL already names its number; drop %q and pass the URL alone", q.Pr)}
 		return
 	}
@@ -200,7 +200,7 @@ func normalizeProvider(args []string, provider string) (out []string, seen bool,
 			continue
 		}
 		if got != provider {
-			return nil, false, &core.RefusalError{Code: core.CodeBadTargetURL, Message: fmt.Sprintf(
+			return nil, false, &core.RefusalError{Code: core.CodeBadTargetURL, Message: core.Msgf(
 				"the URL is a %s pull request but --provider says %s; drop --provider, or pass the URL's own host", provider, got)}
 		}
 		seen = true

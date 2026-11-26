@@ -138,8 +138,8 @@ func runComposed(ctx context.Context, r *cli.Runner, req readcommon.Request, f *
 	if f.agent == "" {
 		return r.RefuseTyped(&core.RefusalError{
 			Code: "bad-flags",
-			Message: "backtest --since runs mine, replay, and score, and replay needs --agent <name> (known: " +
-				strings.Join(runcore.AgentNames(), ", ") + ")",
+			Message: core.Msgf("backtest --since runs mine, replay, and score, and replay needs --agent <name> (known: "+
+				"%s)", strings.Join(runcore.AgentNames(), ", ")),
 		})
 	}
 	mined, ref := corebacktest.Run(ctx, mineRequest(r, req, f))

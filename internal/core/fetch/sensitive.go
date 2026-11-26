@@ -156,7 +156,7 @@ func writeSensitiveManifest(r *session, dir, extra string) *core.RefusalError {
 		sb.WriteString(f + newline)
 	}
 	if werr := atomic.WriteFile(dir+"/sensitive.txt", []byte(sb.String())); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/sensitive.txt: %v", dir, werr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write %s/sensitive.txt: %v", dir, werr)}
 	}
 	warnSensitive(r, dir, flagged)
 	return nil

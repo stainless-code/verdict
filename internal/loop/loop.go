@@ -189,7 +189,7 @@ func flow(r *cli.Runner, req *readcommon.Request, agents []config.PersonalAgent,
 func parseRounds(raw string) (int, *core.RefusalError) {
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < 1 || strconv.Itoa(n) != raw {
-		return 0, &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-rounds must be a positive whole number, got '%s'", raw)}
 	}
 	return n, nil
@@ -204,7 +204,7 @@ func parseTimeout(raw string) (time.Duration, *core.RefusalError) {
 	}
 	d, err := time.ParseDuration(spelled)
 	if err != nil || d <= 0 {
-		return 0, &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return 0, &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--timeout must be a positive duration (600, 600s, 10m), got '%s'", raw)}
 	}
 	return d, nil
@@ -222,19 +222,19 @@ func readFixPrompt(path string) (string, *core.RefusalError) {
 	}
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
-		return "", &core.RefusalError{Code: codeBadFlags, Message: "--fix-prompt " + path +
-			" is not a readable file"}
+		return "", &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("--fix-prompt %s"+
+			" is not a readable file", path)}
 	}
 	if info.Size() > maxFixPromptBytes {
-		return "", &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--fix-prompt %s is %d bytes, over the %d-byte limit", path, info.Size(), maxFixPromptBytes)}
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return "", &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf("--fix-prompt %s: %v", path, err)}
+		return "", &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("--fix-prompt %s: %v", path, err)}
 	}
 	if strings.TrimSpace(string(raw)) == "" {
-		return "", &core.RefusalError{Code: codeBadFlags, Message: "--fix-prompt " + path + " is empty"}
+		return "", &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("--fix-prompt %s is empty", path)}
 	}
 	return string(raw), nil
 }
@@ -247,7 +247,7 @@ func outputDir(raw string) (string, *core.RefusalError) {
 	}
 	abs, err := filepath.Abs(raw)
 	if err != nil {
-		return "", &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf("--output %s: %v", raw, err)}
+		return "", &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("--output %s: %v", raw, err)}
 	}
 	return abs, nil
 }

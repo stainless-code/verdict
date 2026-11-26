@@ -184,11 +184,11 @@ func chunkPlanFit(table []fileSlice, files map[string]bool, maxBytes int64) bool
 // groupCapRefusal names the group and its own cap, with split candidates.
 func groupCapRefusal(limit *groupLimit, total int64, table []fileSlice) *core.RefusalError {
 	cands := splitCandidatesFor(table, limit.Files, total)
-	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
+	refusal := &core.RefusalError{Code: "diff-too-large", Message: core.Msgf(
 		"group %s diff %d bytes exceeds its cap %d bytes (from %s) — split the range "+
 			"(fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch "+
-			"(override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n",
-		limit.ID, total, limit.MaxBytes, orEmptyCapSource(limit.Source)) + diffFitNext}
+			"(override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n"+diffFitNext,
+		limit.ID, total, limit.MaxBytes, orEmptyCapSource(limit.Source))}
 	refusal.Candidates = cands
 	return refusal
 }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/acp"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -167,11 +168,12 @@ func resolveACPRoot(ctx context.Context, given string) (string, *cli.RefusalErro
 		if ctx.Err() != nil {
 			return "", &cli.RefusalError{Code: cli.CodeCanceled, Message: "canceled before acp completed"}
 		}
-		return "", &cli.RefusalError{Code: "not-a-repo", Message: err.Error()}
+		return "", &cli.RefusalError{Code: "not-a-repo", Message: core.Msgf("%v", err)}
 	}
 	abs, aerr := filepath.Abs(root)
 	if aerr != nil {
-		return "", &cli.RefusalError{Code: codeACPBRoot, Message: "acp: repository root " + root + " is not addressable: " + aerr.Error()}
+		return "", &cli.RefusalError{Code: codeACPBRoot, Message: core.Msgf(
+			"acp: repository root %s is not addressable: %s", root, aerr.Error())}
 	}
 	return abs, nil
 }
@@ -181,14 +183,14 @@ func resolveACPRoot(ctx context.Context, given string) (string, *cli.RefusalErro
 func resolveGivenACPRoot(given string) (string, *cli.RefusalError) {
 	abs, err := filepath.Abs(given)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeACPBRoot, Message: "acp: --root " + given + " is not addressable: " + err.Error()}
+		return "", &cli.RefusalError{Code: codeACPBRoot, Message: core.Msgf("acp: --root %s is not addressable: %s", given, err.Error())}
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeACPBRoot, Message: "acp: --root " + abs + " does not exist or is unreadable"}
+		return "", &cli.RefusalError{Code: codeACPBRoot, Message: core.Msgf("acp: --root %s does not exist or is unreadable", abs)}
 	}
 	if !info.IsDir() {
-		return "", &cli.RefusalError{Code: codeACPBRoot, Message: "acp: --root " + abs + " is not a directory"}
+		return "", &cli.RefusalError{Code: codeACPBRoot, Message: core.Msgf("acp: --root %s is not a directory", abs)}
 	}
 	return abs, nil
 }

@@ -101,7 +101,7 @@ func completePlan(dir, head string, plan *jq.Obj, dispatch string, warnings []st
 func readPrompt() ([]byte, error) {
 	raw, err := skillfs.Read("prompts/verifier.md")
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeFailed, Message: fmt.Sprintf("could not read verifier prompt: %v", err)}
+		return nil, &core.RefusalError{Code: codeFailed, Message: core.Msgf("could not read verifier prompt: %v", err)}
 	}
 	return raw, nil
 }
@@ -147,7 +147,7 @@ func refuse(r *cli.Runner, err error) int {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return r.Refuse(ref)
 	}
-	return r.Refuse(&core.RefusalError{Code: codeFailed, Message: err.Error()})
+	return r.Refuse(&core.RefusalError{Code: codeFailed, Message: core.Msgf("%v", err)})
 }
 
 func panelError(err error) error {

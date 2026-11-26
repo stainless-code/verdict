@@ -186,6 +186,6 @@ func segmentShaped(s string) bool {
 
 // badTarget renders the one bad-target refusal with the shape named.
 func badTarget(why string) *core.RefusalError {
-	return &core.RefusalError{Code: codeBadTarget, Message: "demo takes a public GitHub pull request URL: " +
-		why + " (want " + publicURLShape + ")"}
+	return &core.RefusalError{Code: codeBadTarget, Message: core.Msgf("demo takes a public GitHub pull request URL: "+
+		"%s (want "+publicURLShape+")", why)}
 }

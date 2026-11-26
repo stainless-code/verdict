@@ -123,7 +123,7 @@ func (st *state) loadRefusal(err error) *core.RefusalError {
 		ref.Warnings = st.warnings
 		return ref
 	}
-	return &core.RefusalError{Code: "internal", Message: err.Error(), Warnings: st.warnings}
+	return &core.RefusalError{Code: "internal", Message: core.Msgf("%v", err), Warnings: st.warnings}
 }
 
 func (st *state) commander() core.Commander {

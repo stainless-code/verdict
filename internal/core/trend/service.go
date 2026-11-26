@@ -197,7 +197,7 @@ type row struct {
 func collectRows(st *state) ([]row, *core.RefusalError) {
 	entries, err := readcommon.StoreEntries(readcommon.StateDir(st.req.RepoRootPath()))
 	if err != nil {
-		return nil, &core.RefusalError{Code: "corrupt-store", Message: err.Error()}
+		return nil, &core.RefusalError{Code: "corrupt-store", Message: core.Msgf("%v", err)}
 	}
 	var rows []row
 	replays := 0

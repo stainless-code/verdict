@@ -3,7 +3,6 @@ package run
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -107,7 +106,7 @@ func (st *state) captureOneFinder(dir string) *core.RefusalError {
 	}
 	captured.Finders, captured.FinderSource = 1, source
 	if err := config.WriteRunState(dir, captured); err != nil {
-		return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("capture finder count: %v", err)}
+		return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf("capture finder count: %v", err)}
 	}
 	return nil
 }
@@ -159,7 +158,7 @@ func (st *state) retireRefetchedCapture(dir string, captured *config.RunState) *
 func retireInactivePhases(dir string) *core.RefusalError {
 	stale, err := stalePhaseArtifacts(dir)
 	if err != nil {
-		return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf(
 			"cannot inspect the bundle's phase directories: %v; no agent launched", err)}
 	}
 	if !stale {
@@ -238,7 +237,7 @@ func retiredCapture(captured *config.RunState, dir string) bool {
 }
 
 func retirementRefusal(location string, err error) *core.RefusalError {
-	return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: codeRecordFailed, Message: core.Msgf(
 		"previous execution could not be retired: %v; restore bundle paths from %s, then re-run; no agent launched", err, location)}
 }
 

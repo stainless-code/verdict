@@ -89,7 +89,7 @@ func InsufficientRefusal(reason string, problems []Problem) *RefusalError {
 	}
 	return &RefusalError{
 		Code:     CodeReviewInsufficient,
-		Message:  msg,
+		Message:  Msgf("%s", msg),
 		Problems: problems,
 	}
 }

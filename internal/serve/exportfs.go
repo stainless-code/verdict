@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/webui"
 )
@@ -200,7 +201,7 @@ func exportFailure(err error) error {
 	if ref, ok := errors.AsType[*cli.RefusalError](err); ok {
 		return ref
 	}
-	return &cli.RefusalError{Code: "report-failed", Message: err.Error()}
+	return &cli.RefusalError{Code: "report-failed", Message: core.Msgf("%v", err)}
 }
 
 func exportRemnants(dest string) error {

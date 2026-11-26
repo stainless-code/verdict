@@ -253,7 +253,7 @@ func tempRoot(req *Request) (string, *core.RefusalError) {
 	if err != nil {
 		return "", &core.RefusalError{
 			Code:    codeFetchFailed,
-			Message: fmt.Sprintf("could not create the demo's temp directory: %v", err),
+			Message: core.Msgf("could not create the demo's temp directory: %v", err),
 		}
 	}
 	dir, ref := resolveTempDir(created)
@@ -283,8 +283,8 @@ func tempDirRefusal(req *Request, dir, checkout string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeFetchFailed,
-		Message: "the demo's temp directory " + dir + " resolved inside the checkout " + checkout +
-			" — point TMPDIR outside the checkout",
+		Message: core.Msgf("the demo's temp directory %s resolved inside the checkout %s"+
+			" — point TMPDIR outside the checkout", dir, checkout),
 	}
 }
 
@@ -321,8 +321,8 @@ func tempParentRefusal(req *Request, checkout string) *core.RefusalError {
 	if inside(resolved, checkout) {
 		return &core.RefusalError{
 			Code: codeFetchFailed,
-			Message: "the demo's temp parent " + resolved + " is inside the checkout " + checkout +
-				" — point TMPDIR outside the checkout",
+			Message: core.Msgf("the demo's temp parent %s is inside the checkout %s"+
+				" — point TMPDIR outside the checkout", resolved, checkout),
 		}
 	}
 	return nil
@@ -336,14 +336,14 @@ func resolvedDir(path string) (string, *core.RefusalError) {
 	if err != nil {
 		return "", &core.RefusalError{
 			Code:    codeFetchFailed,
-			Message: fmt.Sprintf("could not resolve %s: %v", path, err),
+			Message: core.Msgf("could not resolve %s: %v", path, err),
 		}
 	}
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		return "", &core.RefusalError{
 			Code:    codeFetchFailed,
-			Message: fmt.Sprintf("could not resolve %s: %v", abs, err),
+			Message: core.Msgf("could not resolve %s: %v", abs, err),
 		}
 	}
 	return resolved, nil
@@ -368,7 +368,7 @@ func resolveTempDir(created string) (string, *core.RefusalError) {
 		_ = os.RemoveAll(created)
 		return "", &core.RefusalError{
 			Code:    codeFetchFailed,
-			Message: fmt.Sprintf("could not resolve the demo's temp directory: %v", err),
+			Message: core.Msgf("could not resolve the demo's temp directory: %v", err),
 		}
 	}
 	return dir, nil
@@ -541,7 +541,7 @@ func gitDirty(ctx context.Context, req *Request) (bool, *core.RefusalError) {
 	default:
 		return false, &core.RefusalError{
 			Code:    codeFetchFailed,
-			Message: "could not read the working tree: " + headText(res.Stderr),
+			Message: core.Msgf("could not read the working tree: %s", headText(res.Stderr)),
 		}
 	}
 }
@@ -630,7 +630,7 @@ func gitRefusal(err error) *core.RefusalError {
 	if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 		return &core.RefusalError{Code: codeMissingTool, Message: "git is not on PATH"}
 	}
-	return &core.RefusalError{Code: codeFetchFailed, Message: "could not read the working tree: " + err.Error()}
+	return &core.RefusalError{Code: codeFetchFailed, Message: core.Msgf("could not read the working tree: %s", err.Error())}
 }
 
 // ghSignedIn reports whether gh exists and has an active account for the host.

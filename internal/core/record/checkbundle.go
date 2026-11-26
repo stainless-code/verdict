@@ -1,8 +1,6 @@
 package recordcore
 
 import (
-	"fmt"
-
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -41,7 +39,7 @@ func checkPhase(dir string, normalized []byte, repairs []Problem, discovery bool
 	}
 	diff, err := noblock.ReadFile(dir + diffSuffix)
 	if err != nil {
-		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
+		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: core.Msgf(msgMissingDiff, dir)}
 	}
 	in := CheckInput{
 		Diff:          string(diff),

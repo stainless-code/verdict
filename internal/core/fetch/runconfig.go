@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -330,7 +329,7 @@ func (rc *runConfig) persistRunBundle(snap *controls.Snapshot, dir, name, captur
 		if ref := serr.Refusal(); ref != nil {
 			return ref
 		}
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write run state: %v", serr)}
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not write run state: %v", serr)}
 	}
 	return nil
 }
@@ -346,7 +345,7 @@ func diffHashes(dir string, exclusions []string) (raw, filtered string, ref *cor
 		return "", "", nil
 	}
 	if err != nil {
-		return "", "", &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return "", "", &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"cannot read %s%s: %v — refusing to record unbound diff hashes", dir, suffixFullDiff, err)}
 	}
 	filteredBytes, _, fref := filterDiffChecked(body, exclusions)
@@ -392,7 +391,7 @@ func stateRefusal(serr stateFailure, what string) *core.RefusalError {
 	if ref := serr.Refusal(); ref != nil {
 		return ref
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not prepare %s: %v", what, serr)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("could not prepare %s: %v", what, serr)}
 }
 
 // refuseSymlinkedBundleDir refuses a bundle directory that is a symlink before
@@ -421,7 +420,7 @@ func budgetRefusal(err error) *core.RefusalError {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		return ref
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("spend gate failed: %v", err)}
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("spend gate failed: %v", err)}
 }
 
 // finalizeRemoteRun completes the typed policy once the bundle's file

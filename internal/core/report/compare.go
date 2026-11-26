@@ -110,7 +110,7 @@ func loadCompare(st *state) *core.RefusalError {
 	if sameFile(st.dir, baselineDir) {
 		return &core.RefusalError{
 			Code: codeBadCompare,
-			Message: fmt.Sprintf("report: --compare %s names the reported bundle itself; pass a different baseline",
+			Message: core.Msgf("report: --compare %s names the reported bundle itself; pass a different baseline",
 				st.flags.Compare),
 		}
 	}
@@ -152,13 +152,13 @@ func repoMismatch(want string, baseline, target repoIdentity) *core.RefusalError
 	case baseline.project != "" && target.project != "" && baseline.project != target.project:
 		return &core.RefusalError{
 			Code: codeBadCompare,
-			Message: fmt.Sprintf("report: --compare %s reviews %s, not the reported bundle's %s",
+			Message: core.Msgf("report: --compare %s reviews %s, not the reported bundle's %s",
 				want, baseline.project, target.project),
 		}
 	case baseline.host != "" && target.host != "" && baseline.host != target.host:
 		return &core.RefusalError{
 			Code: codeBadCompare,
-			Message: fmt.Sprintf("report: --compare %s is a %s review, not the reported bundle's %s review",
+			Message: core.Msgf("report: --compare %s is a %s review, not the reported bundle's %s review",
 				want, baseline.host, target.host),
 		}
 	default:
@@ -190,7 +190,7 @@ func resolveCompareDir(st *state, want string) (string, *core.RefusalError) {
 	if ref != nil {
 		return "", &core.RefusalError{
 			Code:    codeBadCompare,
-			Message: fmt.Sprintf("report: --compare %s is not a bundle path or a valid bundle name: %s", want, ref.Message),
+			Message: core.Msgf("report: --compare %s is not a bundle path or a valid bundle name: %s", want, ref.Message),
 		}
 	}
 	return checkedCompareDir(st, want, dir)
@@ -340,7 +340,7 @@ func looksLikePath(value string) bool {
 func missingCompare(want string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: codeMissingCompare,
-		Message: fmt.Sprintf("report: --compare %s names no bundle (pass a bundle directory, a PR, or a local-<name> under .verdict/state)",
+		Message: core.Msgf("report: --compare %s names no bundle (pass a bundle directory, a PR, or a local-<name> under .verdict/state)",
 			want),
 	}
 }
@@ -348,7 +348,7 @@ func missingCompare(want string) *core.RefusalError {
 func unsafeCompare(what, why string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeUnsafeCompare,
-		Message: fmt.Sprintf("report: comparing %s is refused: the path %s", what, why),
+		Message: core.Msgf("report: comparing %s is refused: the path %s", what, why),
 	}
 }
 
@@ -380,7 +380,7 @@ func readBaseline(st *state, dir string) (*baselineBundle, *core.RefusalError) {
 	case fileMissing:
 		return nil, &core.RefusalError{
 			Code:    codeUnrecordedCompare,
-			Message: fmt.Sprintf("report: comparison bundle %s has no findings.json (record or post that bundle first)", dir),
+			Message: core.Msgf("report: comparison bundle %s has no findings.json (record or post that bundle first)", dir),
 		}
 	case fileUnsafe:
 		return nil, unsafeCompare(filepath.Join(dir, compareFindingsFile), "must be a regular file, not a symlink or device")
@@ -407,7 +407,7 @@ func readBaseline(st *state, dir string) (*baselineBundle, *core.RefusalError) {
 func corruptCompare(dir, why string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: codeCorruptCompare,
-		Message: fmt.Sprintf("report: comparison bundle %s is corrupt: %s "+
+		Message: core.Msgf("report: comparison bundle %s is corrupt: %s "+
 			"(re-run record/post on that bundle, or restore the file)", dir, why),
 	}
 }

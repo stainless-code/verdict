@@ -2,7 +2,6 @@ package query
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -82,7 +81,7 @@ func baselineAmong(root Root, baseline string, names map[string]bool) (string, *
 	case !ok:
 		return "", &core.RefusalError{
 			Code: "missing-compare-bundle",
-			Message: fmt.Sprintf("serve compare: baseline %q is not a bundle in this served root "+
+			Message: core.Msgf("serve compare: baseline %q is not a bundle in this served root "+
 				"(fetch, record, or post that bundle first)", baseline),
 		}
 	case !insideRoot(root.Path, dir):
@@ -96,7 +95,7 @@ func baselineAmong(root Root, baseline string, names map[string]bool) (string, *
 func badBaseline(baseline, detail string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: "bad-baseline",
-		Message: fmt.Sprintf("serve compare: baseline %q must name a bundle in this served root: %s",
+		Message: core.Msgf("serve compare: baseline %q must name a bundle in this served root: %s",
 			baseline, detail),
 	}
 }

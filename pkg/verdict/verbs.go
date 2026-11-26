@@ -236,7 +236,7 @@ func gateCoveragePosture(posture string) (string, error) {
 	default:
 		return "", refusalErr(&core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "unknown coverage posture '" + posture + "' for gate (want require|warn)",
+			Message: core.Msgf("unknown coverage posture '%s' for gate (want require|warn)", posture),
 		})
 	}
 }

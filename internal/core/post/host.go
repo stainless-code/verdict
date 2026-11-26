@@ -3,10 +3,8 @@ package postcore
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // codeThreadsFailed is the refusal every resolve-path failure reports when
@@ -88,9 +86,9 @@ func ReplyThread(
 	caps := core.CapabilitiesFor(provider)
 	replier := replierFor(provider)
 	if !caps.ThreadReply || replier == nil {
-		return "", &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+		return "", &core.RefusalError{Code: codeProviderUnimplemented, Message: core.Msgf(
 			"thread replies on %s are not implemented (%s)",
-			untrusted.Line(provider), caps.ThreadReplyReason())}
+			provider, caps.ThreadReplyReason())}
 	}
 	if cmdr == nil {
 		return "", &core.RefusalError{Code: codeThreadsFailed, Message: "threads failed: no commander in runtime"}
@@ -100,8 +98,8 @@ func ReplyThread(
 		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 			return "", ref
 		}
-		return "", &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"could not reply to thread %s: %v", untrusted.Line(threadID), err)}
+		return "", &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"could not reply to thread %s: %v", threadID, err)}
 	}
 	return id, nil
 }
@@ -125,9 +123,9 @@ func ResolveThread(
 	caps := core.CapabilitiesFor(provider)
 	_, _, resolver := hostFor(provider)
 	if !caps.ThreadResolution || resolver == nil {
-		return &core.RefusalError{Code: codeProviderUnimplemented, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeProviderUnimplemented, Message: core.Msgf(
 			"thread resolution on %s is not implemented (%s)",
-			untrusted.Line(provider), caps.ReasonFor(core.CapabilityThreadResolution))}
+			provider, caps.ReasonFor(core.CapabilityThreadResolution))}
 	}
 	if cmdr == nil {
 		return &core.RefusalError{Code: codeThreadsFailed, Message: "threads failed: no commander in runtime"}
@@ -136,8 +134,8 @@ func ResolveThread(
 		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 			return ref
 		}
-		return &core.RefusalError{Code: codeThreadsFailed, Message: fmt.Sprintf(
-			"could not resolve thread %s: %v", untrusted.Line(threadID), err)}
+		return &core.RefusalError{Code: codeThreadsFailed, Message: core.Msgf(
+			"could not resolve thread %s: %v", threadID, err)}
 	}
 	return nil
 }

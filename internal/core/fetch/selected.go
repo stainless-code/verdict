@@ -43,7 +43,7 @@ func writeSelected(ctx context.Context, r *session, dir, repo, pr, inlineBody st
 	}
 	path := dir + suffixSelected
 	if werr := atomic.WriteFile(path, []byte(jq.PrettyOrdered(core.Wire(file)))); werr != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not write %s: %v", path, werr)}
 	}
 	fmt.Fprintf(r.Human, "» selected: %d reacted finding(s) -> %s\n", len(sigs), r.display(path))
@@ -55,7 +55,7 @@ func writeSelected(ctx context.Context, r *session, dir, repo, pr, inlineBody st
 func discardSelected(dir string) *core.RefusalError {
 	path := dir + suffixSelected
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 			"could not remove %s: %v", path, err)}
 	}
 	return nil

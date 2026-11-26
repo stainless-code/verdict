@@ -65,7 +65,7 @@ func addIsolation(ctx context.Context, s *session, dir, target string) error {
 	if err != nil {
 		return &core.RefusalError{
 			Code:    codeWorktreeFailed,
-			Message: fmt.Sprintf("could not read the filter configuration an isolated worktree must switch off: %v", err),
+			Message: core.Msgf("could not read the filter configuration an isolated worktree must switch off: %v", err),
 		}
 	}
 	res, err := s.run(ctx, slices.Concat(opts, []string{gitCmdWorktree, gitWorktreeAdd, flagDetach, dir, target})...)
@@ -76,7 +76,7 @@ func addIsolation(ctx context.Context, s *session, dir, target string) error {
 		scrubIsolation(ctx, s, dir)
 		return &core.RefusalError{
 			Code: codeWorktreeFailed,
-			Message: fmt.Sprintf("could not check out isolated worktree at %s: %s",
+			Message: core.Msgf("could not check out isolated worktree at %s: %s",
 				readcommon.ShortSHA(strings.TrimSpace(target)), headBytes(res.Stderr, numExcerpt)),
 		}
 	}
@@ -158,7 +158,7 @@ func stagedTarget(ctx context.Context, s *session, mode *localMode) (string, boo
 		}
 		return "", false, &core.RefusalError{
 			Code:    codeWorktreeFailed,
-			Message: "could not materialize the staged tree for an isolated worktree: " + head,
+			Message: core.Msgf("could not materialize the staged tree for an isolated worktree: %s", head),
 		}
 	}
 	if head == "" {
@@ -199,7 +199,7 @@ func resolveIsolationDir(root, slug, stage string) (string, error) {
 	if err := os.MkdirAll(state, dirPerm); err != nil {
 		return "", &core.RefusalError{
 			Code:    codeWorktreeFailed,
-			Message: fmt.Sprintf("could not create %s for an isolated worktree: %v", state, err),
+			Message: core.Msgf("could not create %s for an isolated worktree: %v", state, err),
 		}
 	}
 	dir := filepath.ToSlash(filepath.Join(state, ".worktree-"+slug))
@@ -210,7 +210,7 @@ func resolveIsolationDir(root, slug, stage string) (string, error) {
 		if i > numWorktreeSuffixes {
 			return "", &core.RefusalError{
 				Code:    codeWorktreeFailed,
-				Message: fmt.Sprintf("could not reserve an isolated worktree path under %s (too many stale checkouts)", state),
+				Message: core.Msgf("could not reserve an isolated worktree path under %s (too many stale checkouts)", state),
 			}
 		}
 		dir = fmt.Sprintf("%s/.worktree-%s-%d", state, slug, i)

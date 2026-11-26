@@ -107,7 +107,7 @@ func gitlabMergeRef(ref, iid string) bool {
 func gitlabWaitRead(st *state, what, stderr string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    waitReadCode,
-		Message: "could not read " + what + " for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
+		Message: core.Msgf("could not read %s for %s"+hashSep+"%s: %s", what, st.repo, st.pr, firstLine(stderr)),
 	}
 }
 

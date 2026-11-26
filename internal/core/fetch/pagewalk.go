@@ -157,6 +157,6 @@ func offOriginRefusal(provider, raw string) *core.RefusalError {
 	if u, err := url.Parse(raw); err == nil && u.Host != "" {
 		host = u.Host
 	}
-	return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(
+	return &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf(
 		"%s answered with a URL on another origin (%s); refusing to send credentials", provider, host)}
 }

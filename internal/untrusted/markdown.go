@@ -285,17 +285,7 @@ func isInlineSpace(r rune) bool {
 	if r == ' ' || r == '\t' || r == '\r' || r == '\n' {
 		return true
 	}
-	return core.IsLineBreak(r) || isBidiControl(r)
-}
-
-func isBidiControl(r rune) bool {
-	if r >= '\u202a' && r <= '\u202e' {
-		return true
-	}
-	if r >= '\u2066' && r <= '\u2069' {
-		return true
-	}
-	return r == '\u200e' || r == '\u200f' || r == '\u061c'
+	return core.IsLineBreak(r) || core.IsBidiControl(r)
 }
 
 func startsBlockOpener(s string) bool {

@@ -197,7 +197,7 @@ func (st *state) warn(msg string) {
 }
 
 func (st *state) refuse(code, msg string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: msg, Warnings: st.warnings}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", msg), Warnings: st.warnings}
 }
 
 func (st *state) humanf(format string, args ...any) {
@@ -1031,7 +1031,8 @@ func (st *state) validateScaffold() *core.RefusalError {
 	}
 	cfg, ref := config.Parse(raw)
 	if ref != nil {
-		return &core.RefusalError{Code: codeBadBudget, Message: "scaffolded .verdict/config.json does not validate: " + ref.Message}
+		return &core.RefusalError{Code: codeBadBudget, Message: core.Msgf(
+			"scaffolded .verdict/config.json does not validate: %s", ref.Message)}
 	}
 	if cfg.Defaults == nil || cfg.Defaults.BudgetUSD == nil {
 		return &core.RefusalError{Code: codeBadBudget, Message: "scaffolded .verdict/config.json carries no defaults.budget_usd"}

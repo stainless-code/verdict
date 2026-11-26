@@ -49,7 +49,7 @@ func (r issueRef) dedupeKey() string {
 // --context and --spec refuse a malformed operand too, and a skip would hide
 // the typo.
 func issueInvalid(format string, args ...any) *core.RefusalError {
-	return &core.RefusalError{Code: "issue-invalid", Message: fmt.Sprintf(format, args...)}
+	return &core.RefusalError{Code: "issue-invalid", Message: core.Msgf(format, args...)}
 }
 
 // parseIssueRefs parses every --issue operand, sorted and deduped so warning

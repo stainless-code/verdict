@@ -305,11 +305,11 @@ func replayAgent(agent string) *core.RefusalError {
 	if agent == "" {
 		return &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "backtest replay needs --agent <name> (known: " + strings.Join(runcore.AgentNames(), ", ") + ")",
+			Message: core.Msgf("backtest replay needs --agent <name> (known: %s)", strings.Join(runcore.AgentNames(), ", ")),
 		}
 	}
 	if !slices.Contains(runcore.AgentNames(), agent) {
-		return &core.RefusalError{Code: "unknown-agent", Message: fmt.Sprintf(
+		return &core.RefusalError{Code: "unknown-agent", Message: core.Msgf(
 			"unknown agent '%s' (known: %s)", agent, strings.Join(runcore.AgentNames(), ", "))}
 	}
 	return nil
@@ -365,18 +365,18 @@ func parseReplayBudgets(req *ReplayRequest) (replayBudgets, *core.RefusalError) 
 		out.roundsRaw = defaultRounds
 	}
 	capped, ref := positiveInt(req.MaxReviewsRaw, defaultMaxReviews, codeBadFlags,
-		"--max-reviews must be a positive whole number, got '%s'")
+		"--max-reviews must be a positive whole number")
 	if ref != nil {
 		return out, ref
 	}
 	if capped > replayMaxReviews {
-		return out, &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return out, &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-reviews must be at most %d: a `bt-<n>-<run>` name has room for %d digits, got %d",
 			replayMaxReviews, replayIndexWidth, capped)}
 	}
 	out.maxReviews = capped
 	timeout, ref := positiveInt(out.timeoutRaw, 0, codeBadTimeout,
-		"timeout must be a positive number of seconds, got '%s'")
+		"timeout must be a positive number of seconds")
 	if ref != nil {
 		return out, ref
 	}
@@ -398,21 +398,21 @@ func parseReplayBudgets(req *ReplayRequest) (replayBudgets, *core.RefusalError) 
 func replayRounds(raw string) *core.RefusalError {
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < runcore.MinRounds || n > runcore.MaxRounds || !digitsOnly(raw) {
-		return &core.RefusalError{Code: codeBadFlags, Message: fmt.Sprintf(
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--rounds must be %d-%d, got '%s'", runcore.MinRounds, runcore.MaxRounds, raw)}
 	}
 	return nil
 }
 
 // positiveInt parses one positive count, falling back to dflt for an empty
-// value.
-func positiveInt(raw string, dflt int, code, msg string) (int, *core.RefusalError) {
+// value; want names the rule a refusal quotes raw against.
+func positiveInt(raw string, dflt int, code, want string) (int, *core.RefusalError) {
 	if raw == "" {
 		return dflt, nil
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n <= 0 || !digitsOnly(raw) {
-		return 0, &core.RefusalError{Code: code, Message: fmt.Sprintf(msg, raw)}
+		return 0, &core.RefusalError{Code: code, Message: core.Msgf("%s, got '%s'", want, raw)}
 	}
 	return n, nil
 }
@@ -442,7 +442,7 @@ func replayBudgetUSD(raw string) (*float64, *core.RefusalError) {
 	if err != nil || usd <= 0 || math.IsNaN(usd) || math.IsInf(usd, 0) {
 		return nil, &core.RefusalError{
 			Code:    codeBadFlags,
-			Message: "--budget-usd must be a positive dollar amount, got '" + raw + "'",
+			Message: core.Msgf("--budget-usd must be a positive dollar amount, got '%s'", raw),
 		}
 	}
 	return &usd, nil
@@ -805,7 +805,7 @@ func (s *replaySession) review(ctx context.Context, checkout, bundle string) (st
 		return statusOK, "", nil
 	}
 	if slices.Contains(replayStopCodes, ref.Code) {
-		out := &core.RefusalError{Code: ref.Code, Message: ref.Message}
+		out := &core.RefusalError{Code: ref.Code, Message: core.Msgf("%s", core.Trusted(ref.Message))}
 		if ref.Code == codeCanceled {
 			out.Message = msgReplayCanceled
 		}

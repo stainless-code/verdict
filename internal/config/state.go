@@ -86,7 +86,7 @@ func (e *stateError) Refusal() *core.RefusalError {
 	if e == nil || !e.operator {
 		return nil
 	}
-	return &core.RefusalError{Code: CodeBadConfig, Message: e.msg}
+	return &core.RefusalError{Code: CodeBadConfig, Message: core.Msgf("%s", e.msg)}
 }
 
 // Unwrap exposes the cause to [errors.Is]/[errors.As].

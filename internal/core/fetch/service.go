@@ -137,7 +137,7 @@ func (st *state) provider(f *Flags) (*Flags, *core.RefusalError) {
 	case providerGitHub, providerGitLab, providerGitCafe, providerForgejo, providerBitbucket, providerAzure:
 		return f, nil
 	default:
-		return f, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: fmt.Sprintf(
+		return f, st.withWarnings(&core.RefusalError{Code: codeBadProvider, Message: core.Msgf(
 			"unknown --provider '%s' (want github|gitlab|gitcafe|forgejo|bitbucket|azure)", f.Provider)})
 	}
 }
@@ -257,7 +257,7 @@ func (st *state) finalizeErr(err error, s *session) error {
 	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
 		return mt
 	}
-	ref := &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)}
+	ref := &core.RefusalError{Code: CodeFetchFailed, Message: core.Msgf("fetch failed: %v", err)}
 	attachRetryAt(ref, s)
 	return st.withWarnings(ref)
 }

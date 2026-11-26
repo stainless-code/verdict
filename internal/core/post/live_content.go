@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -26,7 +25,7 @@ func (st *state) refreshRemote(ctx context.Context) *core.RefusalError {
 	if err != nil {
 		return &core.RefusalError{
 			Code:    codePostFailed,
-			Message: fmt.Sprintf("post failed: live publication read failed — nothing written: %v", err),
+			Message: core.Msgf("post failed: live publication read failed — nothing written: %v", err),
 		}
 	}
 	st.live = remote.reviews

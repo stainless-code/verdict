@@ -26,7 +26,6 @@ const (
 	storeVersion  = "4\n"
 	storeDirPerm  = 0o755
 	jsonSuffix    = ".json"
-	colonSpace    = ": "
 )
 
 // treeIndex is the queryable artifact for one tree: every indexed file's
@@ -74,12 +73,12 @@ func ensureStore(root string) (string, *core.RefusalError) {
 		if ref := err.Refusal(); ref != nil {
 			return "", ref
 		}
-		return "", &core.RefusalError{Code: codeIndexFailed, Message: err.Error()}
+		return "", &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("%v", err)}
 	}
 	store := storePath(root)
 	for _, dir := range []string{store, filepath.Join(store, treesDirName), filepath.Join(store, shardsDirName)} {
 		if err := os.MkdirAll(dir, storeDirPerm); err != nil {
-			return "", &core.RefusalError{Code: codeIndexFailed, Message: "could not create " + dir + colonSpace + err.Error()}
+			return "", &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not create %s: %s", dir, err.Error())}
 		}
 	}
 	versionPath := filepath.Join(store, versionName)
@@ -92,10 +91,10 @@ func ensureStore(root string) (string, *core.RefusalError) {
 			return "", ref
 		}
 	case !errors.Is(err, os.ErrNotExist):
-		return "", &core.RefusalError{Code: codeIndexFailed, Message: "could not read " + versionPath + colonSpace + err.Error()}
+		return "", &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not read %s: %s", versionPath, err.Error())}
 	}
 	if err := atomic.WriteFile(versionPath, []byte(storeVersion)); err != nil {
-		return "", &core.RefusalError{Code: codeIndexFailed, Message: "could not write " + versionPath + colonSpace + err.Error()}
+		return "", &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not write %s: %s", versionPath, err.Error())}
 	}
 	return store, nil
 }
@@ -105,10 +104,10 @@ func resetStore(store string) *core.RefusalError {
 	for _, name := range []string{treesDirName, shardsDirName} {
 		dir := filepath.Join(store, name)
 		if err := os.RemoveAll(dir); err != nil {
-			return &core.RefusalError{Code: codeIndexFailed, Message: "could not reset " + dir + colonSpace + err.Error()}
+			return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not reset %s: %s", dir, err.Error())}
 		}
 		if err := os.MkdirAll(dir, storeDirPerm); err != nil {
-			return &core.RefusalError{Code: codeIndexFailed, Message: "could not create " + dir + colonSpace + err.Error()}
+			return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not create %s: %s", dir, err.Error())}
 		}
 	}
 	return nil
@@ -158,13 +157,13 @@ func readShard(store, blob string, lang language, refsPerFile int) (*shard, bool
 	}
 	if err != nil {
 		return nil, true, &core.RefusalError{
-			Code: codeIndexFailed, Message: "could not read shard " + blob + jsonSuffix + colonSpace + err.Error(),
+			Code: codeIndexFailed, Message: core.Msgf("could not read shard %s.json: %s", blob, err.Error()),
 		}
 	}
 	var s shard
 	if err := json.Unmarshal(raw, &s); err != nil || s.SchemaVersion != "1" || s.Blob != blob {
 		return nil, true, &core.RefusalError{
-			Code: codeIndexCorrupt, Message: fmt.Sprintf("shard %s.json is truncated or invalid", blob),
+			Code: codeIndexCorrupt, Message: core.Msgf("shard %s.json is truncated or invalid", blob),
 		}
 	}
 	if s.RefsPerFile != refsPerFile || s.Language != string(lang) {
@@ -192,13 +191,13 @@ func readTree(store string, key treeRef) (*treeIndex, *core.RefusalError) {
 	}
 	if err != nil {
 		return nil, &core.RefusalError{
-			Code: codeIndexFailed, Message: "could not read tree " + key.tree + jsonSuffix + colonSpace + err.Error(),
+			Code: codeIndexFailed, Message: core.Msgf("could not read tree %s.json: %s", key.tree, err.Error()),
 		}
 	}
 	var t treeIndex
 	if err := json.Unmarshal(raw, &t); err != nil || t.SchemaVersion != "1" || t.Tree != key.tree {
 		return nil, &core.RefusalError{
-			Code: codeIndexCorrupt, Message: fmt.Sprintf("tree %s.json is truncated or invalid", key.tree),
+			Code: codeIndexCorrupt, Message: core.Msgf("tree %s.json is truncated or invalid", key.tree),
 		}
 	}
 	return &t, nil
@@ -209,7 +208,7 @@ func readTree(store string, key treeRef) (*treeIndex, *core.RefusalError) {
 func missingIndexRefusal(key treeRef) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeMissingIndex,
-		Message: "no index for " + key.label() + "\nnext: " + key.buildStep(),
+		Message: core.Msgf("no index for %s\nnext: %s", key.label(), key.buildStep()),
 	}
 }
 
@@ -294,7 +293,7 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 	if len(files) > limits.Files {
 		return nil, &core.RefusalError{
 			Code:    codeIndexCapped,
-			Message: fmt.Sprintf("%d source files exceeds the %d-file cap", len(files), limits.Files),
+			Message: core.Msgf("%d source files exceeds the %d-file cap", len(files), limits.Files),
 		}
 	}
 	module := st.readModule(ctx, dir, entries)
@@ -312,19 +311,19 @@ func (st *state) build(ctx context.Context) (*Response, *core.RefusalError) {
 	}
 	raw, err := json.Marshal(t)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not encode the tree index: " + err.Error()}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not encode the tree index: %s", err.Error())}
 	}
 	if int64(len(raw)) > limits.TreeBytes {
 		return nil, &core.RefusalError{
 			Code:    codeIndexCapped,
-			Message: fmt.Sprintf("tree index is %d bytes, over the %d-byte cap", len(raw), limits.TreeBytes),
+			Message: core.Msgf("tree index is %d bytes, over the %d-byte cap", len(raw), limits.TreeBytes),
 		}
 	}
 	if ref := writeShards(store, freshShards(parsed)); ref != nil {
 		return nil, ref
 	}
 	if err := atomic.WriteFile(treePath(store, tree), raw); err != nil {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not write the tree index: " + err.Error()}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not write the tree index: %s", err.Error())}
 	}
 	return st.buildResponse(t, commit, parsed), nil
 }
@@ -382,7 +381,7 @@ func (p *parsedTree) parse(w *shardWant, objects map[string][]byte, limits Limit
 	}
 	src, ok := objects[w.e.Blob]
 	if !ok {
-		return &core.RefusalError{Code: codeIndexFailed, Message: "git cat-file did not return blob " + w.e.Blob}
+		return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("git cat-file did not return blob %s", w.e.Blob)}
 	}
 	s := parseShard(w.e.Blob, src, w.lang, limits.RefsPerFile)
 	p.parses++
@@ -522,7 +521,7 @@ func checkShardCaps(store string, fresh map[string]*shard, limits Limits) (int, 
 	for blob, s := range fresh {
 		raw, err := json.Marshal(s)
 		if err != nil {
-			return 0, 0, &core.RefusalError{Code: codeIndexFailed, Message: "could not encode shard " + blob + colonSpace + err.Error()}
+			return 0, 0, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not encode shard %s: %s", blob, err.Error())}
 		}
 		if info, err := os.Stat(shardPath(store, blob)); err == nil {
 			bytes -= info.Size()
@@ -534,7 +533,7 @@ func checkShardCaps(store string, fresh map[string]*shard, limits Limits) (int, 
 	if bytes > limits.ShardsBytes {
 		return count, bytes, &core.RefusalError{
 			Code:    codeIndexCapped,
-			Message: fmt.Sprintf("shard cache is %d bytes across %d shards, over the %d-byte cap", bytes, count, limits.ShardsBytes),
+			Message: core.Msgf("shard cache is %d bytes across %d shards, over the %d-byte cap", bytes, count, limits.ShardsBytes),
 		}
 	}
 	return count, bytes, nil
@@ -545,10 +544,10 @@ func writeShards(store string, fresh map[string]*shard) *core.RefusalError {
 	for blob, s := range fresh {
 		raw, err := json.Marshal(s)
 		if err != nil {
-			return &core.RefusalError{Code: codeIndexFailed, Message: "could not encode shard " + blob + colonSpace + err.Error()}
+			return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not encode shard %s: %s", blob, err.Error())}
 		}
 		if err := atomic.WriteFile(shardPath(store, blob), raw); err != nil {
-			return &core.RefusalError{Code: codeIndexFailed, Message: "could not write shard " + blob + colonSpace + err.Error()}
+			return &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not write shard %s: %s", blob, err.Error())}
 		}
 	}
 	return nil
@@ -657,7 +656,7 @@ func (st *state) treeRows(store string) ([]TreeRow, *core.RefusalError) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not list the tree store: " + err.Error()}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not list the tree store: %s", err.Error())}
 	}
 	rows := make([]TreeRow, 0, len(entries))
 	for _, e := range entries {
@@ -695,7 +694,7 @@ func (st *state) prune(ctx context.Context) (*Response, *core.RefusalError) {
 		return st.pruneResponse(nil, 0, 0), nil
 	}
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "could not list the tree store: " + err.Error()}
+		return nil, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not list the tree store: %s", err.Error())}
 	}
 	trees := treeCandidates(old)
 	keep := trees
@@ -719,7 +718,7 @@ func (st *state) prune(ctx context.Context) (*Response, *core.RefusalError) {
 	for _, candidate := range drop {
 		if err := os.Remove(treePath(store, candidate.name)); err != nil {
 			return nil, &core.RefusalError{
-				Code: codeIndexFailed, Message: "could not remove tree " + candidate.name + colonSpace + err.Error(),
+				Code: codeIndexFailed, Message: core.Msgf("could not remove tree %s: %s", candidate.name, err.Error()),
 			}
 		}
 	}
@@ -773,7 +772,7 @@ func removeUnreferencedShards(store string, referenced map[string]bool) (int, *c
 		return 0, nil
 	}
 	if err != nil {
-		return 0, &core.RefusalError{Code: codeIndexFailed, Message: "could not list the shard store: " + err.Error()}
+		return 0, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not list the shard store: %s", err.Error())}
 	}
 	gone := 0
 	for _, e := range entries {
@@ -785,7 +784,7 @@ func removeUnreferencedShards(store string, referenced map[string]bool) (int, *c
 			continue
 		}
 		if err := os.Remove(shardPath(store, blob)); err != nil {
-			return gone, &core.RefusalError{Code: codeIndexFailed, Message: "could not remove shard " + blob + colonSpace + err.Error()}
+			return gone, &core.RefusalError{Code: codeIndexFailed, Message: core.Msgf("could not remove shard %s: %s", blob, err.Error())}
 		}
 		gone++
 	}

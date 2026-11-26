@@ -271,7 +271,7 @@ func checkReviewSchema(review *jq.Obj) error {
 	rv, has := review.Get("schema_version")
 	execution, _ := review.Get("execution")
 	if !has || rv == nil || (rv != schemaVersion1 && (rv != "2" || execution == nil)) {
-		return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, untrusted.Line(jq.R(rv)))}
+		return &core.RefusalError{Code: codeBadReviewSchema, Message: core.Msgf(msgBadSchema, jq.R(rv))}
 	}
 	findings, has := review.Get("findings")
 	if _, ok := findings.([]any); !has || !ok {
@@ -833,7 +833,7 @@ func loadPrior(dir string) ([]any, error) {
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+		return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 	}
 	if doc == nil || doc == false {
 		return nil, nil
@@ -841,7 +841,7 @@ func loadPrior(dir string) ([]any, error) {
 	if arr, ok := doc.([]any); ok {
 		return arr, nil
 	}
-	return nil, &core.RefusalError{Code: codeCorruptStore, Message: fmt.Sprintf(msgCorruptPrior, path)}
+	return nil, &core.RefusalError{Code: codeCorruptStore, Message: core.Msgf(msgCorruptPrior, path)}
 }
 
 func indexBySig(entries []any) map[string]*jq.Obj {

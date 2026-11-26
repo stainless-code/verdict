@@ -751,7 +751,7 @@ func firstLine(s string) string {
 
 // refuse builds the typed refusal.
 func refuse(code, message string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: message}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", message)}
 }
 
 // clientOr returns the injected client or a hardened default.

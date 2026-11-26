@@ -131,10 +131,10 @@ func overCap(r *session, res *config.Resolved, fullDiff string, total int64, lim
 	}
 	cands := suggestSplits(fullDiff, total)
 	printSplitCandidates(r, cands)
-	refusal := &core.RefusalError{Code: "diff-too-large", Message: fmt.Sprintf(
+	refusal := &core.RefusalError{Code: "diff-too-large", Message: core.Msgf(
 		"diff %d bytes exceeds cap %d bytes — split the range (fetch-local --range/--base, fetch --base-sha) "+
 			"or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: "+
-			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n", total, lim.maxBytes) + diffFitNext}
+			"REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\n"+diffFitNext, total, lim.maxBytes)}
 	refusal.Candidates = cands
 	return false, refusal
 }

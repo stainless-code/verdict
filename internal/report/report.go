@@ -223,7 +223,7 @@ func writeArtifact(a *core.FileArtifact) *cli.RefusalError {
 	if err := atomic.WriteThrough(a.Path, a.Content, reportFilePerm); err != nil {
 		return &cli.RefusalError{
 			Code:    "report-failed",
-			Message: fmt.Sprintf("could not write %s: %v", a.Path, err),
+			Message: core.Msgf("could not write %s: %v", a.Path, err),
 		}
 	}
 	return nil

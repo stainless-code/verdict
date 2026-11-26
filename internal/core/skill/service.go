@@ -643,5 +643,5 @@ func (req *Request) env(key string) string {
 }
 
 func refuse(code, message string) *core.RefusalError {
-	return &core.RefusalError{Code: code, Message: message}
+	return &core.RefusalError{Code: code, Message: core.Msgf("%s", message)}
 }

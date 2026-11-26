@@ -63,12 +63,12 @@ func ingestRequest(r *cli.Runner, req *readcommon.Request, stdin io.Reader, sour
 		if errors.Is(err, jq.ErrTooLarge) {
 			return nil, &core.RefusalError{
 				Code:    "sarif-too-large",
-				Message: fmt.Sprintf("SARIF stdin exceeds maximum size of %d bytes", ingestcore.MaxSARIFBytes),
+				Message: core.Msgf("SARIF stdin exceeds maximum size of %d bytes", ingestcore.MaxSARIFBytes),
 			}
 		}
 		return nil, &core.RefusalError{
 			Code:    "ingest-failed",
-			Message: fmt.Sprintf("reading SARIF from stdin: %v", err),
+			Message: core.Msgf("reading SARIF from stdin: %v", err),
 		}
 	}
 	out.SARIF = ""

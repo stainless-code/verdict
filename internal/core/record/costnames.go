@@ -15,7 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Refusal codes for the cost-name repair. The family is closed: every code
@@ -108,7 +107,7 @@ func ApplyCostNames(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError)
 // directory, which the agent writes.
 func oneLine(ref *core.RefusalError) *core.RefusalError {
 	if ref != nil {
-		ref.Message = untrusted.Line(ref.Message)
+		ref.Message = core.Msgf("%s", ref.Message)
 	}
 	return ref
 }
@@ -133,7 +132,7 @@ func writePlans(plans []CostNamePlan, dryRun bool) (int, *core.RefusalError) {
 		plan := &plans[i]
 		n, ref := applyPlan(plan, dryRun)
 		if ref != nil {
-			return renamed, &core.RefusalError{Code: ref.Code, Message: ref.Message + writtenFiles(written)}
+			return renamed, &core.RefusalError{Code: ref.Code, Message: core.Msgf("%s%s", ref.Message, writtenFiles(written))}
 		}
 		if n > 0 && !dryRun {
 			written = append(written, filepath.Base(plan.path))
@@ -162,7 +161,7 @@ func stampOf(path string) (fileStamp, *core.RefusalError) {
 	if err != nil {
 		return fileStamp{}, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not stat " + path + detailSep + err.Error(),
+			Message: core.Msgf("could not stat %s: %s", path, err.Error()),
 		}
 	}
 	return fileStamp{modUnixNano: info.ModTime().UnixNano(), size: info.Size()}, nil
@@ -177,7 +176,7 @@ func renderPlan(path string, doc any) ([]byte, *core.RefusalError) {
 	if int64(len(rendered)) > jq.MaxCostBytes {
 		return nil, &core.RefusalError{
 			Code: codeCostRecordUnreadable,
-			Message: fmt.Sprintf("%s%sadding names would grow the record to %d bytes, "+
+			Message: core.Msgf("%s%sadding names would grow the record to %d bytes, "+
 				"past the %d-byte cap the reader enforces — nothing was written",
 				path, detailSep, len(rendered), jq.MaxCostBytes),
 		}
@@ -197,16 +196,16 @@ func writePlan(plan *CostNamePlan) *core.RefusalError {
 	if now != plan.seen {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
-			Message: "refusing to rewrite " + plan.path + detailSep +
-				"the record changed after it was planned, so naming it would drop the " +
-				"update — re-run to plan against the current record",
+			Message: core.Msgf("refusing to rewrite %s"+detailSep+
+				"the record changed after it was planned, so naming it would drop the "+
+				"update — re-run to plan against the current record", plan.path),
 		}
 	}
 	if err := atomic.WriteFileKeepingModTime(plan.path, plan.rendered); err != nil {
 		return &core.RefusalError{
 			Code: codeCostRecordUnreadable,
-			Message: "could not write " + plan.path + detailSep + err.Error() +
-				" — re-run once the file is writable to finish the repair",
+			Message: core.Msgf("could not write %s: %s"+
+				" — re-run once the file is writable to finish the repair", plan.path, err.Error()),
 		}
 	}
 	return nil
@@ -275,14 +274,14 @@ func decodeCostFile(path string) (any, *core.RefusalError) {
 		}
 		return nil, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not read " + path + detailSep + reason,
+			Message: core.Msgf("could not read %s: %s", path, reason),
 		}
 	}
 	doc, derr := jq.DecodeOrdered(raw)
 	if derr != nil {
 		return nil, &core.RefusalError{
 			Code:    codeCostRecordUnreadable,
-			Message: "could not decode " + path + detailSep + derr.Error(),
+			Message: core.Msgf("could not decode %s: %s", path, derr.Error()),
 		}
 	}
 	return doc, nil
@@ -338,19 +337,19 @@ func checkPanel(path string, panel []string) *core.RefusalError {
 	if len(panel) == 0 {
 		return &core.RefusalError{
 			Code:    codeCostPanelUnresolved,
-			Message: filepath.Base(path) + detailSep + "no panel to name the cost entries from",
+			Message: core.Msgf("%s: no panel to name the cost entries from", filepath.Base(path)),
 		}
 	}
 	if slices.Contains(panel, "") {
 		return &core.RefusalError{
 			Code:    codeCostPanelUnresolved,
-			Message: filepath.Base(path) + detailSep + "a panel seat has no name — every seat needs one",
+			Message: core.Msgf("%s: a panel seat has no name — every seat needs one", filepath.Base(path)),
 		}
 	}
 	if name, ok := repeatedName(panel); !ok {
 		return &core.RefusalError{
 			Code: codeCostPanelUnresolved,
-			Message: fmt.Sprintf("%s: the panel names %q twice — each seat needs one distinct name",
+			Message: core.Msgf("%s: the panel names %q twice — each seat needs one distinct name",
 				filepath.Base(path), name),
 		}
 	}
@@ -384,7 +383,7 @@ func nameRecord(path string, index, total int, rec *jq.Obj, panel []string) (gai
 	if len(entries) != len(panel) {
 		return 0, 0, &core.RefusalError{
 			Code: codeCostEntryUnnamed,
-			Message: fmt.Sprintf("%s: %d models[] entries but %d panel names — "+
+			Message: core.Msgf("%s: %d models[] entries but %d panel names — "+
 				"pass the panel that ran for this record, in order, so every entry has exactly one name",
 				who, len(entries), len(panel)),
 		}
@@ -429,8 +428,8 @@ func recordEntries(path string, rec *jq.Obj) ([]*jq.Obj, *core.RefusalError) {
 func notArrayRefusal(path, what string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: codeCostModelsNotArray,
-		Message: filepath.Base(path) + ": models must be an array of entry objects (" + what + ") — " +
-			`write it as {"models": [{"name": "<panel slug>", "model": "<model>", ...}]}`,
+		Message: core.Msgf("%s: models must be an array of entry objects (%s) — "+
+			`write it as {"models": [{"name": "<panel slug>", "model": "<model>", ...}]}`, filepath.Base(path), what),
 	}
 }
 
@@ -457,8 +456,9 @@ func shapeRefusal(path string, doc any) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeCostRecordUnreadable,
-		Message: filepath.Base(path) + detailSep + what +
+		Message: core.Msgf("%s: %s"+
 			" — the spend rollup cannot price this file, so naming part of it would report a repair nothing reads",
+			filepath.Base(path), what),
 	}
 }
 
@@ -494,7 +494,7 @@ func costName(entry *jq.Obj) string {
 func seatRefusal(who string, index int, got, want string) *core.RefusalError {
 	return &core.RefusalError{
 		Code: codeCostEntryContradict,
-		Message: fmt.Sprintf("%s: entry %d is named %q but the panel puts %q there",
+		Message: core.Msgf("%s: entry %d is named %q but the panel puts %q there",
 			who, index+1, got, want),
 	}
 }
@@ -521,8 +521,8 @@ func (st *svc) planCostNames(dir string) (*costNamePass, *core.RefusalError) {
 		if conflict != "" {
 			return nil, &core.RefusalError{
 				Code: codeCostPanelUnresolved,
-				Message: "no single panel to name the cost entries from: " + untrusted.Line(conflict) +
-					" — pass --cost-names with the panel that ran, one list for every record",
+				Message: core.Msgf("no single panel to name the cost entries from: %s"+
+					" — pass --cost-names with the panel that ran, one list for every record", conflict),
 			}
 		}
 		panel = pinned
