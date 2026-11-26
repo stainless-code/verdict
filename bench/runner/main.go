@@ -4,7 +4,7 @@
 // It is a dev tool. Nothing under bench/ is compiled into the shipped binary,
 // which is why `make size` does not move.
 //
-//	go run ./bench/runner -model <id> -agent '<command>' [-runs 3] [-panel p]
+//	go run ./bench/runner -model <id> -agent '<command>' [-repeats 3] [-panel p]
 //	    [-cases a,b] [-internal] [-out path] [-workdir dir] [-timeout 15m]
 //	    [-max-usd n]
 //

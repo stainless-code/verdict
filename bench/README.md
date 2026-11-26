@@ -132,7 +132,7 @@ citable.
 | `-agent`        | —                                     | agent command line (required)                                 |
 | `-panel`        | `bench-<model>`                       | panel the samples run under                                   |
 | `-cases`        | the whole corpus                      | comma-separated case ids; a subset is never citable           |
-| `-runs`         | `1`                                   | samples per case; the runbook publishes `3`                   |
+| `-repeats`      | `1`                                   | samples per case; the runbook publishes `3`                   |
 | `-loop`         | `1`                                   | repair rounds per sample; `1` keeps single-shot               |
 | `-timeout`      | `15m`                                 | budget for one sample                                         |
 | `-max-usd`      | `0` (no cap)                          | stop scheduling samples at this measured spend                |
