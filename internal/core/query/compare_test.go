@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -666,5 +667,87 @@ func assertStoreLinkServesNothing(t *testing.T, link string) {
 	_, found, ref := resolveAmong(served, "1234", map[string]bool{"1234": true})
 	if found || ref == nil || ref.Code != "bad-config" {
 		t.Errorf("resolveAmong = found %v, %v; want the bad-config refusal", found, ref)
+	}
+}
+
+// TestReadsRefuseBundleLinkOutsideRoot proves a committed link inside an
+// in-root bundle, at the top level, one directory down, or behind an in-root
+// directory link, refuses the bundle before any reader follows it out of the
+// served root, while the outside bytes never reach a view.
+func TestReadsRefuseBundleLinkOutsideRoot(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks are unavailable in this Windows test environment")
+	}
+	for _, rel := range []string{"findings.json", "full.diff", "chunks/chunk-a.cost.json", "relay/cost.json"} {
+		t.Run(rel, func(t *testing.T) {
+			t.Parallel()
+			assertBundleLinkRefused(t, rel)
+		})
+	}
+}
+
+// assertBundleLinkRefused links bundle 1234's rel at a file in another
+// checkout and proves Detail refuses it and the listing never counts it.
+func assertBundleLinkRefused(t *testing.T, rel string) {
+	t.Helper()
+	dir, _ := fixture(t)
+	outside := filepath.Join(t.TempDir(), "outside.json")
+	if err := os.WriteFile(outside, []byte("["+finding(cmpNew, "open", "critical", "walked")+"]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	symlinkOrSkip(t, outside, bundleLinkPath(t, dir, rel))
+	layer := newLayer(dir)
+	view, err := layer.Detail(context.Background(), RootID(mustAbs(t, dir)), "1234")
+	var ref *core.RefusalError
+	if view != nil || !errors.As(err, &ref) || ref.Code != "bad-config" || !strings.Contains(ref.Message, rel) {
+		t.Fatalf("Detail through %s = %v, %v; want a bad-config refusal naming it", rel, view, err)
+	}
+	assertListingCountsNothing(t, layer, rel)
+}
+
+// bundleLinkPath prepares where bundle 1234's rel link goes: its parent
+// exists and the entry itself is free. A "relay/" rel hides the escape behind
+// an in-root directory link the readers follow.
+func bundleLinkPath(t *testing.T, dir, rel string) string {
+	t.Helper()
+	bundle := filepath.Join(dir, ".verdict", "state", "1234")
+	link := filepath.Join(bundle, filepath.FromSlash(rel))
+	if strings.HasPrefix(rel, "relay/") {
+		relay := filepath.Join(dir, "relay")
+		writeFiles(t, dir, map[string]string{"relay/keep": ""})
+		symlinkOrSkip(t, relay, filepath.Join(bundle, "relay"))
+		link = filepath.Join(relay, filepath.Base(rel))
+	}
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(link); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+	return link
+}
+
+// assertListingCountsNothing proves the bundle listing counts no finding
+// read through bundle 1234's outside link.
+func assertListingCountsNothing(t *testing.T, layer *Layer, rel string) {
+	t.Helper()
+	bundles, err := layer.Bundles(context.Background(), "")
+	if err != nil {
+		t.Fatalf("Bundles: %v", err)
+	}
+	var listing struct {
+		Rows []struct {
+			Open   *int   `json:"open"`
+			Bundle string `json:"bundle"`
+		} `json:"rows"`
+	}
+	if err := json.Unmarshal([]byte(bundles.Data.MarshalCompact()), &listing); err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range listing.Rows {
+		if row.Bundle == "1234" && row.Open != nil {
+			t.Errorf("bundle listing counted %d open finding(s) read through %s, want none", *row.Open, rel)
+		}
 	}
 }

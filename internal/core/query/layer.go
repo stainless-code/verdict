@@ -292,6 +292,9 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 	if !insideRoot(root.Path, dir) {
 		return "", false, outsideRoot(bundle)
 	}
+	if ref := bundleLinkRefusal(root, bundle, dir); ref != nil {
+		return "", false, ref
+	}
 	want := filepath.ToSlash(filepath.Join(readcommon.StateDir(root.Path), bundle))
 	if dir != want {
 		return "", false, &core.RefusalError{

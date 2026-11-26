@@ -2617,7 +2617,10 @@ the ACP extension methods they never write the disk, spawn a process, or call
 the network. Bundle names resolve inside the served root through the same
 guard every verb shares, so a traversal name refuses `bad-flags` and a missing
 bundle refuses `not-found`; a `.verdict` or `.verdict/state` that resolves
-outside the served root (a committed symlink) serves no bundles at all. The same reads are addressable as resources:
+outside the served root (a committed symlink) serves no bundles at all, and a
+bundle holding any link that resolves outside it (a linked `findings.json`,
+diff, cost record, or a directory leading to one) refuses `bad-config` before
+any of its files is read. A linked `threads.json` still reads as absent. The same reads are addressable as resources:
 `resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
 and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
 offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,

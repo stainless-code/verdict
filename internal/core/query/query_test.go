@@ -484,14 +484,14 @@ func TestCacheStampCoversBundleInputs(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedStore proves the stamp follows a
-// symlinked findings.json to the bytes the report reader opens.
+// symlinked findings.json to the bytes the report reader opens. The target
+// sits inside the served root: a link out of it refuses the bundle
+// (TestReadsRefuseBundleLinkOutsideRoot).
 func TestCacheInvalidatesThroughSymlinkedStore(t *testing.T) {
 	t.Parallel()
 	dir, files := fixture(t)
-	store := filepath.Join(t.TempDir(), "findings.json")
-	if err := os.WriteFile(store, []byte(files[".verdict/state/1234/findings.json"]), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFiles(t, dir, map[string]string{"linked-store/findings.json": files[".verdict/state/1234/findings.json"]})
+	store := filepath.Join(dir, "linked-store", "findings.json")
 	link := filepath.Join(dir, ".verdict/state/1234/findings.json")
 	if err := os.Remove(link); err != nil {
 		t.Fatal(err)
@@ -527,11 +527,12 @@ func TestCacheInvalidatesThroughSymlinkedStore(t *testing.T) {
 }
 
 // TestCacheInvalidatesThroughSymlinkedChunks proves a linked chunks directory
-// is recursed into by both the stamp and the inventory.
+// is recursed into by both the stamp and the inventory. The target sits
+// inside the served root: a link out of it refuses the bundle.
 func TestCacheInvalidatesThroughSymlinkedChunks(t *testing.T) {
 	t.Parallel()
 	dir, _ := fixture(t)
-	store := t.TempDir()
+	store := filepath.Join(dir, "linked-chunks")
 	cost := filepath.Join(store, "chunks", "chunk-a.cost.json")
 	if err := os.MkdirAll(filepath.Dir(cost), 0o755); err != nil {
 		t.Fatal(err)

@@ -736,3 +736,30 @@ func TestQueryRefusesStoreSymlinkedOutsideRepo(t *testing.T) {
 		t.Errorf("verdict://findings/1234 through an outside store = %s, want an error", frames["1"].Result)
 	}
 }
+
+// TestQueryRefusesBundleFileLinkedOutsideRepo proves a committed findings.json
+// link inside an in-repo bundle reaches no outside bytes through the MCP
+// query tools or resources.
+func TestQueryRefusesBundleFileLinkedOutsideRepo(t *testing.T) {
+	queryFixture(t)
+	outside := filepath.Join(t.TempDir(), "findings.json")
+	const outsideSig = "e555555555555555555555555555555555555555"
+	writeFile(t, outside, "["+queryFinding(outsideSig, "open", "critical")+"]")
+	link := filepath.Join(".verdict", "state", "1234", "findings.json")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	cfg := testConfig()
+	findings := queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`)
+	if !findings.IsError || strings.Contains(findings.Content[0].Text, outsideSig) {
+		t.Errorf("query-findings through a linked store = %s, want a refusal", findings.Content[0].Text)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	if frames["1"].Error == nil || strings.Contains(string(frames["1"].Result), outsideSig) {
+		t.Errorf("verdict://findings/1234 through a linked store = %s, want an error", frames["1"].Result)
+	}
+}

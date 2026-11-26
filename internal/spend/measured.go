@@ -118,12 +118,13 @@ type InvocationRun struct {
 // token-priced invocation. An execution with any invocation still unsettled
 // is not Complete: its USD is a known lower bound, not its price.
 func InvocationRuns(bundleDir string) []InvocationRun {
-	acc := runAccumulator{seen: map[string]bool{}, index: map[string]int{}}
+	acc := runAccumulator{seen: map[string]bool{}, index: map[string]int{}, pending: map[string]int{}}
 	for _, row := range readLedger(bundleDir) {
 		if obj, ok := row.(*jq.Obj); ok {
 			acc.add(obj)
 		}
 	}
+	acc.settlePending()
 	out := acc.runs[:0]
 	for i := range acc.runs {
 		if acc.priced[i] {
@@ -135,24 +136,53 @@ func InvocationRuns(bundleDir string) []InvocationRun {
 
 // runAccumulator folds invocation rows into one run per execution.
 type runAccumulator struct {
-	seen   map[string]bool
-	index  map[string]int
-	runs   []InvocationRun
-	priced []bool
+	seen    map[string]bool
+	index   map[string]int
+	pending map[string]int
+	runs    []InvocationRun
+	priced  []bool
 }
 
+// add folds one invocation row. Only a readable settled copy spends the
+// invocation's dedupe key, so an unreadable or unsettled copy cannot hide a
+// later settled one; an invocation no copy settled is resolved at the end.
 func (a *runAccumulator) add(obj *jq.Obj) {
-	if stringFieldOf(obj, "scope") != ScopeInvocation || isDuplicate(obj, a.seen) {
+	if stringFieldOf(obj, "scope") != ScopeInvocation {
 		return
 	}
 	i := a.slot(stringFieldOf(obj, fieldExecutionID))
 	usd, settled := settledAmount(obj)
-	switch {
-	case !settled:
-		a.runs[i].Complete = false
-	case stringFieldOf(obj, "priced_by") != PricedNotStarted:
+	if !settled {
+		a.pend(obj, i)
+		return
+	}
+	if isDuplicate(obj, a.seen) {
+		return
+	}
+	if stringFieldOf(obj, "priced_by") != PricedNotStarted {
 		a.runs[i].USD.Add(a.runs[i].USD, usd)
 		a.priced[i] = true
+	}
+}
+
+// pend records an unsettled copy; one with no dedupe key is its own
+// invocation and leaves its run incomplete at once.
+func (a *runAccumulator) pend(obj *jq.Obj, i int) {
+	key := budgetDedupeKey(obj)
+	if key == "" {
+		a.runs[i].Complete = false
+		return
+	}
+	a.pending[key] = i
+}
+
+// settlePending marks incomplete every run holding an invocation no readable
+// settled copy priced.
+func (a *runAccumulator) settlePending() {
+	for key, i := range a.pending {
+		if !a.seen[key] {
+			a.runs[i].Complete = false
+		}
 	}
 }
 

@@ -78,3 +78,35 @@ func TestMeasuredRowsSkipsAnUnreadableCopyWithoutSpendingItsKey(t *testing.T) {
 		t.Fatalf("MeasuredSpend = %+v, want 0.5 over 1 row", got)
 	}
 }
+
+// TestInvocationRunsKeepsAReadableCopyAfterAnUnreadableOne proves an
+// unreadable copy of an invocation neither spends its dedupe key nor leaves
+// the run incomplete when a later copy of the same invocation settled, while
+// an invocation no copy settled still leaves its run incomplete.
+func TestInvocationRunsKeepsAReadableCopyAfterAnUnreadableOne(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	ledger := `[
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
+   "projected_usd":"oops","priced_by":"measured"},
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
+   "projected_usd":0.5,"priced_by":"measured"},
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-B","scope":"invocation","invocation_id":"exec-B@1",
+   "projected_usd":0.25,"priced_by":"measured"},
+  {"at":"2026-11-24T11:00:00Z","execution_id":"exec-B","scope":"invocation","invocation_id":"exec-B@2",
+   "projected_usd":null}
+]`
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runs := spend.InvocationRuns(dir)
+	if len(runs) != 2 {
+		t.Fatalf("InvocationRuns = %+v, want exec-A and exec-B", runs)
+	}
+	if a := runs[0]; a.Execution != "exec-A" || !a.Complete || spend.FormatRat(a.USD) != "0.5" {
+		t.Errorf("exec-A = %+v (%s), want complete at 0.5", a, spend.FormatRat(a.USD))
+	}
+	if b := runs[1]; b.Execution != "exec-B" || b.Complete || spend.FormatRat(b.USD) != "0.25" {
+		t.Errorf("exec-B = %+v (%s), want incomplete at a 0.25 lower bound", b, spend.FormatRat(b.USD))
+	}
+}
