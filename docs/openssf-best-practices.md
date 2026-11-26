@@ -70,17 +70,17 @@ signing chain invalidates the rows that name them.
 
 ## Change Control
 
-| Criterion             | Level     | Status | Evidence                                                                                                                                                                            |
-| --------------------- | --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `repo_public`         | MUST      | Met    | Public repository `stainless-code/verdict` — `package.json` `repository`, every workflow `uses:`/URL, and `README.md` badge and clone links                                         |
-| `repo_track`          | MUST      | Met    | git; `.gitattributes`; `AGENTS.md` § Git and commits                                                                                                                                |
-| `repo_interim`        | MUST      | Met    | Small, focused commits and PRs — `CONTRIBUTING.md` § Commit style; `CHANGELOG.md`                                                                                                   |
-| `repo_distributed`    | SUGGESTED | Met    | git                                                                                                                                                                                 |
-| `version_unique`      | MUST      | Met    | `package.json` `version`; `vX.Y.Z` tags; `CHANGELOG.md`; `release/contract.json` freezes artifact names per version                                                                 |
-| `version_semver`      | SUGGESTED | Met    | `package.json` `version`; `CONTRIBUTING.md` § Versioning                                                                                                                            |
-| `version_tags`        | SUGGESTED | Met    | `CONTRIBUTING.md` § Versioning: "Tags (`vX.Y.Z`) follow the releases"; `scripts/release.sh`                                                                                         |
-| `release_notes`       | MUST      | Met    | `CHANGELOG.md`; `scripts/release-notes.mjs` renders the release body from it, led by `docs/releases/<version>.md` highlights; `.goreleaser.yml` disables GoReleaser's own changelog |
-| `release_notes_vulns` | MUST      | N/A    | No publicly known vulnerability has been fixed to date. When one is, its entry lands in `CHANGELOG.md`, which is the release body: `scripts/release-notes.mjs`                      |
+| Criterion             | Level     | Status | Evidence                                                                                                                                                                      |
+| --------------------- | --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `repo_public`         | MUST      | Met    | Public repository `stainless-code/verdict` — `package.json` `repository`, every workflow `uses:`/URL, and `README.md` badge and clone links                                   |
+| `repo_track`          | MUST      | Met    | git; `.gitattributes`; `AGENTS.md` § Git and commits                                                                                                                          |
+| `repo_interim`        | MUST      | Met    | Small, focused commits and PRs — `CONTRIBUTING.md` § Commit style; `CHANGELOG.md`                                                                                             |
+| `repo_distributed`    | SUGGESTED | Met    | git                                                                                                                                                                           |
+| `version_unique`      | MUST      | Met    | `package.json` `version`; `vX.Y.Z` tags; `CHANGELOG.md`; `release/contract.json` freezes artifact names per version                                                           |
+| `version_semver`      | SUGGESTED | Met    | `package.json` `version`; `CONTRIBUTING.md` § Versioning                                                                                                                      |
+| `version_tags`        | SUGGESTED | Met    | `CONTRIBUTING.md` § Versioning: "Tags (`vX.Y.Z`) follow the releases"; `scripts/release.sh`                                                                                   |
+| `release_notes`       | MUST      | Met    | `CHANGELOG.md`; `scripts/release-notes.mjs` renders the release body from it, led by `release/highlights/<version>.md`; `.goreleaser.yml` disables GoReleaser's own changelog |
+| `release_notes_vulns` | MUST      | N/A    | No publicly known vulnerability has been fixed to date. When one is, its entry lands in `CHANGELOG.md`, which is the release body: `scripts/release-notes.mjs`                |
 
 ## Reporting
 
