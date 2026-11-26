@@ -250,3 +250,33 @@ func TestBudgetGateBuiltinEffortKeepsNoBudgetBehaviour(t *testing.T) {
 		t.Errorf("a plain run measured history: runs=%d usd=%q tier=%q", budget.estRuns, budget.estUSD, budget.estTier)
 	}
 }
+
+// TestCostEstimateReadsMeasuredSpendReceipts proves a settled two-finder
+// spend receipt is a comparable past run, priced by what its spawns measured,
+// and that it replaces the same execution's self-reported cost record.
+func TestCostEstimateReadsMeasuredSpendReceipts(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	costState(t, root, "local-claude", `[{"execution_id":"exec-A","est_usd":99}]`)
+	ledger := `[{"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation",` +
+		`"invocation_id":"exec-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"},` +
+		`{"at":"2026-11-24T11:00:00Z","execution_id":"exec-B","scope":"invocation",` +
+		`"invocation_id":"exec-B@1","projected_usd":null}]`
+	if err := os.WriteFile(filepath.Join(root, ".verdict", "state", "local-claude", "budget.json"),
+		[]byte(ledger), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var human strings.Builder
+	r := &session{repoRoot: root, Human: &human, warnings: new([]string)}
+	var st budgetState
+	if err := costEstimate(r, &st, nil); err != nil {
+		t.Fatalf("costEstimate: %v", err)
+	}
+	if st.estTier != "standard" || st.estUSD != "1.306" || st.estRuns != 1 || st.estBasis != "measured" {
+		t.Fatalf("estimate = tier %q usd %q runs %d basis %q; want standard 1.306 1 measured",
+			st.estTier, st.estUSD, st.estRuns, st.estBasis)
+	}
+	if strings.Contains(human.String(), "no comparable past runs") {
+		t.Fatalf("estimate line = %q, want the measured run", human.String())
+	}
+}

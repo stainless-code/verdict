@@ -352,10 +352,29 @@ func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int
 	return st.probe(ctx, args)
 }
 
+// warnLaunch names the row's launch hazard, unless the operator's own args
+// after `--` already carry the row's approval bypass: that is the fix the
+// warning asks for, so repeating it is noise.
 func (st *state) warnLaunch(def *agentcatalog.Launch) {
-	if def.LaunchWarning != "" {
-		st.warn(def.LaunchWarning)
+	if def.LaunchWarning == "" || carriesHint(st.req.PassThrough, def.PermissionHint) {
+		return
 	}
+	st.warn(def.LaunchWarning)
+}
+
+// carriesHint reports whether pass holds the hint's tokens in order and
+// adjacent, the way an operator types `-- --permission-mode acceptEdits`.
+func carriesHint(pass []string, hint string) bool {
+	want := strings.Fields(hint)
+	if len(want) == 0 {
+		return false
+	}
+	for i := 0; i+len(want) <= len(pass); i++ {
+		if slices.Equal(pass[i:i+len(want)], want) {
+			return true
+		}
+	}
+	return false
 }
 
 // printRoundsRefusal refuses a render asked for a repair loop it cannot run: a

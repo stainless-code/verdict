@@ -594,3 +594,24 @@ func TestMonthlyPartialProjectionVisibleToSecondBundle(t *testing.T) {
 		t.Fatalf("refusal = %q, want month-to-date $10 (the recorded $2 known subtotal counted)", ref.Message)
 	}
 }
+
+// TestMonthlyCapRefusalRoundsAndNamesKeys proves the ceiling refusal prints
+// measured spend without the agent CLI's float noise and names the settings
+// keys that set the monthly ceiling.
+func TestMonthlyCapRefusalRoundsAndNamesKeys(t *testing.T) {
+	t.Parallel()
+	root, _, proj := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","execution_id":"mtd-1",`+
+		`"scope":"invocation","invocation_id":"mtd-1@1","projected_usd":1.30604299999999994,"priced_by":"measured"}]`)
+	st := monthlyState(t, root, &scripted{}, false)
+	ref := st.authorizeMonthlyCap(proj, spend.Policy{MonthlyCap: "1"})
+	if ref == nil || ref.Code != "spend-capped" {
+		t.Fatalf("monthly over-cap = %v, want spend-capped", ref)
+	}
+	want := "monthly spend ceiling $1 exceeded — month-to-date $1.306 plus projected $2 = $3.306 — " +
+		"pass run --consent-over-budget for this invocation or raise the monthly ceiling: " +
+		"spend.monthly_budget_usd in the operator settings or defaults.monthly_budget_usd in " +
+		".verdict/config.json, whichever is lower"
+	if ref.Message != want {
+		t.Fatalf("message = %q\nwant      %q", ref.Message, want)
+	}
+}

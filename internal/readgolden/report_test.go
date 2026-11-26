@@ -19,10 +19,13 @@ func costChunk() string {
 		`"models":[{"name":"m","input_tokens":1000,"output_tokens":200}],"est_usd":1.5}`
 }
 
-// budgetDoc renders a budget.json receipts array.
+// budgetDoc renders a budget.json receipts array: the consented receipt
+// fetch writes, beside the measured spend receipt a two-finder run settles.
 func budgetDoc() string {
 	return `[{"at":"2026-01-01T00:00:00Z","projected_usd":9.5,` +
-		`"projected_tier":"standard","budget_usd":10}]`
+		`"projected_tier":"standard","budget_usd":10,"consent":"--consent-over-budget"},` +
+		`{"at":"2026-01-02T00:00:00Z","execution_id":"exec-A","scope":"invocation",` +
+		`"invocation_id":"exec-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"}]`
 }
 
 // kitchenSink layers panel, patch, post, cost (top + chunk), and budget

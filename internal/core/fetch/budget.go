@@ -216,7 +216,7 @@ func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
 // authorize, comparing exact decimals rather than display strings.
 func personalCeilingError(st *budgetState, limit string) error {
 	return &core.RefusalError{Code: codeSpendCapped, Message: core.Msgf(
-		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (operator settings) from %d "+
+		"projected %s run ~$%s%s exceeds the personal spend ceiling $%s (spend.budget_usd in the operator settings) from %d "+
 			"comparable run(s) — consent before this run starts, or raise the ceiling in settings and "+
 			"narrow the run",
 		st.estTier, st.estUSD, st.basisNote(), limit, st.estRuns)}
@@ -376,14 +376,16 @@ type costRec struct {
 	has         bool
 }
 
-func readCostRecs(path string) ([]costRec, bool) {
+// readCostRecs reads one cost file's records and, index for index, the
+// execution each names ("" when none).
+func readCostRecs(path string) ([]costRec, []string, bool) {
 	raw, err := noblock.ReadFile(path)
 	if err != nil {
-		return nil, false
+		return nil, nil, false
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
-		return nil, false
+		return nil, nil, false
 	}
 	var items []any
 	if arr, ok := doc.([]any); ok {
@@ -391,11 +393,14 @@ func readCostRecs(path string) ([]costRec, bool) {
 	} else {
 		items = []any{doc}
 	}
-	var out []costRec
+	out := make([]costRec, 0, len(items))
+	executions := make([]string, 0, len(items))
 	for _, it := range items {
 		out = append(out, costRecord(it))
+		m, _ := jq.AsMap(it)
+		executions = append(executions, jq.StrOf(m["execution_id"]))
 	}
-	return out, true
+	return out, executions, true
 }
 
 func costRecord(it any) costRec {
@@ -533,7 +538,7 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 	}
 	slices.Sort(files)
 	for _, f := range files {
-		fileRecs, ok := readCostRecs(f)
+		fileRecs, executions, ok := readCostRecs(f)
 		if !ok {
 			// The warning is user-visible: glob returns OS separators,
 			// so Windows would print `.verdict\state\2\cost.json` where every
@@ -542,12 +547,61 @@ func estimateRecs(r *session, usage []readcommon.ContractUsage) []costRec {
 			continue
 		}
 		joinMeasured(fileRecs, usage, f)
-		recs = append(recs, fileRecs...)
+		recs = append(recs, unmeasuredRecs(fileRecs, executions, filepath.Dir(f))...)
 	}
 	if len(bad) > 0 {
 		r.Warn(fmt.Sprintf("cost history unreadable — skipped from estimate: %s ", strings.Join(bad, " ")))
 	}
+	return append(recs, measuredRunRecs(r.repoRoot)...)
+}
+
+// measuredRunRecs reads every bundle's settled two-finder spend receipts as
+// comparable runs: one review run each, priced by the agent CLIs' own output.
+// A receipt names no effort tier, so it reads standard, as a cost record
+// without one does.
+func measuredRunRecs(repoRoot string) []costRec {
+	dirs, err := filepath.Glob(filepath.Join(repoRoot, ".verdict", "state", "*"))
+	if err != nil {
+		return nil
+	}
+	slices.Sort(dirs)
+	var recs []costRec
+	for _, dir := range dirs {
+		for _, row := range invocationRows(dir) {
+			usd, _ := row.USD.Float64()
+			recs = append(recs, costRec{tier: tierStandard, measured: &usd, has: true})
+		}
+	}
 	return recs
+}
+
+func invocationRows(dir string) []spend.MeasuredRow {
+	var rows []spend.MeasuredRow
+	for _, row := range spend.BundleMeasuredRows(dir) {
+		if row.Scope == spend.ScopeInvocation {
+			rows = append(rows, row)
+		}
+	}
+	return rows
+}
+
+// unmeasuredRecs drops the cost records of an execution whose spend receipt
+// was measured: the receipt counts that run, and no self-report outranks it.
+func unmeasuredRecs(recs []costRec, executions []string, dir string) []costRec {
+	measured := map[string]bool{}
+	for _, row := range invocationRows(dir) {
+		measured[row.Execution] = true
+	}
+	if len(measured) == 0 {
+		return recs
+	}
+	kept := make([]costRec, 0, len(recs))
+	for i := range recs {
+		if executions[i] == "" || !measured[executions[i]] {
+			kept = append(kept, recs[i])
+		}
+	}
+	return kept
 }
 
 // measuredUsage reads the usage records the operator handed over via

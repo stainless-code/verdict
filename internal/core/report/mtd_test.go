@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -352,5 +353,33 @@ func TestMTDUnknownCount(t *testing.T) {
 	attachMTD(st)
 	if st.mtd == nil || st.mtd.UnknownCount != 1 || st.mtd.KnownUSD == nil || *st.mtd.KnownUSD != 1 {
 		t.Fatalf("mtd unknown = %+v", st.mtd)
+	}
+}
+
+// TestCostShowsMeasuredSpendNotConsent proves a two-finder run's settled
+// spend receipt reads as measured spend, never as a consented over-budget
+// run, and that its amount prints without the agent CLI's float noise.
+func TestCostShowsMeasuredSpendNotConsent(t *testing.T) {
+	dir := t.TempDir()
+	writeCostless(t, dir, "run.json", `{"execution":{"id":"exec-A","finders":2}}`)
+	writeCostless(t, dir, "budget.json", `[
+  {"at":"2026-11-24T10:00:00Z","execution_id":"exec-A","scope":"invocation","invocation_id":"exec-A@1",
+   "projected_usd":1.30604299999999994,"priced_by":"measured","budget_usd":null}
+]`)
+	st := &state{dir: dir, flags: Flags{Cost: true}, req: newRequest(dir, time.Now())}
+	loadStateCost(st)
+	lines := costHuman(st)
+	want := "measured: $1.306 from 1 spend receipt(s) the agent CLIs priced"
+	if !slices.Contains(lines, want) {
+		t.Errorf("cost lines = %q, want %q", lines, want)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "consented") || strings.Contains(line, "=null") {
+			t.Errorf("cost line %q, want no consent claim and no null token count", line)
+		}
+	}
+	data := buildData(st)
+	if data.Cost.MeasuredUSD == nil || *data.Cost.MeasuredUSD != 1.30604299999999994 || data.Cost.MeasuredReceipts != 1 {
+		t.Fatalf("envelope measured = %v over %d, want 1.30604299999999994 over 1", data.Cost.MeasuredUSD, data.Cost.MeasuredReceipts)
 	}
 }

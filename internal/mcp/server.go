@@ -59,7 +59,9 @@ var supportedProtocols = []string{"2024-11-05", "2025-03-26", latestProtocol}
 // prefs/core runtime the CLI resolved, and the stderr stream every progress
 // line uses (stdout stays protocol-only). Commanders overrides a tool's
 // production runner by name; it is a test seam, while the registry owns the
-// production wiring.
+// production wiring. Root is the binary's install root for embedded pack
+// reads; the dashboard query tools and resources serve the repository root
+// instead (servedQueryLayer).
 type Config struct { //nolint:govet // the grouping documents the injection surface; alignment is irrelevant
 	Version    string
 	Env        map[string]string

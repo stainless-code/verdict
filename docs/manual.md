@@ -2584,7 +2584,9 @@ and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
 questions ("open findings in this repo", "list bundles", "cost this week by
 model", "get one finding plus its fix prompt") straight from `internal/core/query`,
 with the same envelope (`at`, `repo`, `pr`, `next`, `warnings` plus the view
-data) `verdict serve` renders:
+data) `verdict serve` renders. The served root is the repository the server
+runs in (its git top level, as `acp` and the target-taking tools resolve it),
+never the directory the binary is installed in:
 
 - `query-bundles` (`pattern?`) — every bundle under the served root with counts and head.
 - `query-findings` (`bundle`) — one bundle's ranked findings with evidence rungs.
@@ -4162,7 +4164,8 @@ verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-hi
 
 Because that soft-denial exits `0` silently unless configured, `run --agent agy`
 prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
-and proceeds rather than refusing. As history, `agy` versions before 1.5.13
+and proceeds rather than refusing. The warning is skipped when the arguments
+after `--` already carry `--dangerously-skip-permissions`. As history, `agy` versions before 1.5.13
 were observed returning before sub-agents finished (2026-11-18).
 
 Aider is deliberately absent. Its positional arguments are files to edit, not
@@ -4475,7 +4478,8 @@ print a pre-run `» estimate` line before any network. A group over its guard, o
 the exact sum of group projections over the personal limit, refuses with typed
 `budget-exceeded` unless the run carries `--consent-over-budget`; consented runs
 append one receipt to the bundle's `budget.json`, which `report --cost` surfaces
-as a `receipts:` line (and a `receipts` key in the JSON cost object). Repository,
+as a `receipts:` line (and a `receipts` key in the JSON cost object, which lists
+every ledger row, spend receipts included). Repository,
 environment, and flag defaults can never raise the personal limit, and no
 repository key grants consent. Any unknown group projection makes the whole-run
 total unknown: with `require_known_estimate` the run refuses typed
@@ -4643,6 +4647,17 @@ receipt is never displaced by a self-report: a `cost.json` written after it,
 with no newer invocation of that execution in between, is not counted. Receipts
 count per invocation, settled or not, so a resumed execution's spend is counted
 for every invocation that spent.
+
+Every read surface shows that measured spend. `report --cost` adds a
+`measured: $<usd> from <n> spend receipt(s)` line (`measured_usd` and
+`measured_receipts` in the JSON cost object) summing the bundle's `measured`
+and `tokens` receipts, and its `receipts:` line counts only the rows an
+operator's `--consent-over-budget` wrote. The publish footer prices a
+two-finder bundle from the same sum before any agent-written phase record. The
+`fetch` estimate reads each settled two-finder receipt as one comparable
+standard-tier run (a receipt names no effort), in place of any `cost.json`
+record of the same execution. Every printed amount is rounded to four decimals
+with trailing zeros trimmed; receipts keep the agent CLI's exact figure.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 

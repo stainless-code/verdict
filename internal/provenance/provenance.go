@@ -22,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 var promptFiles = []string{
@@ -415,6 +416,11 @@ func phaseSpend(dir string, cost *jq.Obj) (string, string) {
 		tier = readcommon.CostTier(records[len(records)-1])
 	} else {
 		tier = phasedTier(cost)
+	}
+	// A two-finder execution settles the spend its spawns measured onto its
+	// budget.json receipt; no agent-written record outranks that.
+	if measured := spend.MeasuredSpend(dir); measured.Rows > 0 {
+		return tier, "$" + spend.DisplayUSD(measured.USD)
 	}
 	value, _ := cost.Get("est_usd")
 	amount, known := readcommon.NumVal(value)

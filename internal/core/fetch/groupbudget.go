@@ -273,7 +273,7 @@ func groupBasisNote(sum *config.GroupSpendReport) string {
 
 // groupLimitNote renders the personal ceiling for a message.
 func groupLimitNote(sum *config.GroupSpendReport) string {
-	return "$" + sum.PersonalLimit
+	return "$" + sum.PersonalLimit + " (spend.budget_usd in the operator settings)"
 }
 
 // spendOverPersonal reports the personal ceiling hit on exact or lower-bound

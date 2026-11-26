@@ -1576,6 +1576,9 @@ func TestRunAgyEmitsLaunchWarningBeforeSpawn(t *testing.T) {
 	t.Run("other agents stay silent", func(t *testing.T) {
 		assertNoLaunchWarning(t, "claude", false)
 	})
+	t.Run("operator bypass after -- silences it", func(t *testing.T) {
+		assertNoLaunchWarning(t, "agy", false, "--model", "x", "--dangerously-skip-permissions")
+	})
 }
 
 func assertAgyOneShotWarning(t *testing.T, wantWarning string) {
@@ -1638,7 +1641,7 @@ func assertAgyRepairLoopWarning(t *testing.T, wantWarning string) {
 	}
 }
 
-func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool) {
+func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool, pass ...string) {
 	t.Helper()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
@@ -1646,6 +1649,7 @@ func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool) {
 	cmdr := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, cmdr)
 	req.Agent, req.Print, req.RoundsRaw, req.Progress = agent, printOnly, "1", spy
+	req.PassThrough = pass
 	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)

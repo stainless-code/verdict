@@ -48,3 +48,19 @@ func TestPhaseSpendReadsTierFromPhasedRecords(t *testing.T) {
 		})
 	}
 }
+
+// TestPhaseSpendFooterReadsMeasuredReceipt proves the footer prices a
+// two-finder bundle from the spend its spawns measured, rounded the way
+// every money line prints, before any agent-written phase record.
+func TestPhaseSpendFooterReadsMeasuredReceipt(t *testing.T) {
+	dir := writeBundle(t, map[string]string{
+		"run.json": `{"execution":{"id":"execution-A","finders":2}}`,
+		"budget.json": `[{"at":"2026-11-24T10:00:00Z","execution_id":"execution-A","scope":"invocation",` +
+			`"invocation_id":"execution-A@1","projected_usd":1.30604299999999994,"priced_by":"measured"}]`,
+		"x-finder-1/cost.json": phasedRecord("finder-1", "finder-1-discovery-1", "standard", "0.3"),
+	})
+	tier, cost := provenance.Spend(dir)
+	if tier != "standard" || cost != "$1.306" {
+		t.Fatalf("spend = %s %s; want standard $1.306", tier, cost)
+	}
+}

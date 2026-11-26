@@ -625,3 +625,36 @@ func TestQueryToolsServeReadOnly(t *testing.T) {
 		t.Errorf("read-only health misses roots: %v", data)
 	}
 }
+
+// TestQueryServesRepoNotInstallRoot pins that the dashboard reads serve the
+// repository the server runs in, not Config.Root: an installed binary's
+// root is its install directory, which here carries a decoy bundle the
+// query surface must never list.
+func TestQueryServesRepoNotInstallRoot(t *testing.T) {
+	install := t.TempDir()
+	writeFile(t, filepath.Join(install, "package.json"), `{"version":"1.2.3"}`)
+	writeFile(t, filepath.Join(install, ".verdict/state/9999/findings.json"), "[]")
+	queryFixture(t)
+	cfg := testConfig()
+	cfg.Root = install
+	data := queryData(t, queryCall(t, &cfg, "query-bundles", `{}`))
+	rows, ok := data["rows"].([]any)
+	if !ok {
+		t.Fatalf("bundles rows missing: %v", data)
+	}
+	var got []string
+	for _, row := range rows {
+		got = append(got, rowField[string](t, row, "bundle"))
+	}
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"1234", "local-1"}) {
+		t.Errorf("query-bundles = %v, want the repo's [1234 local-1]", got)
+	}
+	findings := queryData(t, queryCall(t, &cfg, "query-findings", `{"bundle":"1234"}`))
+	if _, ok := findings["report"].(map[string]any); !ok {
+		t.Errorf("query-findings 1234 = %v, want the repo bundle's report", findings)
+	}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"resources/read","params":{"uri":"verdict://findings/1234"}}`)
+	checkQueryResourceRead(t, "verdict://findings/1234", frames["1"])
+}

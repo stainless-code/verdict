@@ -118,7 +118,11 @@ func (s *Server) readDashboardResource(ctx context.Context, req *rpcRequest, uri
 		s.writeResourceNotFound(req.ID, uri)
 		return
 	}
-	layer, rootID := queryLayerFor(s.cfg.Root, s.cfg.Version, s.cfg.Now)
+	layer, rootID, err := servedQueryLayer(ctx, s.cfg.Version, s.cfg.Now)
+	if err != nil {
+		s.writeDashboardError(req.ID, uri, err)
+		return
+	}
 	view, err := queryResourceView(ctx, layer, rootID, q)
 	if err != nil {
 		s.writeDashboardError(req.ID, uri, err)
