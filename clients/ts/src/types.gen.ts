@@ -642,6 +642,7 @@ export interface LoopData {
     | "planned";
   agent: string;
   max_rounds: number;
+  max_severity: "critical" | "important" | "informational";
   timeout_s: number;
   max_cost_usd: number | null;
   /** The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown). */

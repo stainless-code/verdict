@@ -993,8 +993,9 @@ func TestLaunchDefDigestTracksEveryField(t *testing.T) {
 		DiscoveryArgs: []string{"--exclude-tools", "bash"},
 	}
 	restriction := []string{"--exclude-tools", "bash"}
-	digest := launchDefDigest(&base, restriction)
-	if digest == "" || digest != launchDefDigest(&base, restriction) {
+	grant := []string{"--allowedTools=Edit(./.verdict/state/42/**)"}
+	digest := launchDefDigest(&base, restriction, grant)
+	if digest == "" || digest != launchDefDigest(&base, restriction, grant) {
 		t.Fatalf("digest is not stable: %q", digest)
 	}
 	for _, change := range []func(*agentcatalog.Launch){
@@ -1005,12 +1006,15 @@ func TestLaunchDefDigestTracksEveryField(t *testing.T) {
 	} {
 		changed := base
 		change(&changed)
-		if launchDefDigest(&changed, restriction) == digest {
+		if launchDefDigest(&changed, restriction, grant) == digest {
 			t.Fatalf("digest ignored a launch definition change: %+v", changed)
 		}
 	}
-	if launchDefDigest(&base, nil) == digest {
+	if launchDefDigest(&base, nil, grant) == digest {
 		t.Fatal("digest ignored an attempt that dropped the discovery restriction")
+	}
+	if launchDefDigest(&base, restriction, nil) == digest {
+		t.Fatal("digest ignored an attempt that dropped the review write grant")
 	}
 }
 

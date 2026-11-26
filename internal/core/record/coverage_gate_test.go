@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -485,5 +486,29 @@ func assertStoredCoverage(t *testing.T, stored map[string]any, wantKey bool, wan
 		if got[key] != value {
 			t.Errorf("coverage.%s = %v (%T), want %v", key, got[key], got[key], value)
 		}
+	}
+}
+
+// TestCoverageGateRequiresTheChunkAttestation proves run --require-coverage's
+// gate treats a chunked bundle's absent chunks[] as the coverage gap the
+// default gate fails on, so a repair round asks for it, and accepts a review
+// that carries it.
+func TestCoverageGateRequiresTheChunkAttestation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "chunks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"chunks":[{"name":"chunk-01"},{"name":"chunk-02"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "chunks", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[]}`))
+	want := "coverage-incomplete: no chunks[] attestation in review.json on a chunked bundle (2 chunk(s))"
+	if ref == nil || ref.Code != "coverage-incomplete" || ref.Message != want {
+		t.Fatalf("ref = %v, want %q", ref, want)
+	}
+	if ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[],"chunks":["chunk-01","chunk-02"]}`)); ref != nil {
+		t.Errorf("attested chunks refused: %v", ref)
 	}
 }

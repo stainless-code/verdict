@@ -46,7 +46,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 				verbName, "record", repo, local, "--require-coverage",
 			}},
 			PlanStep{Round: n, Phase: PhaseGate, When: whenAlways, Argv: []string{
-				verbName, "gate", repo, local, "--max-severity", gateSeverity,
+				verbName, "gate", repo, local, "--max-severity", lp.req.MaxSeverity,
 				"--coverage", gateCoverage, "--live", gateLive,
 			}},
 		)

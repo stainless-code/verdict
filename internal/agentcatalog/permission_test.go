@@ -1,7 +1,7 @@
 package agentcatalog
 
 import (
-	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -129,11 +129,9 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 			overrides: []string{"--disable-tool-groups"},
 		},
 		"claude": {
-			args:     []string{"--disallowedTools=Bash,PowerShell"},
-			citation: docClaudeCLI,
-			overrides: []string{
-				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
-			},
+			args:      []string{"--disallowedTools=Bash,PowerShell"},
+			citation:  docClaudeCLI,
+			overrides: []string{"--tools"},
 		},
 		"pi": {
 			args:     []string{"--exclude-tools", "bash,powershell"},
@@ -213,14 +211,14 @@ func TestGrantsAreScopedAndCited(t *testing.T) {
 		collectGrant(t, review, agent.Name, "ReviewWriteArgs", l.ReviewWriteArgs, l.ReviewWriteCitation)
 	}
 	wantEdit := map[string][]string{
-		"claude": {"--permission-mode", "acceptEdits"},
+		"claude": {"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
 		"codex":  {"--sandbox", "workspace-write"},
 	}
 	wantReview := map[string][]string{"claude": {"--allowedTools=Edit({review-dir}/**)"}}
-	if fmt.Sprint(edit) != fmt.Sprint(wantEdit) {
+	if !maps.EqualFunc(edit, wantEdit, slices.Equal) {
 		t.Errorf("EditArgs rows = %v, want %v", edit, wantEdit)
 	}
-	if fmt.Sprint(review) != fmt.Sprint(wantReview) {
+	if !maps.EqualFunc(review, wantReview, slices.Equal) {
 		t.Errorf("ReviewWriteArgs rows = %v, want %v", review, wantReview)
 	}
 }
@@ -229,9 +227,17 @@ func TestGrantsAreScopedAndCited(t *testing.T) {
 // carry one.
 var bypassWords = []string{"dangerous", "skip-permissions", "yolo", "bypass", "danger-full-access", "full-auto", "allow-all"}
 
-// assertNoBypass fails on a grant argument that spells a bypass.
+// bypassModes are permission-mode values that approve without asking; a
+// grant may name a mode, never one of these.
+var bypassModes = []string{"auto", "dontask", "bypasspermissions"}
+
+// assertNoBypass fails on a grant argument that spells a bypass, as a flag
+// or as the mode a --permission-mode grant selects.
 func assertNoBypass(t *testing.T, name string, args []string) {
 	t.Helper()
+	if mode := permissionMode(args); slices.Contains(bypassModes, strings.ToLower(mode)) {
+		t.Errorf("%s grants --permission-mode %s, a bypass", name, mode)
+	}
 	for _, arg := range args {
 		for _, word := range bypassWords {
 			if strings.Contains(strings.ToLower(arg), word) {
@@ -239,6 +245,22 @@ func assertNoBypass(t *testing.T, name string, args []string) {
 			}
 		}
 	}
+}
+
+// permissionMode is the mode a --permission-mode argument selects, in either
+// spelling, "" when none does.
+func permissionMode(args []string) string {
+	for i, arg := range args {
+		flag, value, inline := strings.Cut(arg, "=")
+		switch {
+		case flag != "--permission-mode":
+		case inline:
+			return value
+		case i+1 < len(args):
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 // collectGrant records one row's grant and fails when it cites no doc.

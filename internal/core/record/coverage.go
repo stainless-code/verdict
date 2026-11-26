@@ -19,6 +19,7 @@ const (
 	msgCoverageLine   = "> ⚠️ coverage: %d%% of changed lines attested (unattested: %s)"
 	msgCoverageAbsent = "coverage-incomplete: no coverage[] attestation in review.json on a non-chunked bundle"
 	msgCoverageGap    = "coverage-incomplete: %d%% of " + msgCoverageBasis + " attested (%d/%d); unattested: %s"
+	msgChunksAbsent   = "coverage-incomplete: no chunks[] attestation in review.json on a chunked bundle (%d chunk(s))"
 	msgCoverageBasis  = coverage.Basis
 	msgCoverageMore   = " +%d more"
 	// lineGapCap is how many files the body line names before it summarizes.
@@ -53,8 +54,10 @@ func (st *state) evaluateCoverage() error {
 // CoverageGate is record --require-coverage's refusal for one bundle and its
 // raw review bytes, nil when record would accept the attestation: the same
 // normalization, evaluator, and gate record runs, so `run --require-coverage`
-// can repair what record would refuse. A document that does not decode to an
-// object is the shape check's to report, so it passes here.
+// can repair what record would refuse. On a chunked bundle it also requires
+// the chunks[] attestation the default gate grades, which record itself only
+// warns about. A document that does not decode to an object is the shape
+// check's to report, so it passes here.
 func CoverageGate(dir string, review []byte) *core.RefusalError {
 	normalized, _ := NormalizeReview(review)
 	obj, ok := normalizedObject(normalized).(*jq.Obj)
@@ -66,7 +69,7 @@ func CoverageGate(dir string, review []byte) *core.RefusalError {
 		return ref
 	}
 	if sum.Chunked {
-		return nil
+		return chunkGate(obj, &sum)
 	}
 	if err := (&state{}).coverageGate(&sum); err != nil {
 		if gate, ok := errors.AsType[*core.RefusalError](err); ok {
@@ -74,6 +77,17 @@ func CoverageGate(dir string, review []byte) *core.RefusalError {
 		}
 	}
 	return nil
+}
+
+// chunkGate is the chunked bundle's half of CoverageGate: chunks[] is its
+// attestation, and the default gate fails a bundle whose review carries none.
+// A partial chunks[] is already a shape error (checkChunks), so only absence
+// is raised here.
+func chunkGate(review *jq.Obj, sum *coverage.Summary) *core.RefusalError {
+	if _, ok := review.Get(coverage.FieldChunks); ok || sum.Chunks == 0 {
+		return nil
+	}
+	return &core.RefusalError{Code: coverage.CodeIncomplete, Message: core.Msgf(msgChunksAbsent, sum.Chunks)}
 }
 
 // coverageGate is the opt-in requirement itself, kept apart from the evaluator

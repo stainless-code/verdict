@@ -250,13 +250,14 @@ assert_file_grep "the directive named the one artifact to write" "$STUB_AGENT_LO
 assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=6$'
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
-# --- the operator's own tool flag replaces the restriction -------------------
-# A pass-through spelling decides the same question, so the launch carries it
-# once and the row's restriction is dropped rather than riding beside it.
+# --- the operator's own tool set replaces the restriction -------------------
+# claude's --tools replaces the whole tool set, so the launch carries it once
+# and the row's restriction is dropped rather than riding beside it; an
+# additive allow or deny list would sit beside the restriction instead.
 rm -f "$STUB_AGENT_LOG"
-run_review run acme/app "$LOCAL" --finders 1 --agent claude --json -- --allowedTools Read
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json -- --tools Read
 assert_exit "a pass-through tool flag still launches" 0
-assert_file_grep "the operator's tool flag reached the child" "$STUB_AGENT_LOG" '^arg\[1\]=--allowedTools$'
+assert_file_grep "the operator's tool flag reached the child" "$STUB_AGENT_LOG" '^arg\[1\]=--tools$'
 assert_file_grep "the operator's tool flag kept its operand" "$STUB_AGENT_LOG" '^arg\[2\]=Read$'
 assert_file_nogrep "the row's restriction is not duplicated beside it" "$STUB_AGENT_LOG" \
   "--disallowedTools" "-F"

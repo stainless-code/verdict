@@ -86,14 +86,31 @@ func onlyCoverageError(problems []core.Problem) string {
 // keeps its own code, and the coverage item never turns an evidence refusal
 // into a shape one.
 func withoutCoverage(check recordcore.CheckResult) recordcore.CheckResult {
-	kept := make([]core.Problem, 0, len(check.Problems))
-	for i := range check.Problems {
-		if check.Problems[i].Code == core.ProblemCodeCoverageIncomplete {
-			check.Errors--
-			continue
-		}
-		kept = append(kept, check.Problems[i])
-	}
+	kept := withoutCoverageProblems(check.Problems)
+	check.Errors -= len(check.Problems) - len(kept)
 	check.Problems = kept
 	return check
+}
+
+// withoutCoverageProblems is problems without the coverage items, so a
+// refusal's count and its problem list agree.
+func withoutCoverageProblems(problems []core.Problem) []core.Problem {
+	kept := make([]core.Problem, 0, len(problems))
+	for i := range problems {
+		if problems[i].Code != core.ProblemCodeCoverageIncomplete {
+			kept = append(kept, problems[i])
+		}
+	}
+	return kept
+}
+
+// unionCoverageRefusal is the two-finder run's coverage verdict on the
+// union it derived: record --require-coverage's refusal for the aggregate,
+// raised before any cross-check spends. Each finder's own gap was only a
+// repair item; the union's is the run's.
+func (c *coordinator) unionCoverageRefusal() *core.RefusalError {
+	if !c.st.req.RequireCoverage {
+		return nil
+	}
+	return recordcore.CoverageGate(c.dir, coordinatorBytes(c.review))
 }

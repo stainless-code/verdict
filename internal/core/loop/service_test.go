@@ -205,12 +205,13 @@ func newHarness(t *testing.T, rounds int) *harness {
 		Flow: &reviewflow.Flow{
 			Runtime: &core.Runtime{Env: map[string]string{}, Now: clock.Now, Progress: collect},
 		},
-		RepoRoot:  root,
-		Repo:      "acme/app",
-		Agent:     "claude",
-		MaxRounds: rounds,
-		Timeout:   10 * time.Minute,
-		Output:    h.output,
+		RepoRoot:    root,
+		Repo:        "acme/app",
+		Agent:       "claude",
+		MaxRounds:   rounds,
+		MaxSeverity: "informational",
+		Timeout:     10 * time.Minute,
+		Output:      h.output,
 	}
 	return h
 }
@@ -697,8 +698,9 @@ func TestLoopPrintPlansWithoutRunning(t *testing.T) {
 		5: {"verdict", "verify", "acme/app", local, "--timeout", "300"},
 	})
 	fix := resp.Data.Plan[4].Argv
-	if len(fix) != 7 || !slices.Equal(fix[:6], []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits"}) ||
-		!strings.HasPrefix(fix[6], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
+	wantFix := []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"}
+	if len(fix) != 8 || !slices.Equal(fix[:7], wantFix) ||
+		!strings.HasPrefix(fix[7], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
 		t.Errorf("fix argv = %q, want the claude row, its json output request, its edit grant, and the fix directive", fix)
 	}
 	if _, err := os.Stat(filepath.Join(h.req.RepoRoot, ".verdict")); err == nil {
@@ -747,13 +749,18 @@ func TestLoopPlanGrantsEditsToTheFixOnly(t *testing.T) {
 		review []string
 		fix    []string
 	}{
-		{name: "claude", agent: "claude", fix: []string{"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits"}},
+		{name: "claude", agent: "claude", fix: []string{
+			"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell",
+		}},
 		{name: "codex", agent: "codex", fix: []string{"codex", "exec", "--json", "--sandbox", "workspace-write"}},
 		{name: "opencode", agent: "opencode", fix: []string{"opencode", "run", "--format", "json"}},
 		{
-			name: "operator args replace the grant", agent: "claude", pass: []string{"--model", "opus"},
+			name: "operator args follow the grant", agent: "claude", pass: []string{"--model", "opus"},
 			review: []string{"--", "--model", "opus"},
-			fix:    []string{"claude", "-p", "--output-format", "json", "--model", "opus"},
+			fix: []string{
+				"claude", "-p", "--output-format", "json", "--permission-mode", "acceptEdits",
+				"--disallowedTools=Bash,PowerShell", "--model", "opus",
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -810,6 +817,16 @@ func TestLoopValidatesLimits(t *testing.T) {
 		"negative cost": func(r *Request) { r.MaxCostUSD = "-1" },
 		"zero cost":     func(r *Request) { r.MaxCostUSD = "0" },
 		"word cost":     func(r *Request) { r.MaxCostUSD = "lots" },
+		"no severity":   func(r *Request) { r.MaxSeverity = "" },
+		"gate's off":    func(r *Request) { r.MaxSeverity = "off" },
+		// The `--` tail reaches the review of untrusted content, so no
+		// permission spelling may ride it — the row's, or any agent's bypass.
+		"permission mode":   func(r *Request) { r.AgentArgs = []string{"--permission-mode", "acceptEdits"} },
+		"inline allow list": func(r *Request) { r.AgentArgs = []string{"--model", "opus", "--allowedTools=Bash"} },
+		"skip permissions":  func(r *Request) { r.AgentArgs = []string{"--dangerously-skip-permissions"} },
+		"codex sandbox":     func(r *Request) { r.Agent, r.AgentArgs = "codex", []string{"-s", "workspace-write"} },
+		"codex inline":      func(r *Request) { r.Agent, r.AgentArgs = "codex", []string{"--sandbox=danger-full-access"} },
+		"any agent's yolo":  func(r *Request) { r.Agent, r.AgentArgs = "opencode", []string{"--yolo"} },
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

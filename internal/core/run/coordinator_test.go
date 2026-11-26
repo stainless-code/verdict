@@ -32,20 +32,23 @@ type phaseCommander struct {
 	// test can deny the finding finder-2's same_as names.
 	firstCheckerVerdict string
 	calls               map[string]int
-	phases              []string
-	mu                  sync.Mutex
-	fail                bool
-	failFinders         bool // every finder exits 7
-	placeholder         bool // a failing finder first leaves the directive's empty review
-	silent              bool // every finder exits 0 and writes nothing
-	drift               bool
-	repair              bool
-	crossRepair         bool
-	crossBroken         bool
-	tamper              bool
-	distinct            bool
-	empty               bool // finders find nothing, so no cross check is dispatched
-	outputDir           bool
+	// attests names the finder phases whose review carries a whole-diff
+	// coverage[] attestation.
+	attests     map[string]bool
+	phases      []string
+	mu          sync.Mutex
+	fail        bool
+	failFinders bool // every finder exits 7
+	placeholder bool // a failing finder first leaves the directive's empty review
+	silent      bool // every finder exits 0 and writes nothing
+	drift       bool
+	repair      bool
+	crossRepair bool
+	crossBroken bool
+	tamper      bool
+	distinct    bool
+	empty       bool // finders find nothing, so no cross check is dispatched
+	outputDir   bool
 	// sameAs makes finder-2's cross check name its first own finding as the
 	// same issue as every candidate it confirms.
 	sameAs bool
@@ -165,6 +168,15 @@ func (p *phaseCommander) artifactBytes(phase string, attempt int) string {
 }
 
 func (p *phaseCommander) finderReview(phase string, attempt int) string {
+	review := p.finderBody(phase, attempt)
+	if p.attests[phase] {
+		review = strings.TrimSuffix(review, "}") + `,"coverage":[{"file":"a.go","ranges":"all"},` +
+			`{"file":"old.go","ranges":"all"},{"file":"notes.txt","ranges":"all"},{"file":"elsewhere.txt","ranges":"all"}]}`
+	}
+	return review
+}
+
+func (p *phaseCommander) finderBody(phase string, attempt int) string {
 	if p.repair && attempt == 1 {
 		return `{"schema_version":"1","findings":"broken"}`
 	}

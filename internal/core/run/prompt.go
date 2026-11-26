@@ -16,7 +16,7 @@ const paragraphGap = "\n\n"
 // published findings document, spelled once so no stage drifts from it.
 const reviewDocument = `{"schema_version": "1", "findings": ` +
 	`[{"path": ..., "line": 2, "severity": ..., "claim": ..., "quote": ..., "confidence": ...}], ` +
-	`"spec_checks": [], "receipts": [], "summary": ...}`
+	`"spec_checks": [], "receipts": [], "coverage": [], "summary": ...}`
 
 // emptyReviewDocument is the first write the directive demands. The agent
 // creates the artifact before it reviews, then updates the same file.

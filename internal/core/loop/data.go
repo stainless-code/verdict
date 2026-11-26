@@ -30,18 +30,19 @@ const (
 // outcome, the limits the run held, the plan it executed, and every round's
 // receipt. A --print render carries the plan, stop "planned", and no rounds.
 type Data struct { //nolint:govet // field order is the published property order
-	Passed     bool       `json:"passed"`
-	Stop       string     `enum:"pass|max-rounds|timeout|cost-budget|no-progress|agent-failed|refused|planned" json:"stop"`
-	Agent      string     `json:"agent"`
-	MaxRounds  int        `json:"max_rounds"                                                                   min:"1"`
-	TimeoutS   int        `json:"timeout_s"                                                                    min:"1"`
-	MaxCostUSD *float64   `json:"max_cost_usd"                                                                 min:"0"`
-	CostUSD    *float64   `json:"cost_usd"                                                                     min:"0"`
-	ElapsedMS  int64      `json:"elapsed_ms"                                                                   min:"0"`
-	Output     *string    `json:"output"`
-	Refusal    *Refusal   `anyOf:"null"                                                                        json:"refusal"`
-	Plan       []PlanStep `json:"plan"`
-	Rounds     []Round    `json:"rounds"`
+	Passed      bool       `json:"passed"`
+	Stop        string     `enum:"pass|max-rounds|timeout|cost-budget|no-progress|agent-failed|refused|planned" json:"stop"`
+	Agent       string     `json:"agent"`
+	MaxRounds   int        `json:"max_rounds"                                                                   min:"1"`
+	MaxSeverity string     `enum:"critical|important|informational"                                             json:"max_severity"`
+	TimeoutS    int        `json:"timeout_s"                                                                    min:"1"`
+	MaxCostUSD  *float64   `json:"max_cost_usd"                                                                 min:"0"`
+	CostUSD     *float64   `json:"cost_usd"                                                                     min:"0"`
+	ElapsedMS   int64      `json:"elapsed_ms"                                                                   min:"0"`
+	Output      *string    `json:"output"`
+	Refusal     *Refusal   `anyOf:"null"                                                                        json:"refusal"`
+	Plan        []PlanStep `json:"plan"`
+	Rounds      []Round    `json:"rounds"`
 }
 
 // Round is one round's receipt (round-N.json). A phase that never ran leaves

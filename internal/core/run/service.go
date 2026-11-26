@@ -194,7 +194,7 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
-	args.grant = reviewGrant(def, st.req.PassThrough, st.workDir(), target.output)
+	args.grant = st.grantFor(def, target.output)
 	args.coverage = st.req.RequireCoverage && target.artifact == reviewFile
 	args.usage = st.usageArgs(def)
 	artifact := st.promptPath(args.abs, args.artifact)
@@ -205,6 +205,23 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.argv = argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, args.prompt)
 	return args, nil
+}
+
+// grantFor is the row's review-write grant for a launch writing into dir. A
+// grant the row documents but dir cannot carry is named in one warning, since
+// the agent may then be unable to write its artifact.
+func (st *state) grantFor(def *agentcatalog.Launch, dir string) []string {
+	grant, why := reviewGrant(def, st.req.PassThrough, st.workDir(), readcommon.StateDir(st.req.RepoRootPath()), dir)
+	if why == "" {
+		return grant
+	}
+	msg := core.Msgf("%s launches without its review write grant: %s (%s); "+
+		"if it cannot write its artifact, pass your own grant after --", def.Name, why,
+		readcommon.DisplayPath(st.req.RepoRootPath(), dir))
+	if !slices.Contains(st.warnings, msg) {
+		st.warn(msg)
+	}
+	return grant
 }
 
 // compose builds the prompt and argv one invocation works from: the
@@ -221,11 +238,11 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 		a.prompt = drainDirective(req.Repo, req.Pr, bundle, artifact, st.drainDigest)
 	case a.staged == nil:
 		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan)
-		if a.coverage {
-			a.prompt += "\n" + coverageParagraph + "\n"
-		}
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
+	}
+	if a.coverage && st.drainDigest == "" {
+		a.prompt += "\n" + coverageParagraph + "\n"
 	}
 	a.argv = argvFor(&a.def, a.model(), a.fixed(), req.PassThrough, a.prompt)
 }
@@ -527,6 +544,10 @@ type launchArgs struct {
 	// all named review.json) when the request asks for it, never on a
 	// cross-check or a drain.
 	coverage bool
+	// coverageSoft marks a finder: its coverage gap still earns a repair
+	// round, but a review whose only gap is coverage stands, because the
+	// union's attestation is what the run requires.
+	coverageSoft bool
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a
@@ -634,7 +655,12 @@ func (st *state) now() time.Time {
 // bundle resolves the existing bundle directory. The launcher never fetches: an
 // absent bundle is a typed refusal naming the command that writes one.
 func (st *state) bundle() (string, *core.RefusalError) {
-	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	resolve := readcommon.ResolveWritableBundleDir
+	if st.req.Print {
+		// A render writes nothing, so it reads the bundle where it stands.
+		resolve = readcommon.ResolveBundleDir
+	}
+	dir, ref := resolve(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
@@ -953,6 +979,9 @@ func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.Re
 		return checkRef
 	}
 	if ref := coverageRefusal(check, ""); ref != nil {
+		if args.coverageSoft {
+			return nil
+		}
 		return ref
 	}
 	check = withoutCoverage(check)

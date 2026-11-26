@@ -394,6 +394,9 @@ func (c *coordinator) freeze() *core.RefusalError {
 	if ref := c.deriveUnion(); ref != nil {
 		return ref
 	}
+	if ref := c.unionCoverageRefusal(); ref != nil {
+		return ref
+	}
 	if _, ref := c.openPhase(verificationDir); ref != nil {
 		return ref
 	}
@@ -469,10 +472,18 @@ func (c *coordinator) validateAggregate() *core.RefusalError {
 	if execution.Problem() != "" {
 		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
-	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
+	raw := coordinatorBytes(c.review)
+	check, ref := repair.Check(c.dir, raw)
 	if ref != nil {
 		return ref
 	}
+	if c.st.req.RequireCoverage {
+		check = withCoverage(c.dir, raw, check)
+	}
+	if ref := coverageRefusal(check, ""); ref != nil {
+		return ref
+	}
+	check = withoutCoverage(check)
 	if ref := recordcore.ReviewRefusal(check, false); ref != nil {
 		return ref
 	}
@@ -735,6 +746,7 @@ func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *cor
 	args, ref := c.st.argsForTarget(&c.base.def, c.base.timeout, target)
 	if ref == nil {
 		args.guard = c.checkpoint(output)
+		args.coverageSoft = args.coverage
 	}
 	return args, ref
 }

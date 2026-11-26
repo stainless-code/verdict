@@ -24,6 +24,8 @@ func TestRuntimeLoopEnvelopeValidates(t *testing.T) {
 		MaxRounds: 2,
 		Timeout:   10 * time.Minute,
 		Print:     true,
+
+		MaxSeverity: "important",
 	}
 	resp, ref := loopcore.Run(context.Background(), req)
 	if ref != nil {
@@ -39,7 +41,7 @@ func TestRuntimeLoopEnvelopeValidates(t *testing.T) {
 	open, exit, cost := 2, 0, 0.42
 	output := "/receipts"
 	finished := &loopcore.Data{
-		Passed: false, Stop: loopcore.StopAgentFailed, Agent: "claude", MaxRounds: 3, TimeoutS: 600,
+		Passed: false, Stop: loopcore.StopAgentFailed, Agent: "claude", MaxRounds: 3, MaxSeverity: "important", TimeoutS: 600,
 		MaxCostUSD: &cost, CostUSD: &cost, ElapsedMS: 1200, Output: &output,
 		Refusal: &loopcore.Refusal{Code: "agent-failed", Message: "claude exited 7"},
 		Plan:    []loopcore.PlanStep{{Round: 1, Phase: "fix", When: "gate-failed", Argv: []string{"claude", "-p", "fix"}}},

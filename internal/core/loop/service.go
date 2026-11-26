@@ -63,10 +63,7 @@ const (
 	reviewAttempts = 2
 	// findersOne is the review topology: one finder per round, the same fast
 	// pass demo launches.
-	findersOne = "1"
-	// gateSeverity gates every open finding: the loop's pass means nothing
-	// open, at any severity.
-	gateSeverity = "informational"
+	findersOne   = "1"
 	gateCoverage = "require"
 	// gateLive keeps the gate offline: a local bundle has no host threads.
 	gateLive = "skip"
@@ -131,10 +128,13 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Output string
 	// FixPrompt replaces the built-in fix instructions when non-empty.
 	FixPrompt string
-	// AgentArgs is the operator's `--` tail, passed to every spawn. When it
-	// is non-empty the fix spawn carries it instead of the row's edit grant:
-	// the operator owns the agent's permissions.
+	// AgentArgs is the operator's `--` tail, passed to every spawn after the
+	// fix's edit grant. It may not decide the agent's permissions (validate
+	// refuses that): the review it also reaches reads untrusted content.
 	AgentArgs []string
+	// MaxSeverity is the gate's --max-severity: an open finding at or above
+	// it fails the round. critical, important, or informational.
+	MaxSeverity string
 	// Print renders the plan and spawns nothing.
 	Print bool
 	// VerifySandbox and VerifySandboxNetworkOnly pass `verify --sandbox` and
@@ -224,6 +224,21 @@ func validate(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-cost-usd must be a positive dollar amount, got '%s'", req.MaxCostUSD)}
 	}
+	return validateGate(req)
+}
+
+// validateGate refuses a gate tier gate would not take and an agent argument
+// that decides the agent's permissions.
+func validateGate(req *Request) *core.RefusalError {
+	if !slices.Contains(maxSeverities, req.MaxSeverity) {
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
+			"--max-severity must be critical, important, or informational, got '%s'", req.MaxSeverity)}
+	}
+	if arg := permissionArg(req); arg != "" {
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("loop's agent arguments may not "+
+			"decide the agent's permissions, got '%s': they also reach the review of untrusted content, "+
+			"and the fix already carries the agent's documented edit grant", arg)}
+	}
 	return nil
 }
 
@@ -246,12 +261,13 @@ func newLoop(req *Request) *loop {
 		output = filepath.Join(req.RepoRoot, ".verdict", "loop", started.UTC().Format(stampLayout))
 	}
 	data := &Data{
-		Agent:      req.Agent,
-		MaxRounds:  req.MaxRounds,
-		TimeoutS:   int(math.Ceil(req.Timeout.Seconds())),
-		MaxCostUSD: decimalNumber(req.MaxCostUSD),
-		Rounds:     []Round{},
-		Plan:       []PlanStep{},
+		Agent:       req.Agent,
+		MaxRounds:   req.MaxRounds,
+		MaxSeverity: req.MaxSeverity,
+		TimeoutS:    int(math.Ceil(req.Timeout.Seconds())),
+		MaxCostUSD:  decimalNumber(req.MaxCostUSD),
+		Rounds:      []Round{},
+		Plan:        []PlanStep{},
 	}
 	return &loop{
 		req:      req,
@@ -521,14 +537,21 @@ func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, 
 	return lp.verifyFix(ctx, dctx, rd, b)
 }
 
-// fixArgs is the fix spawn's agent arguments: the operator's `--` tail when
-// they passed one, else the row's documented edit grant — the fix edits the
-// working tree, which a default-mode agent CLI refuses non-interactively.
+// fixArgs is the fix spawn's agent arguments: the row's documented edit
+// grant — the fix edits the working tree, which a default-mode agent CLI
+// refuses non-interactively — then the operator's `--` tail.
 func (r *Request) fixArgs() []string {
-	if len(r.AgentArgs) > 0 {
-		return r.AgentArgs
-	}
-	return runcore.EditArgs(r.Agent, r.Flow.Agents)
+	return slices.Concat(runcore.EditArgs(r.Agent, r.Flow.Agents), r.AgentArgs)
+}
+
+// maxSeverities are the tiers --max-severity takes, as gate spells them.
+var maxSeverities = []string{"critical", "important", "informational"}
+
+// permissionArg is the first operator argument that decides the agent's
+// permissions, "" when none does.
+func permissionArg(req *Request) string {
+	agents := req.Flow.Agents
+	return runcore.PermissionArg(req.Agent, agents, req.AgentArgs)
 }
 
 // verifyFix runs verify on the command the fix declared and keeps its

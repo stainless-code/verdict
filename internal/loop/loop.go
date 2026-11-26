@@ -38,10 +38,15 @@ const (
 	DefaultMaxRounds = "3"
 	// DefaultTimeout is the wall-clock limit a bare loop runs with.
 	DefaultTimeout = "600s"
+	// DefaultMaxSeverity is the tier a bare loop's gate fails at: an
+	// informational finding still shows in the round's output, but a
+	// from-scratch review always finds one more, so it never blocks a pass.
+	DefaultMaxSeverity = "important"
 
 	flagAgent     = "--agent"
 	flagMaxRounds = "--max-rounds"
 	flagMaxCost   = "--max-cost-usd"
+	flagSeverity  = "--max-severity"
 	flagTimeout   = "--timeout"
 	flagOutput    = "--output"
 	flagFixPrompt = "--fix-prompt"
@@ -59,6 +64,7 @@ const (
 	maxFixPromptBytes = 64 << 10
 
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
+		"--max-severity <critical|important|informational>, " +
 		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
 		"--sandbox-network-only, --print, -- <agent args>, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
@@ -69,6 +75,7 @@ type flags struct {
 	agent     string
 	maxRounds string
 	maxCost   string
+	severity  string
 	timeout   string
 	output    string
 	fixPrompt string
@@ -81,6 +88,7 @@ type flags struct {
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
+// [--max-severity <tier>]
 // [--max-cost-usd <usd>] [--timeout <duration>] [--output <dir>]
 // [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
 // [-- <agent args>...] [--json]`.
@@ -162,7 +170,9 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 		Output:     output,
 		FixPrompt:  prompt,
 		AgentArgs:  f.pass,
-		Print:      f.print,
+
+		MaxSeverity: f.severity,
+		Print:       f.print,
 
 		VerifySandbox:            f.sandbox,
 		VerifySandboxNetworkOnly: f.sandboxNet,
@@ -261,7 +271,7 @@ func outputDir(raw string) (string, *core.RefusalError) {
 // past the repo (exit 2). Every argument after a bare `--` is the agent's,
 // passed through unchanged, as for run.
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout}
+	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout, severity: DefaultMaxSeverity}
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			f.pass = append([]string{}, args[i+1:]...)
@@ -342,6 +352,8 @@ func valueFlag(f *flags, arg string) *string {
 		return &f.maxRounds
 	case flagMaxCost:
 		return &f.maxCost
+	case flagSeverity:
+		return &f.severity
 	case flagTimeout:
 		return &f.timeout
 	case flagOutput:
@@ -361,6 +373,8 @@ func operand(name string) string {
 		return "<n>"
 	case flagMaxCost:
 		return "<usd>"
+	case flagSeverity:
+		return "<critical|important|informational>"
 	case flagTimeout:
 		return "<duration>"
 	case flagOutput:

@@ -52,20 +52,28 @@ type Launch struct {
 	ResumeArgs             []string
 	DiscoveryOverrideFlags []string
 	Args                   []string
-	// EditArgs is the documented flag set that lets the CLI write files in its
-	// working directory non-interactively without granting the shell or
-	// skipping permission checks. Only `verdict loop` applies it, to its fix
-	// spawn — whose contract is editing the working tree — and an operator's
-	// own `--` arguments replace it. A row with no equally scoped flag leaves
-	// it and EditCitation empty: an approval bypass is never an edit grant.
+	// EditArgs is the documented flag set that lets the CLI edit files in its
+	// working directory non-interactively, with the narrowest shell scope its
+	// docs allow and no permission checks skipped. Only `verdict loop` applies
+	// it, to its fix spawn — whose contract is editing the working tree; the
+	// loop's verify step runs the tests, so the fix needs no shell where the
+	// row can deny it. A row with no equally scoped flag leaves it and
+	// EditCitation empty: an approval bypass is never an edit grant.
 	EditArgs []string
+	// PermissionFlags are the row's documented flags that decide what the
+	// agent may write or run (permission modes, sandboxes, allow lists, extra
+	// writable directories, approval bypasses). An operator spelling of one
+	// after `--` owns the review grant's question, so run drops the grant;
+	// loop refuses them outright, since its `--` reaches the review of
+	// untrusted content. PermissionCitation names the doc.
+	PermissionFlags []string
 	// ReviewWriteArgs is the documented grant that lets a review launch write
 	// its artifacts without a prompt, scoped to the launch's own output
 	// directory: [ReviewDir] in each argument is replaced by that directory as
 	// the CLI's rule path. verdict run adds it to every review launch unless
 	// the operator's `--` arguments already decide tool permissions (a
-	// DiscoveryOverrideFlags spelling). A row without an equally scoped
-	// option leaves both it and ReviewWriteCitation empty.
+	// PermissionFlags or DiscoveryOverrideFlags spelling). A row without an
+	// equally scoped option leaves both it and ReviewWriteCitation empty.
 	ReviewWriteArgs []string
 }
 
@@ -238,8 +246,14 @@ var catalog = []Agent{
 			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
 			PermissionCitation: docClaudeCLI,
-			EditArgs:           []string{"--permission-mode", "acceptEdits"},
-			EditCitation:       docClaudeCLI,
+			// acceptEdits also auto-approves filesystem shell commands (mkdir,
+			// rm, mv, sed), so the fix keeps the review's shell denial.
+			EditArgs:     []string{"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
+			EditCitation: docClaudePermissions,
+			PermissionFlags: []string{
+				"--permission-mode", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+				"--allowedTools", "--allowed-tools", "--add-dir",
+			},
 			// The joined `=` form, like the discovery restriction: the
 			// separated form would swallow the directive as a rule.
 			ReviewWriteArgs:     []string{"--allowedTools=Edit(" + ReviewDir + "/**)"},
@@ -257,9 +271,10 @@ var catalog = []Agent{
 			// review.json.
 			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
 			DiscoveryCitation: docClaudeCLI,
-			DiscoveryOverrideFlags: []string{
-				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
-			},
+			// Claude Code merges allow and deny lists across flags and settings,
+			// so an operator's own --disallowedTools or --allowedTools sits
+			// beside the shell denial; only --tools replaces the tool set.
+			DiscoveryOverrideFlags: []string{"--tools"},
 			Usage: &Usage{
 				Format: UsageClaudeJSON, Citation: docClaudeHeadless,
 				Args: []string{"--output-format", "json"},
@@ -322,9 +337,15 @@ var catalog = []Agent{
 			PermissionCitation: docCodexReadme,
 			EditArgs:           []string{"--sandbox", "workspace-write"},
 			EditCitation:       docCodexReadme,
-			KeyEnv:             "OPENAI_API_KEY",
-			KeyEnvCitation:     docCodexReadme,
-			Binary:             nameCodex, ModelFlag: modelFlag,
+			// workspace-write also runs shell commands, sandboxed to the
+			// workspace; codex documents no edit-only mode.
+			PermissionFlags: []string{
+				"--sandbox", "-s", "--ask-for-approval", "-a", "--full-auto",
+				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
+			},
+			KeyEnv:         "OPENAI_API_KEY",
+			KeyEnvCitation: docCodexReadme,
+			Binary:         nameCodex, ModelFlag: modelFlag,
 			Args:           []string{argsExec},
 			ResumeArgs:     []string{"resume"},
 			ResumeCitation: docCodexReadme,
@@ -855,6 +876,7 @@ func All() []Agent {
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
 			v.EditArgs = slices.Clone(v.EditArgs)
+			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			a.Launch = &v
 		}

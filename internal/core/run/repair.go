@@ -367,7 +367,13 @@ func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRep
 	// so a round that ends invalid either keeps a shape error or keeps an
 	// evidence error, and either one is a refusal below.
 	ref := coverageRefusal(last.check, note)
+	if ref != nil && args.coverageSoft {
+		// A finder's coverage gap is the union's to settle: its review stands.
+		resp, okRef, _ := st.roundSucceeded(args, rec, rep, started, last.res, last.art, last.review, argSecrets)
+		return resp, okRef
+	}
 	check := withoutCoverage(last.check)
+	attempt.Problems = withoutCoverageProblems(attempt.Problems)
 	if ref == nil {
 		ref = shapeRefusal(&attempt, check, rep.Rounds, last.noProgress, note)
 	}

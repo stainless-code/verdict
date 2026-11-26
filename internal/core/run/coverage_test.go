@@ -1,6 +1,8 @@
 package run
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -8,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // coveredReviewDoc is repairReviewDoc with the diff-coverage attestation
@@ -157,32 +160,100 @@ func grantsOf(argv []string) []string {
 	return grants
 }
 
-// TestRulePath pins the rule spelling: relative inside the agent's working
-// directory, `//` absolute outside it, and no grant for a path whose bytes the
-// rule grammar would read as syntax.
+// TestRulePath pins the rule spelling and every way a grant could widen:
+// relative inside the agent's working directory, `//` absolute outside it,
+// and no grant for the state root itself, a directory that holds the working
+// directory, a symlink that resolves outside the state root, a filesystem
+// root, a missing directory, or a path the rule syntax would read as syntax.
 func TestRulePath(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "windows" {
-		// A drive letter takes the POSIX form Claude Code matches rules in.
-		if got := absoluteRulePath(`C:\repo\x`); got != "//c/repo/x" {
-			t.Errorf("absoluteRulePath = %q, want //c/repo/x", got)
+	root := rulePathFixture(t)
+	repo := filepath.Join(root, "repo")
+	state := filepath.Join(repo, ".verdict", "state")
+	bundle := filepath.Join(state, "42")
+	checkout := filepath.Join(root, "checkout")
+	for _, tc := range []struct {
+		name, cwd, dir, want, why string
+	}{
+		{name: "inside cwd", cwd: repo, dir: bundle, want: "./.verdict/state/42"},
+		{name: "dot-dot cleans to the bundle", cwd: repo, dir: filepath.Join(bundle, "..", "42"), want: "./.verdict/state/42"},
+		{name: "the state root", cwd: repo, dir: state, why: "its directory resolves outside .verdict/state"},
+		{name: "an ancestor", cwd: repo, dir: repo, why: "its directory resolves outside .verdict/state"},
+		{name: "holds cwd", cwd: filepath.Join(bundle, "inner"), dir: bundle, why: "its directory holds the agent's working directory"},
+		{name: "filesystem root", cwd: repo, dir: string(filepath.Separator), why: "its directory resolves outside .verdict/state"},
+		{name: "missing", cwd: repo, dir: filepath.Join(state, "gone"), why: "its directory cannot be resolved"},
+		{name: "space", cwd: repo, dir: filepath.Join(state, "a b"), why: rulePathSyntax},
+		{name: "glob", cwd: repo, dir: filepath.Join(state, "x[1]"), why: rulePathSyntax},
+		{name: "comma", cwd: repo, dir: filepath.Join(state, "a,b"), why: rulePathSyntax},
+	} {
+		if got, why := rulePath(tc.cwd, state, tc.dir); got != tc.want || why != tc.why {
+			t.Errorf("%s: rulePath = %q, %q; want %q, %q", tc.name, got, why, tc.want, tc.why)
 		}
+	}
+	assertOutsideCwdRulePath(t, checkout, state, bundle)
+	assertSymlinkRulePath(t, root, repo, state)
+	assertAbsoluteRulePaths(t)
+}
+
+// rulePathFixture is a resolved temp root holding repo/.verdict/state with a
+// bundle (and a directory inside it), three bundles named with rule syntax,
+// another checkout, and a directory outside the repository.
+func rulePathFixture(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(root, "repo", ".verdict", "state")
+	for _, dir := range []string{
+		filepath.Join(state, "42", "inner"), filepath.Join(state, "a b"), filepath.Join(state, "x[1]"),
+		filepath.Join(state, "a,b"), filepath.Join(root, "checkout"), filepath.Join(root, "outside"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// assertOutsideCwdRulePath pins the `//` grant a launch from another checkout
+// gets for the bundle.
+func assertOutsideCwdRulePath(t *testing.T, checkout, state, bundle string) {
+	t.Helper()
+	got, why := rulePath(checkout, state, bundle)
+	if why != "" || !strings.HasPrefix(got, "//") || !strings.HasSuffix(got, "/repo/.verdict/state/42") {
+		t.Errorf("outside cwd: rulePath = %q, %q; want the bundle's absolute // path", got, why)
+	}
+}
+
+// assertSymlinkRulePath proves a symlink under the state root that resolves
+// outside it gets no grant. A platform that cannot create the link has
+// nothing to grant through it.
+func assertSymlinkRulePath(t *testing.T, root, repo, state string) {
+	t.Helper()
+	link := filepath.Join(state, "link")
+	if err := os.Symlink(filepath.Join(root, "outside"), link); err != nil {
 		return
 	}
-	for _, tc := range []struct {
-		cwd, dir, want string
-		ok             bool
-	}{
-		{cwd: "/repo", dir: "/repo/.verdict/state/42", want: "./.verdict/state/42", ok: true},
-		{cwd: "/checkout", dir: "/repo/.verdict/state/local-x", want: "//repo/.verdict/state/local-x", ok: true},
-		{cwd: "/repo", dir: "/repo", ok: false},
-		{cwd: "/repo", dir: "/my repo/.verdict/state/42", ok: false},
-		{cwd: "/repo", dir: "/repo/.verdict/state/[42]", ok: false},
-		{cwd: "/repo", dir: "/repo/.verdict/state/a,b", ok: false},
-	} {
-		got, ok := rulePath(tc.cwd, tc.dir)
-		if got != tc.want || ok != tc.ok {
-			t.Errorf("rulePath(%q, %q) = %q, %v; want %q, %v", tc.cwd, tc.dir, got, ok, tc.want, tc.ok)
+	if got, why := rulePath(repo, state, link); got != "" || why != "its directory resolves outside .verdict/state" {
+		t.Errorf("symlink: rulePath = %q, %q; want refused as outside the state root", got, why)
+	}
+}
+
+// rulePathSyntax is the reason a path with a rule metacharacter gets.
+const rulePathSyntax = "its path holds a character the permission-rule syntax reads as syntax"
+
+// assertAbsoluteRulePaths pins the `//` spelling: a POSIX path keeps its
+// slashes, a drive letter takes the /c form, and a root or UNC share has none.
+func assertAbsoluteRulePaths(t *testing.T) {
+	t.Helper()
+	cases := map[string]string{"/": "", "/repo/x": "//repo/x"}
+	if runtime.GOOS == "windows" {
+		cases = map[string]string{`C:\`: "", `C:\repo\x`: "//c/repo/x", `\\server\share\x`: "", `\\server\share`: ""}
+	}
+	for in, want := range cases {
+		if got := absoluteRulePath(in); got != want {
+			t.Errorf("absoluteRulePath(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -226,5 +297,171 @@ func TestFinderProcedureAsksForTheAttestation(t *testing.T) {
 	}
 	if !strings.Contains(string(chunked), "Attest the chunks you read in top-level `chunks[]`, naming every manifest chunk") {
 		t.Errorf("chunked finder procedure never asks for chunks[]:\n%s", chunked)
+	}
+}
+
+// TestTwoFindersRequireCoverageRefusesAnUnattestedUnion proves the default
+// topology enforces --require-coverage on the union: neither finder attests,
+// so the run refuses coverage-incomplete — never review-insufficient — before
+// any cross check spends.
+func TestTwoFindersRequireCoverageRefusesAnUnattestedUnion(t *testing.T) {
+	t.Parallel()
+	req, phases := coordinatorFixture(t)
+	req.FindersRaw, req.RequireCoverage = "2", true
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != "coverage-incomplete" {
+		t.Fatalf("ref = %v, want coverage-incomplete", ref)
+	}
+	if n := phases.phaseCalls("x-cross-1") + phases.phaseCalls("x-cross-2"); n != 0 {
+		t.Errorf("cross checks launched %d time(s), want none after the union failed coverage", n)
+	}
+}
+
+// TestTwoFindersRequireCoverageAcceptsTheUnion proves one finder's attestation
+// carries the union: the finder that attests nothing is not a failed phase,
+// so the execution completes rather than reading partial.
+func TestTwoFindersRequireCoverageAcceptsTheUnion(t *testing.T) {
+	t.Parallel()
+	req, phases := coordinatorFixture(t)
+	req.FindersRaw, req.RequireCoverage = "2", true
+	phases.attests = map[string]bool{"x-finder-1": true}
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("run refused: %v", ref)
+	}
+	manifest := readPhaseObject(t, filepath.Join(phases.dir, launcherFile))
+	if status := readcommon.FieldOf(manifest, "status"); status != "complete" {
+		t.Errorf("status = %v, want complete: one finder's coverage gap is no failure", status)
+	}
+}
+
+// TestResumeDetectsRequireCoverageDrift proves --require-coverage is sealed:
+// continuing an interrupted execution with the flag flipped is a different
+// run, refused before any agent starts.
+func TestResumeDetectsRequireCoverageDrift(t *testing.T) {
+	t.Parallel()
+	req, commander := resumeFixture(t, "local-resume-coverage")
+	interruptRun(t, req, commander, "x-finder-2")
+	path := filepath.Join(commander.dir, launcherFile)
+	before := readFixtureFile(t, path)
+	req.RequireCoverage = true
+	req.Resume = true
+	assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "--require-coverage")
+}
+
+// TestRunRefusesBundleSymlink proves a launch never writes through a symlinked
+// managed path: an untrusted checkout whose .verdict/state/<bundle> points
+// elsewhere would aim the agent's write grant there, so run refuses it the
+// way record and post do, before any agent starts.
+func TestRunRefusesBundleSymlink(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	bundle := bundleDir(root)
+	moved := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Rename(bundle, moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(moved, bundle); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	cmdr := perCall(t, root, coveredReviewDoc)
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &collector{}))
+	if ref == nil || ref.Code != "bad-config" {
+		t.Fatalf("ref = %v, want bad-config for the symlinked bundle", ref)
+	}
+	assertSpawns(t, cmdr, 0)
+}
+
+// TestReviewGrantYieldsToOperatorPermissions pins when the operator's `--`
+// tail owns the grant's question: a permission mode, a permission bypass, an
+// allow list, or a whole tool set drops it; an unrelated flag, or the same
+// spelling as another option's operand, keeps it.
+func TestReviewGrantYieldsToOperatorPermissions(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	state, bundle := filepath.Join(root, ".verdict", "state"), bundleDir(root)
+	claude := launchRow(t, "claude")
+	for _, tc := range []struct {
+		pass  []string
+		grant bool
+	}{
+		{pass: []string{"--permission-mode", "plan"}},
+		{pass: []string{"--dangerously-skip-permissions"}},
+		{pass: []string{"--allowedTools=Read"}},
+		{pass: []string{"--tools", "Read"}},
+		{pass: []string{"--model", "opus"}, grant: true},
+		{pass: []string{"--append-system-prompt", "--permission-mode"}, grant: true},
+	} {
+		grant, why := reviewGrant(claude, tc.pass, root, state, bundle)
+		if (len(grant) == 1) != tc.grant || why != "" {
+			t.Errorf("pass %q: grant = %q (%q), want granted %v", tc.pass, grant, why, tc.grant)
+		}
+	}
+}
+
+// TestRunWarnsWhenTheGrantIsDropped proves a launch whose bundle path the
+// rule syntax cannot carry says so instead of failing silently later.
+func TestRunWarnsWhenTheGrantIsDropped(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	odd := filepath.Join(root, ".verdict", "state", "local-feat(api)")
+	if err := os.Rename(bundleDir(root), odd); err != nil {
+		t.Fatal(err)
+	}
+	req := repairRequest(root, &sequenced{}, "1", &collector{})
+	req.Pr, req.Print = "local-feat(api)", true
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("print refused: %v", ref)
+	}
+	want := "claude launches without its review write grant: " + rulePathSyntax
+	if !slices.ContainsFunc(resp.Warnings, func(w string) bool { return strings.HasPrefix(w, want) }) {
+		t.Errorf("warnings = %q, want one naming the dropped grant", resp.Warnings)
+	}
+	if slices.ContainsFunc(resp.Data.Argv, func(a string) bool { return strings.HasPrefix(a, "--allowedTools=") }) {
+		t.Errorf("argv = %q carries a grant for an unspellable path", resp.Data.Argv)
+	}
+}
+
+// TestRepairRefusalCountsWhatItLists proves a refusal left with a shape error
+// and the coverage gap counts the errors it lists: the coverage item leaves
+// both, so "N error(s)" and the problem list agree.
+func TestRepairRefusalCountsWhatItLists(t *testing.T) {
+	t.Parallel()
+	root := repairFixture(t)
+	cmdr := perCall(t, root, invalidDoc, invalidDoc)
+	_, ref := Run(t.Context(), coverageRequest(root, cmdr, "2"))
+	if ref == nil {
+		t.Fatal("run succeeded, want a refusal")
+	}
+	errs := 0
+	for _, p := range ref.Problems {
+		if p.Code == core.ProblemCodeCoverageIncomplete {
+			t.Errorf("refusal lists the coverage item beside a shape error: %+v", p)
+		}
+		if p.Level == core.ProblemLevelError {
+			errs++
+		}
+	}
+	if !strings.Contains(ref.Message, fmt.Sprintf("with %d error(s)", errs)) {
+		t.Errorf("message %q does not count the %d error(s) it lists", ref.Message, errs)
+	}
+}
+
+// TestStageRenderStatesTheCoverageRequirement proves a --print --stage render
+// under --require-coverage carries the same requirement paragraph a launch
+// does, and every directive's review document names coverage.
+func TestStageRenderStatesTheCoverageRequirement(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	recipeControl(t, root, repoRecipe)
+	req := request(root, &scripted{})
+	req.Print, req.Recipe, req.StageRaw, req.RequireCoverage = true, "quick", "1", true
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("print refused: %v", ref)
+	}
+	prompt := resp.Data.Argv[len(resp.Data.Argv)-1]
+	if !strings.Contains(prompt, coverageParagraph) || !strings.Contains(prompt, `"coverage": []`) {
+		t.Errorf("stage render lacks the coverage requirement:\n%s", prompt)
 	}
 }

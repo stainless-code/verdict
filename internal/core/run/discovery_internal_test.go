@@ -105,14 +105,15 @@ func TestAllowShellOmitsTheRestriction(t *testing.T) {
 	}
 }
 
-// TestPassThroughToolFlagSuppressesTheRestriction proves the operator's own
-// tool selection wins without duplication: one argv never carries both the
-// row's restriction and the flag the operator spelled after `--`.
-func TestPassThroughToolFlagSuppressesTheRestriction(t *testing.T) {
+// TestPassThroughAllowListKeepsTheRestriction proves an operator's additive
+// allow list sits beside the shell denial instead of dropping it: Claude Code
+// merges allow and deny lists, so dropping the denial would hand the shell to
+// any Bash(...) allow rule the operator's settings carry.
+func TestPassThroughAllowListKeepsTheRestriction(t *testing.T) {
 	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "Read,Write", false) {
-		if slices.Contains(argv, discoveryFlag) {
-			t.Errorf("pass-through tool flag still produced %q: %q", discoveryFlag, argv)
+		if n := countArg(argv, discoveryFlag); n != 1 {
+			t.Errorf("argv = %q carries the restriction %d times, want once", argv, n)
 		}
 		if n := countArg(argv, "--allowedTools"); n != 1 {
 			t.Errorf("argv = %q carries --allowedTools %d times, want once", argv, n)
@@ -162,17 +163,23 @@ func TestDiscoveryPassThroughSuppressesTheRestriction(t *testing.T) {
 	t.Parallel()
 	claude, pi, bob := launchRow(t, "claude"), launchRow(t, "pi"), launchRow(t, "bob")
 	kept := []string{"--disallowedTools=Bash,PowerShell"}
-	t.Run("operator deny list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--disallowedTools", "WebFetch"}, false, nil)
+	t.Run("operator deny list sits beside it", func(t *testing.T) {
+		checkRestriction(t, claude, []string{"--disallowedTools", "WebFetch"}, false, kept)
 	})
-	t.Run("operator inline deny list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--disallowedTools=Edit"}, false, nil)
+	t.Run("operator inline deny list sits beside it", func(t *testing.T) {
+		checkRestriction(t, claude, []string{"--disallowedTools=Edit"}, false, kept)
 	})
-	t.Run("operator allow list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--allowedTools=Read"}, false, nil)
+	t.Run("operator allow list sits beside it", func(t *testing.T) {
+		checkRestriction(t, claude, []string{"--allowedTools=mcp__x"}, false, kept)
 	})
-	t.Run("operator claude tools flag", func(t *testing.T) {
+	t.Run("operator claude tools flag replaces the tool set", func(t *testing.T) {
 		checkRestriction(t, claude, []string{"--tools", ""}, false, nil)
+	})
+	t.Run("an option's operand is not a flag", func(t *testing.T) {
+		checkRestriction(t, claude, []string{"--append-system-prompt", "--tools"}, false, kept)
+	})
+	t.Run("a flag after an operand still counts", func(t *testing.T) {
+		checkRestriction(t, claude, []string{"--model", "opus", "--tools=Read"}, false, nil)
 	})
 	t.Run("operator pi short flag", func(t *testing.T) {
 		checkRestriction(t, pi, []string{"-t", "read,bash"}, false, nil)

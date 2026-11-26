@@ -92,46 +92,58 @@ func argvPrefixLen(def *agentcatalog.Launch, model string, restriction []string)
 
 // discoveryRestriction is the read-only restriction one launch carries: the
 // row's documented tool flags, unless the operator allowed the shell back with
-// --allow-shell or already decided tool selection after `--`. A pass-through
-// spelling suppresses it rather than riding beside it, so one argv never holds
-// two answers to the same question.
+// --allow-shell or spelled a flag that replaces the row's whole tool set after
+// `--` (DiscoveryOverrideFlags). An additive or tightening flag sits beside the
+// restriction instead: dropping the shell denial for it would hand the shell
+// back to a review of untrusted content.
 func discoveryRestriction(def *agentcatalog.Launch, passthrough []string, allowShell bool) []string {
-	if allowShell || len(def.DiscoveryArgs) == 0 || operatorDecidesTools(def, passthrough) {
+	if allowShell || len(def.DiscoveryArgs) == 0 || operatorSpells(passthrough, def.DiscoveryOverrideFlags) {
 		return nil
 	}
 	return slices.Clone(def.DiscoveryArgs)
 }
 
-// operatorDecidesTools reports whether the operator's pass-through already
-// spells one of the row's tool-permission flags. Only the `--` tail counts:
-// the restriction and the review grant verdict adds are never in it.
-func operatorDecidesTools(def *agentcatalog.Launch, passthrough []string) bool {
-	for _, arg := range passthrough {
-		if name, _, _ := strings.Cut(arg, "="); slices.Contains(def.DiscoveryOverrideFlags, name) {
+// operatorSpells reports whether the operator's pass-through spells one of
+// flags as an option. Only the `--` tail counts — the restriction and the
+// grant verdict adds are never in it — and an argument right after a bare
+// option is read as that option's value (`--append-system-prompt --tools`),
+// never as a flag: the doubt keeps verdict's own restriction and grant.
+func operatorSpells(passthrough, flags []string) bool {
+	for i, arg := range passthrough {
+		if !strings.HasPrefix(arg, "-") || (i > 0 && bareOption(passthrough[i-1])) {
+			continue
+		}
+		if name, _, _ := strings.Cut(arg, "="); slices.Contains(flags, name) {
 			return true
 		}
 	}
 	return false
 }
 
+// bareOption reports an option spelled without an inline value, which may
+// take the next argument as its value.
+func bareOption(arg string) bool {
+	return len(arg) > 1 && strings.HasPrefix(arg, "-") && !strings.Contains(arg, "=")
+}
+
 // reviewGrant is the row's scoped review-write grant for one launch whose
-// artifacts land in dir: nil when the row documents none, when the
-// operator's `--` tail decides tool permissions itself, or when dir cannot
-// be spelled as a rule path (the launch then runs as before, and a missing
-// review refuses no-review-artifact).
-func reviewGrant(def *agentcatalog.Launch, passthrough []string, cwd, dir string) []string {
-	if len(def.ReviewWriteArgs) == 0 || operatorDecidesTools(def, passthrough) {
-		return nil
+// artifacts land in dir: nil when the row documents none or the operator's
+// `--` tail decides the agent's permissions or tool set itself. why says why
+// a grant the row documents could not be spelled for dir; the launch then
+// runs without it and the caller warns.
+func reviewGrant(def *agentcatalog.Launch, passthrough []string, cwd, stateRoot, dir string) (grant []string, why string) {
+	if len(def.ReviewWriteArgs) == 0 ||
+		operatorSpells(passthrough, slices.Concat(def.PermissionFlags, def.DiscoveryOverrideFlags)) {
+		return nil, ""
 	}
-	path, ok := rulePath(cwd, dir)
-	if !ok {
-		return nil
+	path, why := rulePath(cwd, stateRoot, dir)
+	if why != "" {
+		return nil, why
 	}
-	grant := make([]string, 0, len(def.ReviewWriteArgs))
 	for _, arg := range def.ReviewWriteArgs {
 		grant = append(grant, strings.ReplaceAll(arg, agentcatalog.ReviewDir, path))
 	}
-	return grant
+	return grant, ""
 }
 
 // rulePathSafe is every byte a rule path may carry: anything else (a glob
@@ -141,56 +153,80 @@ const rulePathSafe = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ012345
 
 // rulePath spells dir as a Claude Code permission-rule path from the agent's
 // working directory cwd: `./<rel>` inside it, `//<abs>` outside it, with a
-// Windows drive in the POSIX form rules match (C:\x is //c/x).
-func rulePath(cwd, dir string) (string, bool) {
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return "", false
+// Windows drive in the POSIX form rules match (C:\x is //c/x). Every path is
+// resolved through its symlinks first, and the resolved dir must lie strictly
+// under the resolved state root and must not hold cwd: a symlinked or
+// ancestor directory would widen the grant past the bundle. why names the
+// failure; it is "" on success.
+func rulePath(cwd, stateRoot, dir string) (path, why string) {
+	realCwd, realDir, why := grantDirs(cwd, stateRoot, dir)
+	if why != "" {
+		return "", why
 	}
-	path, inside := relativeRulePath(cwd, absDir)
-	if path == "" && !inside {
-		path = absoluteRulePath(absDir)
+	if rel, err := filepath.Rel(realCwd, realDir); err == nil && strictlyWithin(realCwd, realDir) {
+		path = "./" + filepath.ToSlash(rel)
+	} else {
+		path = absoluteRulePath(realDir)
 	}
-	if path == "" || strings.Trim(path, rulePathSafe) != "" {
-		return "", false
+	switch {
+	case path == "":
+		return "", "its volume has no permission-rule spelling"
+	case strings.Trim(path, rulePathSafe) != "":
+		return "", "its path holds a character the permission-rule syntax reads as syntax"
 	}
-	return path, true
+	return path, ""
 }
 
-// relativeRulePath is absDir as `./<rel>` when it lies under cwd. inside is
-// true for cwd itself, which gets no path: a grant there is the whole tree.
-func relativeRulePath(cwd, absDir string) (path string, inside bool) {
-	absCwd, err := filepath.Abs(cwd)
+// grantDirs resolves the agent's working directory and the grant directory
+// through their symlinks, refusing a directory outside the resolved state
+// root or one that holds the working directory. why is "" on success.
+func grantDirs(cwd, stateRoot, dir string) (realCwd, realDir, why string) {
+	realDir, err := filepath.EvalSymlinks(dir)
 	if err != nil {
-		return "", false
+		return "", "", "its directory cannot be resolved"
 	}
-	rel, err := filepath.Rel(absCwd, absDir)
-	switch {
-	case err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)):
-		return "", false
-	case rel == ".":
-		return "", true
+	realState, err := filepath.EvalSymlinks(stateRoot)
+	if err != nil || !strictlyWithin(realState, realDir) {
+		return "", "", "its directory resolves outside .verdict/state"
 	}
-	return "./" + filepath.ToSlash(rel), true
+	realCwd, err = filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return "", "", "the agent's working directory cannot be resolved"
+	}
+	if realCwd == realDir || strictlyWithin(realDir, realCwd) {
+		return "", "", "its directory holds the agent's working directory"
+	}
+	return realCwd, realDir, ""
+}
+
+// strictlyWithin reports whether child lies under parent and is not parent.
+func strictlyWithin(parent, child string) bool {
+	rel, err := filepath.Rel(parent, child)
+	return err == nil && rel != "." && rel != ".." && !filepath.IsAbs(rel) &&
+		!strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // absoluteRulePath is an absolute directory in the rule's `//` form, "" for
-// a volume the rule syntax has no spelling for (a UNC share).
+// a filesystem root and for a volume the rule syntax has no spelling for (a
+// UNC share).
 func absoluteRulePath(abs string) string {
 	vol := filepath.VolumeName(abs)
+	rest := abs[len(vol):]
 	switch {
+	case rest == "" || rest == string(filepath.Separator) || rest == "/":
+		return ""
 	case vol == "":
 		return "/" + filepath.ToSlash(abs)
 	case len(vol) == 2 && vol[1] == ':':
-		return "//" + strings.ToLower(vol[:1]) + filepath.ToSlash(abs[len(vol):])
+		return "//" + strings.ToLower(vol[:1]) + filepath.ToSlash(rest)
 	}
 	return ""
 }
 
 // EditArgs is the edit grant the named agent's row documents: the shipped
 // row's EditArgs, nil for a prefs-defined agent (its definition declares no
-// grant) and for an unknown name. The self-review loop appends it to every
-// spawn unless the operator passed their own agent arguments.
+// grant) and for an unknown name. The self-review loop gives it to its fix
+// spawn.
 func EditArgs(name string, agents []config.PersonalAgent) []string {
 	st := &state{defs: agents}
 	def, ok := st.lookupAgent(name)
@@ -198,6 +234,39 @@ func EditArgs(name string, agents []config.PersonalAgent) []string {
 		return nil
 	}
 	return slices.Clone(def.EditArgs)
+}
+
+// bypassSpellings are option-name fragments that decide what any agent may
+// write or run, whatever its row documents: permission modes, sandboxes,
+// approval bypasses, allow lists, and extra writable directories.
+var bypassSpellings = []string{
+	"dangerous", "yolo", "skip-permission", "bypass", "full-auto", "unrestricted", "auto-approve",
+	"approval", "permission-mode", "sandbox", "allowedtools", "allowed-tools", "add-dir",
+}
+
+// PermissionArg is the first of args that decides the named agent's
+// permissions — one of its row's PermissionFlags or any bypassSpellings
+// fragment — or "" when none does. Every option-shaped argument counts,
+// operands included: the self-review loop refuses on it, and a false match
+// only refuses.
+func PermissionArg(name string, agents []config.PersonalAgent, args []string) string {
+	st := &state{defs: agents}
+	def, _ := st.lookupAgent(name)
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			continue
+		}
+		flag, _, _ := strings.Cut(arg, "=")
+		if slices.Contains(def.PermissionFlags, flag) || containsAny(strings.ToLower(flag), bypassSpellings) {
+			return arg
+		}
+	}
+	return ""
+}
+
+// containsAny reports whether s holds any of parts.
+func containsAny(s string, parts []string) bool {
+	return slices.ContainsFunc(parts, func(p string) bool { return strings.Contains(s, p) })
 }
 
 // knownAgents renders the known-name list for a refusal message.

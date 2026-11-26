@@ -251,7 +251,7 @@ func (p *flowPhases) record(
 func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []string, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: p.req.Flow.Read(b),
-		Flags:       reportcore.Flags{Check: gateSeverity, Coverage: gateCoverage, Live: gateLive},
+		Flags:       reportcore.Flags{Check: p.req.MaxSeverity, Coverage: gateCoverage, Live: gateLive},
 		Effective:   p.req.Flow.Effective,
 	})
 	if ref != nil {

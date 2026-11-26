@@ -42,12 +42,12 @@ func TestParseFlagsSurface(t *testing.T) {
 	r, _, _ := newRunner(false)
 	f, code, done := parseFlags(r, []string{
 		"--agent=codex", "--max-rounds", "5", "--max-cost-usd=2.5", "--timeout", "15m",
-		"--output", "out", "--fix-prompt=fix.md", "--print", "--sandbox",
+		"--output", "out", "--fix-prompt=fix.md", "--print", "--sandbox", "--max-severity", "critical",
 		"--", "--model", "o3", "--json", "--agent",
 	})
 	want := flags{
 		agent: "codex", maxRounds: "5", maxCost: "2.5", timeout: "15m",
-		output: "out", fixPrompt: "fix.md", print: true, sandbox: true,
+		output: "out", fixPrompt: "fix.md", print: true, sandbox: true, severity: "critical",
 		pass: []string{"--model", "o3", "--json", "--agent"},
 	}
 	// Everything after `--` is the agent's verbatim, loop's own flags included.
@@ -179,7 +179,9 @@ func TestRunPrintRendersThePlan(t *testing.T) {
 		"round 1:\n  fetch   verdict fetch-local acme/app loop-",
 		"  record  verdict record acme/app local-loop-",
 		"  fix     (when the gate fails) claude -p --output-format json --permission-mode acceptEdits " +
-			"'Only fix the security findings.\n\nRound 1 of at most 2.",
+			"--disallowedTools=Bash,PowerShell 'Only fix the security findings.\n\nRound 1 of at most 2.",
+		"  gate    verdict gate acme/app local-loop-",
+		" --max-severity important --coverage require --live skip\n",
 		"  review  verdict run acme/app local-loop-",
 		"  verify  (when the fix declares patch.json verifyCmd) verdict verify acme/app local-loop-",
 		"round 2:\n",

@@ -121,7 +121,7 @@ const pipelineDirective = "Review acme/app PR 42 and write exactly one review fi
 	"Write .verdict/state/42/review.json FIRST with {\"schema_version\": \"1\", \"findings\": []}, then " +
 	"update that same file with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, " +
 	"\"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], \"spec_checks\": [], " +
-	"\"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
+	"\"receipts\": [], \"coverage\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
 	"The review pipeline is recipe default@1.0.0 (builtin): lenses none; synthesize; dedupe; rank. " +

@@ -1371,6 +1371,7 @@ the behavior stays off until a layer above turns it on.
 | gate                  | --coverage                     | require          |
 | gate                  | --live                         | auto             |
 | loop                  | --max-rounds                   | 3                |
+| loop                  | --max-severity                 | important        |
 | loop                  | --timeout                      | 600s             |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
@@ -3999,14 +4000,19 @@ in the bundle's `.run.rounds/` files.
 
 `--require-coverage` carries `record --require-coverage` into the launch, with
 the same meaning: an absent or partial diff-coverage attestation on a
-non-chunked bundle is a `coverage-incomplete` problem in the round's fix list,
-so the agent gets a repair round for it, and the directive states the
+non-chunked bundle — or, on a chunked bundle, an absent `chunks[]`, which the
+default `gate` fails on — is a `coverage-incomplete` problem in the round's fix
+list, so the agent gets a repair round for it, and the directive states the
 requirement up front so a first attempt usually carries it. A run that ends
 with the coverage gap as its only error refuses `coverage-incomplete` with
 record's own message; any other error left keeps its own refusal
 (`bad-review-input`, `repair-exhausted`, `review-insufficient`). It applies to
-the review artifacts (the one-finder review and each finder's, since each
-reviews the whole diff), never to cross-checks or drain.
+the review artifacts, never to cross-checks or drain. With two finders each
+finder gets the repair round, but a finder whose only gap is coverage still
+counts (the union's attestation is what the run requires): the union is
+checked before any cross-check spends, and an unattested union refuses
+`coverage-incomplete`. `--resume` seals the flag, so continuing an execution
+with it flipped refuses `resume-drift`.
 
 ### Resuming an interrupted execution (`--resume`)
 
@@ -4166,15 +4172,20 @@ cross-checks, repair rounds, and drain — while leaving file reads and the
 artifact write (`review.json`, `verdicts.json`, `drain.replies.json`) intact.
 Only rows whose CLI documents the exact spelling carry one; a row without one is
 launched unchanged. `--allow-shell` restores the row's own tool set, and a
-pass-through spelling of a flag below suppresses the restriction instead of
-sitting beside it, so one argv never carries two answers to the same question.
+pass-through spelling of a flag below — one that replaces the row's whole tool
+set — suppresses the restriction instead of sitting beside it. An additive or
+tightening flag sits beside it: `claude` merges allow and deny lists, so
+`--disallowedTools WebFetch` or `--allowedTools mcp__x` keeps the shell denial,
+and only `--tools` replaces it. An argument right after a bare option is read
+as that option's value (`--append-system-prompt "--tools"` is no override), so
+a doubt keeps the restriction.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
 | Name     | Discovery flags                     | Flags that decide the same question                              | Source                                                                                     |
 | -------- | ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`                                          | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | `--disallowedTools`, `--allowedTools`, `--tools`                 | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `claude` | `--disallowedTools=Bash,PowerShell` | `--tools`                                                        | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
 | `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `--tools`, `--no-builtin-tools`, `--no-tools` | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
@@ -4193,96 +4204,24 @@ drain — scoped to that launch's own output directory and nothing else:
 launch from another checkout names the directory absolutely, `//<path>`, with
 a Windows drive as `//c/...`). Claude Code's `Edit` rules cover every built-in
 file-editing tool, so the agent can write its artifacts there and nowhere
-else: a review of an untrusted change still cannot edit source. A pass-through
-spelling of a flag in the `claude` row above drops the grant with the
-restriction — your tool flags decide the question. A directory whose path
-holds a byte the rule syntax would read as syntax (a space, a comma, a glob
-character) gets no grant. `--print` renders the grant like every other
-argument. No other row carries one: `codex exec` runs read-only by default and
-documents no writable option narrower than `--sandbox workspace-write` (the
-whole working tree), so a `codex` review still needs that flag after `--`, and
-`no-review-artifact` names it. ([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
+else: a review of an untrusted change still cannot edit source.
 
-`cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
-
-`agy` print mode (`-p`) soft-denies file edits (`Edit` / `write_file`) outside
-trusted workspaces — even under default `auto` mode or `--mode accept-edits` —
-and exits `0` without writing `review.json`, so `run` refuses
-`no-review-artifact`. Two operator-side remedies apply: add the repository to
-`trustedWorkspaces` (or allow `write_file(...)` under `permissions.allow`) in
-`~/.gemini/antigravity-cli/settings.json` (see the
-[Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json)
-and [headless mode docs](https://antigravity.google/docs/cli/headless)), or
-pass `-- --dangerously-skip-permissions` explicitly (an approval bypass stays
-the operator's choice and is never baked into the shipped row):
-
-```bash
-verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-high --dangerously-skip-permissions
-```
-
-Because that soft-denial exits `0` silently unless configured, `run --agent agy`
-prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
-and proceeds rather than refusing. As history, `agy` versions before 1.5.13
-were observed returning before sub-agents finished (2026-11-18).
-
-Aider is deliberately absent. Its positional arguments are files to edit, not
-a prompt, so it cannot read a verdict bundle with its own tools; it also
-auto-commits by default. An operator can still define it below.
-
-#### Operator-defined agents
-
-Names can also come from your own settings file,
-`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`, under `agents`.
-The file accepts ten top-level keys in total (including `$schema`): `$schema`,
-`output`, `layout`, `color`, `publish`, `review`, `spend`, `privacy`, `packs`,
-and `agents`:
-
-```json
-{
-  "agents": {
-    "local": {
-      "binary": "local-agent",
-      "args": ["exec"],
-      "prompt_flag": "-p",
-      "model_flag": "--model",
-      "install": "brew install local-agent",
-      "probe_args": ["ask", "--help"],
-      "probe_match": "ask"
-    }
-  }
-}
-```
-
-`binary` is required and is either a name resolved on `PATH` or an absolute
-path; `args` defaults to `[]`, and the other fields are optional strings.
-`probe_match` is required when `probe_args` is set, and both use the same
-identity check as the shipped rows.
-A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.
-Unknown keys at any level, a blank binary, a relative binary containing a path
-separator, a bad name, and a collision all refuse `bad-settings` naming the
-path. The file is prefs-only: a repository `.verdict/config.json` carrying an
-`agents` key refuses `bad-config` from the typed config parser, and a PR cannot
-define an agent. The settings parser owns the same closed shape.
-
-A defined agent behaves like any shipped row: its own flags come first, your
-`-- <args>` follow, and the directive comes last (or directly after its
-`prompt_flag`). `unknown-agent` lists both groups with labels. `launcher.json`
-records `agent_source: "prefs"` so provenance says where the definition came
-from.
-
-#### Binary name clashes and the identity probe
-
-Six shipped binaries share their name with another tool: `bob`, `cortex`,
-`forge`, `fx`, `grok`, and `kilo`. Before a launch, verdict runs the row's
-harmless help command with the launch's environment, no stdin, a five-second
-budget, and a capture of the combined stdout and stderr whose first 64 KiB is searched for the match.
-The output must contain the row's match
-text; a non-zero exit, a timeout, or a missing match refuses `agent-mismatch`
-and starts no agent. `--print` spawns nothing, so it never probes. A passing
-check is recorded as `probe: {"args": [...], "ok": true}` in `launcher.json`.
-Define the agent in settings.json `agents` with an absolute `binary` path, or
-pass `--agent` for the one you meant, when the wrong tool wins `PATH` resolution.
-`jazz` was checked in Homebrew and has no known namesake, so it carries no probe.
+The grant never widens past that directory. `run` refuses a bundle whose
+`.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,
+as `record` and `post` do), and the rule path is built from the resolved
+directory, which must lie strictly under the resolved `.verdict/state` and
+must not hold the agent's working directory. A directory that fails that, or
+whose path holds a character the rule syntax reads as syntax (a space, a
+comma, a parenthesis, a glob character — a local bundle named `feat(api)`),
+launches without the grant and with a warning that says why. The operator's
+own permission flags after `--` own the question and drop the grant: the
+row's `--permission-mode`, `--dangerously-skip-permissions`,
+`--allowedTools`, `--add-dir`, and `--tools`. `--print` renders the grant like
+every other argument. No other row carries one: `codex exec` runs read-only by
+default and documents no writable option narrower than `--sandbox
+workspace-write` (the whole working tree), so a `codex` review still needs
+that flag after `--`, and `no-review-artifact` names it.
+([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
 
 ### Recipes (declared review pipelines)
 
@@ -7686,7 +7625,13 @@ Each round runs four phases in-process, with the same services and options as
 the CLI verbs: `fetch-local` into a fresh local bundle (`local-loop-<id>-<n>`),
 `run --finders 1` (the review only — the agent writes `review.json` and leaves
 the working tree alone), `record --require-coverage`, and `gate --max-severity
-informational --coverage require --live skip`. A passing gate ends the loop.
+<tier> --coverage require --live skip`. A passing gate ends the loop.
+`--max-severity critical|important|informational` (default `important`) has
+`gate`'s meaning: an open finding at or above the tier fails the round. An
+informational finding still shows in the round's `open` count and its
+findings, but a from-scratch review always finds one more, so by default it
+does not hold the loop; `--max-severity informational` restores the strict
+gate.
 The review step is `run --finders 1 --rounds 2 --require-coverage`: a review
 `record --require-coverage` would refuse for missing or partial coverage gets a
 repair round instead of stopping the loop at record (see `--require-coverage`
@@ -7711,17 +7656,22 @@ or opens a PR.
 
 The fix edits the working tree, which an agent CLI's default non-interactive
 mode refuses, so the fix spawn carries the row's documented edit grant, the
-narrowest flag its docs name that writes files in the working directory
-without granting the shell or skipping permission checks: `claude`
-`--permission-mode acceptEdits`, `codex` `--sandbox workspace-write`. Every
-other row carries none (an approval bypass such as `--yolo` or
-`--dangerously-skip-permissions` is never used as one). The review spawn needs
-no edit grant: it carries `run`'s own scoped review-write grant. Arguments
-after `--` (`verdict loop owner/repo --agent claude -- --model opus`) go to
-every spawn, as `run`'s `--` does; when you pass any, the fix spawn carries
-them instead of the edit grant, and on the review step `run`'s rule applies (a
-tool-permission flag drops its review grant). The operator who passes `--`
-owns the agent's permissions. `--print` renders each grant in the exact argv.
+narrowest its docs name: `claude` `--permission-mode acceptEdits
+--disallowedTools=Bash,PowerShell` (acceptEdits also auto-approves filesystem
+shell commands such as `rm` and `mv`, so the fix keeps the review's shell
+denial; the loop's verify step runs the tests), `codex` `--sandbox
+workspace-write` (codex documents no edit-only mode: workspace-write also runs
+shell commands, sandboxed to the working tree). Every other row carries none
+(an approval bypass such as `--yolo` or `--dangerously-skip-permissions` is
+never used as one). The review spawn needs no edit grant: it carries `run`'s
+own scoped review-write grant. Arguments after `--` (`verdict loop owner/repo
+--agent claude -- --model opus`) go to every spawn, after the fix's edit
+grant. They also reach the review of untrusted content, so they may not
+decide the agent's permissions: the row's permission flags
+(`--permission-mode`, `--allowedTools`, `--add-dir`, `--sandbox`/`-s`,
+`--ask-for-approval`/`-a`, …) and any agent's bypass spellings (`--yolo`,
+`--dangerously-*`, `--full-auto`, `--auto-approve`, …) refuse `bad-flags`
+before anything runs. `--print` renders each grant in the exact argv.
 
 The loop stops on the first of:
 

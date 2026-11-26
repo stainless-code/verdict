@@ -32,8 +32,10 @@ const agentBinary = "claude"
 // agent for the review and fix spawns and hands every other process (the
 // verify command, git) to the production watchdog.
 type agentCommander struct {
-	t              *testing.T
-	costAt         string
+	t      *testing.T
+	costAt string
+	// severity is the finding's severity; "" is important.
+	severity       string
 	spawns         []string
 	argvs          [][]string
 	fixExit        int
@@ -129,7 +131,9 @@ func (a *agentCommander) review(checkout, artifact string) {
 	dir := filepath.Dir(artifact)
 	a.reviews++
 	findings, receipts := a.findings(checkout), hunkReceipts(a.t, dir)
-	if findings != "[]" {
+	// A review whose findings are all below the approval tier still owes its
+	// reading receipts.
+	if findings != "[]" && a.severity != "informational" {
 		receipts = "[]"
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
@@ -183,8 +187,12 @@ func (a *agentCommander) findings(checkout string) string {
 	if a.repairFirst && a.reviews == 1 {
 		quote = "a line the diff never had"
 	}
+	severity := a.severity
+	if severity == "" {
+		severity = "important"
+	}
 	return `[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Incorrect line.","quote":"` + quote + `",` +
-		`"confidence":"high","severity":"important","rigor":"walked"}]`
+		`"confidence":"high","severity":"` + severity + `","rigor":"walked"}]`
 }
 
 // costRecord is the review's cost.json: the prompt's undated schema-2
@@ -366,12 +374,13 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 			},
 			Environ: testenv.Base(nil),
 		},
-		RepoRoot:  repo,
-		Repo:      "acme/app",
-		Agent:     agentBinary,
-		MaxRounds: 3,
-		Timeout:   5 * time.Minute,
-		Output:    filepath.Join(t.TempDir(), "receipts"),
+		RepoRoot:    repo,
+		Repo:        "acme/app",
+		Agent:       agentBinary,
+		MaxRounds:   3,
+		MaxSeverity: "informational",
+		Timeout:     5 * time.Minute,
+		Output:      filepath.Join(t.TempDir(), "receipts"),
 	}
 }
 
@@ -468,11 +477,18 @@ func flowLoop(t *testing.T, agent *agentCommander, maxCost string) (*Response, s
 // what its own record step would refuse: the first attempt carries no
 // coverage[], run sends it back with the coverage gap, and the round reaches
 // record and gate instead of stopping refused coverage-incomplete. Every
-// review spawn carries claude's scoped bundle grant and no edit grant; the fix
-// spawn carries the edit grant.
+// review spawn carries claude's scoped bundle grant and no edit grant, the fix
+// spawn carries the edit grant, and the operator's `--` tail reaches all.
 func TestLoopRepairsAReviewThatOmitsCoverage(t *testing.T) {
 	agent := &agentCommander{t: t, coverageLate: true, reportFixCost: true}
-	resp, _ := flowLoop(t, agent, "")
+	repo := flowRepo(t)
+	t.Chdir(repo)
+	req := flowRequest(t, repo, agent)
+	req.AgentArgs = []string{"--model", "opus"}
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
 	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
 		t.Fatalf("stop=%s refusal=%+v, want a pass in round 2", resp.Data.Stop, resp.Data.Refusal)
 	}
@@ -482,7 +498,20 @@ func TestLoopRepairsAReviewThatOmitsCoverage(t *testing.T) {
 	if got := strings.Join(agent.spawns, ","); got != "review,review,fix,review" {
 		t.Errorf("spawns = %s, want the repaired review, the fix, and the re-review", got)
 	}
+	// The operator's `--` tail reaches every spawn, and the edit grant the
+	// fix alone: the review of untrusted content is never armed to edit.
 	assertSpawnGrants(t, agent)
+	assertEverySpawnCarries(t, agent, "opus")
+}
+
+// assertEverySpawnCarries proves an operator argument reached every spawn.
+func assertEverySpawnCarries(t *testing.T, agent *agentCommander, arg string) {
+	t.Helper()
+	for i, argv := range agent.argvs {
+		if !slices.Contains(argv, arg) {
+			t.Errorf("%s argv = %q lacks the operator's %q", agent.spawns[i], argv[:len(argv)-1], arg)
+		}
+	}
 }
 
 // assertSpawnGrants proves the edit grant rides the fix spawn alone and the
@@ -496,6 +525,28 @@ func assertSpawnGrants(t *testing.T, agent *agentCommander) {
 			t.Errorf("%s argv = %q, want the edit grant only on the fix and the bundle grant only on reviews",
 				agent.spawns[i], argv[:len(argv)-1])
 		}
+	}
+}
+
+// TestLoopPassesAtImportantWithAnInformationalFinding proves --max-severity
+// reaches the gate: an informational finding stays open and shown, and the
+// default tier passes the round instead of spending a fix on it.
+func TestLoopPassesAtImportantWithAnInformationalFinding(t *testing.T) {
+	repo := flowRepo(t)
+	t.Chdir(repo)
+	agent := &agentCommander{t: t, severity: "informational"}
+	req := flowRequest(t, repo, agent)
+	req.MaxSeverity = "important"
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	rd := resp.Data.Rounds
+	if resp.Data.Stop != StopPass || len(rd) != 1 || rd[0].Open == nil || *rd[0].Open != 1 {
+		t.Fatalf("stop=%s refusal=%+v rounds=%+v, want a pass in round 1 with the informational finding open", resp.Data.Stop, resp.Data.Refusal, rd)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review" {
+		t.Errorf("spawns = %s, want the review alone", got)
 	}
 }
 
