@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -32,6 +33,13 @@ type Policy struct {
 // Ctx carries the KB runtime state for one record run.
 type Ctx struct {
 	Warn func(string)
+	// Bundled holds the pack rule ids fetch recalled into this bundle's
+	// kb.txt: the agent was handed them, so citing one is not "unknown" even
+	// though no store row backs it. A store row with the same id still wins.
+	Bundled map[string]bool
+	// bundledGap names a kb.txt whose manifest could not be read; the first
+	// cite the manifest would have answered warns it once.
+	bundledGap string
 	// Root is the reviewed repository root every store write anchors to
 	// ("" reads the working directory).
 	Root string
@@ -222,29 +230,43 @@ func (n *normalizer) warnShape(msg string) {
 
 func (n *normalizer) live(s string) bool {
 	if !n.kbExists {
+		if n.c.Bundled[s] {
+			return true
+		}
+		n.c.warnBundledGap()
 		n.c.Warn(fmt.Sprintf("ignoring unknown kb rule '%s' (no %s yet)", s, File))
 		return false
 	}
-	st := "UNREADABLE"
-	if rows, ok := n.c.readRows(); ok {
-		if row := FindRow(rows, s); row != nil {
-			v, _ := row.Get("status")
-			st = jq.Str(v)
-		} else {
-			st = "MISSING"
-		}
-	}
-	switch st {
+	switch st := n.c.storeStatus(s); st {
 	case statusActive:
 		return true
 	case "retired":
 		n.c.Warn(fmt.Sprintf("ignoring retired kb rule '%s' (restore it before citing)", s))
 	case "MISSING":
+		if n.c.Bundled[s] {
+			return true
+		}
+		n.c.warnBundledGap()
 		n.c.Warn(fmt.Sprintf("ignoring unknown kb rule '%s'", s))
 	default:
 		n.c.Warn(fmt.Sprintf("kb store unreadable — ignoring cited rule '%s'", s))
 	}
 	return false
+}
+
+// storeStatus reads one rule's store status: its row's status, MISSING when
+// no row holds the id, or UNREADABLE when the store does not parse.
+func (c *Ctx) storeStatus(id string) string {
+	rows, ok := c.readRows()
+	if !ok {
+		return "UNREADABLE"
+	}
+	row := FindRow(rows, id)
+	if row == nil {
+		return "MISSING"
+	}
+	v, _ := row.Get("status")
+	return jq.Str(v)
 }
 
 func (c *Ctx) readRows() ([]*jq.Obj, bool) {
@@ -275,3 +297,80 @@ const (
 	floatBits = 64
 	kbListCap = 5
 )
+
+// PackSourcePrefix marks a recall manifest row fetch rendered from a pack
+// rule rather than a store row; the fetch writer and BundledRules share it.
+const PackSourcePrefix = "pack:"
+
+// LoadBundled reads the bundle's pack rules into Bundled. When the bundle
+// has a kb.txt but its manifest is missing or unreadable, the pack rules the
+// agent was handed cannot be recognized: the first cite that falls through
+// to "unknown" says why, once, instead of the gap staying silent.
+func (c *Ctx) LoadBundled(dir string) {
+	rules, ok := readBundledRules(dir)
+	c.Bundled = rules
+	if !ok && isFile(filepath.Join(dir, "kb.txt")) {
+		c.bundledGap = fmt.Sprintf("kb recall manifest %s is missing or unreadable — "+
+			"pack rules in kb.txt cannot be recognized as cites (re-fetch the bundle)",
+			filepath.ToSlash(filepath.Join(dir, "kb-recall.json")))
+	}
+}
+
+// warnBundledGap warns the unreadable-manifest gap once.
+func (c *Ctx) warnBundledGap() {
+	if c.bundledGap == "" {
+		return
+	}
+	c.Warn(c.bundledGap)
+	c.bundledGap = ""
+}
+
+// BundledRules reads the pack rule ids the bundle's kb-recall.json lists: the
+// same rules fetch wrote into kb.txt. A missing or unreadable manifest reads
+// empty, so a bundle fetched before the manifest keeps the store-only check.
+func BundledRules(dir string) map[string]bool {
+	rules, _ := readBundledRules(dir)
+	return rules
+}
+
+// readBundledRules reads the manifest's pack rule ids, reporting false when
+// the manifest is missing, unreadable, or not a manifest array.
+func readBundledRules(dir string) (map[string]bool, bool) {
+	raw, err := jq.CappedFile(filepath.Join(dir, "kb-recall.json"), jq.MaxKBBytes)
+	if err != nil {
+		return nil, false
+	}
+	doc, err := jq.Decode(raw)
+	if err != nil {
+		return nil, false
+	}
+	list, ok := doc.([]any)
+	if !ok {
+		return nil, false
+	}
+	out := map[string]bool{}
+	for _, item := range list {
+		if id := packRowID(item); id != "" {
+			out[id] = true
+		}
+	}
+	return out, true
+}
+
+// packRowID returns a manifest row's id when the row came from a pack rule,
+// else "".
+func packRowID(item any) string {
+	row, ok := item.(map[string]any)
+	if !ok {
+		return ""
+	}
+	src, ok := row["source"].(string)
+	if !ok || !strings.HasPrefix(src, PackSourcePrefix) {
+		return ""
+	}
+	id, ok := row["id"].(string)
+	if !ok {
+		return ""
+	}
+	return id
+}

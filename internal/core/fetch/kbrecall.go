@@ -146,7 +146,7 @@ func packRecallCands(set *pack.Set, files []string) []recallCand {
 			},
 			recallBaseScore,
 			rule.Level,
-			"pack:" + rule.Pack + "@" + rule.PackVersion,
+			kb.PackSourcePrefix + rule.Pack + "@" + rule.PackVersion,
 		})
 	}
 	return out

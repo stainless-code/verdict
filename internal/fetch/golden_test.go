@@ -1112,29 +1112,19 @@ func TestFetchGoldenUpstreamTooLarge(t *testing.T) {
 	if hint(db) != "try: re-fetch narrowed to a range via --base-sha/--since, or narrow with a paths filter, then re-run" {
 		t.Fatalf("go hint = %q", hint(db))
 	}
-	// The truncated upstream leaves full.diff empty.
-	requireEmptyFullDiff(t, b)
+	// The refused fetch created the bundle, so it removes it: nothing of
+	// 4711 is left behind.
+	requireNoBundle(t, b, "4711")
 }
 
-// requireEmptyFullDiff asserts the leg left an empty full.diff.
-func requireEmptyFullDiff(t *testing.T, outs golden.Outputs) {
+// requireNoBundle asserts the run left no file under the named bundle.
+func requireNoBundle(t *testing.T, outs golden.Outputs, name string) {
 	t.Helper()
-	requireSideFullDiff(t, "go", outs)
-}
-
-// requireSideFullDiff asserts one leg left an empty full.diff.
-func requireSideFullDiff(t *testing.T, side string, outs golden.Outputs) {
-	t.Helper()
-	for k, v := range outs.Files {
-		if !strings.HasSuffix(k, ".verdict/state/4711/full.diff") {
-			continue
+	for k := range outs.Files {
+		if strings.Contains(k, ".verdict/state/"+name+"/") {
+			t.Fatalf("refused fetch left %s behind", k)
 		}
-		if v != "" {
-			t.Fatalf("%s full.diff = %q, want empty", side, v)
-		}
-		return
 	}
-	t.Fatalf("%s wrote no full.diff", side)
 }
 
 // code reads the envelope error code.

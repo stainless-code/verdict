@@ -3,6 +3,8 @@ package cli_test
 import (
 	"encoding/json"
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
@@ -47,5 +49,21 @@ func TestPrefsCredentialFieldInsideAgentStillRefuses(t *testing.T) {
 	}
 	if ref.Code != "bad-settings-credentials" {
 		t.Errorf("code = %q; want bad-settings-credentials", ref.Code)
+	}
+}
+
+// TestPrefsSectionRefusalNamesSettingsFile proves a typed section violation
+// names the settings file it read, like every other settings refusal.
+func TestPrefsSectionRefusalNamesSettingsFile(t *testing.T) {
+	home := t.TempDir()
+	_, err := cli.ResolvePrefs(&cli.Runner{}, map[string]string{"HOME": home},
+		func(string) ([]byte, error) { return []byte(`{"spend":{"budget_usd":-1}}`), nil })
+	var ref *cli.RefusalError
+	if !errors.As(err, &ref) {
+		t.Fatalf("err = %T (%v); want a typed settings refusal", err, err)
+	}
+	want := "settings file " + filepath.Join(home, ".config", "verdict", "settings.json") + ": "
+	if !strings.HasPrefix(ref.Message, want) {
+		t.Errorf("message = %q; want prefix %q", ref.Message, want)
 	}
 }

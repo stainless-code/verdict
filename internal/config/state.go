@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -347,6 +348,88 @@ func (l Layout) EnsureBundleDir(name string) *stateError {
 		return serr
 	}
 	return ensureManagedDir(root, bundleDirPath(name))
+}
+
+// CreateBundleDir creates one bundle's leaf directory under the state home
+// and reports whether this call created it. The create is exclusive
+// (os.Mkdir), so two runs racing on one name never both own it: only the
+// run whose Mkdir succeeded may later remove it. An existing leaf is kept
+// and re-checked, so one swapped for a symlink still refuses.
+func (l Layout) CreateBundleDir(name string) (bool, *stateError) {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return false, serr
+	}
+	rel := bundleDirPath(name)
+	full, serr := anchoredManagedPath(root, rel)
+	if serr != nil {
+		return false, serr
+	}
+	if err := os.MkdirAll(filepath.Dir(full), stateDirPerm); err != nil {
+		return false, &stateError{msg: "could not create " + filepath.Dir(full), cause: err}
+	}
+	err := os.Mkdir(full, stateDirPerm)
+	if err == nil {
+		return true, nil
+	}
+	if !errors.Is(err, fs.ErrExist) {
+		return false, &stateError{msg: "could not create " + full, cause: err}
+	}
+	return false, refuseSymlinkLeaf(full, rel)
+}
+
+// RemoveBundleDir removes one bundle directory a refused run created. The
+// removal runs through an [os.Root] anchored at the state home and refuses a
+// symlinked leaf, so a link planted after the create never redirects it
+// outside the bundle home.
+func (l Layout) RemoveBundleDir(name string) *stateError {
+	state, serr := l.openStateRoot()
+	if serr != nil {
+		return serr
+	}
+	defer state.Close()
+	return removeLeaf(state, name)
+}
+
+// openStateRoot opens the state home as an [os.Root] after refusing a
+// symlinked .verdict or state component.
+func (l Layout) openStateRoot() (*os.Root, *stateError) {
+	root, serr := confineRoot(l.Root)
+	if serr != nil {
+		return nil, serr
+	}
+	stateRel := filepath.Join(VerdictDir, StateDirName)
+	if _, serr := anchoredManagedPath(root, stateRel); serr != nil {
+		return nil, serr
+	}
+	repo, err := os.OpenRoot(root)
+	if err != nil {
+		return nil, &stateError{msg: "could not open " + root, cause: err}
+	}
+	defer repo.Close()
+	state, err := repo.OpenRoot(stateRel)
+	if err != nil {
+		return nil, &stateError{msg: "could not open " + stateRel, cause: err}
+	}
+	return state, nil
+}
+
+// removeLeaf removes one bundle leaf inside the state root, refusing a link.
+func removeLeaf(state *os.Root, name string) *stateError {
+	info, err := state.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return &stateError{msg: "could not inspect " + bundleDirPath(name), cause: err}
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return &stateError{msg: bundleDirPath(name) + " is a symlink: refusing to remove through it", operator: true}
+	}
+	if err := state.RemoveAll(name); err != nil {
+		return &stateError{msg: "could not remove " + bundleDirPath(name), cause: err}
+	}
+	return nil
 }
 
 // ensureManagedDir resolves one managed repository-relative directory,

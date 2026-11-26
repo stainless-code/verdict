@@ -61,6 +61,11 @@ func (c *Ctx) stageCites(entry *jq.Obj, kbList []any, sig, outcome, actor, verb,
 // stageCite stages one rule's credit op when the rule is active.
 func (c *Ctx) stageCite(sig, rid, outcome, actor, verb, now string) {
 	if !c.ruleActive(rid) {
+		// A pack rule carries no counters to credit; only a store row does.
+		if c.Bundled[rid] && !c.hasRow(rid) {
+			return
+		}
+		c.warnBundledGap()
 		c.Warn(fmt.Sprintf("kb credit skipped: rule '%s' not active in %s", rid, c.display(File)))
 		return
 	}
@@ -143,6 +148,12 @@ func creditRef(cr any) (string, string, bool) {
 	default:
 		return "", "", false
 	}
+}
+
+// hasRow reports whether the store holds a row for rid in any status.
+func (c *Ctx) hasRow(rid string) bool {
+	rows, ok := c.readRows()
+	return ok && FindRow(rows, rid) != nil
 }
 
 // ruleActive owns the active-status gate: the rule row must exist with
