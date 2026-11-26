@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,21 @@ func TestApprovalReceiptInsufficientJSON(t *testing.T) {
 		`"tier":"important","gating_sigs":[],"approved":false,"insufficient":true}`
 	if string(insuf) != wantInsuf {
 		t.Fatalf("insufficient approval = %s, want %s", insuf, wantInsuf)
+	}
+}
+
+// TestReviewInsufficientHintNamesListedGapsOnly proves the hint points at a
+// list of evidence gaps only when the refusal carries one: a refusal whose
+// message is the one gap gets a hint that sends the reader to the message.
+func TestReviewInsufficientHintNamesListedGapsOnly(t *testing.T) {
+	t.Parallel()
+	listed := InsufficientRefusal("1 hunk without receipt", []Problem{ReceiptMissingProblem("pkg/a.go\tNEW\t1\t5")})
+	if got := RefusalHint(listed); !strings.HasPrefix(got, "try: fix the evidence gaps named above ") {
+		t.Errorf("listed gaps hint = %q, want the hint naming the listed gaps", got)
+	}
+	unlisted := &RefusalError{Code: CodeReviewInsufficient, Message: "execution: execution manifest is incomplete"}
+	if got := RefusalHint(unlisted); got != "try: address the gap the message above names, then re-run" {
+		t.Errorf("unlisted gap hint = %q", got)
 	}
 }
 

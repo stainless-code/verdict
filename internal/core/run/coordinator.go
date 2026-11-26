@@ -42,6 +42,9 @@ type coordinator struct {
 	failures    []any
 	snapMu      sync.RWMutex
 	rounds      int
+	// resumable records that the aggregate refused an execution `run
+	// --resume` continues, so the response can say so.
+	resumable bool
 }
 
 // check is the snapshot checkpoint. It takes the read lock, so a phase can
@@ -88,12 +91,23 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 	// Every launch spent whether or not the execution completed, so the
 	// receipt settles either way. The settlement must outlive a cancel.
 	st.settleExecution(context.WithoutCancel(ctx), c.dir)
+	c.resumableCancel(ref)
 	c.executionResponse()
 	if ref == nil {
 		ref = c.executionRefusal()
 	}
 	c.settleExit(ref)
 	return c.response, ref
+}
+
+// resumableCancel marks a canceled execution resumable once it published its
+// in-progress record: that record, with its resume block, is what --resume
+// continues, reusing every phase it bound. A cancel before the first publish
+// left nothing to continue.
+func (c *coordinator) resumableCancel(ref *core.RefusalError) {
+	if ref != nil && ref.Code == codeCanceled && c.record != nil {
+		c.resumable = true
+	}
 }
 
 // settleExit keeps the agent's exit status on the response only when the run's
@@ -450,23 +464,35 @@ func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
 	manifest.Set("budget", core.Wire(recorded))
 }
 
-// causeLines names why each failed phase failed, in phase order, so a partial
-// execution's refusal carries the agent's own error beside the evidence gap it
-// left behind.
+// causeLines names each failed phase, in phase order, with the agent's own
+// error when it left one, so a partial execution's refusal carries the cause
+// beside the evidence gap it left behind, and the recovery: `--resume` only
+// for an execution it can continue, a fresh run for one whose bound artifacts
+// no longer hold.
 func (c *coordinator) causeLines() string {
-	var sb strings.Builder
+	if len(c.failures) == 0 {
+		return ""
+	}
+	phases := make([]string, 0, len(c.failures))
 	for _, row := range c.failures {
 		phase := jq.StrOf(readcommon.FieldOf(row, keyPhase))
 		if cause := c.causes[phase]; cause != nil {
-			sb.WriteString("\n" + phase + " " + cause.Code + ": " + cause.Message)
+			phases = append(phases, phase+" "+cause.Code+": "+cause.Message)
+		} else {
+			phases = append(phases, phase+" "+jq.StrOf(readcommon.FieldOf(row, "code")))
 		}
 	}
-	return sb.String()
+	recovery := "; continue it with --resume: the phases that passed are reused and only the failed ones launch again"
+	if !c.resumable {
+		recovery = "; it cannot be resumed, so re-run without --resume to start a fresh execution"
+	}
+	return "; failed: " + strings.Join(phases, "; ") + recovery
 }
 
 func (c *coordinator) validateAggregate() *core.RefusalError {
 	execution := panelcore.CheckExecution(c.dir, nil)
 	if execution.Problem() != "" {
+		c.resumable = execution.Incomplete()
 		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
 	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
@@ -525,13 +551,29 @@ func (c *coordinator) mergeDiscovery(ctx context.Context, outcomes []discoveryOu
 		c.st.replay(outcomes[i].worker)
 	}
 	if ref := canceledRefusal(ctx, c.st); ref != nil {
-		return ref
+		return mergeFatal(ref, c.persistFinished(outcomes, skipped))
 	}
 	fatal := c.recordDiscoveries(outcomes, skipped)
 	if fatal != nil {
 		return fatal
 	}
 	return c.check()
+}
+
+// persistFinished publishes what a canceled discovery finished before the
+// cancel: each finder that ended on its own, bound or failed, so --resume
+// reuses a completed finder instead of paying for it again. A finder the
+// cancel interrupted ended fatal and bound nothing, so it is left out and a
+// resume relaunches it.
+func (c *coordinator) persistFinished(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
+	for i := range outcomes {
+		if skipped[i] || outcomes[i].fatal {
+			continue
+		}
+		c.reviews[i] = outcomes[i].review
+		c.resolveFailure(finderPhase(i), outcomes[i].failure, outcomes[i].cause)
+	}
+	return c.persistProgress()
 }
 
 // recordDiscoveries folds the launched finders' outcomes in index order and
@@ -788,6 +830,7 @@ func (c *coordinator) executionResponse() {
 		Counts: counts, Failures: failures,
 	}
 	c.response.Data.Resume = c.resumeData()
+	c.response.Resumable = c.resumable
 	c.aggregateResponse()
 }
 
