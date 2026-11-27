@@ -528,6 +528,18 @@ type view struct {
 	// dropped names the tree's symlinks the view leaves out: every one, as
 	// the snapshot dropped them.
 	dropped []string
+	// root is the bundle copy, opened before the agent starts: settlement
+	// reads only through it, so a directory the agent swaps for a link
+	// cannot redirect the copy-back. pins are the bundle copy and its
+	// ancestors (.verdict, .verdict/state) as they were then.
+	root *os.Root
+	pins []pin
+}
+
+// pin is one directory of the view as it was before the agent started.
+type pin struct {
+	info fs.FileInfo
+	path string
 }
 
 // stamp is what a file looked like when verdict copied it in. sum is set
@@ -568,7 +580,51 @@ func (w *workspace) open(ctx context.Context, bundle, own string, expect expecta
 	if err := v.fill(tree, bundle, own, expect); err != nil {
 		return nil, jq.Sealed("fill the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
 	}
+	if err := v.pinBundle(); err != nil {
+		return nil, jq.Sealed("pin the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
+	}
 	return v, nil
+}
+
+// pinBundle records the bundle copy and its ancestors below the view's root
+// and opens the bundle copy as a root, all before the agent starts.
+func (v *view) pinBundle() error {
+	dir := v.cwd
+	for part := range strings.SplitSeq(v.rel, slash) {
+		dir = filepath.Join(dir, part)
+		info, err := os.Lstat(dir)
+		if err != nil || !info.IsDir() {
+			return jq.NewErrf("%s is not a directory in the review snapshot", dir)
+		}
+		v.pins = append(v.pins, pin{path: dir, info: info})
+	}
+	root, err := pinnedDir(v.bundle)
+	if err != nil {
+		return err
+	}
+	v.root = root
+	return nil
+}
+
+// replaced names the first pinned directory the agent replaced — moved,
+// removed, or swapped for a link — "" when every one is the directory it was
+// before the agent started.
+func (v *view) replaced() string {
+	for _, p := range v.pins {
+		now, err := os.Lstat(p.path)
+		if err != nil || !now.IsDir() || !os.SameFile(p.info, now) {
+			rel, _ := filepath.Rel(v.cwd, p.path) //nolint:errcheck // p.path lies below v.cwd
+			return filepath.ToSlash(rel)
+		}
+	}
+	return ""
+}
+
+// closeRoot releases the pinned bundle copy.
+func (v *view) closeRoot() {
+	if v.root != nil {
+		_ = v.root.Close()
+	}
 }
 
 // unchanged refuses a snapshot whose fingerprint moved since it was taken: a
@@ -915,16 +971,18 @@ func pinnedDir(dir string) (*os.Root, error) {
 	return root, nil
 }
 
-// settleBundle walks the bundle copy through a pinned root. An unchanged file
+// settleBundle walks the bundle copy through the root pinned before the
+// agent started, refusing outright when the agent replaced that directory or
+// an ancestor of it. An unchanged file
 // is the seed verdict put there; a changed one is copied back into the
 // pinned real bundle when expected and named otherwise.
 func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
-	from, err := pinnedDir(v.bundle)
-	if err != nil {
-		out.refused = append(out.refused, v.rel+" (its copy changed while the agent ran)")
+	if dir := v.replaced(); dir != "" {
+		out.refused = append(out.refused, v.rel+" (its directory "+dir+" was replaced while the agent ran; "+
+			"nothing was copied back)")
 		return
 	}
-	defer func() { _ = from.Close() }()
+	from := v.root
 	to, err := pinnedDir(bundle)
 	if err != nil {
 		out.refused = append(out.refused, v.rel+" (the bundle changed while the agent ran)")
@@ -936,7 +994,8 @@ func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
 	_ = fs.WalkDir(from.FS(), here, func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			complete = false
-			return nil //nolint:nilerr // an unreadable entry is never copied back
+			out.refused = append(out.refused, path.Join(v.rel, rel)+" (unreadable)")
+			return nil //nolint:nilerr // an unreadable entry is never copied back, only named
 		}
 		if !d.IsDir() {
 			seen[rel] = true
@@ -1195,6 +1254,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	if err != nil {
 		return nil, st.viewFailure(ctx, err)
 	}
+	defer v.closeRoot()
 	st.warnDropped(v.dropped)
 	res, err := st.spawn(ctx, argv, args.timeout, tap, v.cwd, v.env(st.childEnv()))
 	if res != nil {

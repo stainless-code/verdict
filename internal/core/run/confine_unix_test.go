@@ -206,11 +206,13 @@ func TestRestoredRewriteOfTheSnapshotRefusesTheNextCopy(t *testing.T) {
 	t.Parallel()
 	ws, root := fakeCanonical(t, map[string]string{"src/main.go": originalMain})
 	expect := expectedArtifacts(here, reviewFile, nil)
-	if _, err := ws.open(t.Context(), bundleDir(root), here, expect, 30); err != nil {
+	first, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	if err != nil {
 		t.Fatalf("a sealed snapshot refused its first copy: %v", err)
 	}
+	t.Cleanup(first.closeRoot)
 	rewriteRestored(t, filepath.Join(ws.tree, "src", "main.go"), strings.Replace(originalMain, "original", "poisoned", 1))
-	_, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	_, err = ws.open(t.Context(), bundleDir(root), here, expect, 30)
 	if err == nil || !strings.Contains(err.Error(), "changed after it was taken") {
 		t.Errorf("a restored rewrite of the snapshot gave a copy (err = %v)", err)
 	}
@@ -301,8 +303,9 @@ func TestSnapshotBaseResolvesALinkAboveAMissingCache(t *testing.T) {
 }
 
 // TestUnreadableSeedsAreNotReportedDeleted proves a bundle subtree the
-// settlement walk cannot read — the agent made it unreadable — never reads as
-// deleted seeds: only a walk that read every directory compares them.
+// settlement walk cannot read — the agent made it unreadable — is named as
+// unreadable and never reads as deleted seeds: only a walk that read every
+// directory compares them.
 func TestUnreadableSeedsAreNotReportedDeleted(t *testing.T) {
 	t.Parallel()
 	root := fixtureRoot(t)
@@ -317,6 +320,7 @@ func TestUnreadableSeedsAreNotReportedDeleted(t *testing.T) {
 	if slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "chunks/manifest.json") }) {
 		t.Errorf("an unreadable seed was reported deleted: %q", warnings)
 	}
+	assertWarned(t, warnings, ".verdict/state/42/chunks (unreadable)")
 }
 
 // settledWarnings is a run's warnings, whether it recorded or refused the
@@ -331,4 +335,47 @@ func settledWarnings(t *testing.T, resp *core.RunResponse, ref *core.RefusalErro
 		t.Fatalf("review refused: %v", ref)
 	}
 	return ref.Warnings
+}
+
+// forgedOutside marks a review planted outside the copy.
+const forgedOutside = "Planted outside the copy."
+
+// TestSettlementIgnoresASwappedStateDirectory proves the copy-back reads only
+// the bundle copy pinned before the agent started: an agent that swaps its
+// copy's .verdict/state for a link to a directory outside, holding a planted
+// review, gets nothing copied back from there, and the swap is named.
+func TestSettlementIgnoresASwappedStateDirectory(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	outside := t.TempDir()
+	writeUnder(t, filepath.Join(outside, "42"), reviewFile,
+		strings.Replace(reviewDoc, `"summary":"`, `"summary":"`+forgedOutside+` `, 1))
+	resp, ref, _ := confinedRun(t, root, nameClaude, func(cmd *core.Command) {
+		inView(t, cmd, viewReview, reviewDoc)
+		swapState(t, cmd.Dir, outside)
+	})
+	if raw, err := os.ReadFile(filepath.Join(bundleDir(root), reviewFile)); err == nil && strings.Contains(string(raw), forgedOutside) {
+		t.Fatalf("the review planted outside the copy was copied back: %s", raw)
+	}
+	warnings := []string(nil)
+	switch {
+	case ref != nil:
+		warnings = ref.Warnings
+	case resp != nil:
+		warnings = resp.Warnings
+	}
+	assertWarned(t, warnings, "its directory .verdict/state was replaced while the agent ran")
+}
+
+// swapState moves the copy's .verdict/state aside and links outside in its
+// place.
+func swapState(t *testing.T, cwd, outside string) {
+	t.Helper()
+	state := filepath.Join(cwd, ".verdict", "state")
+	if err := os.Rename(state, state+".orig"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, state); err != nil {
+		t.Fatal(err)
+	}
 }
