@@ -128,14 +128,19 @@ In scope (highest priority first):
   its processes skips it. On macOS the launch runs under `sandbox-exec` with
   a generated profile, on Linux under `bwrap`; the network stays open so the
   agent reaches its model API. A review agent can write only its launch's
-  snapshot directory (its working copy and private `TMPDIR`), its own cited
-  data paths (sessions, logs, caches, its login's token refresh — such as
-  `~/.claude/projects`, `~/.pi/agent/sessions`, opencode's database), and
-  the devices a process needs; it cannot write its own config or code
+  snapshot directory (its working copy, private `TMPDIR`, and opencode's
+  ephemeral data and state homes, seeded with copies of its logins), its own
+  cited data paths that nothing trusts later (logs, caches, its login's
+  token refresh — such as `~/.claude/debug`, `~/.pi/agent/auth.json`),
+  claude's own launch's `~/.claude/projects/<slug>` (made before the launch
+  and removed after), and the devices a process needs; it cannot write
+  anything a later session loads as instructions or code or trusts
   (`~/.claude.json`, claude's settings, hooks, plugins, shell snapshots,
-  and its projects' memory on macOS, codex's shell snapshots,
-  `~/.config/opencode`, opencode's managed tools and packages, pi's
-  extensions and settings), any other dotfile in `HOME`, the rest of
+  sessions, todos, file history, backups and caches, every project's memory
+  and every other project, codex's shell snapshots, sessions, goals and
+  memories, `~/.config/opencode`, opencode's real data and state directories
+  — its shadow git repositories, database, managed tools and packages — and
+  pi's sessions, extensions and settings), any other dotfile in `HOME`, the rest of
   `~/.config`, the operator's checkout, the execution's shared snapshot, or
   another launch's snapshot directory, and it cannot replace a data
   directory with a link (its own entry is pinned, a linked state path
@@ -162,10 +167,9 @@ In scope (highest priority first):
   outside a hidden temp root too); on Linux the network namespace is the
   host's, so an abstract-namespace unix socket (a `dbus-launch` session bus,
   an X11 display without its cookie) and a filesystem socket under `HOME`
-  outside the table stay reachable; on Linux a project `memory` directory
-  claude creates during the launch is writable (existing ones are not); an agent's own data paths stay writable,
-  so it can alter its own sessions or token store, though nothing a later
-  run loads as config or code; the review shell is denied by flags only for
+  outside the table stay reachable; an agent's own data paths stay
+  writable, so it can alter its own logs, caches, or token store, though
+  nothing a later session loads or trusts; the review shell is denied by flags only for
   `claude`, `bob`, and `pi` — every other row's agent has a live shell
   inside the sandbox. `codex` runs in its own `--sandbox workspace-write`
   sandbox instead of verdict's — a nested Seatbelt profile fails on macOS —

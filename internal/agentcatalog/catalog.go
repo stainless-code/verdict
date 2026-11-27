@@ -140,7 +140,16 @@ type Launch struct {
 	// StateDirs are directories under read-only state the CLI makes at
 	// startup and fails without; each is made, empty, before every sandboxed
 	// launch, and stays read-only.
-	StateDirs     []string
+	StateDirs []string
+	// StateEphemeral are the variables a sandboxed review launch points at a
+	// throwaway directory in its wrapper instead of the CLI's real one —
+	// for state a later session would trust — each seeded with copies of
+	// the files Seed names below the real one (its login).
+	StateEphemeral []EphemeralVar
+	// ProjectState is the per-working-directory state the CLI keeps under
+	// one root; a sandboxed review launch may write only its own, made
+	// before the launch and removed after.
+	ProjectState  *ProjectState
 	StateCitation string
 	// Confinement is how the CLI confines its own review launch without
 	// verdict's OS sandbox, "" for not at all. [OwnSandbox]: its
@@ -176,6 +185,27 @@ const (
 type StateVar struct {
 	Name string
 	Root string
+}
+
+// EphemeralVar is one variable a sandboxed review launch points at a
+// throwaway directory: Root is its home-relative default, Seed the files
+// below the real directory copied in first.
+type EphemeralVar struct {
+	Name string
+	Root string
+	Seed []string
+}
+
+// ProjectState is per-working-directory state: Root is the home-relative
+// directory (relocated like the row's state) holding one directory per
+// working directory, named by the working directory's real path with every
+// character but an ASCII letter or digit a dash; MaxSlug is the longest name
+// the CLI uses as is (a longer one it shortens unpredictably, so the launch
+// gets none); ReadOnly are the subdirectories of it a later session loads.
+type ProjectState struct {
+	Root     string
+	ReadOnly []string
+	MaxSlug  int
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -435,23 +465,31 @@ var catalog = []Agent{
 			// login lives in the login keychain, which the Security framework
 			// reads and writes in-process (token refresh). The data
 			// directories and ~/Library/Caches/claude-cli-nodejs, and that it
-			// reaches its API with ~/.claude.json and every config path
-			// read-only, were verified empirically against the agent's CLI.
-			// shell-snapshots and session-env hold scripts a later session
-			// sources, and each project's memory instructions a later session
-			// loads, so they are code; .credentials.json is the Linux login.
+			// reaches its API with nothing under ~/.claude writable but its
+			// debug log and its launch's project directory, were verified
+			// empirically against the agent's CLI.
+			// Read-only, because a later session loads them as instructions
+			// or code: shell-snapshots and session-env (sourced scripts),
+			// sessions, todos and file-history (a resumed session's state and
+			// the files /rewind restores), backups (a corrupt ~/.claude.json
+			// is restored from them), cache and statsig (cached configuration
+			// and feature gates). .credentials.json is the Linux login.
 			StateWritable: []string{
-				".claude/projects", ".claude/sessions", ".claude/debug", ".claude/todos", ".claude/backups",
-				".claude/cache", ".claude/statsig", ".claude/file-history", ".claude/.credentials.json*",
-				"Library/Caches/claude-cli-nodejs", "Library/Keychains",
+				".claude/debug", ".claude/.credentials.json*", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
 			},
 			StateReadOnly: []string{
 				".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 				".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
-				".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env",
-				".claude/projects/*/memory",
+				".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/sessions",
+				".claude/todos", ".claude/file-history", ".claude/backups", ".claude/cache", ".claude/statsig",
 			},
-			StateEnv: []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
+			// Its transcript goes to projects/<slug of the working directory's
+			// real path, every non-alphanumeric character a dash>, a longer
+			// slug than 200 characters ending in a hash it alone computes;
+			// memory there holds instructions every later session there
+			// loads — verified empirically against the agent's CLI.
+			ProjectState: &ProjectState{Root: ".claude/projects", ReadOnly: []string{"memory"}, MaxSlug: 200},
+			StateEnv:     []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
 			// claude makes /tmp/claude-<uid> whatever TMPDIR says;
 			// CLAUDE_CODE_TMPDIR moves it (named in its own disk-quota
 			// message) — verified empirically against the agent's CLI.
@@ -534,8 +572,11 @@ var catalog = []Agent{
 			// A working directory, a managed worktree, an approval reviewer,
 			// or trusted repository hooks would each take the review out of
 			// its snapshot or run the tree's own code.
+			// --ephemeral persists no session: verdict resumes none, and a
+			// later `codex resume` would load one as its context.
+			ReviewArgs: []string{"--ephemeral"},
 			ReviewOwnedFlags: []string{
-				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust",
+				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
 			},
 			ReviewArgsCitation: docCodexCLIRef,
 			// `--model, -m` per the codex CLI reference.
@@ -564,22 +605,25 @@ var catalog = []Agent{
 			Install:        "npm install -g @openai/codex",
 			// CODEX_HOME, ~/.codex by default, holds config.toml, AGENTS.md,
 			// rules, prompts, skills and plugins beside auth.json, sessions,
-			// history and logs; the sqlite stores, cache, tmp and shell
-			// snapshots were verified empirically against the agent's CLI.
-			// Used only when the operator's `--`
-			// decides codex's permissions; otherwise codex runs in its own
-			// sandbox.
+			// history and logs. With --ephemeral it needs only its logs,
+			// cache, scratch, installation id, migration marker and login —
+			// verified empirically against the agent's CLI. Used only when
+			// the operator's `--` decides codex's permissions; otherwise
+			// codex runs in its own sandbox.
 			StateWritable: []string{
-				".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
-				".codex/tmp", ".codex/.tmp", ".codex/.tmp*", ".codex/thread-writer-locks", ".codex/auth.json*", ".codex/history.jsonl*",
-				".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*", ".codex/models_cache.json*",
-				".codex/goals_*", ".codex/installation_id*", ".codex/.sandbox_migration*",
+				".codex/log", ".codex/logs_*", ".codex/cache", ".codex/tmp", ".codex/.tmp", ".codex/.tmp*",
+				".codex/installation_id*", ".codex/.sandbox_migration*", ".codex/auth.json*",
 			},
-			// shell_snapshots holds scripts a later session sources, so it is
-			// code.
+			// Read-only, because a later session loads them as instructions
+			// or code: shell_snapshots (sourced scripts), sessions and their
+			// index and state stores (a resumed session's context), goals and
+			// memories (carried into later sessions), the history and the
+			// models cache (model metadata).
 			StateReadOnly: []string{
 				".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-				".codex/plugins", ".codex/packages", ".codex/shell_snapshots",
+				".codex/plugins", ".codex/packages", ".codex/shell_snapshots", ".codex/sessions",
+				".codex/archived_sessions", ".codex/sqlite", ".codex/session_index.jsonl", ".codex/state_*",
+				".codex/goals_*", ".codex/memories*", ".codex/history.jsonl", ".codex/models_cache.json",
 			},
 			StateEnv:      []StateVar{{Name: "CODEX_HOME", Root: ".codex"}},
 			StateCitation: docCodexReadme,
@@ -955,22 +999,21 @@ var catalog = []Agent{
 			// cache directory the provider and plugin packages it installs.
 			// ~/.local/state/opencode (model, kv, locks, prompt history) was
 			// verified empirically against the agent's CLI.
-			// The data directory is writable whole — its database creates
-			// journal and WAL files beside opencode.db, and it makes repos at
-			// startup — with the code it also holds, managed tools and LSP
-			// binaries (bin), packages (node_modules) and sourced shell state
-			// (shell), read-only inside it. Its logins are named so the
-			// credential table's entries are its own. It makes the cache's bin
-			// at startup too.
-			StateWritable: []string{
-				".local/share/opencode", ".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
-				".local/state/opencode",
-			},
+			// Its data directory also holds what a later session trusts — the
+			// shadow git repositories of snapshot and repos (a planted
+			// core.fsmonitor runs on the next session), managed tools, LSP
+			// binaries and packages — so a review launch gets a throwaway data
+			// and state home in its wrapper, seeded with copies of its logins,
+			// and the real ones stay read-only. It makes the cache's bin at
+			// startup. Verified empirically against the agent's CLI.
 			StateReadOnly: []string{
-				".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
-				".local/share/opencode/node_modules", ".local/share/opencode/shell",
+				".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode",
 			},
 			StateDirs: []string{".cache/opencode/bin"},
+			StateEphemeral: []EphemeralVar{
+				{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+				{Name: "XDG_STATE_HOME", Root: ".local/state"},
+			},
 			StateEnv: []StateVar{
 				{Name: "XDG_DATA_HOME", Root: ".local/share"},
 				{Name: "XDG_STATE_HOME", Root: ".local/state"},
@@ -1021,9 +1064,13 @@ var catalog = []Agent{
 			// (extensions, settings, MCP servers) without asking, and so
 			// without the trust lock it would otherwise take in its agent
 			// directory.
-			ReviewArgs:          []string{"--no-approve"},
-			ReviewArgsCitation:  docPiCLI,
-			ReviewOwnedFlags:    []string{"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers"},
+			// --no-session saves no session: verdict resumes none, and a later
+			// `pi -c` in a directory would load one as its context.
+			ReviewArgs:         []string{"--no-approve", "--no-session"},
+			ReviewArgsCitation: docPiCLI,
+			ReviewOwnedFlags: []string{
+				"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers", "--no-session", "--session-dir",
+			},
 			DiscoveryOwnedFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
@@ -1033,9 +1080,10 @@ var catalog = []Agent{
 			// beside settings.json, models.json, extensions, skills, prompts,
 			// themes, AGENTS.md and the managed install (bin, install, npm)
 			// — per its docs, verified empirically against the agent's CLI.
-			StateWritable: []string{".pi/agent/sessions", ".pi/agent/auth.json*"},
+			// With --no-session only its login is written.
+			StateWritable: []string{".pi/agent/auth.json*"},
 			StateReadOnly: []string{
-				".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
+				".pi/agent/sessions", ".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
 				".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
 				".pi/agent/bin", ".pi/agent/install", ".pi/agent/npm",
 			},
@@ -1148,6 +1196,25 @@ var catalog = []Agent{
 	},
 }
 
+// cloneEphemeral copies the ephemeral variables and their seeds.
+func cloneEphemeral(in []EphemeralVar) []EphemeralVar {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].Seed = slices.Clone(out[i].Seed)
+	}
+	return out
+}
+
+// cloneProject copies the project state and its read-only list.
+func cloneProject(in *ProjectState) *ProjectState {
+	if in == nil {
+		return nil
+	}
+	p := *in
+	p.ReadOnly = slices.Clone(p.ReadOnly)
+	return &p
+}
+
 // All returns independent data to prevent mutation of the catalog.
 func All() []Agent {
 	out := slices.Clone(catalog)
@@ -1170,6 +1237,8 @@ func All() []Agent {
 			v.StateWritable = slices.Clone(v.StateWritable)
 			v.StateReadOnly = slices.Clone(v.StateReadOnly)
 			v.StateDirs = slices.Clone(v.StateDirs)
+			v.StateEphemeral = cloneEphemeral(v.StateEphemeral)
+			v.ProjectState = cloneProject(v.ProjectState)
 			v.TempEnv = slices.Clone(v.TempEnv)
 			v.StateEnv = slices.Clone(v.StateEnv)
 			v.ReviewArgs = slices.Clone(v.ReviewArgs)

@@ -94,7 +94,7 @@ func builtinRows() []builtinRow {
 			name: "codex", binary: "codex", args: []string{"exec"}, promptFlag: "",
 			install:       "npm install -g @openai/codex",
 			wantArgv:      []string{"codex", "exec", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"codex", "exec", "--model", "M", "PROMPT"},
+			wantPrintArgv: []string{"codex", "exec", "--ephemeral", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "commandcode", binary: "commandcode", args: []string{}, promptFlag: "-p",
@@ -276,7 +276,8 @@ func builtinRows() []builtinRow {
 			install:  "curl -fsSL https://pi.dev/install.sh | sh",
 			wantArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
 			wantPrintArgv: []string{
-				"pi", "-p", "--exclude-tools", "bash,powershell", "--no-approve", "--model", "M", "PROMPT",
+				"pi", "-p", "--exclude-tools", "bash,powershell", "--no-approve", "--no-session", "--model", "M",
+				"PROMPT",
 			},
 		},
 		{

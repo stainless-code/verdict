@@ -36,10 +36,12 @@ loop_leg() {
   # its snapshot, its private TMPDIR, and its own data paths, so each agent's
   # spawn log lives in a data directory under the case's HOME (mine
   # declares its own in prefs; codex keeps its own sandbox instead).
+  # opencode has none: its data and state homes are ephemeral, in its
+  # wrapper, so only its (unsandboxed) fix spawn logs.
   case "$agent" in
     claude) state="$HOME/.claude/debug" ;;
     codex) state="$HOME/.codex" ;;
-    opencode) state="$HOME/.local/share/opencode/log" ;;
+    opencode) state="$EVAL_SANDBOX/opencode-log" ;;
     mine) state="$HOME/.mine" ;;
   esac
   mkdir -p "$state"
@@ -65,7 +67,10 @@ for agent in claude codex opencode mine; do
   assert_json_field "$agent envelope is the summary" pass '.data.stop' "$EVAL_OUT"
   bin="$agent"
   [ "$agent" = mine ] && bin=my-agent
-  assert_eq "$agent review, fix, review" "$bin review,$bin fix,$bin review" "$(paste -sd, "$LOOP_LOG")"
+  spawns="$bin review,$bin fix,$bin review"
+  # opencode's sandboxed reviews cannot log (its receipts above prove both).
+  [ "$agent" = opencode ] && spawns="$bin fix"
+  assert_eq "$agent review, fix, review" "$spawns" "$(paste -sd, "$LOOP_LOG")"
   assert_eq "$agent fix landed in the working tree only" "fixed line" "$(sed -n 2p "$repo/notes.txt")"
   assert_eq "$agent never commits" "eval-base" "$(git -C "$repo" log -1 --format=%s)"
 done

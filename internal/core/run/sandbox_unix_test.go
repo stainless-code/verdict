@@ -20,15 +20,32 @@ import (
 	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
-// hostStub is the real watchdog behind a plain wrapper, which carries no
-// simulation marker, so the launch goes through the real review sandbox as
-// any production wrapper's would. The sandboxed launch runs the binary the
-// resolution found, so the planted stand-in needs no PATH entry.
-type hostStub struct{}
+// capturedHost is the real watchdog behind a plain wrapper, which carries
+// no simulation marker, so the launch goes through the real review sandbox
+// as any production wrapper's would; it keeps every launch's output, where
+// a stand-in reports what the sandbox let it do, since it may write almost
+// nothing else. The sandboxed launch runs the binary the resolution found,
+// so the planted stand-in needs no PATH entry.
+type capturedHost struct {
+	out strings.Builder
+	mu  sync.Mutex
+}
 
-// Run runs the command for real.
-func (hostStub) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	return coreexec.Watchdog{}.Run(ctx, cmd)
+// Run runs the command for real and keeps its output.
+func (c *capturedHost) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	res, err := coreexec.Watchdog{}.Run(ctx, cmd)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.out.WriteString(res.Stdout)
+	c.out.WriteString(res.Stderr)
+	return res, err
+}
+
+// output is everything the launches printed.
+func (c *capturedHost) output() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.out.String()
 }
 
 // requireReviewSandbox skips where the host cannot build the review sandbox:
@@ -54,32 +71,33 @@ func requireReviewSandbox(t *testing.T) {
 // rewrite the operator's checkout, plant a config directory, read a private
 // key into its output, and plant its own config or code (CONFIG_PATHS,
 // colon-separated) that a later run outside the sandbox would load. Each
-// attempt's outcome lands in a log under the agent's own data directory
-// (DATA_DIR), which the sandbox keeps writable; the review is written where
-// it is owed.
+// attempt's outcome is printed; its own state write goes to STATE_FILE, or
+// into its ephemeral data home; the review is written where it is owed.
 const escapeScript = "#!/bin/sh\n" +
-	"log=\"$DATA_DIR/escape.log\"\n" +
+	"sf=\"${STATE_FILE:-$XDG_DATA_HOME/opencode/snapshot/x/config}\"; /bin/mkdir -p \"${sf%/*}\"\n" +
 	"{ printf 'evil\\n' >> \"$HOME/.zshrc\" && echo zshrc=written || echo zshrc=denied\n" +
 	"  printf 'evil\\n' > \"$CHECKOUT_FILE\" && echo checkout=written || echo checkout=denied\n" +
 	"  /bin/mkdir -p \"$HOME/.config/evil\" && echo config=written || echo config=denied\n" +
 	"  /bin/cat \"$HOME/.ssh/id_rsa\" && echo ssh=read || echo ssh=denied\n" +
-	"  printf ok > \"$DATA_DIR/own-state\" && echo state=written || echo state=denied\n" +
+	"  printf ok > \"$sf\" && echo state=written || echo state=denied\n" +
 	"  /bin/cat \"$OTHER_CRED\" && echo othercred=read || echo othercred=denied\n" +
 	"  IFS=:; for p in $CONFIG_PATHS; do /bin/mkdir -p \"${p%/*}\" 2>/dev/null; " +
 	"printf evil > \"$p\" && echo \"own-config $p written\" || echo \"own-config $p denied\"; done\n" +
-	"} > \"$log\" 2>&1\n" +
+	"} 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
 // privateKeyCanary is the planted key's content, which must never reach the
 // agent.
 const privateKeyCanary = "-----BEGIN CANARY PRIVATE KEY----- verdict-review-sandbox"
 
-// escapeRow is one agent's own layout: the data directory it may write and
-// the config and code paths a later run would load, which it may not —
-// existing ones planted first, so a denied write leaves them unchanged.
+// escapeRow is one agent's own layout: the state file it may write ("" for
+// its ephemeral data home), planted first so a Linux file bind exists, and
+// the config, code, and trusted data paths a later run would load, which it
+// may not — existing ones planted first, so a denied write leaves them
+// unchanged.
 type escapeRow struct {
 	agent     string
-	data      string
+	state     string
 	otherCred string
 	config    []string
 	planted   []string
@@ -89,25 +107,30 @@ type escapeRow struct {
 // paths from its read-only list.
 var escapeRows = []escapeRow{
 	{
-		agent: "pi", data: ".pi/agent/sessions", otherCred: ".codex/auth.json",
-		config:  []string{".pi/agent/extensions/x.ts", ".pi/agent/settings.json", ".pi/agent/AGENTS.md"},
+		agent: "pi", state: ".pi/agent/auth.json", otherCred: ".codex/auth.json",
+		config: []string{
+			".pi/agent/extensions/x.ts", ".pi/agent/settings.json", ".pi/agent/AGENTS.md",
+			".pi/agent/sessions/x/s.jsonl",
+		},
 		planted: []string{".pi/agent/settings.json"},
 	},
 	{
-		agent: "opencode", data: ".local/share/opencode", otherCred: ".pi/agent/auth.json",
+		agent: "opencode", otherCred: ".pi/agent/auth.json",
 		config: []string{
 			".config/opencode/plugin/x.js", ".config/opencode/opencode.json",
 			".cache/opencode/node_modules/x/index.js", ".local/share/opencode/bin/x",
-			".local/share/opencode/node_modules/x/index.js", ".local/share/opencode/shell/x",
+			".local/share/opencode/snapshot/x/config", ".local/share/opencode/repos/x/config",
+			".local/state/opencode/x",
 		},
 		planted: []string{".config/opencode/opencode.json"},
 	},
 	{
-		agent: "claude", data: ".claude/projects", otherCred: ".local/share/opencode/auth.json",
+		agent: "claude", state: ".claude/debug/own-state", otherCred: ".local/share/opencode/auth.json",
 		config: []string{
 			".claude/settings.json", ".claude.json", ".claude/hooks/x.sh", ".claude/plugins/x/plugin.json",
 			".claude/shell-snapshots/snapshot-zsh.sh", ".claude/session-env/x",
-			".claude/projects/p/memory/MEMORY.md",
+			".claude/projects/p/memory/MEMORY.md", ".claude/projects/p/x.jsonl", ".claude/todos/x.json",
+			".claude/backups/.claude.json.backup.1", ".claude/file-history/x/y", ".claude/sessions/1.json",
 		},
 		planted: []string{".claude/settings.json", ".claude.json", ".claude/projects/p/memory/MEMORY.md"},
 	},
@@ -137,19 +160,19 @@ func assertEscapeDenied(t *testing.T, row *escapeRow) {
 	t.Helper()
 	root := confinedRoot(t)
 	home := escapeHome(t, row)
-	bin := plantStub(t, row.agent, escapeScript)
-	req := request(root, hostStub{})
-	req.Agent = row.agent
-	req.LookPath = func(string) (string, error) { return bin, nil }
-	req.Environ = append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH"),
-		"CHECKOUT_FILE="+filepath.Join(root, "src", "main.go"), "DATA_DIR="+filepath.Join(home, row.data),
-		"CONFIG_PATHS="+strings.Join(homePaths(home, row.config), ":"),
-		"OTHER_CRED="+filepath.Join(home, filepath.FromSlash(row.otherCred)))
-	resp, ref := Run(t.Context(), req)
+	env := []string{
+		"CHECKOUT_FILE=" + filepath.Join(root, "src", "main.go"),
+		"CONFIG_PATHS=" + strings.Join(homePaths(home, row.config), ":"),
+		"OTHER_CRED=" + filepath.Join(home, filepath.FromSlash(row.otherCred)),
+	}
+	if row.state != "" {
+		env = append(env, "STATE_FILE="+filepath.Join(home, filepath.FromSlash(row.state)))
+	}
+	resp, ref, out := sandboxedRunAs(t, row.agent, root, home, escapeScript, "", env...)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
-	assertEscapeLog(t, home, row)
+	assertEscapeLog(t, home, row, out)
 	assertHomeUntouched(t, home, row)
 	assertCheckoutUntouched(t, root)
 	if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); err != nil {
@@ -177,7 +200,7 @@ const (
 )
 
 // escapeHome is the operator's HOME the hostile agent sees: a shell
-// profile, a private key, the row's planted config, and its data directory.
+// profile, a private key, the row's planted config, and its state file.
 func escapeHome(t *testing.T, row *escapeRow) string {
 	t.Helper()
 	home := t.TempDir()
@@ -187,8 +210,8 @@ func escapeHome(t *testing.T, row *escapeRow) string {
 	for _, rel := range row.planted {
 		writeUnder(t, home, filepath.FromSlash(rel), operatorConfig)
 	}
-	if err := os.MkdirAll(filepath.Join(home, filepath.FromSlash(row.data)), 0o700); err != nil {
-		t.Fatal(err)
+	if row.state != "" {
+		writeUnder(t, home, filepath.FromSlash(row.state), "{}")
 	}
 	return home
 }
@@ -196,9 +219,8 @@ func escapeHome(t *testing.T, row *escapeRow) string {
 // assertEscapeLog reads what each escape attempt reported: every write and
 // the key read denied, every own-config write denied, the agent's own data
 // written, and the key never in its output.
-func assertEscapeLog(t *testing.T, home string, row *escapeRow) {
+func assertEscapeLog(t *testing.T, home string, row *escapeRow, log string) {
 	t.Helper()
-	log := string(readFile(t, filepath.Join(home, filepath.FromSlash(row.data), "escape.log")))
 	want := []string{
 		"zshrc=denied", "checkout=denied", "config=denied", "ssh=denied", "state=written", "othercred=denied",
 	}
@@ -239,8 +261,11 @@ func assertHomeUntouched(t *testing.T, home string, row *escapeRow) {
 	if _, err := os.Lstat(filepath.Join(home, ".config", "evil")); !os.IsNotExist(err) {
 		t.Errorf("~/.config/evil exists (err = %v), want the write denied", err)
 	}
-	if got := string(readFile(t, filepath.Join(home, filepath.FromSlash(row.data), "own-state"))); got != "ok" {
-		t.Errorf("the agent's own data = %q, want its write", got)
+	if row.state == "" {
+		return
+	}
+	if got := string(readFile(t, filepath.Join(home, filepath.FromSlash(row.state)))); got != "ok" {
+		t.Errorf("the agent's own state = %q, want its write", got)
 	}
 }
 
@@ -408,31 +433,34 @@ func assertSiblingReads(t *testing.T, log string) {
 }
 
 // sandboxedRun launches script as pi through the real review sandbox, with
-// HOME and the extra variables in env, and returns the response and the
-// refusal.
-func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string) (*core.RunResponse, *core.RefusalError) {
+// HOME and the extra variables in env, and returns the response, the
+// refusal, and what the launches printed.
+func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string,
+) (*core.RunResponse, *core.RefusalError, string) {
 	t.Helper()
 	return sandboxedRunAs(t, "pi", root, home, script, rounds, env...)
 }
 
 // sandboxedRunAs is sandboxedRun as another row.
 func sandboxedRunAs(t *testing.T, agent, root, home, script, rounds string, env ...string,
-) (*core.RunResponse, *core.RefusalError) {
+) (*core.RunResponse, *core.RefusalError, string) {
 	t.Helper()
 	bin := plantStub(t, agent, script)
-	req := request(root, hostStub{})
+	host := &capturedHost{}
+	req := request(root, host)
 	req.Agent, req.RoundsRaw = agent, rounds
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	req.Environ = append(append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH")), env...)
-	return Run(t.Context(), req)
+	resp, ref := Run(t.Context(), req)
+	return resp, ref, host.output()
 }
 
-// swapScript is a prompt-injected pi across two rounds. Round 1 tries to
+// swapScript is a prompt-injected claude across two rounds. Round 1 tries to
 // swap its own data directory for a link to HOME and owes an invalid review,
 // so a repair round follows; round 2 (the repair directive) writes through
 // the link it hoped for and straight into HOME, then the review.
 const swapScript = "#!/bin/sh\n" +
-	"data=\"$HOME/.pi/agent/sessions\"\n" +
+	"data=\"$HOME/.claude/debug\"\n" +
 	"case \"$*\" in\n" +
 	"*'Round 2/2:'*)\n" +
 	"  printf evil >> \"$data/.zshrc\" 2>/dev/null; printf evil >> \"$HOME/.zshrc\" 2>/dev/null\n" +
@@ -453,10 +481,10 @@ func TestReviewSandboxSurvivesAStateDirSwap(t *testing.T) {
 	root := confinedRoot(t)
 	home := t.TempDir()
 	writeUnder(t, home, ".zshrc", operatorProfile)
-	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "sessions"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".claude", "debug"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, ref := sandboxedRun(t, root, home, swapScript, "2")
+	_, ref, _ := sandboxedRunAs(t, "claude", root, home, swapScript, "2")
 	if got := string(readFile(t, filepath.Join(home, ".zshrc"))); got != operatorProfile {
 		t.Errorf("~/.zshrc = %q (refusal %v), want it unchanged", got, ref)
 	}
@@ -468,11 +496,11 @@ func TestReviewSandboxSurvivesAStateDirSwap(t *testing.T) {
 func TestReviewSandboxStateLinkRefusesTheNextLaunch(t *testing.T) {
 	t.Parallel()
 	home := t.TempDir()
-	sessions := filepath.Join(home, ".pi", "agent", "sessions")
+	sessions := filepath.Join(home, ".claude", "debug")
 	if err := os.MkdirAll(sessions, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	def, _ := lookupAgent("pi")
+	def, _ := lookupAgent("claude")
 	box, err := newReviewBox(&def, []string{"HOME=" + home}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -508,10 +536,9 @@ func TestReviewSandboxRefusesALinkedStatePath(t *testing.T) {
 }
 
 // socketScript tries to talk to the unix socket SOCK names from inside the
-// sandbox and logs the outcome in the agent's data directory.
+// sandbox and prints the outcome.
 const socketScript = "#!/bin/sh\n" +
-	"{ printf ping | nc -U -w 2 \"$SOCK\" && echo socket=connected || echo socket=denied; } " +
-	"> \"$HOME/.pi/agent/sessions/socket.log\" 2>&1\n" +
+	"{ printf ping | nc -U -w 2 \"$SOCK\" && echo socket=connected || echo socket=denied; } 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
 // listenUnix listens on a fresh unix socket outside any wrapper and reports
@@ -551,11 +578,8 @@ func TestReviewSandboxDeniesUnixSockets(t *testing.T) {
 		t.Skipf("nc is not installed: %v", err)
 	}
 	sock, accepted := listenUnix(t)
-	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "sessions"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, ref := sandboxedRun(t, confinedRoot(t), home, socketScript, "1", "SOCK="+sock); ref != nil {
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), socketScript, "1", "SOCK="+sock)
+	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
 	select {
@@ -563,46 +587,109 @@ func TestReviewSandboxDeniesUnixSockets(t *testing.T) {
 		t.Error("the agent connected to a unix socket outside its sandbox")
 	default:
 	}
-	if log := string(readFile(t, filepath.Join(home, ".pi", "agent", "sessions", "socket.log"))); !strings.Contains(log, "socket=denied") {
+	if !strings.Contains(log, "socket=denied") {
 		t.Errorf("socket log = %q, want the connect denied", log)
 	}
 }
 
-// opencodeStartScript is opencode's first run on a fresh HOME: it makes its
-// repos directory and its cache's bin, and its database creates a journal,
-// a WAL and a shared-memory file beside opencode.db — while a write into
-// the code its data directory holds, or into the cache's bin, is denied.
+// opencodeStartScript is opencode's first run: in its ephemeral data home
+// it makes repos, a snapshot repository's config, and its database with
+// journal, WAL, and shared-memory files, and reads the seeded copy of its
+// login; it makes its cache's bin; and a write into its real data or state
+// directory — the shadow repositories a later session's git trusts — is
+// denied, as is a read of its real login.
 const opencodeStartScript = "#!/bin/sh\n" +
-	"d=\"$HOME/.local/share/opencode\"\n" +
-	"{ /bin/mkdir -p \"$d/repos\" && echo repos=made || echo repos=failed\n" +
+	"d=\"$XDG_DATA_HOME/opencode\"; real=\"$HOME/.local/share/opencode\"\n" +
+	"{ case \"$d\" in \"$HOME\"/*) echo data=real ;; *) echo data=ephemeral ;; esac\n" +
+	"  /bin/mkdir -p \"$d/repos\" \"$d/snapshot/x\" && printf x > \"$d/snapshot/x/config\" && echo repos=made " +
+	"|| echo repos=failed\n" +
 	"  /bin/mkdir -p \"$HOME/.cache/opencode/bin\" && echo cachebin=made || echo cachebin=failed\n" +
 	"  for f in opencode.db opencode.db-journal opencode.db-wal opencode.db-shm; do " +
 	"printf x > \"$d/$f\" && echo \"$f=written\" || echo \"$f=failed\"; done\n" +
-	"  printf evil > \"$d/bin/x\" && echo bin=written || echo bin=denied\n" +
-	"  printf evil > \"$d/node_modules/x\" && echo modules=written || echo modules=denied\n" +
+	"  /bin/cat \"$d/auth.json\" && echo; echo seeded\n" +
+	"  /bin/cat \"$real/auth.json\" && echo realauth=read || echo realauth=denied\n" +
+	"  /bin/mkdir -p \"$real/snapshot/x\" 2>/dev/null; printf evil > \"$real/snapshot/x/config\" && echo realsnap=written " +
+	"|| echo realsnap=denied\n" +
+	"  printf evil > \"$XDG_STATE_HOME/x\" && echo state=written || echo state=failed\n" +
+	"  printf evil > \"$HOME/.local/state/opencode/x\" && echo realstate=written || echo realstate=denied\n" +
 	"  printf evil > \"$HOME/.cache/opencode/bin/x\" && echo cachebinfile=written || echo cachebinfile=denied\n" +
-	"} > \"$d/start.log\" 2>&1\n" +
+	"} 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
-// TestReviewSandboxStartsOpencodeFresh proves opencode starts on a HOME it
-// has never run in: its data directory and the directories it makes at
-// startup exist and are writable where they are data, its database can
-// create its journal and WAL, and the code inside its data directory and
-// its cache stays read-only.
-func TestReviewSandboxStartsOpencodeFresh(t *testing.T) {
+// opencodeLogin is the planted login the ephemeral home is seeded from.
+const opencodeLogin = `{"opencode-login":"seed"}`
+
+// TestReviewSandboxStartsOpencodeEphemeral proves opencode runs in an
+// ephemeral data and state home in its wrapper, seeded with a copy of its
+// login: its database, journal, WAL, repos, and snapshot repositories land
+// there; its real data and state directories, which a later session's git
+// trusts, stay unwritable and empty of them; its real login stays hidden;
+// and the cache's bin it makes at startup exists.
+func TestReviewSandboxStartsOpencodeEphemeral(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
 	home := t.TempDir()
-	if _, ref := sandboxedRunAs(t, "opencode", confinedRoot(t), home, opencodeStartScript, "1"); ref != nil {
+	writeUnder(t, home, filepath.Join(".local", "share", "opencode", "auth.json"), opencodeLogin)
+	_, ref, log := sandboxedRunAs(t, "opencode", confinedRoot(t), home, opencodeStartScript, "1")
+	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
-	log := string(readFile(t, filepath.Join(home, ".local", "share", "opencode", "start.log")))
 	for _, want := range []string{
-		"repos=made", "cachebin=made", "opencode.db=written", "opencode.db-journal=written",
-		"opencode.db-wal=written", "opencode.db-shm=written", "bin=denied", "modules=denied", "cachebinfile=denied",
+		"data=ephemeral", "repos=made", "cachebin=made", "opencode.db=written", "opencode.db-journal=written",
+		"opencode.db-wal=written", "opencode.db-shm=written", opencodeLogin, "realauth=denied", "realsnap=denied",
+		"state=written", "realstate=denied", "cachebinfile=denied",
 	} {
-		if !strings.Contains(log, want+"\n") {
+		if !strings.Contains(log, want) {
 			t.Errorf("start log lacks %q:\n%s", want, log)
 		}
+	}
+	if _, err := os.Lstat(filepath.Join(home, ".local", "share", "opencode", "snapshot")); !os.IsNotExist(err) {
+		t.Errorf("the real data directory holds a snapshot (err = %v)", err)
+	}
+}
+
+// claudeProjectScript is a prompt-injected claude reaching for project
+// state: it writes a transcript into its own project directory (allowed),
+// then tries its own memory, another project's memory, a staging directory
+// beside them, and renaming its own project directory away to swap one in.
+const claudeProjectScript = "#!/bin/sh\n" +
+	"p=\"$HOME/.claude/projects\"; own=\"$p/$(pwd -P | /usr/bin/sed 's/[^A-Za-z0-9]/-/g')\"\n" +
+	"{ printf t > \"$own/t.jsonl\" && echo transcript=written || echo transcript=failed\n" +
+	"  printf evil > \"$own/memory/MEMORY.md\" && echo ownmemory=written || echo ownmemory=denied\n" +
+	"  printf evil > \"$p/other/memory/MEMORY.md\" && echo othermemory=written || echo othermemory=denied\n" +
+	"  /bin/mkdir \"$p/stage\" && echo stage=made || echo stage=denied\n" +
+	"  /bin/mv \"$own\" \"$p/moved\" && echo rename=done || echo rename=denied\n" +
+	"  /bin/mv \"$own/memory\" \"$own/m2\" && echo memoryrename=done || echo memoryrename=denied\n" +
+	"} 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxScopesClaudesProjectDir proves claude writes only its own
+// launch's project directory — made before the launch and removed after —
+// and never its memory, another project's, or ~/.claude/projects itself:
+// renaming its directory away to swap one in is denied.
+func TestReviewSandboxScopesClaudesProjectDir(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home := t.TempDir()
+	other := filepath.Join(".claude", "projects", "other", "memory", "MEMORY.md")
+	writeUnder(t, home, other, operatorConfig)
+	_, ref, log := sandboxedRunAs(t, "claude", confinedRoot(t), home, claudeProjectScript, "1")
+	if ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	for _, want := range []string{
+		"transcript=written", "ownmemory=denied", "othermemory=denied", "stage=denied", "rename=denied",
+		"memoryrename=denied",
+	} {
+		if !strings.Contains(log, want) {
+			t.Errorf("project log lacks %q:\n%s", want, log)
+		}
+	}
+	if got := string(readFile(t, filepath.Join(home, other))); got != operatorConfig {
+		t.Errorf("another project's memory = %q, want it unchanged", got)
+	}
+	entries, err := os.ReadDir(filepath.Join(home, ".claude", "projects"))
+	if err != nil || len(entries) != 1 || entries[0].Name() != "other" {
+		t.Errorf("projects after the run = %v (%v), want the launch's own removed", entries, err)
 	}
 }

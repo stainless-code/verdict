@@ -22,7 +22,7 @@
 # LOOP_MEASURED=1 makes every spawn print the json result object a measured
 # `claude -p --output-format json` run ends with, carrying its total_cost_usd.
 #
-# LOOP_LOG receives one "<name> review|fix" line per spawn.
+# LOOP_LOG receives one "<name> review|fix" line per spawn it can write.
 set -euo pipefail
 prompt="${!#}"
 name="$(basename "$0")"
@@ -58,7 +58,9 @@ case "$prompt" in
     exit 2
     ;;
 esac
-printf '%s review\n' "$name" >>"$LOOP_LOG"
+# A review agent with no host path its sandbox lets it write (opencode, whose
+# data home is ephemeral) cannot log; the leg checks its receipts instead.
+printf '%s review\n' "$name" >>"$LOOP_LOG" 2>/dev/null || true
 measured "$@"
 case "$mode" in
   fail) exit 7 ;;

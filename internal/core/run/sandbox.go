@@ -13,6 +13,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/config"
@@ -163,6 +165,8 @@ var keychainState = filepath.Join("Library", "Keychains")
 // the runner it spawns, the posture data.sandbox publishes, and what the
 // policy is built from, kept so it is checked again before every launch.
 type reviewBox struct {
+	projects    *statePath
+	project     *agentcatalog.ProjectState
 	mechanism   string
 	runner      string
 	posture     string
@@ -171,23 +175,28 @@ type reviewBox struct {
 	state       []statePath
 	readOnly    []statePath
 	dirs        []statePath
+	ephemeral   []ephemeralHome
 	operator    bool
 }
 
 // statePath is one resolved state path below its base (HOME or the
-// relocation root). A prefix entry names every file in its directory whose
-// name starts with the path's base name; a glob entry (read-only only) has
-// one `*` segment matching any one directory.
+// relocation root, relocated says which). A prefix entry names every file in
+// its directory whose name starts with the path's base name.
 type statePath struct {
-	path   string
-	base   string
-	prefix bool
-	glob   bool
+	path      string
+	base      string
+	prefix    bool
+	relocated bool
 }
 
-// globSegment is the path segment a glob state entry matches any one
-// directory with.
-const globSegment = "*"
+// ephemeralHome is one variable a sandboxed launch points at a throwaway
+// directory in its wrapper, and the real directory its seeds are copied
+// from.
+type ephemeralHome struct {
+	name   string
+	source string
+	seed   []string
+}
 
 // sandboxed reports whether launches are wrapped.
 func (b *reviewBox) sandboxed() bool {
@@ -196,8 +205,8 @@ func (b *reviewBox) sandboxed() bool {
 
 // keychain reports whether the agent's own state is the macOS keychain.
 func (b *reviewBox) keychain() bool {
-	return slices.ContainsFunc(b.state, func(s statePath) bool {
-		return !s.prefix && strings.HasSuffix(s.path, string(filepath.Separator)+keychainState)
+	return !b.operator && b.home != "" && slices.ContainsFunc(b.state, func(s statePath) bool {
+		return !s.prefix && s.path == filepath.Join(b.home, keychainState)
 	})
 }
 
@@ -240,7 +249,8 @@ func (st *state) settleBox(ctx context.Context, def *agentcatalog.Launch) *core.
 	if !core.StartsHostProcesses(st.commander()) {
 		return nil
 	}
-	owned := operatorSpells(st.req.PassThrough, slices.Concat(def.PermissionFlags, def.DiscoveryOverrideFlags))
+	owned := operatorSpells(st.req.PassThrough,
+		slices.Concat(def.PermissionFlags, def.DiscoveryOverrideFlags, def.ReviewOwnedFlags))
 	if st.bareBox(def, owned) {
 		return nil
 	}
@@ -364,7 +374,7 @@ func (st *state) boxWarn(msg string) {
 // warnStateless names the one limit a row without state paths runs into in
 // the sandbox: it cannot save its own login or sessions.
 func (st *state) warnStateless(def *agentcatalog.Launch) {
-	if len(def.StateWritable) > 0 {
+	if len(def.StateWritable) > 0 || len(def.StateEphemeral) > 0 || def.ProjectState != nil {
 		return
 	}
 	remedy := "it cannot run sandboxed"
@@ -549,6 +559,129 @@ func absConfigHomes(env []string) []string {
 	return out
 }
 
+// launchBox is one launch's sandbox: the execution's box with the launch's
+// own project directory added, the environment pointing the row's ephemeral
+// homes into its wrapper, and the project directory verdict made, removed
+// after the launch.
+type launchBox struct {
+	box      *reviewBox
+	projects string
+	made     string
+	env      []string
+}
+
+// seedCap bounds one seed file copied into an ephemeral home, and seedMode
+// is its copy's mode: a login, the owner's alone.
+const (
+	seedCap  = 1 << 20
+	seedMode = 0o600
+)
+
+// launch prepares one sandboxed launch in wrapper with its working directory
+// cwd: each ephemeral home made in the wrapper's private temp directory —
+// verdict's own, never reported as the agent's stray writes — and seeded,
+// and the launch's own project directory (launchProject).
+func (b *reviewBox) launch(wrapper, cwd string) (*launchBox, error) {
+	out := &launchBox{box: b}
+	for _, e := range b.ephemeral {
+		dir := filepath.Join(wrapper, privateTmp, "home-"+strings.ToLower(e.name))
+		if err := os.MkdirAll(dir, viewDirMode); err != nil {
+			return nil, jq.Sealed("make an ephemeral home", err)
+		}
+		for _, rel := range e.seed {
+			seedFile(filepath.Join(e.source, filepath.FromSlash(rel)), filepath.Join(dir, filepath.FromSlash(rel)))
+		}
+		out.env = append(out.env, e.name+inlineValue+dir)
+	}
+	return out, b.launchProject(out, cwd)
+}
+
+// seedFile copies one regular file into an ephemeral home, never through a
+// link; a missing, linked, or oversized one is left out.
+func seedFile(src, dst string) {
+	info, err := os.Lstat(src)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > seedCap {
+		return
+	}
+	raw, err := os.ReadFile(src)
+	if err != nil || os.MkdirAll(filepath.Dir(dst), viewDirMode) != nil {
+		return
+	}
+	// dst is a catalog-cited seed joined under the launch's own wrapper.
+	_ = os.WriteFile(dst, raw, seedMode) //nolint:errcheck,gosec // best effort: an unseeded home starts logged out
+}
+
+// launchProject makes the launch's own project directory — the one the CLI
+// names after the working directory's real path — with its read-only
+// subdirectories, and adds it to a copy of the box as writable state. A
+// name it would shorten, or a directory that already exists, gets none: the
+// launch writes no project state.
+func (b *reviewBox) launchProject(out *launchBox, cwd string) error {
+	if b.projects == nil {
+		return nil
+	}
+	slug, ok := projectSlug(cwd, b.project.MaxSlug)
+	if !ok {
+		return nil
+	}
+	if err := makeOwnDir(b.projects.path); err != nil {
+		return err
+	}
+	dir := filepath.Join(b.projects.path, slug)
+	if err := os.Mkdir(dir, viewDirMode); err != nil {
+		return nil //nolint:nilerr // an existing directory is not this launch's to grant
+	}
+	out.projects, out.made = b.projects.path, slug
+	box := *b
+	box.state = append(slices.Clone(b.state), statePath{path: dir, base: b.projects.base, relocated: b.projects.relocated})
+	box.readOnly = slices.Clone(b.readOnly)
+	for _, rel := range b.project.ReadOnly {
+		sub := filepath.Join(dir, filepath.FromSlash(rel))
+		if err := makeOwnDir(sub); err != nil {
+			return err
+		}
+		box.readOnly = append(box.readOnly, statePath{path: sub, base: b.projects.base})
+	}
+	out.box = &box
+	return nil
+}
+
+// projectSlug is the name the CLI gives a working directory's project
+// directory: its real path with every character but an ASCII letter or
+// digit a dash; false when the name is longer than max, which the CLI
+// shortens with a hash of its own.
+func projectSlug(cwd string, limit int) (string, bool) {
+	resolved, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return "", false
+	}
+	slug := strings.Map(func(r rune) rune {
+		if r < utf8.RuneSelf && (unicode.IsLetter(r) || unicode.IsDigit(r)) {
+			return r
+		}
+		return '-'
+	}, resolved)
+	return slug, len(slug) <= limit
+}
+
+// dropLaunch removes the project directory a launch made, through a root
+// handle on its parent so no link inside it is followed, and warns when it
+// cannot.
+func (st *state) dropLaunch(l *launchBox) {
+	if l == nil || l.made == "" {
+		return
+	}
+	root, err := os.OpenRoot(l.projects)
+	if err == nil {
+		err = root.RemoveAll(l.made)
+		_ = root.Close()
+	}
+	if err != nil {
+		st.warn(fmt.Sprintf("review sandbox cleanup: %s was not removed (%v); remove it by hand",
+			filepath.Join(l.projects, l.made), err))
+	}
+}
+
 // wrap builds one launch's sandbox around argv: writes allowed only in the
 // launch's wrapper directory — its working copy and the private TMPDIR the
 // view puts beside it — and in the row's data paths. The state is checked
@@ -572,7 +705,9 @@ func (b *reviewBox) wrap(wrapper, bin string, argv []string) ([]string, error) {
 // written.
 func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]string, error) {
 	if resolve {
-		b.makeStateDirs()
+		if err := b.makeStateDirs(); err != nil {
+			return nil, err
+		}
 	}
 	if b.mechanism == hostsandbox.BwrapTool {
 		return slices.Concat([]string{b.runner}, bwrapReviewArgv(writable, bin, b)), nil
@@ -719,26 +854,24 @@ func seatbeltStateRules(b *strings.Builder, state []statePath, writable bool) er
 			return err
 		}
 	}
-	return nil
+	if !writable {
+		return nil
+	}
+	return seatbeltPins(b, state)
 }
 
-// seatbeltStateRule renders one state entry.
-func seatbeltStateRule(b *strings.Builder, s statePath, writable bool) error {
-	switch {
-	case s.glob:
-		return seatbeltGlob(b, s)
-	case s.prefix && writable:
-		return seatbeltPrefix(b, "allow file-read* file-write*", s, "[^/]*$")
-	case s.prefix:
-		return seatbeltPrefix(b, "deny file-write*", s, "[^/]*(/|$)")
-	case !writable:
-		return hostsandbox.WriteDenials(b, hostsandbox.ExpandRealpaths([]string{s.path})) //nolint:wrapcheck // as above
+// seatbeltPins denies writes to each writable directory's own entry, after
+// every allow: a prefix allow beside it (`.tmp*` beside `.tmp`) would
+// otherwise match the directory itself and re-open it, Seatbelt applying the
+// last matching rule.
+func seatbeltPins(b *strings.Builder, state []statePath) error {
+	var dirs []string
+	for _, s := range state {
+		if !s.prefix {
+			dirs = append(dirs, s.path)
+		}
 	}
-	spellings := hostsandbox.ExpandRealpaths([]string{s.path})
-	if err := hostsandbox.WriteRules(b, "allow", spellings); err != nil {
-		return err //nolint:wrapcheck // as above
-	}
-	for _, path := range spellings {
+	for _, path := range hostsandbox.ExpandRealpaths(dirs) {
 		literal, err := hostsandbox.SeatbeltLiteral(path)
 		if err != nil {
 			return err //nolint:wrapcheck // as above
@@ -748,19 +881,17 @@ func seatbeltStateRule(b *strings.Builder, s statePath, writable bool) error {
 	return nil
 }
 
-// seatbeltGlob denies writes at and below every directory a read-only glob
-// entry matches, under each spelling of the directory before its `*`.
-func seatbeltGlob(b *strings.Builder, s statePath) error {
-	head, tail, _ := strings.Cut(s.path, string(filepath.Separator)+globSegment+string(filepath.Separator))
-	for _, dir := range hostsandbox.ExpandRealpaths([]string{head}) {
-		pattern := hostsandbox.SeatbeltRegexQuote(dir) + "/[^/]+/" + hostsandbox.SeatbeltRegexQuote(tail)
-		literal, err := hostsandbox.SeatbeltLiteral("^" + pattern + "(/|$)")
-		if err != nil {
-			return err //nolint:wrapcheck // as above
-		}
-		fmt.Fprintf(b, "(deny file-write* (regex %s))", literal)
+// seatbeltStateRule renders one state entry.
+func seatbeltStateRule(b *strings.Builder, s statePath, writable bool) error {
+	switch {
+	case s.prefix && writable:
+		return seatbeltPrefix(b, "allow file-read* file-write*", s, "[^/]*$")
+	case s.prefix:
+		return seatbeltPrefix(b, "deny file-write*", s, "[^/]*(/|$)")
+	case !writable:
+		return hostsandbox.WriteDenials(b, hostsandbox.ExpandRealpaths([]string{s.path})) //nolint:wrapcheck // as above
 	}
-	return nil
+	return hostsandbox.WriteRules(b, "allow", hostsandbox.ExpandRealpaths([]string{s.path})) //nolint:wrapcheck // as above
 }
 
 // seatbeltPrefix renders one prefix entry's rule on its directory's
@@ -903,31 +1034,46 @@ func under(path string, roots []string) bool {
 // and Seatbelt pins each one's own entry — the agent would create them
 // itself on its first run; the read-only ones inside a writable directory,
 // so the agent cannot create one as its own; and the directories the CLI
-// makes at startup under read-only state (StateDirs). One that cannot be
-// made stays read-only.
-func (b *reviewBox) makeStateDirs() {
-	dirs := slices.Concat(b.dirs, slices.DeleteFunc(slices.Clone(b.state), func(s statePath) bool { return s.prefix }))
-	dirs = append(dirs, slices.DeleteFunc(slices.Clone(b.readOnly), func(r statePath) bool { return !b.insideData(r) })...)
-	for _, d := range dirs {
-		_ = os.MkdirAll(d.path, viewDirMode) //nolint:errcheck // best effort: an unmade directory stays read-only
+// makes at startup under read-only state (StateDirs). A writable one that
+// cannot be made stays read-only; a read-only or startup one that cannot be
+// made, or is not a directory of its own afterwards, refuses the launch.
+func (b *reviewBox) makeStateDirs() error {
+	for _, s := range b.state {
+		if !s.prefix {
+			_ = os.MkdirAll(s.path, viewDirMode) //nolint:errcheck // best effort: an unmade directory stays read-only
+		}
 	}
+	must := slices.Concat(b.dirs, slices.DeleteFunc(slices.Clone(b.readOnly), func(r statePath) bool {
+		return !b.insideData(r)
+	}))
+	for _, d := range must {
+		if err := makeOwnDir(d.path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// makeOwnDir makes a directory and confirms it is one, not a link.
+func makeOwnDir(path string) error {
+	_ = os.MkdirAll(path, viewDirMode) //nolint:errcheck // the check below decides
+	if info, err := os.Lstat(path); err != nil || !info.IsDir() {
+		return jq.NewErrf("the state directory %s could not be made as a directory of its own", path)
+	}
+	return nil
 }
 
 // insideData reports whether a read-only directory entry sits strictly
 // inside a writable directory entry.
 func (b *reviewBox) insideData(r statePath) bool {
-	return !r.prefix && !r.glob && slices.ContainsFunc(b.state, func(s statePath) bool {
+	return !r.prefix && slices.ContainsFunc(b.state, func(s statePath) bool {
 		return !s.prefix && hostsandbox.Within(r.path, s.path) && r.path != s.path
 	})
 }
 
 // existing lists the host paths a state entry names right now.
 func (s statePath) existing() []string {
-	switch {
-	case s.glob:
-		matches, _ := filepath.Glob(s.path) //nolint:errcheck // the pattern is a clean path; a bad one matches nothing
-		return matches
-	case s.prefix:
+	if s.prefix {
 		return s.prefixed()
 	}
 	if _, err := os.Lstat(s.path); err != nil {
@@ -972,8 +1118,8 @@ func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewB
 	return box, box.checkState()
 }
 
-// resolveState resolves the row's three state lists under HOME; only the
-// read-only list may hold a glob entry.
+// resolveState resolves the row's state lists, its ephemeral homes, and its
+// project root under HOME.
 func (b *reviewBox) resolveState(def *agentcatalog.Launch, env []string) error {
 	var err error
 	if b.state, err = stateEntries(def, b.home, env, def.StateWritable); err != nil {
@@ -985,10 +1131,32 @@ func (b *reviewBox) resolveState(def *agentcatalog.Launch, env []string) error {
 	if b.dirs, err = stateEntries(def, b.home, env, def.StateDirs); err != nil {
 		return err
 	}
-	if s, ok := firstGlob(b.state, b.dirs); ok {
-		return jq.NewErrf("%s's state path %s has a %q segment, which only a read-only entry may", def.Name,
-			s.path, globSegment)
+	b.resolveEphemeral(def, env)
+	return b.resolveProject(def, env)
+}
+
+// resolveEphemeral names the real directory each ephemeral home is seeded
+// from: the variable's absolute value, else its home-relative default.
+func (b *reviewBox) resolveEphemeral(def *agentcatalog.Launch, env []string) {
+	for _, v := range def.StateEphemeral {
+		source := filepath.Join(b.home, filepath.FromSlash(v.Root))
+		if value := hostsandbox.EnvLookup(env, v.Name); filepath.IsAbs(value) {
+			source = filepath.Clean(value)
+		}
+		b.ephemeral = append(b.ephemeral, ephemeralHome{name: v.Name, source: source, seed: v.Seed})
 	}
+}
+
+// resolveProject resolves the row's project root like its state.
+func (b *reviewBox) resolveProject(def *agentcatalog.Launch, env []string) error {
+	if def.ProjectState == nil {
+		return nil
+	}
+	projects, err := stateEntry(def, b.home, env, def.ProjectState.Root)
+	if err != nil {
+		return err
+	}
+	b.projects, b.project = &projects, def.ProjectState
 	return nil
 }
 
@@ -1005,37 +1173,25 @@ func stateEntries(def *agentcatalog.Launch, home string, env, rels []string) ([]
 	return out, nil
 }
 
-// firstGlob returns the first glob entry among lists that may hold none.
-func firstGlob(lists ...[]statePath) (statePath, bool) {
-	for _, list := range lists {
-		if i := slices.IndexFunc(list, func(s statePath) bool { return s.glob }); i >= 0 {
-			return list[i], true
-		}
-	}
-	return statePath{}, false
-}
-
 // stateEntry resolves one entry: a clean path strictly below HOME, moved
 // under the first relocation variable whose root holds it and whose value is
-// absolute; a trailing `*` makes it a prefix, a whole `*` segment before the
-// end a glob.
+// absolute; a trailing `*` makes it a prefix.
 func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string) (statePath, error) {
 	trimmed := strings.TrimSuffix(rel, "*")
 	if why := agentcatalog.StatePathShape(trimmed); why != "" {
 		return statePath{}, jq.NewErrf("%s's state path %q %s", def.Name, rel, why)
 	}
-	base, tail := home, trimmed
+	base, tail, relocated := home, trimmed, false
 	for _, v := range def.StateEnv {
 		value := hostsandbox.EnvLookup(env, v.Name)
 		if below, ok := strings.CutPrefix(trimmed, v.Root); ok && filepath.IsAbs(value) &&
 			(below == "" || strings.HasPrefix(below, slash)) {
-			base, tail = filepath.Clean(value), strings.TrimPrefix(below, slash)
+			base, tail, relocated = filepath.Clean(value), strings.TrimPrefix(below, slash), true
 			break
 		}
 	}
 	return statePath{
-		path: filepath.Join(base, filepath.FromSlash(tail)), base: base, prefix: trimmed != rel,
-		glob: slices.Contains(strings.Split(trimmed, slash), globSegment),
+		path: filepath.Join(base, filepath.FromSlash(tail)), base: base, prefix: trimmed != rel, relocated: relocated,
 	}, nil
 }
 
@@ -1048,8 +1204,17 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 func (b *reviewBox) checkState() error {
 	homes := hostsandbox.ExpandRealpaths([]string{b.home})
 	credentials := slices.DeleteFunc(hostsandbox.ExpandRealpaths(b.credentials), b.ownLogin())
-	for _, s := range b.state {
+	made := slices.Concat(b.state, b.dirs)
+	if b.projects != nil {
+		made = append(made, *b.projects)
+	}
+	for _, s := range made {
 		if err := b.checkEntry(s, homes, credentials); err != nil {
+			return err
+		}
+	}
+	for _, s := range b.readOnly {
+		if err := checkBase(s, homes); err != nil {
 			return err
 		}
 	}
@@ -1078,7 +1243,7 @@ func (b *reviewBox) checkEntry(s statePath, homes, credentials []string) error {
 	if err := s.linkFree(); err != nil {
 		return err
 	}
-	if err := b.checkBase(s.base, homes); err != nil {
+	if err := checkBase(s, homes); err != nil {
 		return err
 	}
 	for _, path := range hostsandbox.ExpandRealpaths([]string{s.path}) {
@@ -1090,14 +1255,16 @@ func (b *reviewBox) checkEntry(s statePath, homes, credentials []string) error {
 	return nil
 }
 
-// checkBase refuses a relocation root (a state base other than HOME) that
-// is the filesystem root, or HOME or an ancestor of it under any spelling:
-// every data entry under it would name the operator's own directories
-// (CLAUDE_CONFIG_DIR=$HOME makes ~/projects claude's).
-func (b *reviewBox) checkBase(base string, homes []string) error {
-	if base == b.home {
+// checkBase refuses a relocation root — the base of an entry a relocation
+// variable moved, whatever its value — that is a symlink, the filesystem
+// root, or HOME or an ancestor of it under any spelling: every entry under it
+// would name the operator's own directories (CLAUDE_CONFIG_DIR=$HOME makes
+// ~/debug claude's).
+func checkBase(s statePath, homes []string) error {
+	if !s.relocated {
 		return nil
 	}
+	base := s.base
 	if info, err := os.Lstat(base); err == nil && info.Mode()&fs.ModeSymlink != 0 {
 		return jq.NewErrf("the state root %s is a symlink; point the variable that relocates it at the directory "+
 			"the link names", base)

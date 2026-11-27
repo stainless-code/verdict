@@ -25,7 +25,7 @@ const serviceDomain = "com.stainless.verdict.sandbox-test"
 const serviceScript = "#!/bin/sh\n" +
 	"{ /usr/bin/defaults write " + serviceDomain + " k v && echo defaults=written || echo defaults=denied\n" +
 	"  printf verdict-sandbox | /usr/bin/pbcopy && echo pasteboard=written || echo pasteboard=denied\n" +
-	"} > \"$HOME/.pi/agent/sessions/services.log\" 2>&1\n" +
+	"} 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
 // TestReviewSandboxClosesMacOSServices proves a review agent with a live
@@ -40,14 +40,10 @@ func TestReviewSandboxClosesMacOSServices(t *testing.T) {
 			t.Logf("defaults delete %s: %v: %s", serviceDomain, err, out)
 		}
 	})
-	home := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "sessions"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, ref := sandboxedRun(t, confinedRoot(t), home, serviceScript, "1"); ref != nil {
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), serviceScript, "1")
+	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
-	log := string(readFile(t, filepath.Join(home, ".pi", "agent", "sessions", "services.log")))
 	if !strings.Contains(log, "defaults=denied") || !strings.Contains(log, "pasteboard=denied") {
 		t.Errorf("services log:\n%s\nwant both denied", log)
 	}
@@ -73,7 +69,7 @@ const windowServerProbe = "ObjC.import('CoreGraphics'); ObjC.import('stdlib');" 
 // evaluation through trustd (`security verify-cert` reports the
 // self-signed stub untrusted only when trustd answers).
 const machScript = "#!/bin/sh\n" +
-	"app=\"$HOME/.pi/agent/sessions/Planted.app\"\n" +
+	"app=\"$TMPDIR/Planted.app\"\n" +
 	"/bin/mkdir -p \"$app/Contents/MacOS\"\n" +
 	"printf '<?xml version=\"1.0\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key>" +
 	"<string>com.stainless.verdict.planted</string><key>CFBundleExecutable</key><string>x</string></dict></plist>' " +
@@ -85,7 +81,7 @@ const machScript = "#!/bin/sh\n" +
 	"  /usr/bin/curl -sS -o /dev/null \"http://localhost:$STUB_PORT/\" && echo dns=resolved || echo dns=failed\n" +
 	"  /usr/bin/curl -sS -o /dev/null --cacert \"$STUB_CERT\" \"$STUB_TLS\" && echo tls=done || echo tls=failed\n" +
 	"  /usr/bin/security verify-cert -c \"$STUB_CERT\"\n" +
-	"} > \"$HOME/.pi/agent/sessions/mach.log\" 2>&1\n" +
+	"} 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
 // TestReviewSandboxDeniesMachServicesPastTheAllowlist proves the macOS
@@ -96,23 +92,15 @@ const machScript = "#!/bin/sh\n" +
 func TestReviewSandboxDeniesMachServicesPastTheAllowlist(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
-	home := t.TempDir()
-	sessions := filepath.Join(home, ".pi", "agent", "sessions")
-	if err := os.MkdirAll(sessions, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		// A registration that got through must not outlive the test.
-		_ = exec.Command(lsregisterPath, "-u", filepath.Join(sessions, "Planted.app")).Run() //nolint:noctx,errcheck // cleanup; absent is the passing case
-	})
-	plain, tlsSrv, cert := machStubs(t, sessions)
-	_, ref := sandboxedRun(t, confinedRoot(t), home, machScript, "1",
+	// The planted app lives in the launch's private TMPDIR, removed with it:
+	// a registration that got through names a bundle that is gone.
+	plain, tlsSrv, cert := machStubs(t, t.TempDir())
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), machScript, "1",
 		"STUB_PORT="+stubPort(t, plain),
 		"STUB_TLS="+tlsSrv.URL, "STUB_CERT="+cert)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
-	log := string(readFile(t, filepath.Join(sessions, "mach.log")))
 	for _, want := range []string{
 		"lsregister=denied", "shortcuts=denied", "windowserver=denied", "dns=resolved", "tls=done",
 		"CSSMERR_TP_NOT_TRUSTED",

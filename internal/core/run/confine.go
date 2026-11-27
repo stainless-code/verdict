@@ -1125,7 +1125,13 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env)
 	}
 	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
-	wrapped, err := st.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
+	launch, err := st.box.launch(v.wrapper, v.cwd)
+	if err != nil {
+		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
+	}
+	defer st.dropLaunch(launch)
+	env = hostsandbox.OverrideEnv(env, launch.env)
+	wrapped, err := launch.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}

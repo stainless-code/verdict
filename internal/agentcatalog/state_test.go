@@ -15,52 +15,57 @@ import (
 func TestStatePathsAreCitedAndShaped(t *testing.T) {
 	writable := map[string][]string{
 		"claude": {
-			".claude/projects", ".claude/sessions", ".claude/debug", ".claude/todos", ".claude/backups",
-			".claude/cache", ".claude/statsig", ".claude/file-history", ".claude/.credentials.json*",
-			"Library/Caches/claude-cli-nodejs", "Library/Keychains",
+			".claude/debug", ".claude/.credentials.json*", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
 		},
 		"codex": {
-			".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
-			".codex/tmp", ".codex/.tmp", ".codex/.tmp*", ".codex/thread-writer-locks", ".codex/auth.json*", ".codex/history.jsonl*",
-			".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*", ".codex/models_cache.json*",
-			".codex/goals_*", ".codex/installation_id*", ".codex/.sandbox_migration*",
+			".codex/log", ".codex/logs_*", ".codex/cache", ".codex/tmp", ".codex/.tmp", ".codex/.tmp*",
+			".codex/installation_id*", ".codex/.sandbox_migration*", ".codex/auth.json*",
 		},
-		"opencode": {
-			".local/share/opencode", ".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
-			".local/state/opencode",
-		},
-		"pi": {".pi/agent/sessions", ".pi/agent/auth.json*"},
+		"pi": {".pi/agent/auth.json*"},
 	}
 	readOnly := map[string][]string{
 		"claude": {
 			".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 			".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
-			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/projects/*/memory",
+			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/sessions",
+			".claude/todos", ".claude/file-history", ".claude/backups", ".claude/cache", ".claude/statsig",
 		},
 		"codex": {
 			".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-			".codex/plugins", ".codex/packages", ".codex/shell_snapshots",
+			".codex/plugins", ".codex/packages", ".codex/shell_snapshots", ".codex/sessions",
+			".codex/archived_sessions", ".codex/sqlite", ".codex/session_index.jsonl", ".codex/state_*",
+			".codex/goals_*", ".codex/memories*", ".codex/history.jsonl", ".codex/models_cache.json",
 		},
-		"opencode": {
-			".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
-			".local/share/opencode/node_modules", ".local/share/opencode/shell",
-		},
+		"opencode": {".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode"},
 		"pi": {
-			".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
-			".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
+			".pi/agent/sessions", ".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions",
+			".pi/agent/skills", ".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
 			".pi/agent/bin", ".pi/agent/install", ".pi/agent/npm",
 		},
 	}
-	gotW, gotR := map[string][]string{}, map[string][]string{}
-	for _, agent := range All() {
-		if l := agent.Launch; l != nil && (len(l.StateWritable) > 0 || len(l.StateReadOnly) > 0) {
-			gotW[agent.Name], gotR[agent.Name] = l.StateWritable, l.StateReadOnly
-			checkStatePaths(t, agent.Name, l)
-		}
-	}
+	gotW, gotR := collectState(t)
 	if !maps.EqualFunc(gotW, writable, slices.Equal) || !maps.EqualFunc(gotR, readOnly, slices.Equal) {
 		t.Errorf("writable = %q, read-only = %q; want %q and %q", gotW, gotR, writable, readOnly)
 	}
+}
+
+// collectState gathers every row's writable and read-only lists, checking
+// each row that declares any.
+func collectState(t *testing.T) (writable, readOnly map[string][]string) {
+	t.Helper()
+	writable, readOnly = map[string][]string{}, map[string][]string{}
+	for _, agent := range All() {
+		l := agent.Launch
+		if l == nil || len(l.StateWritable) == 0 && len(l.StateReadOnly) == 0 {
+			continue
+		}
+		if len(l.StateWritable) > 0 {
+			writable[agent.Name] = l.StateWritable
+		}
+		readOnly[agent.Name] = l.StateReadOnly
+		checkStatePaths(t, agent.Name, l)
+	}
+	return writable, readOnly
 }
 
 // checkStatePaths fails a row whose state paths are uncited, misshapen, or
@@ -124,6 +129,42 @@ func overlapping(w string, readOnly []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// TestTrustedStateIsEphemeralOrScoped pins how the rows whose later
+// sessions trust their own data get any writable data at all: opencode an
+// ephemeral data and state home seeded with its logins, claude only its
+// launch's own project directory with memory read-only.
+func TestTrustedStateIsEphemeralOrScoped(t *testing.T) {
+	opencode, _ := Lookup("opencode")
+	want := []EphemeralVar{
+		{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+		{Name: "XDG_STATE_HOME", Root: ".local/state"},
+	}
+	if got := opencode.Launch.StateEphemeral; !slices.EqualFunc(got, want, sameEphemeral) {
+		t.Errorf("opencode ephemeral = %+v, want %+v", got, want)
+	}
+	claude, _ := Lookup("claude")
+	if p := claude.Launch.ProjectState; p == nil || p.Root != ".claude/projects" || p.MaxSlug != 200 ||
+		!slices.Equal(p.ReadOnly, []string{"memory"}) {
+		t.Errorf("claude project state = %+v", p)
+	}
+}
+
+// TestOnlyTrustingRowsHaveEphemeralOrProjectState keeps ephemeral homes and
+// per-launch project directories to the rows whose cited layout needs them.
+func TestOnlyTrustingRowsHaveEphemeralOrProjectState(t *testing.T) {
+	for _, agent := range All() {
+		if l := agent.Launch; l != nil && !slices.Contains([]string{"opencode", "claude"}, agent.Name) &&
+			(len(l.StateEphemeral) > 0 || l.ProjectState != nil) {
+			t.Errorf("%s declares ephemeral or project state", agent.Name)
+		}
+	}
+}
+
+// sameEphemeral compares two ephemeral variables field by field.
+func sameEphemeral(a, b EphemeralVar) bool {
+	return a.Name == b.Name && a.Root == b.Root && slices.Equal(a.Seed, b.Seed)
 }
 
 // TestSourcedCodeIsNeverWritable proves no row's writable state names a

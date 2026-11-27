@@ -327,12 +327,17 @@ func TestReviewArgsAreScopedAndCited(t *testing.T) {
 	}
 	wantArgs := map[string][]string{
 		"claude": {"--setting-sources=user", "--strict-mcp-config", "--permission-mode", "default"},
-		"pi":     {"--no-approve"},
+		"codex":  {"--ephemeral"},
+		"pi":     {"--no-approve", "--no-session"},
 	}
 	wantOwned := map[string][]string{
 		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
-		"codex":  {"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust"},
-		"pi":     {"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers"},
+		"codex": {
+			"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
+		},
+		"pi": {
+			"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers", "--no-session", "--session-dir",
+		},
 	}
 	if !maps.EqualFunc(args, wantArgs, slices.Equal) {
 		t.Errorf("ReviewArgs rows = %v, want %v", args, wantArgs)
