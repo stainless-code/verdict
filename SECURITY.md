@@ -97,7 +97,13 @@ In scope (highest priority first):
   and only the artifacts that launch is expected to write come back — each a
   lone regular file within its cap, read from a pinned copy as the very file
   the walk saw, and written atomically into the pinned bundle — while anything
-  else it wrote is discarded and named in a warning. A copy holds no symlink,
+  else it wrote inside the copy's wrapper is discarded and named in a
+  warning. A write beyond the wrapper is not discarded by the copy: the OS
+  review sandbox (below) blocks it on macOS and Linux, and `claude`'s and
+  `codex`'s own tools keep them in their copy; on Windows, which has no OS
+  sandbox verdict can apply, and under `--allow-unsandboxed-review`, nothing
+  blocks it for another agent, and the sandbox's own residuals are tracked
+  in STA-539 and STA-540. A copy holds no symlink,
   no `.git` or `.verdict/state` of the tree's in any case, and no pointer into
   the operator's repository, and neither does the shared snapshot it is made
   from; outside a git checkout it holds the bundle alone.

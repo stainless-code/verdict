@@ -324,8 +324,8 @@ const (
 // 0 with no artifact, while approval flags stay with the operator after `--`.
 const agyLaunchWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
 	"and a review runs in a fresh copy outside them, so review.json may never be written; " +
-	"allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass " +
-	"-- --dangerously-skip-permissions (your approval bypass)"
+	"review with claude or codex instead, or opt into a trade-off the manual names " +
+	"(a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)"
 
 const valueHome = "home"
 

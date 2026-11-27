@@ -355,7 +355,10 @@ func plannedSnapshotDir(root, tmp, cache string) (string, error) {
 			"(XDG_CACHE_HOME, else HOME, or LOCALAPPDATA on Windows) is set to hold its review snapshots "+
 			"apart from it", root, tmp)
 	}
-	base := contenttree.Resolved(cache)
+	base, err := physical(cache)
+	if err != nil {
+		return "", err
+	}
 	dir := filepath.Join(base, "verdict", "snapshots")
 	if err := noLinkBelow(base, dir); err != nil {
 		return "", err
@@ -365,6 +368,45 @@ func plannedSnapshotDir(root, tmp, cache string) (string, error) {
 			"and the temp directory", dir, apart)
 	}
 	return dir, nil
+}
+
+// physical is name with its deepest existing ancestor resolved through every
+// link and the components below it, which do not exist yet, joined back: the
+// directory MkdirAll would really create. A missing tail is never resolved
+// by itself, so a link above it (a cache under `<outside>/link/missing`,
+// link pointing into the checkout) is followed here, before anything is
+// created through it.
+func physical(name string) (string, error) {
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return "", jq.Sealed("resolve "+name, err)
+	}
+	at, missing := deepestExisting(abs)
+	if at == "" {
+		return abs, nil
+	}
+	resolved, err := filepath.EvalSymlinks(at)
+	if err != nil {
+		return "", jq.Sealed("resolve "+at, err)
+	}
+	return filepath.Join(append([]string{resolved}, missing...)...), nil
+}
+
+// deepestExisting is the deepest ancestor of abs (abs itself included) that
+// exists, and the components below it that do not, in order; "" when none
+// exists.
+func deepestExisting(abs string) (string, []string) {
+	var missing []string
+	for at := abs; ; at = filepath.Dir(at) {
+		if _, err := os.Lstat(at); err == nil {
+			slices.Reverse(missing)
+			return at, missing
+		}
+		if filepath.Dir(at) == at {
+			return "", nil
+		}
+		missing = append(missing, filepath.Base(at))
+	}
 }
 
 // noLinkBelow refuses when any existing component of dir below base is a
@@ -487,6 +529,18 @@ type view struct {
 	// dropped names the tree's symlinks the view leaves out: every one, as
 	// the snapshot dropped them.
 	dropped []string
+	// root is the bundle copy, opened before the agent starts: settlement
+	// reads only through it, so a directory the agent swaps for a link
+	// cannot redirect the copy-back. pins are the bundle copy and its
+	// ancestors (.verdict, .verdict/state) as they were then.
+	root *os.Root
+	pins []pin
+}
+
+// pin is one directory of the view as it was before the agent started.
+type pin struct {
+	info fs.FileInfo
+	path string
 }
 
 // stamp is what a file looked like when verdict copied it in. sum is set
@@ -527,7 +581,51 @@ func (w *workspace) open(ctx context.Context, bundle, own string, expect expecta
 	if err := v.fill(tree, bundle, own, expect); err != nil {
 		return nil, jq.Sealed("fill the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
 	}
+	if err := v.pinBundle(); err != nil {
+		return nil, jq.Sealed("pin the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
+	}
 	return v, nil
+}
+
+// pinBundle records the bundle copy and its ancestors below the view's root
+// and opens the bundle copy as a root, all before the agent starts.
+func (v *view) pinBundle() error {
+	dir := v.cwd
+	for part := range strings.SplitSeq(v.rel, slash) {
+		dir = filepath.Join(dir, part)
+		info, err := os.Lstat(dir)
+		if err != nil || !info.IsDir() {
+			return jq.NewErrf("%s is not a directory in the review snapshot", dir)
+		}
+		v.pins = append(v.pins, pin{path: dir, info: info})
+	}
+	root, err := pinnedDir(v.bundle)
+	if err != nil {
+		return err
+	}
+	v.root = root
+	return nil
+}
+
+// replaced names the first pinned directory the agent replaced — moved,
+// removed, or swapped for a link — "" when every one is the directory it was
+// before the agent started.
+func (v *view) replaced() string {
+	for _, p := range v.pins {
+		now, err := os.Lstat(p.path)
+		if err != nil || !now.IsDir() || !os.SameFile(p.info, now) {
+			rel, _ := filepath.Rel(v.cwd, p.path) //nolint:errcheck // p.path lies below v.cwd
+			return filepath.ToSlash(rel)
+		}
+	}
+	return ""
+}
+
+// closeRoot releases the pinned bundle copy.
+func (v *view) closeRoot() {
+	if v.root != nil {
+		_ = v.root.Close()
+	}
 }
 
 // unchanged refuses a snapshot whose fingerprint moved since it was taken: a
@@ -877,37 +975,47 @@ func pinnedDir(dir string) (*os.Root, error) {
 	return root, nil
 }
 
-// settleBundle walks the bundle copy through a pinned root. An unchanged file
+// settleBundle walks the bundle copy through the root pinned before the
+// agent started, refusing outright when the agent replaced that directory or
+// an ancestor of it. An unchanged file
 // is the seed verdict put there; a changed one is copied back into the
 // pinned real bundle when expected and named otherwise.
 func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
-	from, err := pinnedDir(v.bundle)
-	if err != nil {
-		out.refused = append(out.refused, v.rel+" (its copy changed while the agent ran)")
+	if dir := v.replaced(); dir != "" {
+		out.refused = append(out.refused, v.rel+" (its directory "+dir+" was replaced while the agent ran; "+
+			"nothing was copied back)")
 		return
 	}
-	defer func() { _ = from.Close() }()
+	from := v.root
 	to, err := pinnedDir(bundle)
 	if err != nil {
 		out.refused = append(out.refused, v.rel+" (the bundle changed while the agent ran)")
 		return
 	}
 	defer func() { _ = to.Close() }()
-	seen := map[string]bool{}
+	seen, complete := map[string]bool{}, true
 	//nolint:errcheck // best effort: an entry the walk cannot read is never copied back
 	_ = fs.WalkDir(from.FS(), here, func(rel string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil //nolint:nilerr // an unreadable entry is never copied back
+		if err != nil {
+			complete = false
+			out.refused = append(out.refused, path.Join(v.rel, rel)+" (unreadable)")
+			return nil //nolint:nilerr // an unreadable entry is never copied back, only named
 		}
-		seen[rel] = true
-		v.settleOne(from, to, rel, d, expect(rel), out)
+		if !d.IsDir() {
+			seen[rel] = true
+			v.settleOne(from, to, rel, d, expect(rel), out)
+		}
 		return nil
 	})
-	v.deletedSeeds(seen, out)
+	if complete {
+		v.deletedSeeds(seen, out)
+	}
 }
 
 // deletedSeeds names every file verdict seeded in the bundle copy that the
 // agent removed: a deletion is a write too, and it never reaches the bundle.
+// It runs only after a walk that read every directory: a seed in a subtree
+// the walk could not read is unseen, not deleted.
 func (v *view) deletedSeeds(seen map[string]bool, out *settled) {
 	for rel := range v.seed {
 		if !seen[rel] {
@@ -1150,6 +1258,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	if err != nil {
 		return nil, st.viewFailure(ctx, err)
 	}
+	defer v.closeRoot()
 	st.warnDropped(v.dropped)
 	res, err := st.spawnBoxed(ctx, args, argv, tap, v)
 	if res != nil {

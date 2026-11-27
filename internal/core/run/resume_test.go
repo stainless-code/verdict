@@ -1045,39 +1045,79 @@ func TestResumeRefusesChangedLaunchDefinition(t *testing.T) {
 }
 
 // TestLaunchDefDigestTracksEveryField proves the digest covers the binary, its
-// argv prefix, its probe argv, the row's documented discovery restriction, and
-// the restriction one attempt actually applied: a row or an attempt that
-// differs in any of them is a different launch definition.
+// argv prefix, its probe argv, the row's documented discovery restriction and
+// review flags, and the restriction, review flags, and write grant one attempt
+// actually applied: a row or an attempt that differs in any of them is a
+// different launch definition.
 func TestLaunchDefDigestTracksEveryField(t *testing.T) {
 	t.Parallel()
 	base := agentcatalog.Launch{
 		Binary: "agent", Args: []string{"exec"}, ProbeArgs: []string{"--version"},
-		DiscoveryArgs: []string{"--exclude-tools", "bash"},
+		DiscoveryArgs: []string{"--exclude-tools", "bash"}, ReviewArgs: []string{"--setting-sources=user"},
 	}
 	restriction := []string{"--exclude-tools", "bash"}
+	review := []string{"--setting-sources=user"}
 	grant := []string{"--allowedTools=Edit(./.verdict/state/42/**)"}
-	digest := launchDefDigest(&base, restriction, grant)
-	if digest == "" || digest != launchDefDigest(&base, restriction, grant) {
+	digest := launchDefDigest(&base, restriction, review, grant)
+	if digest == "" || digest != launchDefDigest(&base, restriction, review, grant) {
 		t.Fatalf("digest is not stable: %q", digest)
 	}
+	assertRowChangesMove(t, &base, digest, restriction, review, grant)
+	for what, dropped := range map[string]string{
+		"discovery restriction": launchDefDigest(&base, nil, review, grant),
+		"review flags":          launchDefDigest(&base, restriction, nil, grant),
+		"review write grant":    launchDefDigest(&base, restriction, review, nil),
+	} {
+		if dropped == digest {
+			t.Errorf("digest ignored an attempt that dropped the %s", what)
+		}
+	}
+}
+
+// assertRowChangesMove fails unless each change to the row moves the digest.
+func assertRowChangesMove(t *testing.T, base *agentcatalog.Launch, digest string, restriction, review, grant []string) {
+	t.Helper()
 	for _, change := range []func(*agentcatalog.Launch){
 		func(def *agentcatalog.Launch) { def.Binary = "other-agent" },
 		func(def *agentcatalog.Launch) { def.Args = []string{"run"} },
 		func(def *agentcatalog.Launch) { def.ProbeArgs = nil },
 		func(def *agentcatalog.Launch) { def.DiscoveryArgs = []string{"--exclude-tools", "bash,powershell"} },
+		func(def *agentcatalog.Launch) { def.ReviewArgs = nil },
 	} {
-		changed := base
+		changed := *base
 		change(&changed)
-		if launchDefDigest(&changed, restriction, grant) == digest {
-			t.Fatalf("digest ignored a launch definition change: %+v", changed)
+		if launchDefDigest(&changed, restriction, review, grant) == digest {
+			t.Errorf("digest ignored a launch definition change: %+v", changed)
 		}
 	}
-	if launchDefDigest(&base, nil, grant) == digest {
-		t.Fatal("digest ignored an attempt that dropped the discovery restriction")
+}
+
+// TestResumeDetectsReviewFlagsDrift proves the review flags are sealed: a
+// resume of an execution whose attempts carried no review flags — recorded
+// under the digest such an attempt seals — refuses before any agent starts,
+// rather than spending the remaining phases with configuration the record
+// never sealed.
+func TestResumeDetectsReviewFlagsDrift(t *testing.T) {
+	t.Parallel()
+	const slug = "local-resume-review-flags"
+	req, commander := resumeFixture(t, slug)
+	interruptRun(t, req, commander, "x-finder-2")
+	path := filepath.Join(commander.dir, launcherFile)
+	def, _ := lookupAgent(nameClaude)
+	restriction := discoveryRestriction(&def, false)
+	grant := []string{"--allowedTools=Edit(./.verdict/state/" + slug + "/**)"}
+	sealed := launchDefDigest(&def, restriction, reviewArgs(&def), grant)
+	raw := readFixtureFile(t, path)
+	if !strings.Contains(string(raw), sealed) {
+		t.Fatalf("launcher.json does not carry the digest this test computes (%s)", sealed)
 	}
-	if launchDefDigest(&base, restriction, nil) == digest {
-		t.Fatal("digest ignored an attempt that dropped the review write grant")
-	}
+	bare := def
+	bare.ReviewArgs = nil
+	writeUnder(t, commander.dir, launcherFile,
+		strings.ReplaceAll(string(raw), sealed, launchDefDigest(&bare, restriction, nil, grant)))
+	before := readFixtureFile(t, path)
+	req.Resume = true
+	assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "launch definition")
 }
 
 // TestResumeDetectsDiscoveryRestrictionDrift proves the read-only discovery

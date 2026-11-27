@@ -4311,10 +4311,15 @@ saw — never through a link, never waiting on a FIFO, refusing a second hard
 link or a file swapped in after the walk — so an agent's lingering background
 process cannot redirect it; the copy is written atomically with the agent's
 own modification time set before it lands, so the freshness check still reads
-the agent's write. Anything else the agent wrote — `src/main.go`, `../outside.txt`, a
-`findings.json` only verdict writes — stays in the copy, is deleted with it,
-and is named in one warning, which is worth reading as evidence of an
-injection attempt. A crashed or timed-out agent's valid artifacts are copied
+the agent's write. Anything else the agent wrote inside the copy's wrapper —
+`src/main.go`, `../outside.txt`, a `findings.json` only verdict writes, a
+deleted bundle file — stays there, is deleted with it, and is named in one
+warning, which is worth reading as evidence of an injection attempt. A write
+beyond the wrapper (further up with `..`, or to an absolute path) is neither
+discarded nor seen by the copy: the review sandbox blocks it on macOS and
+Linux, and `claude`'s and `codex`'s own tools keep them in their copy
+(below); on Windows and under `--allow-unsandboxed-review` nothing blocks it
+for another agent. A crashed or timed-out agent's valid artifacts are copied
 back the same way, so salvage, repair rounds, and `--resume` read the bundle
 exactly as before. The loop's fix phase is the one launch that runs in your
 checkout: editing it is its job.
@@ -4348,11 +4353,29 @@ On unix that catches any write, even one that restores a file's size, mode,
 and modification time, since the change time moves with it; on Windows a
 same-size rewrite that restores the modification time is not caught.
 
-What a review agent can still do: read the reviewed tree and the bundle, and
-use the network. What it can no longer do: write your checkout through a path
-relative to its working directory, which is where every agent's edit tools
-aim; the review sandbox (below) stops an absolute path, or one that climbs
-out with `..`, too. A review of a directory
+What holds, and for whom. The agent starts in its copy, where every agent's
+edit tools aim, so its writes to paths that resolve inside the copy land
+there (`../outside.txt` resolves to the copy's wrapper, and further `..`
+leaves it); nothing comes back from the copy but the expected artifacts.
+Writes beyond its wrapper — through `..` or an absolute path — are not
+discarded by the copy: the review sandbox (below) blocks them on macOS and
+Linux. Where it is not active — Windows, which has no OS sandbox verdict can
+apply, or a run with `--allow-unsandboxed-review` — `claude` (without
+`--allow-shell`, through its scoped `Edit` grant) and `codex` (its workspace
+sandbox, rooted at the copy) still stay in their copy through their own
+tools, but any other agent runs as your user, and one that climbs out with
+`..` or names an absolute path can reach the shared snapshot (refused by its
+read-only bits, and caught by its fingerprint), a sibling launch's live copy
+— a finder can forge the artifact its sibling hands back — and whatever else
+your user account can write, your checkout included. There, review an
+untrusted pull request with `claude` or `codex`, or inside an OS-isolated
+environment — a VM or container with no access to your other files and
+credentials. A disposable checkout alone is not that: it protects neither
+your other files nor a sibling launch's artifacts. Even inside the sandbox,
+the residuals it names remain: abstract-namespace unix sockets on Linux
+(STA-539) and loopback services and the other residuals of its final review
+(STA-540). A review agent can always read the reviewed tree and the bundle,
+and use the network. A review of a directory
 outside any git checkout — the temp directory `demo` reviews a pull request
 URL in, or a plain directory — copies none of it: its copy holds the bundle
 alone, from which a remote review reads its diff. A snapshot that cannot be
@@ -4665,24 +4688,36 @@ and exits `0` without writing `review.json`, so `run` refuses
 `no-review-artifact`. Every review runs in a fresh copy of the tree (see
 [Review snapshot](#review-snapshot)), never in your checkout, so trusting the
 checkout in `trustedWorkspaces` does not cover it, and agy's docs define no
-flag that trusts one launch's directory alone; never trust the whole temp or
-cache directory instead. Two operator-side remedies apply: allow exactly the
-bundle copy's writes with `"write_file(.verdict/state/)"` under
-`permissions.allow` in `~/.gemini/antigravity-cli/settings.json` (a relative
-target resolves against each workspace root, so it names the bundle copy in
-whatever copy a review runs in, and nothing else; see the
-[Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json)
+flag, project-level setting, or workspace-scoped rule that trusts one launch's
+directory alone; never trust the whole temp or cache directory instead. Review
+with `claude` or `codex` instead: their own scoped grants let them write their
+artifacts in the copy. If you run `agy` anyway, either of two opt-in trade-offs
+lets its review write, and verdict recommends neither:
+
+- A `"write_file(.verdict/state/)"` rule under `permissions.allow` in
+  `~/.gemini/antigravity-cli/settings.json`. That is agy's user settings
+  file, so the rule holds in every agy session you run, not only verdict's
+  review copies: a relative target resolves against each workspace root, so
+  in any repository agy works in, an agent there — a prompt-injected one in an
+  ordinary agy session included — may write anything under `.verdict/state/`
+  without asking, forged verdict bundle artifacts (`review.json`,
+  `cost.json`, `verification.json`) included.
+- `-- --dangerously-skip-permissions` on the one run: an approval bypass that
+  approves every tool call of that launch, writes and commands alike; it stays
+  your explicit choice and is never baked into the shipped row.
+
+See the
+[Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json),
 [headless mode docs](https://antigravity.google/docs/cli/headless), and
-[permissions](https://antigravity.google/docs/permissions?tab=cli)), or pass
-`-- --dangerously-skip-permissions` explicitly (an approval bypass stays
-the operator's choice and is never baked into the shipped row):
+[permissions](https://antigravity.google/docs/permissions?tab=cli). The second
+trade-off, spelled on a run:
 
 ```bash
 verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-high --dangerously-skip-permissions
 ```
 
 Because that soft-denial exits `0` silently unless configured, `run --agent agy`
-prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, so review.json may never be written; allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
+prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names (a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)`)
 and proceeds rather than refusing. The warning is skipped when the arguments
 after `--` already carry `--dangerously-skip-permissions`. As history, `agy` versions before 1.5.13
 were observed returning before sub-agents finished (2026-11-18).

@@ -338,9 +338,11 @@ func TestPoisonedSnapshotRefusesTheNextCopy(t *testing.T) {
 	t.Parallel()
 	ws, root := fakeCanonical(t, map[string]string{"src/main.go": originalMain})
 	expect := expectedArtifacts(here, reviewFile, nil)
-	if _, err := ws.open(t.Context(), bundleDir(root), here, expect, 30); err != nil {
+	first, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	if err != nil {
 		t.Fatalf("a sealed snapshot refused its first copy: %v", err)
 	}
+	t.Cleanup(first.closeRoot)
 	poisoned := filepath.Join(ws.tree, "src", "main.go")
 	if err := os.Chmod(poisoned, 0o600); err != nil {
 		t.Fatal(err)
@@ -348,7 +350,7 @@ func TestPoisonedSnapshotRefusesTheNextCopy(t *testing.T) {
 	if err := os.WriteFile(poisoned, []byte("package main // poisoned\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	_, err = ws.open(t.Context(), bundleDir(root), here, expect, 30)
 	if err == nil || !strings.Contains(err.Error(), "changed after it was taken") {
 		t.Errorf("a poisoned snapshot gave a copy (err = %v)", err)
 	}
@@ -371,6 +373,7 @@ func TestViewLeavesOutStateAndGitWhateverTheirCase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(v.closeRoot)
 	if _, err := os.Stat(filepath.Join(v.cwd, "sub", ".GIT")); !os.IsNotExist(err) {
 		t.Errorf("a nested .GIT reached the view (err = %v)", err)
 	}
@@ -407,6 +410,7 @@ func settledView(t *testing.T, act func(v *view)) (string, settled) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(v.closeRoot)
 	act(v)
 	return root, v.settle(bundleDir(root), expect)
 }
@@ -442,6 +446,7 @@ func TestCopyBackSeesASameSizeSameTimeRewrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(v.closeRoot)
 	seed := v.seed[reviewFile]
 	writeUnder(t, v.bundle, reviewFile, `{"round":2}`)
 	if err := os.Chtimes(filepath.Join(v.bundle, reviewFile), seed.mtime, seed.mtime); err != nil {
