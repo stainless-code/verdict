@@ -61,14 +61,18 @@ chmod +x "$EVAL_STUBBIN/gh"
 export DRAIN_PAGE="$EVAL_SANDBOX/page.json" DRAIN_QUERY
 cat >"$EVAL_STUBBIN/claude" <<'AGENT'
 #!/usr/bin/env bash
-echo "stub-agent $*" >>"$EVAL_STUBLOG"
+# The drafting launch runs in the OS review sandbox, which lets the agent
+# write only its snapshot (the bundle copy at its relative path), TMPDIR, and
+# its own state: the draft goes where a real agent writes it, and the log line
+# to the agent's own output.
+echo "stub-agent $*" >&2
 case "${DRAIN_AGENT_MODE:-}" in
-  bad-key) digest="$(jq -r .plan_digest "$DIR/drain.json")";
-    jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[{thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"answer",extra:true}]}' >"$DIR/drain.replies.json";;
-  stale) jq -n '{schema_version:"1",plan_digest:"old",replies:[]}' >"$DIR/drain.replies.json";;
-  secret) digest="$(jq -r .plan_digest "$DIR/drain.json")";
+  bad-key) digest="$(jq -r .plan_digest .verdict/state/7/drain.json)";
+    jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[{thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"answer",extra:true}]}' >.verdict/state/7/drain.replies.json;;
+  stale) jq -n '{schema_version:"1",plan_digest:"old",replies:[]}' >.verdict/state/7/drain.replies.json;;
+  secret) digest="$(jq -r .plan_digest .verdict/state/7/drain.json)";
     jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[
-      {thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"key AKIAIOSFODNN7EXAMPLE"}]}' >"$DIR/drain.replies.json";;
+      {thread_id:"PRRT_1",waiting_comment_id:"102",disposition:"answer",body:"key AKIAIOSFODNN7EXAMPLE"}]}' >.verdict/state/7/drain.replies.json;;
 esac
 exit 0
 AGENT
