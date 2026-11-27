@@ -167,11 +167,14 @@ func procedureProbe(t *testing.T, expected []byte) string {
 		t.Fatal(err)
 	}
 	// The draft launch runs in the OS review sandbox, which lets claude
-	// write only its snapshot, TMPDIR, and its own state: the probe lands in
-	// its state directory, relocated into the test by CLAUDE_CONFIG_DIR.
+	// write only its snapshot, TMPDIR, and its own data: the probe lands in
+	// its debug directory, relocated into the test by CLAUDE_CONFIG_DIR.
 	state := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", state)
-	probe := filepath.Join(state, "probe")
+	if err := os.Mkdir(filepath.Join(state, "debug"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	probe := filepath.Join(state, "debug", "probe")
 	t.Setenv("VERDICT_TEST_EXPECTED_PROCEDURE", expectedPath)
 	t.Setenv("VERDICT_TEST_PROCEDURE_PROBE", probe)
 	return probe

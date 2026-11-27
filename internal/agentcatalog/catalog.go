@@ -118,15 +118,21 @@ type Launch struct {
 	// DiscoveryOwnedFlags spelling does, unless --allow-shell is set: then the
 	// operator owns the agent's tool set and its configuration.
 	ReviewOwnedFlags []string
-	// StatePaths are the home-relative paths, in slash form, where the CLI
-	// keeps its own state: its login, settings, sessions, logs, and caches.
-	// A review launch in verdict's OS sandbox may write only these, its
-	// review snapshot, and a private TMPDIR, and may read them even where
-	// the credential table hides a path (claude's macOS login keychain). An
-	// entry ending in `*` names every path in its directory that starts with
-	// the rest — a config file beside its atomic-write siblings. StateCitation
-	// names where each was read or observed.
-	StatePaths    []string
+	// StateWritable are the home-relative paths, in slash form, where the
+	// CLI keeps its own data — sessions, logs, caches, its login's token
+	// refresh — the only paths besides its review snapshot a review launch in
+	// verdict's OS sandbox may write. They may be read even where the
+	// credential table hides a path (claude's macOS login keychain). An entry
+	// is a directory (created before a Linux launch so bwrap can bind it), or,
+	// ending in `*`, a name prefix for files: one file beside its atomic-write
+	// siblings. StateCitation names where each was read or observed.
+	StateWritable []string
+	// StateReadOnly are the CLI's own config and code under the same roots —
+	// settings, plugins, extensions, hooks, agent definitions, MCP config —
+	// which a later run outside verdict loads: readable in the sandbox, never
+	// writable, so a prompt-injected review cannot persist past it. No
+	// StateWritable entry may hold or sit inside one.
+	StateReadOnly []string
 	StateCitation string
 	// Confinement is how the CLI confines its own review launch without
 	// verdict's OS sandbox, "" for not at all. [OwnSandbox]: its
@@ -139,8 +145,9 @@ type Launch struct {
 	// there unless the operator opts out. ConfinementCitation names the doc.
 	Confinement         string
 	ConfinementCitation string
-	// StateEnv are the variables that relocate StatePaths: an absolute
-	// value, joined with Suffix, is a state path too.
+	// StateEnv are the variables that relocate the state: an absolute value
+	// replaces its Root, so every StateWritable entry at or below Root moves
+	// under the value instead.
 	StateEnv []StateVar
 }
 
@@ -152,10 +159,11 @@ const (
 	OwnWrites = "own-writes"
 )
 
-// StateVar is one environment variable that relocates an agent's state.
+// StateVar is one environment variable that relocates an agent's state: its
+// value stands in for the home-relative Root.
 type StateVar struct {
-	Name   string
-	Suffix string
+	Name string
+	Root string
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -232,8 +240,8 @@ const (
 	// sandboxes and what they let the agent write — read 2026-11-27.
 	docCodexSandbox = "https://developers.openai.com/codex/security"
 	// docOpenCodeStorage names opencode's data directory
-	// (~/.local/share/opencode: auth, sessions, logs) and its cache
-	// (~/.cache/opencode) — read 2026-11-27.
+	// (~/.local/share/opencode: auth, sessions, logs), its config directory
+	// and its cache (~/.cache/opencode) — read 2026-11-27.
 	docOpenCodeStorage = "https://opencode.ai/docs/troubleshooting/"
 	// docPiConfig is getAgentDir: PI_CODING_AGENT_DIR, else ~/.pi/agent —
 	// read 2026-11-27.
@@ -401,16 +409,27 @@ var catalog = []Agent{
 				Args: []string{"--output-format", "json"},
 			},
 			Install: "curl -fsSL https://claude.ai/install.sh | bash",
-			// ~/.claude and ~/.claude.json per the settings doc, relocated by
-			// CLAUDE_CONFIG_DIR; the macOS login lives in the login keychain,
-			// which the Security framework reads and writes in-process. The
-			// `.claude.json*` siblings (.tmp.<pid>.<hex>, .backup.<ms>) and
-			// ~/Library/Caches/claude-cli-nodejs were observed from claude
-			// 2.1.331 on macOS — read and observed 2026-11-27.
-			StatePaths: []string{
-				".claude", ".claude.json*", "Library/Keychains", "Library/Caches/claude-cli-nodejs",
+			// ~/.claude holds settings, plugins, skills, agents, commands,
+			// hooks and output styles beside its session data, and
+			// ~/.claude.json holds mcpServers beside its counters, per the
+			// settings doc; CLAUDE_CONFIG_DIR relocates ~/.claude. The macOS
+			// login lives in the login keychain, which the Security framework
+			// reads and writes in-process (token refresh). The data
+			// directories and ~/Library/Caches/claude-cli-nodejs were observed
+			// from claude 2.1.331 on macOS, which also reached its API with
+			// ~/.claude.json and every config path read-only — read and
+			// observed 2026-11-27.
+			StateWritable: []string{
+				".claude/projects", ".claude/sessions", ".claude/session-env", ".claude/shell-snapshots",
+				".claude/debug", ".claude/todos", ".claude/backups", ".claude/cache", ".claude/statsig",
+				".claude/file-history", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
 			},
-			StateEnv:      []StateVar{{Name: "CLAUDE_CONFIG_DIR"}},
+			StateReadOnly: []string{
+				".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
+				".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
+				".claude/CLAUDE.md",
+			},
+			StateEnv:      []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
 			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
 			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
 			// under the bundle (ReviewWriteArgs): Write/Edit outside an allow
@@ -507,10 +526,24 @@ var catalog = []Agent{
 			ResumeCitation: docCodexReadme,
 			Usage:          &Usage{Format: UsageCodexJSONL, Citation: docCodexExecJSON, Args: []string{"--json"}},
 			Install:        "npm install -g @openai/codex",
-			// CODEX_HOME, ~/.codex by default, holds config, auth, sessions,
-			// and logs — read 2026-11-27.
-			StatePaths:    []string{".codex"},
-			StateEnv:      []StateVar{{Name: "CODEX_HOME"}},
+			// CODEX_HOME, ~/.codex by default, holds config.toml, AGENTS.md,
+			// rules, prompts, skills and plugins beside auth.json, sessions,
+			// history and logs; the sqlite stores, cache, tmp and shell
+			// snapshots were observed from codex-cli 0.172.0 on macOS — read
+			// and observed 2026-11-27. Used only when the operator's `--`
+			// decides codex's permissions; otherwise codex runs in its own
+			// sandbox.
+			StateWritable: []string{
+				".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
+				".codex/shell_snapshots", ".codex/tmp", ".codex/.tmp", ".codex/auth.json*",
+				".codex/history.jsonl*", ".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*",
+				".codex/models_cache.json*",
+			},
+			StateReadOnly: []string{
+				".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
+				".codex/plugins", ".codex/packages",
+			},
+			StateEnv:      []StateVar{{Name: "CODEX_HOME", Root: ".codex"}},
 			StateCitation: docCodexReadme,
 			// workspace-write runs codex's own Seatbelt (macOS) or
 			// Landlock/seccomp (Linux) sandbox, which confines its writes —
@@ -878,18 +911,18 @@ var catalog = []Agent{
 				Args: []string{"--format", "json"},
 			},
 			Install: "npm install -g @opencode/cli",
-			// The XDG data, config, state, and cache directories, each under
-			// opencode/; ~/.local/state/opencode (model, kv, locks) was
+			// The XDG data directory holds auth, sessions (opencode.db),
+			// logs, snapshots and tool output; the config directory holds
+			// opencode.json, plugins, agents, commands and skills, and the
+			// cache directory the provider and plugin packages it installs.
+			// ~/.local/state/opencode (model, kv, locks, prompt history) was
 			// observed from opencode 2.4.2 on macOS — read and observed
 			// 2026-11-27.
-			StatePaths: []string{
-				".local/share/opencode", ".config/opencode", ".local/state/opencode", ".cache/opencode",
-			},
+			StateWritable: []string{".local/share/opencode", ".local/state/opencode"},
+			StateReadOnly: []string{".config/opencode", ".cache/opencode"},
 			StateEnv: []StateVar{
-				{Name: "XDG_DATA_HOME", Suffix: nameOpenCode},
-				{Name: "XDG_CONFIG_HOME", Suffix: nameOpenCode},
-				{Name: "XDG_STATE_HOME", Suffix: nameOpenCode},
-				{Name: "XDG_CACHE_HOME", Suffix: nameOpenCode},
+				{Name: "XDG_DATA_HOME", Root: ".local/share"},
+				{Name: "XDG_STATE_HOME", Root: ".local/state"},
 			},
 			StateCitation: docOpenCodeStorage,
 		},
@@ -936,11 +969,17 @@ var catalog = []Agent{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 			Install: "curl -fsSL https://pi.dev/install.sh | sh",
-			// ~/.pi holds the agent directory (~/.pi/agent: auth, settings,
-			// sessions) and the extension state beside it (~/.pi/tasks was
-			// observed from pi 1.6.1) — read and observed 2026-11-27.
-			StatePaths:    []string{".pi"},
-			StateEnv:      []StateVar{{Name: "PI_CODING_AGENT_DIR"}},
+			// The agent directory (~/.pi/agent) holds auth.json and sessions
+			// beside settings.json, models.json, extensions, skills, prompts,
+			// themes, AGENTS.md and the managed install (bin, install, npm)
+			// — read and observed from pi 1.6.1, 2026-11-27.
+			StateWritable: []string{".pi/agent/sessions", ".pi/agent/auth.json*"},
+			StateReadOnly: []string{
+				".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
+				".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
+				".pi/agent/bin", ".pi/agent/install", ".pi/agent/npm",
+			},
+			StateEnv:      []StateVar{{Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent"}},
 			StateCitation: docPiConfig,
 		},
 	},
@@ -1068,7 +1107,8 @@ func All() []Agent {
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
-			v.StatePaths = slices.Clone(v.StatePaths)
+			v.StateWritable = slices.Clone(v.StateWritable)
+			v.StateReadOnly = slices.Clone(v.StateReadOnly)
 			v.StateEnv = slices.Clone(v.StateEnv)
 			v.ReviewArgs = slices.Clone(v.ReviewArgs)
 			v.ReviewOwnedFlags = slices.Clone(v.ReviewOwnedFlags)

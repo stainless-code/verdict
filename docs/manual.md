@@ -4379,26 +4379,48 @@ the agent has to reach its model API.
   sandbox): the review shell is already denied by the row's flags, and Mach
   services stay reachable because macOS logins go through them.
 
-A row's state paths are where its CLI keeps its login, settings, sessions,
-logs, and caches, each read from the CLI's docs or observed from the real
-CLI. A relocation variable moves them; an entry ending in `*` names a file
-and its atomic-write siblings. A state path that would re-open more than the
-agent's own state — `HOME` itself, or a path holding a credential location —
-makes the sandbox unavailable for that launch. On Linux `bwrap` can bind only
-a path that exists, so a state path missing before the launch stays
-read-only.
+A row's state paths come in two lists, each read from the CLI's docs or
+observed from the real CLI. **Writable** paths are its data alone — sessions,
+logs, caches, its login's token refresh — and are the only paths beside its
+snapshot it may write. **Read-only** paths are its own config and code —
+settings, plugins, extensions, hooks, agent definitions, MCP config — which
+a later run outside verdict loads: the agent reads them, but a
+prompt-injected review cannot change them to persist past the sandbox.
+Everything else under `HOME` is read-only too; the read-only column names
+what matters. A relocation variable moves the writable paths under its root;
+an entry ending in `*` names a file and its atomic-write siblings. A state
+path that would re-open more than the agent's own data — `HOME` itself, or a
+path holding a credential location — makes the sandbox unavailable for that
+launch. On Linux `bwrap` can bind only a path that exists, so a missing
+writable directory is created before the launch and a missing writable file
+stays read-only. `claude` reaches its API with `~/.claude.json` and every
+config path read-only (observed on claude 2.1.331); a review that needs to
+change its own settings or install a plugin is not something a review does.
 
-| Name       | State paths (relative to `HOME`)                                                        | Relocated by                                                           | Source                                                                                                  |
-| ---------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `claude`   | `.claude`, `.claude.json*`, `Library/Keychains`, `Library/Caches/claude-cli-nodejs`     | `CLAUDE_CONFIG_DIR`                                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
-| `codex`    | `.codex`                                                                                | `CODEX_HOME`                                                           | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
-| `opencode` | `.local/share/opencode`, `.config/opencode`, `.local/state/opencode`, `.cache/opencode` | `XDG_DATA_HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
-| `pi`       | `.pi`                                                                                   | `PI_CODING_AGENT_DIR`                                                  | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
+| Name       | Writable (data, relative to `HOME`)                                                                                                                                                                             | Read-only (config and code)                                                                                                                                        | Relocated by                            | Source                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `claude`   | `.claude/` `projects`, `sessions`, `session-env`, `shell-snapshots`, `debug`, `todos`, `backups`, `cache`, `statsig`, `file-history`; `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md` | `CLAUDE_CONFIG_DIR` (for `.claude`)     | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
+| `codex`    | `.codex/` `sessions`, `archived_sessions`, `log`, `sqlite`, `cache`, `shell_snapshots`, `tmp`, `.tmp`, `auth.json*`, `history.jsonl*`, `session_index.jsonl*`, `state_*`, `logs_*`, `models_cache.json*`        | `.codex/` `config.toml`, `AGENTS.md`, `rules`, `prompts`, `skills`, `plugins`, `packages`                                                                          | `CODEX_HOME`                            | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
+| `opencode` | `.local/share/opencode`, `.local/state/opencode`                                                                                                                                                                | `.config/opencode`, `.cache/opencode` (installed provider and plugin packages)                                                                                     | `XDG_DATA_HOME`, `XDG_STATE_HOME`       | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
+| `pi`       | `.pi/agent/sessions`, `.pi/agent/auth.json*`                                                                                                                                                                    | `.pi/agent/` `settings.json`, `models.json`, `extensions`, `skills`, `prompts`, `themes`, `AGENTS.md`, `mcp.json`, `bin`, `install`, `npm`                         | `PI_CODING_AGENT_DIR` (for `.pi/agent`) | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
 
-Every other row declares none: in the sandbox it writes only its snapshot and
-`TMPDIR`, so it cannot save its own login or sessions, and `run` says so in a
+`codex`'s lists apply only when your `--` decides its permissions; otherwise it
+runs in its own sandbox (below). An extension's own data outside these lists —
+a pi extension writing beside `~/.pi/agent`, an opencode provider it has not
+installed yet — is read-only in the sandbox; run the agent once outside verdict
+to install it, or pass `--allow-unsandboxed-review`.
+
+A launch's snapshot directory sits beside the execution's shared snapshot and
+the other launches' snapshot directories, which it can name through `../..`.
+None of them is writable to it; on macOS it cannot read or list them either.
+On Linux they stay readable (`bwrap` binds the host read-only), so a finder
+could read its sibling's in-progress review, but never change it.
+
+Every other row declares none: in the sandbox it writes only its snapshot
+(with its private `TMPDIR`), so it cannot save its own login or sessions, and `run` says so in a
 warning. If that breaks it, pass `--allow-unsandboxed-review`; an agent you
-define in prefs declares its own as `agents.<name>.state_locations` (see
+define in prefs declares its own writable data paths as
+`agents.<name>.state_locations` (see
 [Operator-defined agents](#operator-defined-agents)).
 
 `codex` keeps its own sandbox instead: its review launch already runs
@@ -4532,11 +4554,13 @@ and `agents`:
 `binary` is required and is either a name resolved on `PATH` or an absolute
 path; `args` defaults to `[]`, and the other fields are optional strings.
 `probe_match` is required when `probe_args` is set, and both use the same
-identity check as the shipped rows. `state_locations` (a shipped row's state
-paths; the settings scanner refuses any key holding `pat`) lists where the agent keeps
-its own login and sessions, relative to `HOME` in slash form (a trailing `*`
-names a prefix): the only paths besides its snapshot and `TMPDIR` it may write
-in the [review sandbox](#review-sandbox). Each must be a clean path below
+identity check as the shipped rows. `state_locations` (a shipped row's writable
+state paths; the settings scanner refuses any key holding `pat`) lists where the
+agent keeps its own data — sessions, logs, its login's token refresh — relative
+to `HOME` in slash form (a trailing `*` names a prefix): the only paths besides
+its snapshot and `TMPDIR` it may write in the [review sandbox](#review-sandbox).
+List data only: a config file or plugin directory listed here is one a
+prompt-injected review could change for the agent's next run. Each must be a clean path below
 `HOME` (an absolute path, `..`, or `HOME` itself refuses `bad-settings`), and
 one that overlaps the credential table makes the sandbox unavailable at launch.
 A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.

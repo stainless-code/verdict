@@ -836,7 +836,7 @@ func operatorAgent(def *config.PersonalAgent) agentcatalog.Launch {
 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
 		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
 		ProbeArgs: slices.Clone(def.ProbeArgs), Source: agentSourcePrefs,
-		StatePaths: slices.Clone(def.StatePaths), StateCitation: "prefs",
+		StateWritable: slices.Clone(def.StatePaths), StateCitation: "prefs",
 	}
 }
 

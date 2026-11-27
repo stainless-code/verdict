@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hostsandbox"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -230,7 +231,7 @@ func (st *state) boxWarn(msg string) {
 // warnStateless names the one limit a row without state paths runs into in
 // the sandbox: it cannot save its own login or sessions.
 func (st *state) warnStateless(def *agentcatalog.Launch) {
-	if len(def.StatePaths) > 0 || len(def.StateEnv) > 0 {
+	if len(def.StateWritable) > 0 {
 		return
 	}
 	remedy := "pass " + flagAllowUnsandboxed + " to review without the sandbox"
@@ -361,6 +362,9 @@ func (b *reviewBox) wrap(wrapper string, argv []string) ([]string, error) {
 // placeholders.
 func (b *reviewBox) prefix(writable []string, resolve bool) ([]string, error) {
 	if b.mechanism == hostsandbox.BwrapTool {
+		if resolve {
+			makeStateDirs(b.state)
+		}
 		return bwrapReviewArgv(writable, b.state, b.credentials), nil
 	}
 	if resolve {
@@ -386,6 +390,9 @@ func (b *reviewBox) prefix(writable []string, resolve bool) ([]string, error) {
 func seatbeltReviewProfile(writable []string, state []statePath, credentials []string) (string, error) {
 	var b strings.Builder
 	b.WriteString(seatbeltReviewHeader)
+	if err := seatbeltSiblingDenials(&b, writable); err != nil {
+		return "", err
+	}
 	if err := hostsandbox.WriteRules(&b, "allow", writable); err != nil {
 		return "", err //nolint:wrapcheck // the shared builder's message is the refusal's reason
 	}
@@ -399,6 +406,28 @@ func seatbeltReviewProfile(writable []string, state []statePath, credentials []s
 		}
 	}
 	return b.String(), nil
+}
+
+// seatbeltSiblingDenials denies reads of every other snapshot directory
+// beside a writable snapshot wrapper — the execution's shared tree and the
+// sibling launches' views, which a launch reaches through `../..` — before
+// the wrapper's own allow re-opens it. Their writes are denied already.
+func seatbeltSiblingDenials(b *strings.Builder, writable []string) error {
+	var bases []string
+	for _, w := range writable {
+		if strings.HasPrefix(filepath.Base(w), contenttree.SnapshotPrefix) {
+			bases = append(bases, filepath.Dir(w))
+		}
+	}
+	for _, dir := range hostsandbox.ExpandRealpaths(bases) {
+		literal, err := hostsandbox.SeatbeltLiteral("^" + hostsandbox.SeatbeltRegexQuote(
+			filepath.Join(dir, contenttree.SnapshotPrefix)))
+		if err != nil {
+			return err //nolint:wrapcheck // the shared builder's message is the refusal's reason
+		}
+		fmt.Fprintf(b, "(deny file-read* (regex %s))", literal)
+	}
+	return nil
 }
 
 // seatbeltStateRule re-allows one state path under every spelling Seatbelt
@@ -438,6 +467,18 @@ func bwrapReviewArgv(writable []string, state []statePath, credentials []string)
 	return append(argv, bwrapReviewTail...)
 }
 
+// makeStateDirs creates the writable state directories that do not exist
+// yet, so bwrap, which can bind only an existing path, binds them: the agent
+// would create them itself on its first run. One that cannot be made stays
+// read-only.
+func makeStateDirs(state []statePath) {
+	for _, s := range state {
+		if !s.prefix {
+			_ = os.MkdirAll(s.path, viewDirMode) //nolint:errcheck // best effort: an unmade directory stays read-only
+		}
+	}
+}
+
 // existing lists the host paths a state entry names right now.
 func (s statePath) existing() []string {
 	if !s.prefix {
@@ -460,12 +501,13 @@ func (s statePath) existing() []string {
 	return out
 }
 
-// resolveState resolves the row's state paths under the child's HOME and
-// its relocation variables, refusing any that would re-open more than the
-// agent's own state: HOME itself or an ancestor of it, the filesystem root,
-// or a path enclosing a credential location.
+// resolveState resolves the row's writable state paths under the child's
+// HOME, each moved under its relocation variable when one is set, refusing
+// any that would re-open more than the agent's own data: HOME itself or an
+// ancestor of it, the filesystem root, or a path enclosing a credential
+// location.
 func resolveState(def *agentcatalog.Launch, env, credentials []string) ([]statePath, error) {
-	if len(def.StatePaths) == 0 && len(def.StateEnv) == 0 {
+	if len(def.StateWritable) == 0 {
 		return nil, nil
 	}
 	home, ok := hostsandbox.Home(env)
@@ -476,14 +518,16 @@ func resolveState(def *agentcatalog.Launch, env, credentials []string) ([]stateP
 	return checkedStates(def, filepath.Clean(home), env, credentials)
 }
 
-// checkedStates resolves the row's state paths under home and its
-// relocation variables, then checks each.
+// checkedStates resolves every writable entry, then checks each.
 func checkedStates(def *agentcatalog.Launch, home string, env, credentials []string) ([]statePath, error) {
-	out, err := homeStates(def, home)
-	if err != nil {
-		return nil, err
+	out := make([]statePath, 0, len(def.StateWritable))
+	for _, rel := range def.StateWritable {
+		s, err := stateEntry(def, home, env, rel)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, s)
 	}
-	out = append(out, envStates(def, env)...)
 	for _, s := range out {
 		if why := s.check(home, credentials, def.Source == agentSourcePrefs); why != "" {
 			return nil, jq.NewErrf("%s's state path %s %s", def.Name, s.path, why)
@@ -492,29 +536,24 @@ func checkedStates(def *agentcatalog.Launch, home string, env, credentials []str
 	return out, nil
 }
 
-// envStates resolves the row's relocation variables an absolute value sets.
-func envStates(def *agentcatalog.Launch, env []string) []statePath {
-	var out []statePath
+// stateEntry resolves one writable entry: a clean path strictly below
+// HOME, moved under the first relocation variable whose root holds it and
+// whose value is absolute; a trailing `*` makes it a prefix.
+func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string) (statePath, error) {
+	trimmed := strings.TrimSuffix(rel, "*")
+	if why := agentcatalog.StatePathShape(trimmed); why != "" {
+		return statePath{}, jq.NewErrf("%s's state path %q %s", def.Name, rel, why)
+	}
+	base, tail := home, trimmed
 	for _, v := range def.StateEnv {
-		if value := hostsandbox.EnvLookup(env, v.Name); filepath.IsAbs(value) {
-			out = append(out, statePath{path: filepath.Join(value, v.Suffix)})
+		value := hostsandbox.EnvLookup(env, v.Name)
+		if below, ok := strings.CutPrefix(trimmed, v.Root); ok && filepath.IsAbs(value) &&
+			(below == "" || strings.HasPrefix(below, slash)) {
+			base, tail = value, strings.TrimPrefix(below, slash)
+			break
 		}
 	}
-	return out
-}
-
-// homeStates resolves the row's home-relative entries, each a clean path
-// strictly below HOME; a trailing `*` makes it a prefix.
-func homeStates(def *agentcatalog.Launch, home string) ([]statePath, error) {
-	out := make([]statePath, 0, len(def.StatePaths)+len(def.StateEnv))
-	for _, rel := range def.StatePaths {
-		trimmed := strings.TrimSuffix(rel, "*")
-		if why := agentcatalog.StatePathShape(trimmed); why != "" {
-			return nil, jq.NewErrf("%s's state path %q %s", def.Name, rel, why)
-		}
-		out = append(out, statePath{path: filepath.Join(home, filepath.FromSlash(trimmed)), prefix: trimmed != rel})
-	}
-	return out, nil
+	return statePath{path: filepath.Join(base, filepath.FromSlash(tail)), prefix: trimmed != rel}, nil
 }
 
 // check says why a state path re-opens more than the agent's own state: it

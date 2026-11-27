@@ -126,15 +126,15 @@ else
 fi
 
 # The drafting launch runs in the OS review sandbox, which lets claude write
-# only its snapshot, TMPDIR, and its own state: the stub counts its launches
-# in its state directory, relocated into the case by CLAUDE_CONFIG_DIR.
+# only its snapshot, TMPDIR, and its own data: the stub counts its launches
+# in its debug directory, relocated into the case by CLAUDE_CONFIG_DIR.
 export CLAUDE_CONFIG_DIR="$EVAL_SANDBOX/claude-state"
-mkdir -p "$CLAUDE_CONFIG_DIR"
-AGENT_LOG="$CLAUDE_CONFIG_DIR/agent.log"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent.log"
 : >"$AGENT_LOG"
 cat >"$EVAL_STUBBIN/claude" <<'AGENT'
 #!/usr/bin/env bash
-echo "stub-agent $*" >>"$CLAUDE_CONFIG_DIR/agent.log"
+echo "stub-agent $*" >>"$CLAUDE_CONFIG_DIR/debug/agent.log"
 if [ "${DRAIN_AGENT_MODE:-good}" = good ]; then
   digest="$(jq -r .plan_digest .verdict/state/7/drain.json)"
   jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[

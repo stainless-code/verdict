@@ -33,11 +33,11 @@ loop_leg() {
   output="$EVAL_SANDBOX/$leg"
   eval_fixture_repo "$repo"
   # The review runs in the OS review sandbox, which lets an agent write only
-  # its snapshot, a private TMPDIR, and its own state paths, so each agent's
-  # spawn log lives in its state directory under the case's HOME (mine
+  # its snapshot, its private TMPDIR, and its own data paths, so each agent's
+  # spawn log lives in a data directory under the case's HOME (mine
   # declares its own in prefs; codex keeps its own sandbox instead).
   case "$agent" in
-    claude) state="$HOME/.claude" ;;
+    claude) state="$HOME/.claude/debug" ;;
     codex) state="$HOME/.codex" ;;
     opencode) state="$HOME/.local/share/opencode" ;;
     mine) state="$HOME/.mine" ;;

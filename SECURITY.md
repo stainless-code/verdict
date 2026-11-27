@@ -118,20 +118,25 @@ In scope (highest priority first):
   which edits the checkout by design). On macOS the launch runs under
   `sandbox-exec` with a generated profile, on Linux under `bwrap`; the
   network stays open so the agent reaches its model API. A review agent can
-  write only its launch's snapshot directory, a private `TMPDIR`, its own
-  cited state paths (its login, sessions and caches, such as `~/.claude`,
-  `~/.pi`, `~/.local/share/opencode`), and the devices a process needs; it
-  cannot write any other dotfile in `HOME`, the rest of `~/.config`, or the
-  operator's checkout. It cannot read the credential table `verify --sandbox`
+  write only its launch's snapshot directory (its working copy and private
+  `TMPDIR`), its own cited data paths (sessions, logs, caches, its login's
+  token refresh — such as `~/.claude/projects`, `~/.pi/agent/sessions`,
+  `~/.local/share/opencode`), and the devices a process needs; it cannot
+  write its own config or code (`~/.claude.json`, `~/.claude/settings.json`,
+  hooks, plugins, `~/.config/opencode`, pi's extensions and settings), any
+  other dotfile in `HOME`, the rest of `~/.config`, the operator's checkout,
+  the execution's shared snapshot, or another launch's snapshot directory
+  (which macOS also hides from its reads). It cannot read the credential table `verify --sandbox`
   hides (`~/.ssh`, `~/.aws`, gh and glab tokens, `.netrc`,
   `.git-credentials`, the rest of that list and the variables that relocate
   them), except a path that is the agent's own state (claude's macOS login
   keychain). On Linux, other processes' environments are hidden too (a private
   PID namespace). A review launch that writes or reads past that policy is a
   vulnerability. Not boundaries, and so not findings: everything else stays
-  readable (the agent reads the tree and its own config); an agent's own
-  state paths stay writable, so it can change its own settings for its next
-  run; on macOS the Mach services stay reachable (claude's login goes through
+  readable (the agent reads the tree and its own config; on Linux a sibling
+  launch's snapshot too); an agent's own data paths stay writable, so it can
+  alter its own sessions or token store, though nothing a later run loads as
+  config or code; on macOS the Mach services stay reachable (claude's login goes through
   the keychain), which a process with a shell could use, and the review shell
   is denied by flags, not by the sandbox. `codex` runs in its own
   `--sandbox workspace-write` sandbox instead of verdict's — a nested

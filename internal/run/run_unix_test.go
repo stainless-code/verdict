@@ -133,11 +133,14 @@ func (f *fixture) plantAs(t *testing.T, binary, mode string) string {
 		t.Fatalf("link the fake agent: %v", err)
 	}
 	// The launch runs in the OS review sandbox, which lets an agent write only
-	// its snapshot, its TMPDIR, and its own state paths: claude's argv log
-	// lands in its state directory under the fixture's HOME, and the review
+	// its snapshot, its TMPDIR, and its own data paths: claude's argv log
+	// lands in its debug directory under the fixture's HOME, and the review
 	// goes where a real agent writes it, relative to its snapshot working
 	// directory.
 	stateDir := filepath.Join(os.Getenv("HOME"), "."+binary)
+	if binary == "claude" {
+		stateDir = filepath.Join(stateDir, "debug")
+	}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		t.Fatal(err)
 	}
