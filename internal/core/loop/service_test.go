@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -1025,3 +1026,34 @@ func TestVerifyPostureIsSandboxedByDefault(t *testing.T) {
 		}
 	}
 }
+
+// TestLoopPlanRefusesARefusedReviewPolicy proves --print never plans a review
+// the launch would refuse: a review-sandbox policy that cannot be built (a
+// relocation root that is the filesystem root) refuses the plan as it would
+// the review.
+func TestLoopPlanRefusesARefusedReviewPolicy(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skipf("%s has no review sandbox policy to build", runtime.GOOS)
+	}
+	h := newHarness(t, 1)
+	h.req.Print = true
+	h.req.Flow.Environ = []string{"HOME=" + t.TempDir(), "CLAUDE_CONFIG_DIR=/"}
+	h.req.Flow.LookPath = func(name string) (string, error) { return "/opt/agents/" + name, nil }
+	h.req.Flow.AgentCommander = hostAgents{}
+	_, ref := run(t.Context(), h.req, &fake{t: t, s: h.script})
+	if ref == nil || !strings.Contains(ref.Message, "review sandbox policy refused") {
+		t.Fatalf("refusal = %v, want the review sandbox policy refusal", ref)
+	}
+}
+
+// hostAgents is an agent commander that says it starts host processes, so a
+// plan takes the review-sandbox decision a real launch would; a plan runs
+// nothing through it.
+type hostAgents struct{}
+
+// Run runs nothing: a plan spawns no agent.
+func (hostAgents) Run(context.Context, *core.Command) (core.Result, error) { return core.Result{}, nil }
+
+// SimulatesProcesses answers as a host commander does.
+func (hostAgents) SimulatesProcesses() bool { return false }

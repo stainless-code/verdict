@@ -4317,7 +4317,8 @@ deleted bundle file — stays there, is deleted with it, and is named in one
 warning, which is worth reading as evidence of an injection attempt. A write
 beyond the wrapper (further up with `..`, or to an absolute path) is neither
 discarded nor seen by the copy: the review sandbox blocks it on macOS and
-Linux, and `claude`'s and `codex`'s own tools keep them in their copy
+Linux, and `claude`'s (while your own Claude settings allow no write tool)
+and `codex`'s own tools keep them in their copy
 (below); on Windows and under `--allow-unsandboxed-review` nothing blocks it
 for another agent. A crashed or timed-out agent's valid artifacts are copied
 back the same way, so salvage, repair rounds, and `--resume` read the bundle
@@ -4361,9 +4362,9 @@ Writes beyond its wrapper — through `..` or an absolute path — are not
 discarded by the copy: the review sandbox (below) blocks them on macOS and
 Linux. Where it is not active — Windows, which has no OS sandbox verdict can
 apply, or a run with `--allow-unsandboxed-review` — `claude` (without
-`--allow-shell`, through its scoped `Edit` grant) and `codex` (its workspace
-sandbox, rooted at the copy) still stay in their copy through their own
-tools, but any other agent runs as your user, and one that climbs out with
+`--allow-shell`, through its scoped `Edit` grant, and only while your own Claude settings allow no write tool, which `--allow-unsandboxed-review` does not check)
+and `codex` (its workspace sandbox, rooted at the copy) still stay in their
+copy through their own tools, but any other agent runs as your user, and one that climbs out with
 `..` or names an absolute path can reach the shared snapshot (refused by its
 read-only bits, and caught by its fingerprint), a sibling launch's live copy
 — a finder can forge the artifact its sibling hands back — and whatever else
@@ -4613,8 +4614,9 @@ in your own Claude settings — settings that cannot be parsed, and a `HOME`
 that is unset or relative, count too. `--allow-unsandboxed-review` (on `run` and
 `loop`) runs every review launch without the sandbox, warned — the operator's
 choice for a pull request they trust. Without the sandbox only `claude` (its
-scoped `Edit` grant, its shell denied) and `codex` (its own workspace
-sandbox) are kept in their copy by their own tools; the opt-out accepts that
+scoped `Edit` grant, its shell denied, and only while your own Claude settings allow no write tool, which `--allow-unsandboxed-review` does not check: an `Edit` allow
+rule there lets an opted-out claude write outside its copy too) and `codex`
+(its own workspace sandbox) are kept in their copy by their own tools; the opt-out accepts that
 any other agent can climb out with `..` or an absolute path and write outside
 its copy — a sibling launch's live copy (forging the artifact it hands back),
 your checkout, anything your user can write — and read your credential files.

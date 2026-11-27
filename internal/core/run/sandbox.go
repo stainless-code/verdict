@@ -588,8 +588,8 @@ func (b *reviewBox) launchProject(out *launchBox, cwd string) error {
 		return err
 	}
 	dir := filepath.Join(b.projects.path, slug)
-	if err := os.Mkdir(dir, viewDirMode); err != nil {
-		return nil //nolint:nilerr // an existing directory is not this launch's to grant
+	if made, err := makeProjectDir(dir); !made {
+		return err
 	}
 	out.projects, out.made = b.projects.path, slug
 	box := *b
@@ -604,6 +604,20 @@ func (b *reviewBox) launchProject(out *launchBox, cwd string) error {
 	}
 	out.box = &box
 	return nil
+}
+
+// makeProjectDir makes the launch's own project directory: false with no
+// error when one already exists, which is not this launch's to grant; false
+// with the error for any other failure, which refuses the launch.
+func makeProjectDir(dir string) (bool, error) {
+	err := os.Mkdir(dir, viewDirMode)
+	switch {
+	case errors.Is(err, fs.ErrExist):
+		return false, nil
+	case err != nil:
+		return false, jq.Sealed("make the launch's project directory", err)
+	}
+	return true, nil
 }
 
 // projectSlug is the name the CLI gives a working directory's project
@@ -1412,14 +1426,20 @@ func writeRule(rule string) bool {
 // ReviewSandbox is the posture a review launch of req's agent takes, as a
 // --print render reports it — the same decision, nothing probed — for a
 // caller that plans a launch without making it (loop's plan). It is nil for
-// an unknown agent and when the commander simulates its processes.
-func ReviewSandbox(ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent) *core.RunSandbox {
+// an unknown agent and when the commander simulates its processes, and the
+// refusal the launch would return when the review policy is refused, so a
+// plan never shows a review the launch would refuse.
+func ReviewSandbox(ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
+) (*core.RunSandbox, *core.RefusalError) {
 	render := *req
 	render.Print = true
 	st := &state{req: &render, defs: agents}
 	def, ok := st.lookupAgent(render.Agent)
-	if !ok || st.settleBox(ctx, &def) != nil {
-		return nil
+	if !ok {
+		return nil, nil
 	}
-	return st.box.data(true)
+	if ref := st.settleBox(ctx, &def); ref != nil {
+		return nil, ref
+	}
+	return st.box.data(true), nil
 }

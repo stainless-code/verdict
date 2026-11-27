@@ -388,7 +388,10 @@ func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *cor
 		Name: name, Binary: binary, Args: args, PromptFlag: prompt,
 		ModelFlag: model, Install: install,
 	}
-	return row, agentLaunchFields(entry, path, &row)
+	// A separate statement: the order in which a return list evaluates `row`
+	// against the call that fills it is unspecified.
+	ref = agentLaunchFields(entry, path, &row)
+	return row, ref
 }
 
 // agentLaunchFields reads the optional identity probe and state paths into

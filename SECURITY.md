@@ -99,7 +99,8 @@ In scope (highest priority first):
   the walk saw, and written atomically into the pinned bundle — while anything
   else it wrote inside the copy's wrapper is discarded and named in a
   warning. A write beyond the wrapper is not discarded by the copy: the OS
-  review sandbox (below) blocks it on macOS and Linux, and `claude`'s and
+  review sandbox (below) blocks it on macOS and Linux, and `claude`'s
+  (while the operator's own Claude settings allow no write tool) and
   `codex`'s own tools keep them in their copy; on Windows, which has no OS
   sandbox verdict can apply, and under `--allow-unsandboxed-review`, nothing
   blocks it for another agent, and the sandbox's own residuals are tracked
@@ -199,7 +200,8 @@ In scope (highest priority first):
   `review-sandbox-unavailable`; `--allow-unsandboxed-review` (on `run` and
   `loop`) runs every launch without the sandbox, warned, which is the
   operator's choice. Without the sandbox only `claude` and `codex` stay in
-  their copy through their own tools; the opt-out accepts that any other
+  their copy through their own tools, `claude` only while the operator's own
+  Claude settings allow no write tool (the opt-out does not check them); the opt-out accepts that any other
   agent can climb out with `..` or an absolute path — to a sibling launch's
   live copy (forging the artifact it hands back) or anything the operator's
   user can write — and read the credential table, so what an opted-out

@@ -2,7 +2,6 @@
 package agentcatalog
 
 import (
-	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -1232,7 +1231,11 @@ func cloneEphemeral(in []EphemeralVar) []EphemeralVar {
 	out := slices.Clone(in)
 	for i := range out {
 		out[i].Seed = slices.Clone(out[i].Seed)
-		out[i].SeedKeys = maps.Clone(out[i].SeedKeys)
+		keys := make(map[string][]string, len(out[i].SeedKeys))
+		for seed, allowed := range out[i].SeedKeys {
+			keys[seed] = slices.Clone(allowed)
+		}
+		out[i].SeedKeys = keys
 	}
 	return out
 }

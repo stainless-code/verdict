@@ -518,9 +518,12 @@ func TestNewSessionHasNoTerminalAndDiesWithItsTree(t *testing.T) {
 	pidFile := filepath.Join(t.TempDir(), "grandchild.pid")
 	tctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	script := `sleep 30 & echo $! > ` + pidFile + `; ps -o sess=,pgid= -p $$; ps -o tty= -p $$; wait`
+	// The PID file goes to the script as "$1", so a path with a space stays
+	// one word.
+	script := `sleep 30 & echo $! > "$1"; ps -o sess=,pgid= -p $$; ps -o tty= -p $$; wait`
 	res, err := Watchdog{}.Run(tctx, &core.Command{
-		Argv: []string{"/bin/sh", "-c", script}, Env: os.Environ(), NewSession: true, GracePeriod: time.Second,
+		Argv: []string{"/bin/sh", "-c", script, "sh", pidFile}, Env: os.Environ(), NewSession: true,
+		GracePeriod: time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)

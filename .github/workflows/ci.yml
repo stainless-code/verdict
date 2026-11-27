@@ -243,6 +243,17 @@ jobs:
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo sysctl -w kernel.unprivileged_userns_clone=1 || true
 
+      - name: Require a working bubblewrap (the real review-sandbox tests)
+        shell: bash
+        run: |
+          # The real-mechanism tests skip where bwrap cannot run, so prove it
+          # runs here with the namespace options they use: a lane that
+          # silently skipped them would pass without testing the sandbox.
+          if ! bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid true; then
+            echo "::error::bubblewrap cannot create the review sandbox on this runner"
+            exit 1
+          fi
+
       - name: Go gate (gofmt, vet, mod verify, race tests, vuln)
         shell: bash
         run: make ci-go

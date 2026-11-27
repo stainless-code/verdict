@@ -33,7 +33,10 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		return nil, ref
 	}
 	steps := []PlanStep{}
-	sandbox := lp.reviewSandbox(ctx)
+	sandbox, ref := lp.reviewSandbox(ctx)
+	if ref != nil {
+		return nil, ref
+	}
 	timeout := strconv.Itoa(lp.data.TimeoutS)
 	reviewTimeout := strconv.Itoa(max(1, (lp.data.TimeoutS+reviewAttempts-1)/reviewAttempts))
 	for n := 1; n <= lp.req.MaxRounds; n++ {
@@ -102,7 +105,7 @@ func (lp *loop) reviewArgv(repo, local, timeout string) []string {
 
 // reviewSandbox is the review step's OS-sandbox posture, as run's --print
 // renders it: the same agent resolution and decision, nothing probed.
-func (lp *loop) reviewSandbox(ctx context.Context) *core.RunSandbox {
+func (lp *loop) reviewSandbox(ctx context.Context) (*core.RunSandbox, *core.RefusalError) {
 	b := lp.bundle(1)
 	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent}, nil)
 	req.PassThrough = lp.req.AgentArgs

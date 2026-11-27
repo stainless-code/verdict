@@ -15,19 +15,17 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 
 	"github.com/stainless-code/verdict/internal/hostsandbox"
 )
 
-// serviceDomain is the preference domain the hostile agent tries to write.
-const serviceDomain = "com.stainless.verdict.sandbox-test"
-
 // serviceScript is a prompt-injected agent with a shell reaching past the
-// filesystem rules through macOS services: a `defaults write` (cfprefsd
-// writes the plist for it) and the pasteboard.
+// filesystem rules through macOS services: a `defaults write` into
+// SERVICE_DOMAIN (cfprefsd writes the plist for it) and the pasteboard.
 const serviceScript = "#!/bin/sh\n" +
-	"{ /usr/bin/defaults write " + serviceDomain + " k v && echo defaults=written || echo defaults=denied\n" +
+	"{ /usr/bin/defaults write \"$SERVICE_DOMAIN\" k v && echo defaults=written || echo defaults=denied\n" +
 	"  printf verdict-sandbox | /usr/bin/pbcopy && echo pasteboard=written || echo pasteboard=denied\n" +
 	"} 2>&1\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
@@ -38,23 +36,33 @@ const serviceScript = "#!/bin/sh\n" +
 func TestReviewSandboxClosesMacOSServices(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
+	// A domain of this run's own, so neither the check nor the cleanup
+	// touches preferences that existed before.
+	serviceDomain := fmt.Sprintf("com.stainless.verdict.sandbox-test.%d.%d", os.Getpid(), time.Now().UnixNano())
 	t.Cleanup(func() {
 		// The delete fails when the domain is absent, which is the passing case.
-		if out, err := exec.Command("/usr/bin/defaults", "delete", serviceDomain).CombinedOutput(); err != nil { //nolint:noctx // cleanup outlives t.Context
+		del := exec.Command("/usr/bin/defaults", "delete", serviceDomain) //nolint:noctx // cleanup outlives t.Context
+		del.WaitDelay = commandWait
+		if out, err := del.CombinedOutput(); err != nil {
 			t.Logf("defaults delete %s: %v: %s", serviceDomain, err, out)
 		}
 	})
-	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), serviceScript)
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), serviceScript, "SERVICE_DOMAIN="+serviceDomain)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
 	if !strings.Contains(log, "defaults=denied") || !strings.Contains(log, "pasteboard=denied") {
 		t.Errorf("services log:\n%s\nwant both denied", log)
 	}
-	if out, err := exec.Command("/usr/bin/defaults", "read", serviceDomain).CombinedOutput(); err == nil { //nolint:noctx // a read
+	read := exec.CommandContext(t.Context(), "/usr/bin/defaults", "read", serviceDomain)
+	read.WaitDelay = commandWait
+	if out, err := read.CombinedOutput(); err == nil {
 		t.Errorf("the preference domain exists after the review: %s", out)
 	}
 }
+
+// commandWait bounds how long a captured command's pipes may outlive it.
+const commandWait = 5 * time.Second
 
 // lsregisterPath is LaunchServices' registration tool.
 const lsregisterPath = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/" +
@@ -159,10 +167,12 @@ func TestReviewSandboxResolvesAWrapperUnderTmp(t *testing.T) {
 		t.Fatal(err)
 	}
 	stat := exec.CommandContext(t.Context(), argv[0], append(argv[1:], "/usr/bin/stat", "-f", "%N", "/private/tmp")...)
+	stat.WaitDelay = commandWait
 	if out, err := stat.CombinedOutput(); err != nil {
 		t.Errorf("stat of the temp root on the way to the wrapper failed: %v: %s", err, out)
 	}
 	list := exec.CommandContext(t.Context(), argv[0], append(argv[1:], "/bin/ls", "/private/tmp")...)
+	list.WaitDelay = commandWait
 	if out, err := list.CombinedOutput(); err == nil {
 		t.Errorf("the temp root was listed:\n%s", out)
 	}
@@ -204,6 +214,7 @@ func TestReviewSandboxBlocksTerminalInjection(t *testing.T) {
 	helper := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestReviewSandboxBlocksTerminalInjection$",
 		"-test.count=1", "-test.v")
 	helper.Env = append(os.Environ(), ttyHelperEnv+"=1")
+	helper.WaitDelay = commandWait
 	var out strings.Builder
 	helper.Stdin, helper.Stdout, helper.Stderr = slave, &out, &out
 	helper.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
@@ -214,6 +225,12 @@ func TestReviewSandboxBlocksTerminalInjection(t *testing.T) {
 	}
 	log := out.String()
 	t.Logf("helper:\n%s", log)
+	// The attack must have run: the agent reported that it found no
+	// terminal or could not push into it.
+	ran := strings.Contains(log, "tty=closed") || strings.Contains(log, "sti=denied")
+	if !ran || strings.Contains(log, "REFUSED ") {
+		t.Fatalf("the agent never reached its terminal check:\n%s", log)
+	}
 	if !strings.Contains(log, "QUEUE[") || strings.Contains(log, "VERDICT_TTY_MARK\n]") ||
 		strings.Contains(log, "sti=pushed") {
 		t.Errorf("the agent pushed input into the operator's terminal:\n%s", log)
@@ -225,7 +242,10 @@ func TestReviewSandboxBlocksTerminalInjection(t *testing.T) {
 func runTTYHelper(t *testing.T) {
 	t.Helper()
 	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), ttyScript)
-	t.Logf("review refusal: %v; agent output:\n%s", ref, log)
+	if ref != nil {
+		fmt.Printf("REFUSED %v\n", ref)
+		t.Fatalf("the review never started: %v", ref)
+	}
 	if err := syscall.SetNonblock(0, true); err != nil {
 		t.Fatal(err)
 	}

@@ -314,10 +314,17 @@ func assertClaudeSettingsVerdict(t *testing.T, settings string, refuses bool) {
 	writeUnder(t, home, filepath.Join(".claude", "settings.json"), settings)
 	req.Environ = append(req.Environ, "HOME="+home)
 	_, ref := Run(t.Context(), req)
-	if got := ref != nil && ref.Code == codeReviewSandboxUnavailable; got != refuses {
-		t.Fatalf("refusal = %v, want refused = %v", ref, refuses)
+	if !refuses {
+		// The read-only case must launch: any refusal, or no launch, fails.
+		if ref != nil || cmdr.calls != 1 {
+			t.Fatalf("refusal = %v, agent runs = %d; want claude to launch once", ref, cmdr.calls)
+		}
+		return
 	}
-	if refuses && cmdr.calls != 0 {
+	if ref == nil || ref.Code != codeReviewSandboxUnavailable {
+		t.Fatalf("refusal = %v, want review-sandbox-unavailable", ref)
+	}
+	if cmdr.calls != 0 {
 		t.Errorf("the agent ran %d time(s) after the refusal", cmdr.calls)
 	}
 }

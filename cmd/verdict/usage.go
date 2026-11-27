@@ -115,7 +115,9 @@ func usageText() string {
 		"    runs in (sandbox-exec on macOS, bwrap on Linux): writes reach only its disposable snapshot,\n" +
 		"    a private TMPDIR, and the agent's own state paths, and credential files stay unreadable.\n" +
 		"    codex keeps its own workspace sandbox instead. With no sandbox (Windows, Linux without\n" +
-		"    bwrap) claude and codex run warned and every other agent refuses review-sandbox-unavailable;\n" +
+		"    bwrap) claude and codex run warned when they confine their own writes (claude: no --allow-shell,\n" +
+		"    no permission flags, no write allow rule in your Claude settings; codex: its own sandbox) and\n" +
+		"    every other agent refuses review-sandbox-unavailable; a policy that cannot be built refuses all;\n" +
 		"    --allow-unsandboxed-review runs every launch without it. verify --sandbox is untouched.\n" +
 		"    claude launches also carry a write grant to the launch's own bundle directory\n" +
 		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +

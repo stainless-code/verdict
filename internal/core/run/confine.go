@@ -1298,10 +1298,12 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 	}
 	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
 	launch, err := st.box.launch(v.cwd)
+	// Registered first: a setup that made the project directory and then
+	// failed leaves nothing behind.
+	defer st.dropLaunch(launch)
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}
-	defer st.dropLaunch(launch)
 	wrapped, err := launch.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}

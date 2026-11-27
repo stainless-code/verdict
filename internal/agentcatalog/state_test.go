@@ -246,3 +246,16 @@ func TestStatePathShape(t *testing.T) {
 		}
 	}
 }
+
+// TestSeedKeysAreCopiedPerLookup proves a caller changing a looked-up row's
+// seed allowlist changes neither the catalog nor a later lookup.
+func TestSeedKeysAreCopiedPerLookup(t *testing.T) {
+	codex, _ := Lookup("codex")
+	keys := codex.Launch.StateEphemeral[0].SeedKeys[fileCodexConfig]
+	want := keys[0]
+	keys[0] = "mcp_servers"
+	again, _ := Lookup("codex")
+	if got := again.Launch.StateEphemeral[0].SeedKeys[fileCodexConfig][0]; got != want {
+		t.Errorf("a later lookup's first codex seed key = %q, want %q", got, want)
+	}
+}

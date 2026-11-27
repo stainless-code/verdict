@@ -4,6 +4,8 @@ package run
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -15,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/gitcmd"
@@ -272,9 +275,17 @@ func assertEscapeLog(t *testing.T, home string, row *escapeRow, log string) {
 // own (planted) or still absent.
 func assertConfigKept(t *testing.T, home, rel string, planted bool) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(home, filepath.FromSlash(rel)))
-	if planted && string(raw) != operatorConfig || !planted && err == nil {
-		t.Errorf("~/%s = %q (%v), want the operator's own or nothing", rel, raw, err)
+	path := filepath.Join(home, filepath.FromSlash(rel))
+	if !planted {
+		// Absence must be proven: an entry of any kind there, or one that
+		// cannot be checked, fails.
+		if _, err := os.Lstat(path); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("~/%s exists or cannot be checked (%v), want nothing there", rel, err)
+		}
+		return
+	}
+	if raw, err := os.ReadFile(path); string(raw) != operatorConfig {
+		t.Errorf("~/%s = %q (%v), want the operator's own", rel, raw, err)
 	}
 }
 
@@ -373,7 +384,10 @@ func (s *siblingPhases) Run(ctx context.Context, cmd *core.Command) (core.Result
 // 1's own wrapper.
 func (s *siblingPhases) finderOne(ctx context.Context, cmd *core.Command, at int) {
 	defer s.once.Do(func() { close(s.done) })
-	awaitClose(s.ready)
+	if !awaitClose(s.ready) {
+		s.inner.t.Error("finder 2's view never became live: the attack did not run")
+		return
+	}
 	attack := *cmd
 	attack.Argv = append(slices.Clone(cmd.Argv[:at]), "/bin/sh", "-c", siblingAttack)
 	attack.Env = append(slices.Clone(cmd.Env), "SIBLING_VIEW="+filepath.Join("..", "..",
@@ -385,12 +399,15 @@ func (s *siblingPhases) finderOne(ctx context.Context, cmd *core.Command, at int
 	s.attack = res.Stdout + res.Stderr
 }
 
-// awaitClose waits for ch to close, or gives up after a bound so a broken
-// dispatch fails the test instead of hanging it.
-func awaitClose(ch chan struct{}) {
+// awaitClose waits for ch to close, false when it gives up after a bound so
+// a broken dispatch fails the test instead of hanging it; only a true return
+// orders the reads after the close.
+func awaitClose(ch chan struct{}) bool {
 	select {
 	case <-ch:
+		return true
 	case <-time.After(30 * time.Second):
+		return false
 	}
 }
 
@@ -516,10 +533,12 @@ const swapScript = "#!/bin/sh\n" +
 	"data=\"$HOME/.claude/debug\"\n" +
 	"case \"$*\" in\n" +
 	"*'Round 2/2:'*)\n" +
+	"  echo round2=ran\n" +
 	"  printf evil >> \"$data/.zshrc\" 2>/dev/null; printf evil >> \"$HOME/.zshrc\" 2>/dev/null\n" +
 	"  printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json ;;\n" +
 	"*)\n" +
 	"  /bin/rm -rf \"$data\" 2>/dev/null; /bin/ln -s \"$HOME\" \"$data\" 2>/dev/null\n" +
+	"  echo swap=tried\n" +
 	"  printf '{}' > .verdict/state/42/review.json ;;\n" +
 	"esac\n"
 
@@ -537,9 +556,19 @@ func TestReviewSandboxSurvivesAStateDirSwap(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".claude", "debug"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, ref, _ := sandboxedRunAs(t, "claude", root, home, swapScript, "2")
+	_, ref, log := sandboxedRunAs(t, "claude", root, home, swapScript, "2")
 	if got := string(readFile(t, filepath.Join(home, ".zshrc"))); got != operatorProfile {
 		t.Errorf("~/.zshrc = %q (refusal %v), want it unchanged", got, ref)
+	}
+	// The attack must have run: round 1 tried the swap, and then either the
+	// repair round ran against the pinned directory or the swapped-in link
+	// refused it.
+	if !strings.Contains(log, "swap=tried") {
+		t.Fatalf("round 1 never tried the swap (refusal %v):\n%s", ref, log)
+	}
+	refusedLink := ref != nil && strings.Contains(ref.Message, "symlink")
+	if !refusedLink && (ref != nil || !strings.Contains(log, "round2=ran")) {
+		t.Errorf("want the repair round to run or the swapped-in link refused; refusal %v:\n%s", ref, log)
 	}
 }
 
@@ -775,4 +804,58 @@ func TestCodexStartsNoOperatorMCPServer(t *testing.T) {
 	if !strings.Contains(log, `model = "m"`) {
 		t.Errorf("the operator's model did not reach codex:\n%s", log)
 	}
+}
+
+// TestLaunchProjectFailureLeavesNothingBehind proves a launch whose project
+// setup fails after making the project directory still hands back what it
+// made, so the cleanup registered before the error check removes it.
+func TestLaunchProjectFailureLeavesNothingBehind(t *testing.T) {
+	t.Parallel()
+	box, projects := projectBox(t, "bad\x00name") // a name the filesystem refuses
+	launch, err := box.launch(t.TempDir())
+	if err == nil {
+		t.Fatal("a project setup whose subdirectory cannot be made passed")
+	}
+	(&state{req: &core.RunRequest{}}).dropLaunch(launch)
+	if entries, err := os.ReadDir(projects); err != nil || len(entries) != 0 {
+		t.Errorf("projects after the failed setup = %v (%v), want the made directory removed", entries, err)
+	}
+}
+
+// TestLaunchProjectRefusesAFailedCreation proves a project directory that
+// cannot be made for a reason other than already existing refuses the
+// launch rather than starting it without its project state.
+func TestLaunchProjectRefusesAFailedCreation(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the read-only bits the creation error needs")
+	}
+	box, projects := projectBox(t, "memory")
+	if err := os.MkdirAll(projects, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(projects, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(projects, 0o700); err != nil {
+			t.Log(err)
+		}
+	})
+	if _, err := box.launch(t.TempDir()); err == nil {
+		t.Error("a project directory that could not be made passed as granted")
+	}
+}
+
+// projectBox is a box with claude's project state under a fresh HOME, its
+// project directories' read-only subdirectory named readOnly.
+func projectBox(t *testing.T, readOnly string) (*reviewBox, string) {
+	t.Helper()
+	home := t.TempDir()
+	projects := filepath.Join(home, ".claude", "projects")
+	return &reviewBox{
+		home:     home,
+		projects: &statePath{path: projects, base: home},
+		project:  &agentcatalog.ProjectState{Root: ".claude/projects", ReadOnly: []string{readOnly}, MaxSlug: 200},
+	}, projects
 }
