@@ -4289,7 +4289,9 @@ and `loop`'s review step — starts in its own disposable copy of the reviewed
 tree under the host temp directory — or, for a checkout that itself lies in
 the temp directory (a clone in `/tmp`), under `verdict/snapshots` in your user
 cache directory (`XDG_CACHE_HOME`, else the platform's own), so no snapshot
-sits beside the checkout; without one the review refuses. The tree is the
+sits beside the checkout; the cache directory must lie outside both the
+checkout and the temp directory, and without one the review refuses before
+creating anything. The tree is the
 content-bound snapshot
 `verify` takes (the index paths with their working-tree bytes, no filter,
 hook, or Git LFS program run), taken once per execution and copied afresh for
@@ -4335,13 +4337,25 @@ environment names the copy as `PWD` and its own private temp directory as
 git's command-scope `GIT_CONFIG_*`, whatever their case; a relative
 `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is resolved where you ran verdict.
 
-What a review agent can still do: read the reviewed tree and the bundle, and
-use the network. What it can no longer do: write your checkout through a path
-relative to its working directory, which is where every agent's edit tools
-aim, and which `claude`'s and `codex`'s own workspace rules confine it to.
-verdict does not OS-sandbox a review launch here (agents need the network),
-so a tool that accepts an absolute path, or climbs far enough with `..`,
-still reaches what your user account can write. A review of a directory
+The shared snapshot every copy is made from holds no symlink either, and is
+read-only (directories 0555, files 0444) and fingerprinted when it is taken: a
+launch that changed it anyway refuses every later launch's copy
+(`agent-spawn-failed`, naming the change) instead of handing the change on.
+
+What holds, and for whom. A copy is where an agent's writes land when they
+name paths relative to its working directory, which is where every agent's
+edit tools aim; nothing comes back from it but the expected artifacts.
+`claude` (its scoped `Edit` grant) and `codex` (its workspace sandbox, rooted
+at the copy) are kept inside their copy by their own tools. Any other agent
+runs as your user with nothing but the copy's layout around it: one that
+climbs out with `..` or names an absolute path can reach the shared snapshot
+(refused by its read-only bits, and caught by its fingerprint), a sibling
+launch's live copy — a finder can forge the artifact its sibling hands back —
+and whatever else your user account can write, your checkout included. The OS
+sandbox around a review launch is the boundary for those writes; until it
+wraps a review, review an untrusted pull request with `claude` or `codex`, or
+in a disposable checkout. A review agent can always read the reviewed tree
+and the bundle, and use the network. A review of a directory
 outside any git checkout — the temp directory `demo` reviews a pull request
 URL in, or a plain directory — copies none of it: its copy holds the bundle
 alone, from which a remote review reads its diff. A snapshot that cannot be

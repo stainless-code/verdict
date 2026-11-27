@@ -92,6 +92,9 @@ func (g Git) command(index string, args ...string) *core.Command {
 	if index != "" {
 		env = append(env, "GIT_INDEX_FILE="+index)
 	}
+	if g.recheck != nil && g.recheck.gitDir != "" {
+		env = append(env, "GIT_DIR="+g.recheck.gitDir, "GIT_WORK_TREE="+g.Root)
+	}
 	return &core.Command{Argv: gitcmd.Argv(g.Root, args...), Env: env, OutputCap: outputCap}
 }
 

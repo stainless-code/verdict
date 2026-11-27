@@ -29,10 +29,12 @@
 package contenttree
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -69,6 +71,10 @@ type Git struct {
 // reclean, the paths the snapshot holds as git's checkout expands them,
 // which are cleaned back to their blob.
 type recheck struct {
+	// gitDir, set once the snapshot's content moved in, is its admin
+	// directory: every git call there names it itself (GIT_DIR), never
+	// through the .git pointer in the content's directory.
+	gitDir  string
 	reclean []string
 }
 
@@ -159,7 +165,8 @@ func (g Git) materialize(ctx context.Context, tree, staging, dest string, expand
 		return err
 	}
 	in := Git{Cmdr: g.Cmdr, Root: dest, Env: g.Env, recheck: &recheck{reclean: expanded}}
-	if err := in.fill(ctx, staging); err != nil {
+	in, err = in.fill(ctx, staging, runtime.GOOS)
+	if err != nil {
 		return err
 	}
 	got, err := in.Worktree(ctx)
@@ -182,16 +189,70 @@ func (g Git) commitTree(ctx context.Context, tree string) (string, error) {
 }
 
 // fill moves the staged bytes into a fresh linked worktree at g.Root and reads
-// its index from HEAD (no working-tree write, so no filter or hook).
-func (g Git) fill(ctx context.Context, staging string) error {
-	if err := linkedCheckout(g.Root); err != nil {
-		return err
+// its index from HEAD (no working-tree write, so no filter or hook). The
+// content must never replace the worktree's .git pointer, which git follows:
+// no staged entry may name it (gitAlias), the pointer must be byte-identical
+// after the move, and every git call from then on names the admin directory
+// the pointer named before the move (the returned Git), never the pointer.
+// goos decides which names alias .git.
+func (g Git) fill(ctx context.Context, staging, goos string) (Git, error) {
+	pointer, err := linkedCheckout(g.Root)
+	if err != nil {
+		return g, err
+	}
+	if name := aliasingEntry(staging, goos); name != "" {
+		return g, jq.NewErrf("the content holds %q, which names the snapshot's .git", name)
 	}
 	if err := moveEntries(staging, g.Root); err != nil {
-		return err
+		return g, err
 	}
-	_, err := g.runEnv(ctx, nil, "read-tree", "HEAD")
-	return err
+	if after, err := linkedCheckout(g.Root); err != nil || !bytes.Equal(after, pointer) {
+		return g, jq.NewErrf("the snapshot's .git at %s changed while its content moved in", g.Root)
+	}
+	pinned := recheck{}
+	if g.recheck != nil {
+		pinned = *g.recheck
+	}
+	pinned.gitDir = adminDir(g.Root, pointer)
+	g.recheck = &pinned
+	_, err = g.runEnv(ctx, nil, "read-tree", "HEAD")
+	return g, err
+}
+
+// aliasingEntry is the first top-level entry of staging that names .git — in
+// any case, as APFS and NTFS fold it, or on Windows as a short (8.3) name
+// such as GIT~1 that NTFS may resolve to it — "" when none does.
+func aliasingEntry(staging, goos string) string {
+	names, err := os.ReadDir(staging)
+	if err != nil {
+		return ""
+	}
+	for _, d := range names {
+		if gitAlias(d.Name(), goos) {
+			return d.Name()
+		}
+	}
+	return ""
+}
+
+// gitAlias reports whether name may name a directory's .git on goos.
+func gitAlias(name, goos string) bool {
+	if strings.EqualFold(name, ".git") {
+		return true
+	}
+	upper := strings.ToUpper(name)
+	return goos == "windows" && strings.HasPrefix(upper, "GIT~") && len(upper) > len("GIT~") &&
+		strings.Trim(upper[len("GIT~"):], "0123456789") == ""
+}
+
+// adminDir is the admin directory a linked worktree's .git pointer names,
+// made absolute against the worktree.
+func adminDir(root string, pointer []byte) string {
+	dir := strings.TrimSpace(strings.TrimPrefix(string(pointer), "gitdir: "))
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	return dir
 }
 
 func (g Git) absolute() (Git, error) {
@@ -251,20 +312,20 @@ var identity = []string{
 // `gitdir:` file naming its admin directory. Anything else is not the
 // checkout git makes, and not one the sandbox can protect, since it pins the
 // root's git pointer.
-func linkedCheckout(dest string) error {
+func linkedCheckout(dest string) ([]byte, error) {
 	dotgit := filepath.Join(dest, ".git")
 	info, err := os.Lstat(dotgit)
 	if err != nil || !info.Mode().IsRegular() {
-		return jq.NewErrf("git worktree add left no .git file at %s", dest)
+		return nil, jq.NewErrf("git worktree add left no .git file at %s", dest)
 	}
 	raw, err := os.ReadFile(dotgit)
 	if err != nil {
-		return jq.Sealed("read "+dotgit, err)
+		return nil, jq.Sealed("read "+dotgit, err)
 	}
 	if !strings.HasPrefix(string(raw), "gitdir: ") {
-		return jq.NewErrf("%s is not a linked worktree's gitdir: file", dotgit)
+		return nil, jq.NewErrf("%s is not a linked worktree's gitdir: file", dotgit)
 	}
-	return nil
+	return raw, nil
 }
 
 // RemoveCheckout removes a Snapshot's worktree and its registration, even

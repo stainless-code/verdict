@@ -489,7 +489,7 @@ func checkoutRoot(dir string) string {
 
 func envMap(getenv func(string) string) map[string]string {
 	keys := []string{
-		"HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "NO_COLOR",
+		"HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME", "TMPDIR", "TMP", "TEMP", "NO_COLOR",
 		"REVIEW_OUTPUT_FORMAT", "REVIEW_LAYOUT_COMPACT", "REVIEW_COLOR_MODE",
 		"REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL", "REVIEW_PUBLISH_DIAGRAMS_ANCHORED",
 		"REVIEW_PUBLISH_FOOTER",

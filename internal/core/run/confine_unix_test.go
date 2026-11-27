@@ -123,3 +123,72 @@ func TestReadPinnedNeverWaitsOnAFIFO(t *testing.T) {
 		t.Errorf("readPinned = %q, want the FIFO refused", why)
 	}
 }
+
+// TestSharedSnapshotHoldsNoSymlinkAndIsReadOnly proves the shared snapshot
+// every copy is made from — which sits beside each copy, at `../..` — holds
+// none of the tree's symlinks and nothing writable: a committed link to the
+// operator's own source, written through from a copy, changes nothing.
+func TestSharedSnapshotHoldsNoSymlinkAndIsReadOnly(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	writeUnder(t, root, filepath.Join("src", "main.go"), originalMain)
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(resolved, "src", "main.go"), filepath.Join(root, "src", "escape")); err != nil {
+		t.Fatal(err)
+	}
+	testenv.Checkout(t, root)
+	var found []string
+	act := func(cmd *core.Command) {
+		found = probeSharedSnapshot(t, cmd)
+		inView(t, cmd, viewReview, reviewDoc)
+	}
+	if _, ref, _ := confinedRun(t, root, "pi", act); ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	if want := []string{"snapshot"}; !slices.Equal(found, want) {
+		t.Errorf("the shared snapshot showed %q, want only itself, sealed", found)
+	}
+	assertCheckoutUntouched(t, root)
+}
+
+// probeSharedSnapshot finds the shared snapshot beside the copy cmd runs in
+// and reports it, every symlink and every writable entry in it, after
+// writing through the committed src/escape link as a hostile agent would.
+func probeSharedSnapshot(t *testing.T, cmd *core.Command) []string {
+	t.Helper()
+	var found []string
+	wrappers, _ := filepath.Glob(filepath.Join(cmd.Dir, "..", "..", "*", "src")) //nolint:errcheck // a constant pattern
+	for _, src := range wrappers {
+		snap := filepath.Dir(src)
+		found = append(found, "snapshot")
+		_ = os.WriteFile(filepath.Join(src, "escape"), []byte("planted\n"), 0o600) //nolint:errcheck // a refused write is the point
+		found = append(found, unsealed(snap)...)
+	}
+	return found
+}
+
+// unsealed names every symlink and every writable entry below dir.
+func unsealed(dir string) []string {
+	var found []string
+	_ = filepath.WalkDir(dir, func(p string, _ os.DirEntry, _ error) error { //nolint:errcheck // reports below
+		if info, err := os.Lstat(p); err == nil {
+			found = append(found, unsealedEntry(p, info)...)
+		}
+		return nil
+	})
+	return found
+}
+
+// unsealedEntry names one entry when it is a symlink or writable.
+func unsealedEntry(p string, info os.FileInfo) []string {
+	switch {
+	case info.Mode()&os.ModeSymlink != 0:
+		return []string{"link=" + p}
+	case info.Mode().Perm()&0o222 != 0:
+		return []string{"writable=" + p}
+	}
+	return nil
+}

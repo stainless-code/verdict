@@ -319,7 +319,39 @@ func fakeCanonical(t *testing.T, files map[string]string) (*workspace, string) {
 	for rel, body := range files {
 		writeUnder(t, canon, filepath.FromSlash(rel), body)
 	}
-	return &workspace{taken: true, tree: canon, base: t.TempDir(), name: "tree", git: contenttree.Git{Root: root}}, root
+	ws := &workspace{taken: true, tree: canon, base: t.TempDir(), name: "tree", git: contenttree.Git{Root: root}}
+	if err := ws.seal(canon); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := contenttree.RemoveTree(canon); err != nil {
+			t.Error(err)
+		}
+	})
+	return ws, root
+}
+
+// TestPoisonedSnapshotRefusesTheNextCopy proves a change to the shared
+// snapshot after it was taken — a launch that wrote outside its own copy —
+// refuses every later copy instead of handing the change on.
+func TestPoisonedSnapshotRefusesTheNextCopy(t *testing.T) {
+	t.Parallel()
+	ws, root := fakeCanonical(t, map[string]string{"src/main.go": originalMain})
+	expect := expectedArtifacts(here, reviewFile, nil)
+	if _, err := ws.open(t.Context(), bundleDir(root), here, expect, 30); err != nil {
+		t.Fatalf("a sealed snapshot refused its first copy: %v", err)
+	}
+	poisoned := filepath.Join(ws.tree, "src", "main.go")
+	if err := os.Chmod(poisoned, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(poisoned, []byte("package main // poisoned\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	if err == nil || !strings.Contains(err.Error(), "changed after it was taken") {
+		t.Errorf("a poisoned snapshot gave a copy (err = %v)", err)
+	}
 }
 
 // TestViewLeavesOutStateAndGitWhateverTheirCase proves the tree's own copy of
@@ -507,11 +539,41 @@ func TestSnapshotBaseKeepsSnapshotsApartFromTheCheckout(t *testing.T) {
 	if _, err := snapshotBase(root, tmp, map[string]string{}, true); err == nil {
 		t.Error("a checkout inside the temp directory got a base without a cache directory")
 	}
-	if _, err := snapshotBase(root, tmp, map[string]string{"XDG_CACHE_HOME": root}, true); err == nil {
-		t.Error("a cache directory inside the checkout was used")
-	}
 	if got, err := snapshotBase(root, tmp, nil, false); err != nil || got != tmp {
 		t.Errorf("a tree outside git got base %q (%v), want the temp directory", got, err)
+	}
+}
+
+// TestSnapshotBaseRefusesACacheInTheCheckoutCreatingNothing proves a cache
+// directory inside the checkout — HOME unset reads as the working
+// directory — refuses before anything is created there.
+func TestSnapshotBaseRefusesACacheInTheCheckoutCreatingNothing(t *testing.T) {
+	t.Parallel()
+	tmp := contenttree.Resolved(t.TempDir())
+	root := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, env := range []map[string]string{{"XDG_CACHE_HOME": filepath.Join(root, "cache")}, {"HOME": root}} {
+		if _, err := snapshotBase(root, tmp, env, true); err == nil {
+			t.Errorf("a cache directory inside the checkout was used (%v)", env)
+		}
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) > 0 {
+		t.Errorf("the refusal left %d entries in the checkout (%v)", len(entries), err)
+	}
+}
+
+// TestSnapshotBaseRefusesACacheInTheHostTempDirectory proves a checkout in
+// the host temp directory never keeps its snapshots there either: a cache
+// directory inside it refuses.
+func TestSnapshotBaseRefusesACacheInTheHostTempDirectory(t *testing.T) {
+	t.Parallel()
+	tmp := contenttree.Resolved(os.TempDir())
+	root := contenttree.Resolved(t.TempDir())
+	cache := contenttree.Resolved(t.TempDir())
+	if _, err := snapshotBase(root, tmp, map[string]string{"XDG_CACHE_HOME": cache}, true); err == nil {
+		t.Errorf("a cache directory %s in the host temp directory %s was used", cache, tmp)
 	}
 }
 
@@ -629,44 +691,105 @@ func (a *crashingAgent) Run(_ context.Context, cmd *core.Command) (core.Result, 
 	return core.Result{ExitCode: 7}, nil
 }
 
-// TestSiblingFindersCannotReachEachOther proves a finder's view holds no
-// other phase's directory, and a finder writing a sibling's artifact into
-// its copy changes nothing of the sibling's: only its own review comes back.
-func TestSiblingFindersCannotReachEachOther(t *testing.T) {
+// TestFinderViewHoldsNoSiblingPhase proves a finder's view holds no other
+// phase's directory: a sibling's artifact is never in the copy it works in.
+func TestFinderViewHoldsNoSiblingPhase(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.FindersRaw = "2"
 	var saw atomicFlag
-	commander.act = forgeSibling(t, &saw)
-	resp, ref := TwoFinders(t.Context(), req)
-	if ref != nil {
+	commander.act = func(phase, view string, _ *core.Command) {
+		if heldPhases(filepath.Dir(view), phase) {
+			saw.set()
+		}
+	}
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatalf("two finders refused: %v", ref)
 	}
 	if saw.get() {
-		t.Error("a finder's view held its sibling's phase directory")
+		t.Error("a phase's view held another phase's directory")
 	}
-	for _, phase := range []string{"x-finder-1", "x-finder-2"} {
-		if raw := readPhaseBytes(t, filepath.Join(commander.dir, phase, reviewFile)); strings.Contains(string(raw), "forged") {
-			t.Errorf("%s's review was overwritten by its sibling", phase)
-		}
-	}
-	assertWarned(t, resp.Warnings, "wrote outside its review artifacts: .verdict/state/42/x-finder-")
 }
 
-// forgeSibling is a finder that looks for its sibling's phase directory in
-// its view, noting one it finds, and forges the sibling's review there.
-func forgeSibling(t *testing.T, saw *atomicFlag) func(phase, view string, cmd *core.Command) {
-	t.Helper()
-	return func(phase, view string, _ *core.Command) {
-		sibling := map[string]string{"x-finder-1": "x-finder-2", "x-finder-2": "x-finder-1"}[phase]
-		if sibling == "" {
-			return
-		}
-		if _, err := os.Stat(filepath.Join(filepath.Dir(view), sibling)); err == nil {
-			saw.set()
-		}
-		writeUnder(t, filepath.Join(filepath.Dir(view), sibling), reviewFile, `{"forged":true}`)
+// heldPhases reports whether the bundle copy at bundle holds a phase
+// directory other than own.
+func heldPhases(bundle, own string) bool {
+	return slices.ContainsFunc([]string{"x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"}, func(other string) bool {
+		_, err := os.Stat(filepath.Join(bundle, other))
+		return other != own && err == nil
+	})
+}
+
+// TestUnsandboxedFinderCanForgeItsSibling pins the documented limitation of
+// the copies alone: one finder climbing `../..` into its sibling's live copy
+// forges the review the sibling hands back. Without the OS sandbox only an
+// agent whose own tools keep it in its copy (claude's scoped grant, codex's
+// workspace sandbox) is safe from this; the sandbox denies it.
+func TestUnsandboxedFinderCanForgeItsSibling(t *testing.T) {
+	t.Parallel()
+	req, commander := coordinatorFixture(t)
+	req.FindersRaw = "2"
+	commander.act = forgeLiveSibling(t)
+	if _, ref := TwoFinders(t.Context(), req); ref != nil && ref.Code == codeCanceled {
+		t.Fatalf("two finders canceled: %v", ref)
 	}
+	raw := readPhaseBytes(t, filepath.Join(commander.dir, "x-finder-2", reviewFile))
+	if !strings.Contains(string(raw), forgedClaim) {
+		t.Errorf("x-finder-2's review = %s, want finder 1's forgery: the limitation this test pins moved", raw)
+	}
+}
+
+// forgedClaim marks the review finder 1 forges in finder 2's copy.
+const forgedClaim = "Forged by finder 1."
+
+// forgeLiveSibling is a finder pair in which finder 2 hands finder 1 its own
+// working directory and waits, and finder 1 writes a forged review into it
+// by climbing from its own: `../../<finder 2's wrapper>/<view>/...`.
+func forgeLiveSibling(t *testing.T) func(phase, view string, cmd *core.Command) {
+	t.Helper()
+	live, forged := make(chan string, 1), make(chan struct{})
+	return func(phase, _ string, cmd *core.Command) {
+		switch phase {
+		case "x-finder-2":
+			live <- cmd.Dir
+			waitFor(t, forged)
+		case "x-finder-1":
+			forgeInto(t, cmd.Dir, receive(t, live))
+			close(forged)
+		}
+	}
+}
+
+// receive is the value ch delivers, "" when the test ends first.
+func receive(t *testing.T, ch <-chan string) string {
+	t.Helper()
+	select {
+	case v := <-ch:
+		return v
+	case <-t.Context().Done():
+		return ""
+	}
+}
+
+// waitFor waits until ch closes or the test ends.
+func waitFor(t *testing.T, ch <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-t.Context().Done():
+	}
+}
+
+// forgeInto writes a forged x-finder-2 review into the live copy other,
+// reached from the copy at cwd by climbing `../..`.
+func forgeInto(t *testing.T, cwd, other string) {
+	t.Helper()
+	if other == "" {
+		return
+	}
+	sibling := filepath.Join(cwd, "..", "..", filepath.Base(filepath.Dir(other)), filepath.Base(other))
+	writeUnder(t, filepath.Join(sibling, ".verdict", "state", "42", "x-finder-2"), reviewFile,
+		strings.Replace(coordinatorReview, `"schema_version":"1",`, `"schema_version":"1","summary":"`+forgedClaim+`",`, 1))
 }
 
 // atomicFlag is a flag parallel phases may set.
@@ -740,13 +863,14 @@ func TestReviewSnapshotLeavesNothingBehind(t *testing.T) {
 	if _, ref, _ := confinedRun(t, root, nameClaude, hostileAct(t)); ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
-	base := filepath.Join(fixtureEnv(root)["XDG_CACHE_HOME"], "verdict", "snapshots")
-	entries, err := os.ReadDir(base)
+	entries, err := os.ReadDir(fixtureEnv(root)["TMPDIR"])
 	if err != nil {
-		t.Fatalf("the run put its snapshots elsewhere: %v", err)
+		t.Fatal(err)
 	}
 	for _, e := range entries {
-		t.Errorf("left behind %s", e.Name())
+		if strings.HasPrefix(e.Name(), contenttree.SnapshotPrefix) {
+			t.Errorf("left behind %s", e.Name())
+		}
 	}
 }
 

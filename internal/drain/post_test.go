@@ -138,9 +138,9 @@ func runDrainTest(t *testing.T, root string, cmdr core.Commander, args []string)
 		Cmd: "drain", JSONMode: true, Effective: cli.Defaults(),
 	}
 	req := Request{
-		// The fixture checkout sits in the temp directory, so a draft's review
-		// snapshot goes to a cache directory beside it.
-		Runtime:  &core.Runtime{Env: map[string]string{"XDG_CACHE_HOME": filepath.Join(filepath.Dir(root), "cache")}, Commander: cmdr},
+		// The fixture checkout sits in the host temp directory; a temp
+		// directory beside it keeps a draft's review snapshot apart from it.
+		Runtime:  &core.Runtime{Env: map[string]string{"TMPDIR": siblingTmp(t, root)}, Commander: cmdr},
 		Repo:     "acme/app",
 		Pr:       "7",
 		RepoRoot: root,
@@ -520,4 +520,14 @@ func runConcurrentPosts(t *testing.T, root string, cmdr *drainHostStub) ([]int, 
 	close(start)
 	wg.Wait()
 	return codes, outs, diags
+}
+
+// siblingTmp makes and returns a temp directory beside root.
+func siblingTmp(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(root), "tmp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

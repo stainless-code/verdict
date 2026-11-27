@@ -179,11 +179,14 @@ func missingLookPath(string) (string, error) {
 	return "", errors.New("executable file not found in $PATH")
 }
 
-// fixtureEnv is the injected environment a fixture over root runs under:
-// its user cache directory sits beside root, where review snapshots of a
-// checkout inside the temp directory go.
+// fixtureEnv is the injected environment a fixture over root runs under: its
+// temp directory sits beside root, so root is not inside it and its review
+// snapshots go there. The directory is made here, as a host's temp
+// directory always exists.
 func fixtureEnv(root string) map[string]string {
-	return map[string]string{"XDG_CACHE_HOME": filepath.Join(filepath.Dir(root), "cache")}
+	tmp := filepath.Join(filepath.Dir(root), "tmp")
+	_ = os.MkdirAll(tmp, 0o700) //nolint:errcheck // a failure surfaces as the run's own refusal
+	return map[string]string{"TMPDIR": tmp}
 }
 
 // request builds a service request whose PATH probe resolves the agent, with

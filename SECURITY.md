@@ -99,7 +99,8 @@ In scope (highest priority first):
   the walk saw, and written atomically into the pinned bundle — while anything
   else it wrote is discarded and named in a warning. A copy holds no symlink,
   no `.git` or `.verdict/state` of the tree's in any case, and no pointer into
-  the operator's repository; outside a git checkout it holds the bundle alone.
+  the operator's repository, and neither does the shared snapshot it is made
+  from; outside a git checkout it holds the bundle alone.
   Also in scope: the shell denial every review launch carries unless
   `--allow-shell` is set (`claude`, `pi`, `bob`; the operator may not pass the
   flag the denial uses), `claude`'s `--setting-sources=user` and
@@ -112,10 +113,15 @@ In scope (highest priority first):
   link, runs in a copy holding a symlink or a path back to the operator's
   repository, loads the reviewed tree's own agent configuration, runs without
   the denial, or carries a grant verdict renders wider than the launch's own
-  bundle directory, is a vulnerability. Review launches are not OS-sandboxed
-  here — agents need the network — so an agent tool that accepts an absolute
-  path still reaches what the operator's account can write; that is the
-  documented limitation, not a finding.
+  bundle directory, is a vulnerability. The copies are not a write boundary
+  by themselves: `claude` and `codex` stay in their copy through their own
+  tools (its scoped grant, its workspace sandbox), but any other agent runs as
+  the operator's user and can climb out with `..` or an absolute path — to a
+  sibling launch's copy (forging the artifact it hands back) or the
+  operator's files. The shared snapshot is symlink-free, read-only, and
+  fingerprinted, so a change to it refuses every later copy. Writes outside
+  a copy are the OS sandbox's to stop; without it, that is the documented
+  limitation, not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -102,9 +103,13 @@ type workspace struct {
 	base     string
 	tree     string
 	name     string
-	git      contenttree.Git
-	mu       sync.Mutex
-	taken    bool
+	// print fingerprints the snapshot as it was taken; dropped names the
+	// tree's symlinks the snapshot left out.
+	print   string
+	dropped []string
+	git     contenttree.Git
+	mu      sync.Mutex
+	taken   bool
 }
 
 // newWorkspace is the execution's workspace over the tree the agent starts
@@ -165,7 +170,7 @@ func (w *workspace) canonical(ctx context.Context) (string, error) {
 // from which a remote review reads its diff.
 func (w *workspace) take(ctx context.Context) (string, error) {
 	git := insideGitCheckout(w.git.Root)
-	base, err := snapshotBase(w.git.Root, contenttree.Resolved(os.TempDir()), w.env, git)
+	base, err := snapshotBase(w.git.Root, contenttree.Resolved(tempDir(w.env)), w.env, git)
 	if err != nil {
 		return "", err
 	}
@@ -191,7 +196,96 @@ func (w *workspace) take(ctx context.Context) (string, error) {
 	if err := w.detach(gctx, dir); err != nil {
 		return "", jq.Sealed("detach the snapshot", errors.Join(err, w.git.RemoveCheckout(context.WithoutCancel(ctx), dir)))
 	}
+	if err := w.seal(dir); err != nil {
+		return "", jq.Sealed("seal the snapshot", errors.Join(err, contenttree.RemoveTree(dir)))
+	}
 	return dir, nil
+}
+
+// seal readies the snapshot to be shared by every launch's copy: it drops
+// every committed symlink — the snapshot sits beside each copy, where a
+// write through `../../<snapshot>/<link>` would follow a link to the
+// operator's own files — makes the rest read-only (directories 0555, files
+// 0444) so a plain file tool's write is refused, and fingerprints it, so a
+// change any launch made despite that is caught before the next copy.
+func (w *workspace) seal(dir string) error {
+	dropped, err := stripLinks(dir)
+	if err != nil {
+		return err
+	}
+	w.dropped = dropped
+	if err := readOnly(dir); err != nil {
+		return err
+	}
+	w.print, err = fingerprint(dir)
+	return err
+}
+
+// stripLinks removes every symlink below dir, never following one, and
+// names them, sorted.
+func stripLinks(dir string) ([]string, error) {
+	var links []string
+	err := walkRel(dir, func(p, rel string, d fs.DirEntry) error {
+		if d.Type()&fs.ModeSymlink == 0 {
+			return nil
+		}
+		links = append(links, rel)
+		return os.Remove(p)
+	})
+	slices.Sort(links)
+	if err != nil {
+		return nil, jq.Sealed("drop the snapshot's symlinks", err)
+	}
+	return links, nil
+}
+
+// readOnly takes write access to every file and directory below dir, and to
+// dir itself, deepest directories last so the walk can still descend.
+func readOnly(dir string) error {
+	dirs := []string{dir}
+	err := walkRel(dir, func(p, _ string, d fs.DirEntry) error {
+		if d.IsDir() {
+			dirs = append(dirs, p)
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err //nolint:wrapcheck // sealed below
+		}
+		return os.Chmod(p, info.Mode().Perm()&^writeBits)
+	})
+	for i := len(dirs) - 1; i >= 0 && err == nil; i-- {
+		err = os.Chmod(dirs[i], readOnlyDirMode)
+	}
+	if err != nil {
+		return jq.Sealed("make the snapshot read-only", err)
+	}
+	return nil
+}
+
+// readOnlyDirMode is a sealed snapshot directory: listed and entered, never
+// written; writeBits are every class's write permission.
+const (
+	readOnlyDirMode = 0o555
+	writeBits       = 0o222
+)
+
+// fingerprint names every entry below dir by path, mode, size, and
+// modification time: cheap, and changed by any write a launch could make.
+func fingerprint(dir string) (string, error) {
+	h := sha256.New()
+	err := walkRel(dir, func(_, rel string, d fs.DirEntry) error {
+		info, err := d.Info()
+		if err != nil {
+			return err //nolint:wrapcheck // sealed below
+		}
+		fmt.Fprintf(h, "%s\x00%s\x00%d\x00%d\n", rel, info.Mode(), info.Size(), info.ModTime().UnixNano())
+		return nil
+	})
+	if err != nil {
+		return "", jq.Sealed("fingerprint the snapshot", err)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // detach turns the snapshot into a plain directory as soon as it is named:
@@ -231,16 +325,51 @@ func snapshotBase(root, tmp string, env map[string]string, git bool) (string, er
 		return "", jq.NewErrf("the checkout %s is inside the temp directory %s, and no cache directory "+
 			"(XDG_CACHE_HOME or HOME) is set to hold its review snapshots apart from it", root, tmp)
 	}
+	// Checked before anything is created: a cache under the checkout (HOME
+	// unset reads as the working directory) must not grow a directory there.
+	if apart := apartFrom(contenttree.Resolved(cache), root, tmp); apart != "" {
+		return "", jq.NewErrf("the cache directory %s %s — set XDG_CACHE_HOME outside both the checkout "+
+			"and the temp directory", cache, apart)
+	}
 	dir := filepath.Join(cache, "verdict", "snapshots")
 	if err := os.MkdirAll(dir, viewDirMode); err != nil {
 		return "", jq.Sealed(opCreate+dir, err)
 	}
 	dir = contenttree.Resolved(dir)
-	if contenttree.Inside(root, dir) || contenttree.Inside(dir, root) {
-		return "", jq.NewErrf("the cache directory %s and the checkout %s hold one another — "+
-			"set XDG_CACHE_HOME apart from both", dir, root)
+	if apart := apartFrom(dir, root, tmp); apart != "" {
+		return "", jq.NewErrf("the snapshot directory %s %s", dir, apart)
 	}
 	return dir, nil
+}
+
+// apartFrom says how dir fails to stand apart from the checkout at root and
+// the temp directory tmp, "" when it holds neither and lies in neither.
+func apartFrom(dir, root, tmp string) string {
+	switch {
+	case contenttree.Inside(root, dir), contenttree.Inside(dir, root):
+		return "and the checkout hold one another"
+	case contenttree.Inside(tmp, dir):
+		return "lies in the temp directory beside the checkout"
+	}
+	return ""
+}
+
+// goosWindows is Windows' GOOS, whose temp and cache variables differ.
+const goosWindows = "windows"
+
+// tempDir is the host temp root the injected environment names — TMPDIR, or
+// TMP and TEMP on Windows — else the process's own.
+func tempDir(env map[string]string) string {
+	keys := []string{"TMPDIR"}
+	if runtime.GOOS == goosWindows {
+		keys = []string{"TMP", "TEMP"}
+	}
+	for _, key := range keys {
+		if dir := env[key]; filepath.IsAbs(dir) {
+			return dir
+		}
+	}
+	return os.TempDir()
 }
 
 // cacheDir is the user cache directory the injected environment names:
@@ -252,7 +381,7 @@ func cacheDir(env map[string]string) string {
 	}
 	home := env["HOME"]
 	switch {
-	case runtime.GOOS == "windows":
+	case runtime.GOOS == goosWindows:
 		if local := env["LOCALAPPDATA"]; filepath.IsAbs(local) {
 			return local
 		}
@@ -307,7 +436,8 @@ type view struct {
 	tmp     string
 	bundle  string
 	rel     string
-	// dropped names the tree's symlinks the view leaves out: every one.
+	// dropped names the tree's symlinks the view leaves out: every one, as
+	// the snapshot dropped them.
 	dropped []string
 }
 
@@ -329,6 +459,9 @@ func (w *workspace) open(ctx context.Context, bundle, own string, expect expecta
 	if err != nil {
 		return nil, err
 	}
+	if err := w.unchanged(tree); err != nil {
+		return nil, err
+	}
 	rel, err := bundleRel(bundle)
 	if err != nil {
 		return nil, err
@@ -340,12 +473,27 @@ func (w *workspace) open(ctx context.Context, bundle, own string, expect expecta
 	}
 	v := &view{
 		wrapper: wrapper, cwd: filepath.Join(wrapper, w.name), tmp: filepath.Join(wrapper, privateTmp), rel: rel,
+		dropped: slices.Clone(w.dropped),
 	}
 	v.bundle = filepath.Join(v.cwd, filepath.FromSlash(rel))
 	if err := v.fill(tree, bundle, own, expect); err != nil {
 		return nil, jq.Sealed("fill the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
 	}
 	return v, nil
+}
+
+// unchanged refuses a snapshot whose fingerprint moved since it was taken: a
+// launch wrote outside its own copy, into the read-only snapshot every later
+// copy is made from.
+func (w *workspace) unchanged(tree string) error {
+	if tree == "" {
+		return nil
+	}
+	if now, err := fingerprint(tree); err != nil || now != w.print {
+		return jq.NewErrf("the shared review snapshot at %s changed after it was taken — a launch wrote "+
+			"outside its own copy, so no later launch is copied from it", tree)
+	}
+	return nil
 }
 
 // bundleRel is the bundle's path below the reviewed tree's root, in slash
