@@ -126,6 +126,7 @@ run_case() {
     EVAL_STUBBIN="$dir/stubbin" \
     EVAL_STUBLOG="$dir/gh-stub.log" \
     XDG_STATE_HOME="$dir/state" \
+    XDG_CACHE_HOME="$dir/cache" \
     bash "$c" >"$dir/output.log" 2>&1
   st=$?
   set -e

@@ -178,6 +178,9 @@ func userEnv(t *testing.T, override map[string]string) map[string]string {
 	env := map[string]string{
 		"GIT_CONFIG_SYSTEM": os.DevNull,
 		"GIT_CONFIG_GLOBAL": writeGitConfig(t, ""),
+		// The fixture repository sits in the temp directory, so a replay's
+		// review snapshots go to a cache directory apart from it.
+		"XDG_CACHE_HOME": t.TempDir(),
 	}
 	maps.Copy(env, override)
 	return env

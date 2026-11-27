@@ -20,6 +20,9 @@ import (
 // log is guarded: the coordinator runs each pair of phases at once, so two
 // launches append to it from two goroutines.
 type phaseCommander struct {
+	// act, when set, runs after a phase wrote its artifact, inside the
+	// phase's view: the bundle copy's phase directory and the launch.
+	act         func(phase, view string, cmd *core.Command)
 	t           *testing.T
 	dir         string
 	cancel      context.CancelFunc
@@ -134,6 +137,9 @@ func (p *phaseCommander) writePhase(phase string, attempt int, cmd *core.Command
 		return res
 	}
 	writeUnder(p.t, view, p.artifactName(phase), p.artifactBytes(phase, attempt))
+	if p.act != nil {
+		p.act(phase, view, cmd)
+	}
 	return core.Result{}
 }
 

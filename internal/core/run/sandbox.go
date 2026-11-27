@@ -2,7 +2,6 @@ package run
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -53,7 +52,6 @@ const mechanismNone = "none"
 // paths, which exist only once a launch makes them.
 const (
 	placeholderSnapshot = "{snapshot}"
-	placeholderTmpdir   = "{tmpdir}"
 )
 
 // reviewProbeTimeout and reviewProbeCap bound the no-op the mechanism proves
@@ -124,7 +122,7 @@ func (b *reviewBox) data(render bool) *core.RunSandbox {
 	if render {
 		// A placeholder holds no control character, so the profile always
 		// builds; a failure would only leave the wrapper out.
-		if wrapper, err := b.prefix([]string{placeholderSnapshot, placeholderTmpdir}, false); err == nil {
+		if wrapper, err := b.prefix([]string{placeholderSnapshot}, false); err == nil {
 			out.Wrapper = wrapper
 		}
 	}
@@ -172,9 +170,9 @@ func (st *state) bareBox(def *agentcatalog.Launch, owned bool) bool {
 	switch {
 	case def.Confinement == agentcatalog.OwnSandbox && len(def.SnapshotWriteArgs) > 0 && !owned:
 		st.box = &reviewBox{posture: postureSelfSandboxed}
-		st.boxWarn(core.Msgf("%s runs in its own %s sandbox, not verdict's review sandbox (a nested macOS sandbox "+
+		st.boxWarn(core.Msgf("%s runs in its own sandbox (%s), not verdict's review sandbox (a nested macOS sandbox "+
 			"fails): it confines its own writes to the review snapshot, but nothing hides your credential files "+
-			"(~/.ssh, ~/.aws, gh tokens) from its reads", def.Name, strings.Join(def.SnapshotWriteArgs[1:], " ")))
+			"(~/.ssh, ~/.aws, gh tokens) from its reads", def.Name, strings.Join(def.SnapshotWriteArgs, " ")))
 		return true
 	case st.req.AllowUnsandboxedReview:
 		st.box = &reviewBox{posture: postureUnsandboxed}
@@ -346,29 +344,15 @@ func tmpEnv(private string) []string {
 	return []string{"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private}
 }
 
-// wrapped is one launch's sandboxed command: its argv and environment, and
-// the private TMPDIR verdict removes after it.
-type wrapped struct {
-	private string
-	argv    []string
-	env     []string
-}
-
-// wrap builds one launch's sandbox around argv: a fresh private TMPDIR, and
-// writes allowed only there, in the launch's wrapper directory, and in the
-// row's state paths.
-func (b *reviewBox) wrap(wrapper string, argv, env []string) (*wrapped, error) {
-	private, err := hostsandbox.MakePrivateDir("")
+// wrap builds one launch's sandbox around argv: writes allowed only in the
+// launch's wrapper directory — its working copy and the private TMPDIR the
+// view puts beside it — and in the row's state paths.
+func (b *reviewBox) wrap(wrapper string, argv []string) ([]string, error) {
+	prefix, err := b.prefix([]string{wrapper}, true)
 	if err != nil {
-		return nil, jq.Sealed("make the private TMPDIR", err)
+		return nil, jq.Sealed("build the review sandbox", err)
 	}
-	prefix, err := b.prefix([]string{wrapper, private}, true)
-	if err != nil {
-		return nil, jq.Sealed("build the review sandbox", errors.Join(err, hostsandbox.RemovePrivateDir(private)))
-	}
-	return &wrapped{
-		argv: slices.Concat(prefix, argv), env: hostsandbox.OverrideEnv(env, tmpEnv(private)), private: private,
-	}, nil
+	return slices.Concat(prefix, argv), nil
 }
 
 // prefix is the mechanism's argv before the agent's: writable are the

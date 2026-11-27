@@ -168,10 +168,10 @@ type RunData struct { //nolint:govet // field order is the published property or
 
 // RunSandbox is the review launches' OS-sandbox posture: the mechanism that
 // wraps them (sandbox-exec on macOS, bwrap on Linux, none), the posture, and
-// on a --print render the wrapper argv with the per-launch paths as
-// placeholders ({snapshot} for the launch's snapshot directory, {tmpdir} for
-// its private TMPDIR). It is absent when the runtime's commander starts no
-// host process.
+// on a --print render the wrapper argv with a placeholder for the
+// per-launch path ({snapshot}: the launch's snapshot directory, which holds
+// its working copy and its private TMPDIR). It is absent when the runtime's
+// commander starts no host process.
 type RunSandbox struct {
 	Mechanism string   `enum:"sandbox-exec|bwrap|none"                          json:"mechanism"`
 	Posture   string   `enum:"sandboxed|self-sandboxed|unsandboxed|unavailable" json:"posture"`

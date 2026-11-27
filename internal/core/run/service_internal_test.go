@@ -179,11 +179,18 @@ func missingLookPath(string) (string, error) {
 	return "", errors.New("executable file not found in $PATH")
 }
 
+// fixtureEnv is the injected environment a fixture over root runs under:
+// its user cache directory sits beside root, where review snapshots of a
+// checkout inside the temp directory go.
+func fixtureEnv(root string) map[string]string {
+	return map[string]string{"XDG_CACHE_HOME": filepath.Join(filepath.Dir(root), "cache")}
+}
+
 // request builds a service request whose PATH probe resolves the agent, with
 // the round loop opted out: these fixtures' agents write one review and never
 // rewrite it, which is the one-shot contract. The loop has its own fixtures.
 func request(root string, cmdr core.Commander) *core.RunRequest {
-	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
+	rt := &core.Runtime{Env: fixtureEnv(root), Now: time.Now, Commander: cmdr}
 	return &core.RunRequest{
 		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,
 		LookPath: func(string) (string, error) {
@@ -534,14 +541,15 @@ func assertLauncherKeys(t *testing.T, rec map[string]any) {
 // and land in the record verbatim, with the directive reduced to a placeholder.
 func assertPassThroughArgv(t *testing.T, got []string, shape []any) {
 	t.Helper()
-	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
+	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
 	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
 		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
 	}
 	if shape[len(shape)-1] != promptPlaceholder {
 		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
 	}
-	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != settingsFlag || shape[4] != reviewGrantFlag || shape[5] != "--model" || shape[6] != "opus" {
+	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != settingsFlag || shape[4] != mcpFlag || shape[5] != reviewGrantFlag ||
+		shape[6] != "--model" || shape[7] != "opus" {
 		t.Errorf("recorded argv = %v, want the discovery restriction then the pass-through flags verbatim", shape)
 	}
 }
@@ -1260,9 +1268,9 @@ func assertPrintWroteNothing(t *testing.T, root string) {
 // stage that declares no single hint.
 func argvParts(kind string) []string {
 	if kind == recipe.StageSynthesize {
-		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, reviewGrantFlag, modelFlag, "opus"}
+		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, modelFlag, "opus"}
 	}
-	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, reviewGrantFlag}
+	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag}
 }
 
 // TestRunPrintRendersOneStage proves --print --stage composes one stage's
@@ -1399,7 +1407,7 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
+	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
 		t.Fatalf("argv =\n%q\nwant\n%q", resp.Data.Argv, want)
 	}
 	if _, ok := runData(t, resp)["stage"]; ok {
@@ -1518,7 +1526,7 @@ func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, reviewGrantFlag, "--model", "haiku"}
+	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "haiku"}
 	if len(resp.Data.Argv) != len(want)+1 || !slices.Equal(resp.Data.Argv[:len(want)], want) {
 		t.Fatalf("argv = %q, want %q then the lens directive", resp.Data.Argv, want)
 	}

@@ -144,8 +144,8 @@ func TestReviewWithoutSandboxSelfConfinedRowsRunAndWarn(t *testing.T) {
 	for _, tc := range []struct{ agent, warning, posture string }{
 		{agent: "claude", posture: "unsandboxed", warning: "claude runs unsandboxed — it confines its own writes, " +
 			"but its reads are not confined"},
-		{agent: "codex", posture: "self-sandboxed", warning: "codex runs in its own workspace-write sandbox, " +
-			"not verdict's review sandbox"},
+		{agent: "codex", posture: "self-sandboxed", warning: "codex runs in its own sandbox (--sandbox workspace-write -c " +
+			"sandbox_workspace_write.exclude_slash_tmp=true), not verdict's review sandbox"},
 	} {
 		t.Run(tc.agent, func(t *testing.T) {
 			t.Parallel()
@@ -224,12 +224,11 @@ var printedWrapper = map[string]struct {
 	"darwin": {mechanism: "sandbox-exec", parts: []string{
 		"/usr/bin/sandbox-exec -p (version 1)(allow default)",
 		`(allow file-read* file-write* (subpath "{snapshot}"))`,
-		`(allow file-read* file-write* (subpath "{tmpdir}"))`,
 		`/.ssh"))`,
 	}},
 	"linux": {mechanism: "bwrap", parts: []string{
 		"bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid ",
-		"--bind {snapshot} {snapshot} --bind {tmpdir} {tmpdir}",
+		"--bind {snapshot} {snapshot} --new-session",
 		"--new-session --die-with-parent --",
 	}},
 }

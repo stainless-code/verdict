@@ -22,7 +22,7 @@ export interface RunData {
   repair?: RunRepair | null;
   /** The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key. */
   budget?: ReviewBudget | null;
-  /** The review launches' OS-sandbox posture: the mechanism (sandbox-exec, bwrap, or none) and whether launches were sandboxed, self-sandboxed by the agent, unsandboxed (an agent that confines its own writes on a host with no sandbox, or --allow-unsandboxed-review), or unavailable (a --print render whose launch would refuse review-sandbox-unavailable). A --print render adds the wrapper argv with {snapshot} and {tmpdir} placeholders. Absent when the runtime's commander starts no host process. */
+  /** The review launches' OS-sandbox posture: the mechanism (sandbox-exec, bwrap, or none) and whether launches were sandboxed, self-sandboxed by the agent, unsandboxed (an agent that confines its own writes on a host with no sandbox, or --allow-unsandboxed-review), or unavailable (a --print render whose launch would refuse review-sandbox-unavailable). A --print render adds the wrapper argv with a {snapshot} placeholder for the launch's snapshot directory, which holds its working copy and private TMPDIR. Absent when the runtime's commander starts no host process. */
   sandbox?: RunSandbox | null;
   [key: string]: unknown;
 }

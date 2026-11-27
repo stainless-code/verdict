@@ -210,6 +210,7 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.AllowShell)
+	args.review = reviewArgs(def)
 	if ref := st.refuseLinkedPaths(&target); ref != nil {
 		return nil, ref
 	}
@@ -231,11 +232,26 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 func (st *state) refuseOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
 	arg := ownedFlagArg(def, st.req.PassThrough, st.req.AllowShell)
 	if arg == "" {
-		return nil
+		return st.refuseReviewOwnedFlag(def)
 	}
 	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s is verdict's shell denial on a review launch; got '%s' "+
 		"after -- (drop it, or pass --allow-shell to own the agent's tool set)", def.Name,
 		strings.Join(def.DiscoveryOwnedFlags, "/"), arg))
+}
+
+// refuseReviewOwnedFlag refuses a review launch whose `--` tail spells one of
+// the row's ReviewOwnedFlags: each would undo the flags that keep the
+// reviewed tree's own configuration from loading, or point the agent at
+// configuration or directories outside its review snapshot.
+func (st *state) refuseReviewOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
+	arg := reviewOwnedArg(def, st.req.PassThrough, st.req.AllowShell)
+	if arg == "" {
+		return nil
+	}
+	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s are verdict's on a review launch, which loads no "+
+		"configuration from the reviewed tree and stays in its snapshot; got '%s' after -- (drop it, or pass "+
+		"--allow-shell to own the agent's tool set and configuration)", def.Name,
+		strings.Join(def.ReviewOwnedFlags, "/"), arg))
 }
 
 // refuseLinkedPaths refuses a launch whose bundle holds a symlink, a
@@ -655,6 +671,8 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
+	// review is the row's ReviewArgs, carried by every review launch.
+	review []string
 	// grant is the row's review-write grant scoped to this launch's output
 	// directory, nil when none applies (see reviewGrant).
 	grant []string

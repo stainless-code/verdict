@@ -1049,7 +1049,7 @@ func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 	lines := f.launchLines(t)
 	// The launch starts in its review snapshot of the replay checkout, whose
 	// bundle copy sits at the repository-relative path the grant names.
-	if lines[0][2] != "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user "+
+	if lines[0][2] != "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config "+
 		"--allowedTools=Edit(./.verdict/state/local-bt-1-ra/**) --model fast" {
 		t.Errorf("agent argv = %q; want the restriction, the bundle grant, then the pass-through", lines[0][2])
 	}

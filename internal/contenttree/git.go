@@ -22,7 +22,6 @@ const (
 	cmdLsFiles    = "ls-files"
 	cmdHashObject = "hash-object"
 	cmdWorktree   = "worktree"
-	cmdRevParse   = "rev-parse"
 	flagZ         = "-z"
 	nul           = "\x00"
 )

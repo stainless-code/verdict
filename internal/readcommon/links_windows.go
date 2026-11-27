@@ -4,6 +4,7 @@ package readcommon
 
 import (
 	"io/fs"
+	"os"
 	"syscall"
 )
 
@@ -27,6 +28,18 @@ func HasHardLinks(path string, _ fs.FileInfo) bool {
 	infoErr := syscall.GetFileInformationByHandle(handle, &data)
 	closeErr := syscall.CloseHandle(handle)
 	if infoErr != nil || closeErr != nil {
+		return true
+	}
+	return data.NumberOfLinks > 1
+}
+
+// OpenedHasHardLinks reports whether the opened file f has more than one hard
+// link, read from its own handle (GetFileInformationByHandle), so a name
+// swapped after the open cannot answer for it. A handle that cannot be
+// inspected reports true.
+func OpenedHasHardLinks(f *os.File, _ fs.FileInfo) bool {
+	var data syscall.ByHandleFileInformation
+	if err := syscall.GetFileInformationByHandle(syscall.Handle(f.Fd()), &data); err != nil {
 		return true
 	}
 	return data.NumberOfLinks > 1

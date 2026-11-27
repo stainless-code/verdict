@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -51,8 +52,12 @@ const (
 )
 
 // maxArtifactBytes caps one artifact copied back, the cap record reads an
-// agent file under.
-const maxArtifactBytes = 32 << 20
+// agent file under; maxChunkCostBytes caps one chunk's cost record.
+const (
+	maxArtifactBytes  = 32 << 20
+	maxChunkCostBytes = 1 << 20
+	mebibyte          = 1 << 20
+)
 
 // viewDirMode and viewFileMode are the owner bits every copied directory and
 // file keeps on top of its own, so verdict can fill and later remove it.
@@ -71,10 +76,17 @@ const shownStrays = 10
 // be setting up, recording, or cleaning up its snapshot, verify's margin.
 const snapshotSlack = time.Hour
 
+// gitDir is a checkout's git entry; privateTmp is the view's own temp
+// directory beside its tree.
+const (
+	gitDir     = ".git"
+	privateTmp = "tmp"
+)
+
 // The reasons an artifact is not copied back, as its warning names them.
 const (
 	whyUnreadable = "unreadable"
-	whyOversized  = "over 32 MiB"
+	whyNotRegular = "not a regular file"
 )
 
 // workspace is one execution's reviewed tree: snapshotted once, on the
@@ -85,16 +97,14 @@ const (
 // the tree every later launch reads.
 type workspace struct {
 	err      error
+	env      map[string]string
 	deadline time.Time
-	tmp      string
+	base     string
 	tree     string
 	name     string
 	git      contenttree.Git
 	mu       sync.Mutex
 	taken    bool
-	// copied marks a tree outside any git checkout, snapshotted by a plain
-	// copy (takeCopy).
-	copied bool
 }
 
 // newWorkspace is the execution's workspace over the tree the agent starts
@@ -109,8 +119,13 @@ func (st *state) newWorkspace(timeout, rounds int) *workspace {
 	}
 	root := st.workDir()
 	spawn := time.Duration(timeout)*time.Second + agentGracePeriod
+	var env map[string]string
+	if st.req.Runtime != nil {
+		env = st.req.Env
+	}
 	return &workspace{
 		git:      contenttree.Git{Cmdr: st.commander(), Root: root, Env: st.req.Environ},
+		env:      env,
 		deadline: time.Now().Add(time.Duration(2*rounds+2)*spawn + snapshotSlack),
 		name:     viewName(root),
 	}
@@ -120,14 +135,16 @@ func (st *state) newWorkspace(timeout, rounds int) *workspace {
 // the agent's working directory still reads as that project.
 func viewName(root string) string {
 	name := filepath.Base(contenttree.Resolved(root))
-	if name == "" || name == here || name == up || strings.ContainsAny(name, `/\:`) {
+	if name == "" || name == here || name == up || strings.ContainsAny(name, `/\:`) ||
+		strings.EqualFold(name, privateTmp) {
 		return "tree"
 	}
 	return name
 }
 
 // canonical takes the execution's snapshot on the first call and returns it
-// on every call: concurrent finders wait for the one snapshot.
+// on every call: concurrent finders wait for the one snapshot. A tree
+// outside any git checkout is "": its views hold the bundle alone.
 func (w *workspace) canonical(ctx context.Context) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -139,16 +156,23 @@ func (w *workspace) canonical(ctx context.Context) (string, error) {
 }
 
 // take sweeps the snapshots earlier runs stranded and snapshots the tree,
-// under the temp root verify validates: never inside the checkout.
+// under a parent that holds neither the checkout nor is held by it.
+//
+// Outside any git checkout — a review run from a plain directory, the temp
+// root a `demo` of a pull request URL reviews in — there is no index to
+// name content by, and copying the directory as it stands could copy a
+// whole home directory into every launch: the view holds the bundle alone,
+// from which a remote review reads its diff.
 func (w *workspace) take(ctx context.Context) (string, error) {
-	tmp, err := contenttree.TempRoot(w.git.Root)
+	git := insideGitCheckout(w.git.Root)
+	base, err := snapshotBase(w.git.Root, contenttree.Resolved(os.TempDir()), w.env, git)
 	if err != nil {
-		return "", jq.Sealed("choose the snapshot directory", err)
+		return "", err
 	}
-	w.tmp = tmp
-	if !insideGitCheckout(w.git.Root) {
-		w.copied = true
-		return w.takeCopy()
+	w.base = base
+	if !git {
+		contenttree.SweepStranded(w.git.Root, base, time.Now())
+		return "", nil
 	}
 	if w.git.Cmdr == nil {
 		return "", errNoCommander
@@ -159,19 +183,93 @@ func (w *workspace) take(ctx context.Context) (string, error) {
 	gctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	defer context.AfterFunc(ctx, cancel)()
 	defer cancel()
-	contenttree.SweepSnapshots(gctx, w.git, tmp, time.Now())
-	dir, _, err := w.git.SnapshotUnder(gctx, tmp, w.deadline)
+	contenttree.SweepSnapshots(gctx, w.git, base, time.Now())
+	dir, _, err := w.git.SnapshotUnder(gctx, base, w.deadline)
 	if err != nil {
 		return "", jq.Sealed("snapshot the reviewed tree", err)
 	}
+	if err := w.detach(gctx, dir); err != nil {
+		return "", jq.Sealed("detach the snapshot", errors.Join(err, w.git.RemoveCheckout(context.WithoutCancel(ctx), dir)))
+	}
 	return dir, nil
+}
+
+// detach turns the snapshot into a plain directory as soon as it is named:
+// its .git — a linked worktree's pointer into the operator's repository — is
+// removed and the registration pruned, so nothing beside a view leads back to
+// the checkout.
+func (w *workspace) detach(ctx context.Context, dir string) error {
+	pointer := filepath.Join(dir, gitDir)
+	if info, err := os.Lstat(pointer); err != nil || !info.Mode().IsRegular() {
+		return jq.NewErrf("%s is not a worktree's .git file", pointer)
+	}
+	if err := os.Remove(pointer); err != nil {
+		return jq.Sealed("remove "+pointer, err)
+	}
+	if err := w.git.Prune(ctx); err != nil {
+		return jq.Sealed("prune the snapshot's registration", err)
+	}
+	return nil
+}
+
+// snapshotBase is the parent every snapshot and view of a run lives under:
+// the host temp root, validated as verify validates it (never inside the
+// checkout). A git checkout that itself lies inside the temp root — a
+// clone in /tmp — would sit beside every view and inside the temp roots an
+// agent's own sandbox opens, so its snapshots go to verdict's directory
+// under the user cache directory instead, which must neither hold the
+// checkout nor lie inside it; without one the run refuses.
+func snapshotBase(root, tmp string, env map[string]string, git bool) (string, error) {
+	if contenttree.Inside(root, tmp) {
+		return "", jq.NewErrf("the temp directory %s is inside the checkout — set TMPDIR outside it", tmp)
+	}
+	if !git || !contenttree.Inside(tmp, root) {
+		return tmp, nil
+	}
+	cache := cacheDir(env)
+	if cache == "" {
+		return "", jq.NewErrf("the checkout %s is inside the temp directory %s, and no cache directory "+
+			"(XDG_CACHE_HOME or HOME) is set to hold its review snapshots apart from it", root, tmp)
+	}
+	dir := filepath.Join(cache, "verdict", "snapshots")
+	if err := os.MkdirAll(dir, viewDirMode); err != nil {
+		return "", jq.Sealed(opCreate+dir, err)
+	}
+	dir = contenttree.Resolved(dir)
+	if contenttree.Inside(root, dir) || contenttree.Inside(dir, root) {
+		return "", jq.NewErrf("the cache directory %s and the checkout %s hold one another — "+
+			"set XDG_CACHE_HOME apart from both", dir, root)
+	}
+	return dir, nil
+}
+
+// cacheDir is the user cache directory the injected environment names:
+// XDG_CACHE_HOME when absolute, else the platform's own under HOME
+// (LOCALAPPDATA on Windows), "" when none is set.
+func cacheDir(env map[string]string) string {
+	if xdg := env["XDG_CACHE_HOME"]; filepath.IsAbs(xdg) {
+		return xdg
+	}
+	home := env["HOME"]
+	switch {
+	case runtime.GOOS == "windows":
+		if local := env["LOCALAPPDATA"]; filepath.IsAbs(local) {
+			return local
+		}
+		return ""
+	case !filepath.IsAbs(home):
+		return ""
+	case runtime.GOOS == "darwin":
+		return filepath.Join(home, "Library", "Caches")
+	}
+	return filepath.Join(home, ".cache")
 }
 
 // insideGitCheckout reports whether root or a directory above it holds a
 // .git entry, the way git itself finds a checkout.
 func insideGitCheckout(root string) bool {
 	for dir := contenttree.Resolved(root); ; dir = filepath.Dir(dir) {
-		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
+		if _, err := os.Lstat(filepath.Join(dir, gitDir)); err == nil {
 			return true
 		}
 		if filepath.Dir(dir) == dir {
@@ -180,45 +278,16 @@ func insideGitCheckout(root string) bool {
 	}
 }
 
-// takeCopy snapshots a tree outside any git checkout — the temp root a
-// `demo` of a pull request URL reviews in — by copying it as it stands,
-// verdict's state left out: there is no index to name content by, and the
-// launch is confined to its copy all the same. A tree inside a checkout
-// always takes the contenttree snapshot, and a failure there refuses.
-func (w *workspace) takeCopy() (string, error) {
-	dir, err := contenttree.NewSnapshotDir(w.git.Root, w.tmp, w.deadline)
-	if err != nil {
-		return "", jq.Sealed("create the snapshot directory", err)
-	}
-	src := contenttree.Resolved(w.git.Root)
-	copied := walkRel(src, func(p, rel string, d fs.DirEntry) error {
-		if rel == stateRel {
-			return skipEntry(d)
-		}
-		return copyEntry(p, filepath.Join(dir, filepath.FromSlash(rel)), rel, d, map[string]stamp{}, nil)
-	})
-	if copied != nil {
-		return "", jq.Sealed("copy the reviewed tree", errors.Join(copied, contenttree.RemoveTree(dir)))
-	}
-	return dir, nil
-}
-
 // close removes the snapshot, once; a later call is a no-op.
-func (w *workspace) close(ctx context.Context) error {
+func (w *workspace) close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	tree := w.tree
 	w.tree = ""
-	var err error
-	switch {
-	case tree == "":
+	if tree == "" {
 		return nil
-	case w.copied:
-		err = contenttree.RemoveTree(tree)
-	default:
-		err = w.git.RemoveCheckout(context.WithoutCancel(ctx), tree)
 	}
-	if err != nil {
+	if err := contenttree.RemoveTree(tree); err != nil {
 		return jq.Sealed("remove "+tree, err)
 	}
 	return nil
@@ -226,29 +295,28 @@ func (w *workspace) close(ctx context.Context) error {
 
 // view is one launch's disposable copy of the tree. The agent starts in cwd,
 // a directory of the wrapper, so even a write to `../` lands in a directory
-// verdict owns and deletes.
+// verdict owns and deletes; tmp beside it is the launch's private TMPDIR.
 type view struct {
-	// tree and seed stamp every entry verdict copied in: the tree's
-	// non-directory entries by cwd-relative path, the bundle's files by
-	// bundle-relative path. A stamp that changed is a write.
+	// tree and seed stamp every entry verdict copied in: the tree's files by
+	// cwd-relative path, the bundle's files by bundle-relative path. A
+	// stamp that changed is a write.
 	tree    map[string]stamp
 	seed    map[string]stamp
 	wrapper string
 	cwd     string
+	tmp     string
 	bundle  string
 	rel     string
-	// dropped names the tree's symlinks the view leaves out: each one
-	// resolved outside the view.
+	// dropped names the tree's symlinks the view leaves out: every one.
 	dropped []string
 }
 
-// stamp is what an entry looked like when verdict copied it in. sum is set
+// stamp is what a file looked like when verdict copied it in. sum is set
 // only for an expected artifact, whose rewrite with the same size in the
 // same timestamp tick must still read as a write.
 type stamp struct {
 	mtime time.Time
 	size  int64
-	mode  fs.FileMode
 	sum   [sha256.Size]byte
 }
 
@@ -256,7 +324,7 @@ type stamp struct {
 // deadline, the tree copied into it, and the bundle at its relative path.
 // own is the launch's output directory relative to the bundle ("." for the
 // bundle itself); expect names the artifacts the launch may write.
-func (w *workspace) open(ctx context.Context, bundle, own string, expect func(string) bool, timeout int) (*view, error) {
+func (w *workspace) open(ctx context.Context, bundle, own string, expect expectation, timeout int) (*view, error) {
 	tree, err := w.canonical(ctx)
 	if err != nil {
 		return nil, err
@@ -266,11 +334,13 @@ func (w *workspace) open(ctx context.Context, bundle, own string, expect func(st
 		return nil, err
 	}
 	deadline := time.Now().Add(time.Duration(timeout)*time.Second + agentGracePeriod + snapshotSlack)
-	wrapper, err := contenttree.NewSnapshotDir(w.git.Root, w.tmp, deadline)
+	wrapper, err := contenttree.NewSnapshotDir(w.git.Root, w.base, deadline)
 	if err != nil {
 		return nil, jq.Sealed("create the view directory", err)
 	}
-	v := &view{wrapper: wrapper, cwd: filepath.Join(wrapper, w.name), rel: rel}
+	v := &view{
+		wrapper: wrapper, cwd: filepath.Join(wrapper, w.name), tmp: filepath.Join(wrapper, privateTmp), rel: rel,
+	}
 	v.bundle = filepath.Join(v.cwd, filepath.FromSlash(rel))
 	if err := v.fill(tree, bundle, own, expect); err != nil {
 		return nil, jq.Sealed("fill the view", errors.Join(err, contenttree.RemoveTree(wrapper)))
@@ -294,23 +364,26 @@ func bundleRel(bundle string) (string, error) {
 }
 
 // fill copies the tree, then the bundle, into the view, and gives it a git
-// directory of its own.
-func (v *view) fill(tree, bundle, own string, expect func(string) bool) error {
+// directory and a temp directory of its own.
+func (v *view) fill(tree, bundle, own string, expect expectation) error {
+	if err := os.Mkdir(v.tmp, viewDirMode); err != nil {
+		return jq.Sealed(opCreate+v.tmp, err)
+	}
 	if err := v.copyTree(tree); err != nil {
 		return err
 	}
-	v.dropEscapingLinks()
 	if err := standaloneGit(v.cwd); err != nil {
 		return err
 	}
-	if err := realDirs(v.cwd, v.rel); err != nil {
+	if err := freshBundleDirs(v.cwd, v.rel); err != nil {
 		return err
 	}
 	return v.copyBundle(bundle, own, expect)
 }
 
 // walkRel walks src and hands visit each entry below it with its slash-form
-// path relative to src; a walk error stops the walk.
+// path relative to src; a walk error stops the walk. It never follows a
+// link.
 func walkRel(src string, visit func(p, rel string, d fs.DirEntry) error) error {
 	//nolint:wrapcheck // the caller names the walked directory around the reason
 	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
@@ -325,74 +398,40 @@ func walkRel(src string, visit func(p, rel string, d fs.DirEntry) error) error {
 	})
 }
 
-// gitDir is a checkout's git entry.
-const gitDir = ".git"
+// treeExcluded reports a tree path the view never holds, its segments
+// compared whatever their case (APFS and NTFS fold them): any `.git` at any
+// depth — a linked worktree's pointer, a nested repository's hooks and
+// config — verdict's state directory, where the bundle copy goes, and a
+// `.verdict` that is not a real directory, which that copy would follow.
+func treeExcluded(rel string, d fs.DirEntry) bool {
+	if slices.ContainsFunc(strings.Split(rel, slash), func(seg string) bool { return strings.EqualFold(seg, gitDir) }) {
+		return true
+	}
+	return contenttree.HasPathPrefixFold(rel, stateRel) || (strings.EqualFold(rel, config.VerdictDir) && !d.IsDir())
+}
 
-// copyTree copies the snapshot into cwd, stamping each non-directory entry.
-// Verdict's state directory stays out — the snapshot holds only its index
-// version, never a bundle — and so does a tracked .verdict that is not a
-// real directory, which the bundle copy below it would otherwise follow. The
-// snapshot's .git stays out too: it is a linked worktree's pointer into the
-// operator's repository, through whose hooks and config an agent with plain
-// file tools could reach code that runs on the operator's next commit. A
-// symlink whose target, read as a path, leaves the view is left out
-// (escapes) and named, never followed.
+// copyTree copies the snapshot into cwd, stamping each file, outside the
+// excluded paths (treeExcluded). No symlink is copied: a link can lead out
+// of the view, directly or through another, and a review reads code, so
+// every committed symlink is left out, never followed, and named.
 func (v *view) copyTree(src string) error {
 	v.tree = map[string]stamp{}
 	if err := os.Mkdir(v.cwd, viewDirMode); err != nil {
 		return jq.Sealed(opCreate+v.cwd, err)
 	}
+	if src == "" {
+		return nil
+	}
 	return walkRel(src, func(p, rel string, d fs.DirEntry) error {
 		switch {
-		case rel == stateRel || rel == gitDir || (rel == config.VerdictDir && !d.IsDir()):
+		case treeExcluded(rel, d):
 			return skipEntry(d)
-		case d.Type()&fs.ModeSymlink != 0 && escapes(p, rel):
+		case d.Type()&fs.ModeSymlink != 0:
 			v.dropped = append(v.dropped, rel)
 			return nil
 		}
 		return copyEntry(p, filepath.Join(v.cwd, filepath.FromSlash(rel)), rel, d, v.tree, nil)
 	})
-}
-
-// escapes reports whether the symlink at p, at rel below the view's root,
-// names a target outside the view: an absolute or rooted target, one whose
-// `..` climbs above the root, or one that cannot be read.
-func escapes(p, rel string) bool {
-	target, err := os.Readlink(p)
-	return err != nil || targetEscapes(rel, target)
-}
-
-// targetEscapes reports whether a symlink at rel naming target leads outside
-// the tree it sits in, read as a path.
-func targetEscapes(rel, target string) bool {
-	if filepath.IsAbs(target) || filepath.VolumeName(target) != "" || strings.HasPrefix(target, slash) ||
-		strings.HasPrefix(target, `\`) {
-		return true
-	}
-	joined := path.Join(path.Dir(rel), filepath.ToSlash(target))
-	return joined == up || strings.HasPrefix(joined, up+slash)
-}
-
-// dropEscapingLinks removes every copied symlink that, resolved through the
-// view's other links, still lands outside the view: a target that reads as
-// inside can climb out through another link's `..`. A link that does not
-// resolve stays only while the path it names is inside the view.
-func (v *view) dropEscapingLinks() {
-	for rel, st := range v.tree {
-		if st.mode&fs.ModeSymlink != 0 && v.leadsOut(rel) {
-			delete(v.tree, rel)
-			v.dropped = append(v.dropped, rel)
-		}
-	}
-	slices.Sort(v.dropped)
-}
-
-// leadsOut removes the copied symlink at rel when it resolves outside the
-// view and reports whether it did.
-func (v *view) leadsOut(rel string) bool {
-	link := filepath.Join(v.cwd, filepath.FromSlash(rel))
-	resolved, err := filepath.EvalSymlinks(link)
-	return err == nil && !contenttree.Inside(v.cwd, resolved) && os.Remove(link) == nil
 }
 
 // gitFiles are the files of an empty repository: enough for an agent CLI
@@ -424,7 +463,7 @@ func standaloneGit(cwd string) error {
 // outputs, and the launch's own output directory, but no other phase
 // directory (x-*) — a parallel phase is writing its own while this launch
 // starts, and this launch reads none of it. Lock files stay out.
-func (v *view) copyBundle(src, own string, expect func(string) bool) error {
+func (v *view) copyBundle(src, own string, expect expectation) error {
 	v.seed = map[string]stamp{}
 	ownTop, _, _ := strings.Cut(own, slash)
 	return walkRel(src, func(p, rel string, d fs.DirEntry) error {
@@ -435,7 +474,8 @@ func (v *view) copyBundle(src, own string, expect func(string) bool) error {
 		case strings.HasSuffix(d.Name(), storelock.LockSuffix):
 			return nil
 		}
-		return copyEntry(p, filepath.Join(v.bundle, filepath.FromSlash(rel)), rel, d, v.seed, expect)
+		return copyEntry(p, filepath.Join(v.bundle, filepath.FromSlash(rel)), rel, d,
+			v.seed, func(rel string) bool { return expect(rel) > 0 })
 	})
 }
 
@@ -447,27 +487,43 @@ func skipEntry(d fs.DirEntry) error {
 	return nil
 }
 
-// realDirs creates rel's directories under root and checks each is a real
-// directory, so the bundle copy can never land through a link.
-func realDirs(root, rel string) error {
+// freshBundleDirs creates rel's directories under root, each a real
+// directory: the top one (.verdict) may already hold tree content, but every
+// one below it must be new, so the bundle copy holds exactly what verdict
+// copied into it, never a tree file that reached the same path through a
+// case-folding filesystem.
+func freshBundleDirs(root, rel string) error {
 	dir := root
-	for part := range strings.SplitSeq(rel, slash) {
+	for i, part := range strings.Split(rel, slash) {
 		dir = filepath.Join(dir, part)
-		if err := os.Mkdir(dir, viewDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
-			return jq.Sealed(opCreate+dir, err)
-		}
-		if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
-			return jq.NewErrf("%s is not a directory in the review snapshot", dir)
+		if err := realDir(dir, i == 0); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
-// copyEntry copies one walked entry to dst — a directory, a symlink as a
-// symlink, a regular file with its mode and modification time — and stamps
-// it in stamps under rel. A socket, FIFO, or device is left out. expect, when
-// set, selects the files whose bytes are summed too.
-func copyEntry(src, dst, rel string, d fs.DirEntry, stamps map[string]stamp, expect func(string) bool) error {
+// realDir creates dir — or, when mayExist, keeps one already there — and
+// checks it is a real directory, not a link to one.
+func realDir(dir string, mayExist bool) error {
+	err := os.Mkdir(dir, viewDirMode)
+	switch {
+	case errors.Is(err, fs.ErrExist) && !mayExist:
+		return jq.NewErrf("%s already exists in the review snapshot before verdict copied the bundle there", dir)
+	case err != nil && !errors.Is(err, fs.ErrExist):
+		return jq.Sealed(opCreate+dir, err)
+	}
+	if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+		return jq.NewErrf("%s is not a directory in the review snapshot", dir)
+	}
+	return nil
+}
+
+// copyEntry copies one walked directory or regular file to dst, a file with
+// its mode and modification time, and stamps a file in stamps under rel.
+// Anything else — a symlink, socket, FIFO, or device — is left out. summed,
+// when set, selects the files whose bytes are summed too.
+func copyEntry(src, dst, rel string, d fs.DirEntry, stamps map[string]stamp, summed func(string) bool) error {
 	info, err := d.Info()
 	if err != nil {
 		return jq.Sealed("stat "+src, err)
@@ -477,35 +533,20 @@ func copyEntry(src, dst, rel string, d fs.DirEntry, stamps map[string]stamp, exp
 		if err := os.Mkdir(dst, info.Mode().Perm()|viewDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
 			return jq.Sealed(opCreate+dst, err)
 		}
-	case d.Type()&fs.ModeSymlink != 0:
-		return copyLink(src, dst, rel, stamps)
 	case d.Type().IsRegular():
-		sum, err := copyFile(src, dst, info, expect != nil && expect(rel))
+		sum, err := copyFile(src, dst, info, summed != nil && summed(rel))
 		stamps[rel] = stamp{mtime: info.ModTime(), size: info.Size(), sum: sum}
 		return err
 	}
 	return nil
 }
 
-// copyLink recreates one symlink as a symlink, never following it.
-func copyLink(src, dst, rel string, stamps map[string]stamp) error {
-	target, err := os.Readlink(src)
-	if err != nil {
-		return jq.Sealed("read link "+src, err)
-	}
-	if err := os.Symlink(target, dst); err != nil {
-		return jq.Sealed("link "+dst, err)
-	}
-	stamps[rel] = stamp{mode: fs.ModeSymlink, size: int64(len(target))}
-	return nil
-}
-
 // copyFile copies one regular file into a fresh path, keeping its permission
 // bits and modification time, and returns its sum when asked.
 func copyFile(src, dst string, info fs.FileInfo, summed bool) (sum [sha256.Size]byte, err error) {
-	in, err := os.Open(src)
+	in, err := openWalked(src, info)
 	if err != nil {
-		return sum, jq.Sealed("open "+src, err)
+		return sum, err
 	}
 	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_EXCL, info.Mode().Perm()|viewFileMode)
@@ -531,19 +572,70 @@ func copyFile(src, dst string, info fs.FileInfo, summed bool) (sum [sha256.Size]
 	return sum, nil
 }
 
-// env is the launch environment with PWD naming the view, as a shell
-// starting there would set it, no OLDPWD — the operator's own PWD names their
-// checkout — and none of git's location variables (GIT_DIR and friends),
-// which would point git inside the view back at the operator's repository.
+// openWalked opens the regular file at src without blocking, refusing it
+// unless it is still the file the walk saw (info).
+func openWalked(src string, info fs.FileInfo) (*os.File, error) {
+	in, err := readcommon.OpenNoBlock(src)
+	if err != nil {
+		return nil, jq.Sealed("open "+src, err)
+	}
+	if opened, err := in.Stat(); err != nil || !opened.Mode().IsRegular() || !os.SameFile(opened, info) {
+		_ = in.Close()
+		return nil, jq.NewErrf("%s changed while it was copied", src)
+	}
+	return in, nil
+}
+
+// droppedEnv are the variables a review launch never inherits, each naming
+// a directory of the operator's that the view replaces: the working
+// directory a shell or package manager recorded (PWD and OLDPWD, npm's and
+// yarn's INIT_CWD, PROJECT_CWD and npm_config_local_prefix, claude's
+// CLAUDE_PROJECT_DIR), git's ceiling and command-scope configuration, and
+// the temp directory, which the view's private one replaces.
+var droppedEnv = []string{
+	"PWD", "OLDPWD", "INIT_CWD", "PROJECT_CWD", "npm_config_local_prefix", "CLAUDE_PROJECT_DIR",
+	"GIT_CEILING_DIRECTORIES", "GIT_CONFIG_COUNT", "TMPDIR", "TMP", "TEMP",
+}
+
+// droppedEnvPrefixes are the families of droppedEnv: git's numbered
+// command-scope configuration.
+var droppedEnvPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
+
+// configHomes are the agent configuration directories a relative value of
+// which would resolve inside the view instead of where the operator meant.
+var configHomes = []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME"}
+
+// env is the launch environment for the view: PWD names the view and
+// TMPDIR, TMP and TEMP its private temp directory; the variables naming the
+// operator's own directories (droppedEnv) and git's location variables
+// (GIT_DIR and friends), which would point git inside the view back at the
+// operator's repository, are dropped; and a relative agent configuration
+// directory is resolved where the operator ran verdict. Names match
+// whatever their case, as Windows reads them.
 func (v *view) env(env []string) []string {
-	out := make([]string, 0, len(env)+1)
+	out := make([]string, 0, len(env)+len(droppedEnv))
 	for _, kv := range env {
-		name, _, _ := strings.Cut(kv, "=")
-		if name != "PWD" && name != "OLDPWD" && !gitcmd.Inherited(name) {
+		name, value, _ := strings.Cut(kv, "=")
+		switch {
+		case dropsEnv(name):
+		case slices.ContainsFunc(configHomes, func(h string) bool { return strings.EqualFold(h, name) }) &&
+			value != "" && !filepath.IsAbs(value):
+			if abs, err := filepath.Abs(value); err == nil {
+				out = append(out, name+"="+abs)
+			}
+		default:
 			out = append(out, kv)
 		}
 	}
-	return append(out, "PWD="+v.cwd)
+	return append(out, "PWD="+v.cwd, "TMPDIR="+v.tmp, "TMP="+v.tmp, "TEMP="+v.tmp)
+}
+
+// dropsEnv reports a variable a review launch never inherits.
+func dropsEnv(name string) bool {
+	upper := strings.ToUpper(name)
+	return gitcmd.Inherited(name) ||
+		slices.ContainsFunc(droppedEnv, func(d string) bool { return strings.EqualFold(d, name) }) ||
+		slices.ContainsFunc(droppedEnvPrefixes, func(p string) bool { return strings.HasPrefix(upper, p) })
 }
 
 // settled is what one launch's view gave back: everything the agent wrote
@@ -557,8 +649,8 @@ type settled struct {
 // settle copies the launch's changed artifacts back into the real bundle and
 // lists every other write: a file outside the bundle copy, an unexpected
 // file inside it, and an artifact that is not a lone regular file within
-// the size cap.
-func (v *view) settle(bundle string, expect func(string) bool) settled {
+// its cap.
+func (v *view) settle(bundle string, expect expectation) settled {
 	var out settled
 	v.settleBundle(bundle, expect, &out)
 	v.treeStrays(&out)
@@ -567,106 +659,154 @@ func (v *view) settle(bundle string, expect func(string) bool) settled {
 	return out
 }
 
-// settleBundle walks the bundle copy. An unchanged file is the seed verdict
-// put there; a changed one is copied back when expected and named otherwise.
-func (v *view) settleBundle(bundle string, expect func(string) bool, out *settled) {
+// pinnedDir opens dir as a root after checking it is a real directory and
+// that the root opened is that directory, so a directory swapped for a link
+// between the check and the open is refused, never written or read through.
+func pinnedDir(dir string) (*os.Root, error) {
+	before, err := os.Lstat(dir)
+	if err != nil || !before.IsDir() {
+		return nil, jq.NewErrf("%s is not a directory", dir)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, jq.Sealed("open "+dir, err)
+	}
+	if after, err := root.Stat(here); err != nil || !os.SameFile(before, after) {
+		_ = root.Close()
+		return nil, jq.NewErrf("%s changed while it was opened", dir)
+	}
+	return root, nil
+}
+
+// settleBundle walks the bundle copy through a pinned root. An unchanged file
+// is the seed verdict put there; a changed one is copied back into the
+// pinned real bundle when expected and named otherwise.
+func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
+	from, err := pinnedDir(v.bundle)
+	if err != nil {
+		out.refused = append(out.refused, v.rel+" (its copy changed while the agent ran)")
+		return
+	}
+	defer func() { _ = from.Close() }()
+	to, err := pinnedDir(bundle)
+	if err != nil {
+		out.refused = append(out.refused, v.rel+" (the bundle changed while the agent ran)")
+		return
+	}
+	defer func() { _ = to.Close() }()
 	//nolint:errcheck // best effort: an entry the walk cannot read is never copied back
-	_ = walkRel(v.bundle, func(p, rel string, d fs.DirEntry) error {
-		shown := v.rel + slash + rel
-		switch {
-		case d.IsDir(), !v.changed(p, rel, d, expect(rel)):
-		case !expect(rel):
-			out.strays = append(out.strays, shown)
-		default:
-			if why := copyBack(p, filepath.Join(bundle, filepath.FromSlash(rel)), d); why != "" {
-				out.refused = append(out.refused, shown+" ("+why+")")
-			}
+	_ = fs.WalkDir(from.FS(), here, func(rel string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil //nolint:nilerr // an unreadable entry is never copied back
 		}
+		v.settleOne(from, to, rel, d, expect(rel), out)
 		return nil
 	})
 }
 
-// changed reports whether the bundle copy's file at p differs from what
-// verdict seeded there: new, of another kind, size or time, or — for an
-// expected artifact — other bytes.
-func (v *view) changed(p, rel string, d fs.DirEntry, summed bool) bool {
-	seed, ok := v.seed[rel]
-	info, err := d.Info()
-	if !ok || err != nil || !d.Type().IsRegular() || info.Size() != seed.size || !info.ModTime().Equal(seed.mtime) {
-		return true
-	}
-	if !summed {
-		return false
-	}
-	raw, err := os.ReadFile(p)
-	return err != nil || sha256.Sum256(raw) != seed.sum
-}
-
-// copyBack copies one expected artifact from the view into the real bundle
-// and says why it would not, "" on success. The source must be a lone
-// regular file within the cap, read without following a link; the copy is
-// atomic and keeps the agent's modification time, so the freshness check
-// reads the agent's write, not the copy's. Its directory must already be a
-// real directory of the bundle — verdict made every one a launch writes in.
-func copyBack(src, dst string, d fs.DirEntry) string {
+// settleOne settles one file of the bundle copy: an unchanged seed is left
+// alone, an unexpected change named, an expected one copied back.
+func (v *view) settleOne(from, to *os.Root, rel string, d fs.DirEntry, limit int64, out *settled) {
+	shown := v.rel + slash + rel
 	info, err := d.Info()
 	switch {
 	case err != nil:
-		return whyUnreadable
-	case d.Type()&fs.ModeSymlink != 0:
-		return "a symlink"
-	case !d.Type().IsRegular():
-		return "not a regular file"
-	case readcommon.HasHardLinks(src, info):
-		return "a hard link"
-	case info.Size() > maxArtifactBytes:
-		return whyOversized
+		out.refused = append(out.refused, shown+" ("+whyUnreadable+")")
+	case !v.changed(from, rel, info, limit):
+	case limit == 0:
+		out.strays = append(out.strays, shown)
+	default:
+		if why := copyBack(from, to, rel, info, limit); why != "" {
+			out.refused = append(out.refused, shown+" ("+why+")")
+		}
 	}
-	raw, why := readArtifact(src)
+}
+
+// changed reports whether the bundle copy's file at rel, as the walk saw it
+// (info), differs from what verdict seeded there: new, of another kind, size
+// or time, or — for an expected artifact — other bytes, read as copy-back
+// reads them.
+func (v *view) changed(from *os.Root, rel string, info fs.FileInfo, limit int64) bool {
+	seed, ok := v.seed[rel]
+	if !ok || !info.Mode().IsRegular() || info.Size() != seed.size || !info.ModTime().Equal(seed.mtime) {
+		return true
+	}
+	if limit == 0 {
+		return false
+	}
+	raw, _, why := readPinned(from, rel, info, limit)
+	return why != "" || sha256.Sum256(raw) != seed.sum
+}
+
+// readPinned reads one file below root as the walk saw it (walked): opened
+// without following a link and without blocking (a FIFO cannot hold the
+// read), and only when the opened file is a regular file with one name, the
+// very file the walk saw, within limit — read through a cap of limit+1, so a
+// file that grew is refused, never loaded whole. why is "" on success.
+func readPinned(root *os.Root, rel string, walked fs.FileInfo, limit int64) (raw []byte, opened fs.FileInfo, why string) {
+	f, err := readcommon.OpenNoFollowIn(root, filepath.FromSlash(rel))
+	if err != nil {
+		return nil, nil, whyUnreadable
+	}
+	defer func() { _ = f.Close() }()
+	opened, err = f.Stat()
+	switch {
+	case err != nil:
+		return nil, nil, whyUnreadable
+	case !opened.Mode().IsRegular():
+		return nil, nil, whyNotRegular
+	case readcommon.OpenedHasHardLinks(f, opened):
+		return nil, nil, "a hard link"
+	case !os.SameFile(opened, walked):
+		return nil, nil, "replaced while it was read"
+	case opened.Size() > limit:
+		return nil, nil, oversized(limit)
+	}
+	raw, err = io.ReadAll(io.LimitReader(f, limit+1))
+	switch {
+	case err != nil:
+		return nil, nil, whyUnreadable
+	case int64(len(raw)) > limit:
+		return nil, nil, oversized(limit)
+	}
+	return raw, opened, ""
+}
+
+// oversized names a cap an artifact crossed.
+func oversized(limit int64) string {
+	return fmt.Sprintf("over %d MiB", max(1, limit/mebibyte))
+}
+
+// copyBack copies one expected artifact from the pinned bundle copy into the
+// pinned real bundle and says why it would not, "" on success. The source is
+// read as readPinned reads it; the copy is atomic and carries the agent's
+// modification time from before its rename, so the freshness check reads the
+// agent's write, not the copy's. Its directory must already be a real
+// directory of the bundle — verdict made every one a launch writes in.
+func copyBack(from, to *os.Root, rel string, walked fs.FileInfo, limit int64) string {
+	switch {
+	case walked.Mode()&fs.ModeSymlink != 0:
+		return "a symlink"
+	case !walked.Mode().IsRegular():
+		return whyNotRegular
+	}
+	raw, opened, why := readPinned(from, rel, walked, limit)
 	if why != "" {
 		return why
 	}
-	if dirInfo, err := os.Lstat(filepath.Dir(dst)); err != nil || !dirInfo.IsDir() {
+	name := filepath.FromSlash(rel)
+	if dirInfo, err := to.Lstat(filepath.Dir(name)); err != nil || !dirInfo.IsDir() {
 		return "its bundle directory is missing"
 	}
-	if err := atomic.WriteFileMode(dst, raw, roundEvidenceMode); err != nil {
+	if err := atomic.WriteFileModeInAt(to, name, raw, roundEvidenceMode, opened.ModTime()); err != nil {
 		return "could not be written to the bundle"
-	}
-	if err := os.Chtimes(dst, info.ModTime(), info.ModTime()); err != nil {
-		return "could not be stamped in the bundle"
 	}
 	return ""
 }
 
-// readArtifact reads one artifact without following a final link, refusing
-// one that grew past the cap or turned into something else since its stat.
-func readArtifact(src string) ([]byte, string) {
-	root, err := os.OpenRoot(filepath.Dir(src))
-	if err != nil {
-		return nil, whyUnreadable
-	}
-	defer func() { _ = root.Close() }()
-	f, err := readcommon.OpenNoFollowIn(root, filepath.Base(src))
-	if err != nil {
-		return nil, whyUnreadable
-	}
-	defer func() { _ = f.Close() }()
-	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
-		return nil, "not a regular file"
-	}
-	raw, err := io.ReadAll(io.LimitReader(f, maxArtifactBytes+1))
-	switch {
-	case err != nil:
-		return nil, whyUnreadable
-	case len(raw) > maxArtifactBytes:
-		return nil, whyOversized
-	}
-	return raw, ""
-}
-
-// treeStrays names every tree entry the agent added, changed, or removed
-// outside the bundle copy. Directories are not compared: an empty directory
-// carries nothing.
+// treeStrays names every tree file the agent added, changed, or removed
+// outside the bundle copy and the view's own .git. Directories are not
+// compared: an empty directory carries nothing.
 func (v *view) treeStrays(out *settled) {
 	seen := map[string]bool{}
 	//nolint:errcheck // best effort: a write the walk cannot read is still discarded
@@ -695,50 +835,52 @@ func (v *view) treeStrays(out *settled) {
 func (v *view) treeChanged(rel string, d fs.DirEntry) bool {
 	want, ok := v.tree[rel]
 	info, err := d.Info()
-	if !ok || err != nil {
-		return true
-	}
-	if want.mode&fs.ModeSymlink != 0 {
-		return d.Type()&fs.ModeSymlink == 0
-	}
-	return !d.Type().IsRegular() || info.Size() != want.size || !info.ModTime().Equal(want.mtime)
+	return !ok || err != nil || !d.Type().IsRegular() || info.Size() != want.size || !info.ModTime().Equal(want.mtime)
 }
 
 // wrapperStrays names what the agent wrote beside its working directory,
-// spelled the way the agent reached it: `../<name>`.
+// spelled the way the agent reached it: `../<name>`. The private temp
+// directory is the agent's to use.
 func (v *view) wrapperStrays(out *settled) {
 	entries, err := os.ReadDir(v.wrapper)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
-		if filepath.Join(v.wrapper, e.Name()) != v.cwd {
+		if p := filepath.Join(v.wrapper, e.Name()); p != v.cwd && p != v.tmp {
 			out.strays = append(out.strays, up+slash+e.Name())
 		}
 	}
 }
 
+// expectation is the cap of the artifact at a bundle-relative path one review
+// launch may write — the only files copied back — and 0 for any other path.
+type expectation func(rel string) int64
+
 // expectedArtifacts names the bundle-relative files one review launch may
-// write, which are the only files copied back: the launch's artifact in its
-// output directory, plus — for a review written at the bundle's root — the
-// files the Procedure has the reviewer write beside it (its cost record and
-// per-chunk cost records, a validation pass, verification claims). Anything
-// verdict itself writes (findings.json, verify-receipt.json, the launch
-// record) is never one of them.
-func expectedArtifacts(own, artifact string) func(string) bool {
+// write: the launch's artifact in its output directory, plus — for a review
+// written at the bundle's root — the files the Procedure has the reviewer
+// write beside it (its cost record, a validation pass, verification claims,
+// and one cost record per chunk the bundle's manifest lists, each under a
+// small cap). Anything verdict itself writes (findings.json,
+// verify-receipt.json, the launch record) is never one of them.
+func expectedArtifacts(own, artifact string, chunks []string) expectation {
 	main := path.Join(own, artifact)
 	review := own == here && artifact == reviewFile
-	return func(rel string) bool {
+	return func(rel string) int64 {
 		switch {
 		case rel == main:
-			return true
+			return maxArtifactBytes
 		case !review:
-			return false
+			return 0
 		case rel == readcommon.CostFile, rel == "validation.json", rel == "verification.json":
-			return true
+			return maxArtifactBytes
 		}
 		dir, name := path.Split(rel)
-		return dir == "chunks/" && strings.HasPrefix(name, "chunk-") && strings.HasSuffix(name, ".cost.json")
+		if stem, ok := strings.CutSuffix(name, ".cost.json"); ok && dir == "chunks/" && slices.Contains(chunks, stem) {
+			return maxChunkCostBytes
+		}
+		return 0
 	}
 }
 
@@ -756,13 +898,13 @@ func (st *state) warnSettled(agent string, s *settled) {
 }
 
 // warnDropped names, once per run, the tree's symlinks the review snapshot
-// leaves out because they lead outside it.
+// leaves out.
 func (st *state) warnDropped(dropped []string) {
 	if len(dropped) == 0 {
 		return
 	}
-	msg := core.Msgf("the review snapshot leaves out %d symlink(s) that lead outside it: %s — "+
-		"a write through one would leave the snapshot", len(dropped), capList(dropped))
+	msg := core.Msgf("the review snapshot leaves out the tree's %d symlink(s): %s — a review reads files, "+
+		"and a link could lead out of the snapshot", len(dropped), capList(dropped))
 	if !slices.Contains(st.warnings, msg) {
 		st.warn(msg)
 	}
@@ -791,7 +933,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	if st.ws == nil {
 		return nil, &core.StartError{Err: errNoWorkspace}
 	}
-	expect := expectedArtifacts(own, args.target.artifact)
+	expect := expectedArtifacts(own, args.target.artifact, readcommon.ManifestChunks(bundle))
 	v, err := st.ws.open(ctx, bundle, own, expect, args.timeout)
 	if err != nil {
 		return nil, st.viewFailure(ctx, err)
@@ -821,12 +963,11 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 	if !st.box.sandboxed() {
 		return st.spawn(ctx, argv, args.timeout, tap, v.cwd, env)
 	}
-	w, err := st.box.wrap(v.wrapper, resolvedArgv(args, argv), env)
+	wrapped, err := st.box.wrap(v.wrapper, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}
-	defer st.removePrivate(w.private)
-	return st.spawn(ctx, w.argv, args.timeout, tap, v.cwd, w.env)
+	return st.spawn(ctx, wrapped, args.timeout, tap, v.cwd, env)
 }
 
 // resolvedArgv names the binary the resolution found in place of the bare
@@ -870,11 +1011,11 @@ func (st *state) viewFailure(ctx context.Context, err error) error {
 
 // closeWorkspace removes the execution's snapshot, warning when any of it
 // survives so a stranded directory is visible.
-func (st *state) closeWorkspace(ctx context.Context) {
+func (st *state) closeWorkspace(context.Context) {
 	if st.ws == nil {
 		return
 	}
-	if err := st.ws.close(ctx); err != nil {
+	if err := st.ws.close(); err != nil {
 		st.warn(fmt.Sprintf("review snapshot cleanup: the snapshot was not fully removed (%v); "+
 			"a later run sweeps it", err))
 	}
