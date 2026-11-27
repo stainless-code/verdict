@@ -308,3 +308,82 @@ func readLines(t *testing.T, path string) []string {
 	}
 	return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 }
+
+// hookScript follows a linked worktree's .git pointer to the operator's
+// repository and plants a hook there, then reports what the copy it runs in
+// holds: its .git entry and any file naming the operator's checkout.
+const hookScript = "#!/bin/sh\n" +
+	"if [ -f .git ]; then read -r line < .git; gd=\"${line#gitdir: }\"; " +
+	"printf 'planted\\n' > \"$gd/../../hooks/pre-commit\"; echo git=file; " +
+	"elif [ -d .git ]; then echo git=dir; else echo git=none; fi > \"$ARGV_LOG\"\n" +
+	"echo \"gitenv=${GIT_DIR-unset}\" >> \"$ARGV_LOG\"\n" +
+	"/usr/bin/grep -rlF -e \"$OPERATOR_ROOT\" -e \"$OPERATOR_REAL\" . | /usr/bin/sed 's/^/names=/' >> \"$ARGV_LOG\"\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSnapshotHoldsNothingOfTheOperatorsRepo proves the copy a review
+// agent runs in carries no pointer into the operator's repository: its .git
+// is a standalone directory, no file in it names the checkout, and an agent
+// following a worktree pointer has nowhere to plant a hook.
+func TestReviewSnapshotHoldsNothingOfTheOperatorsRepo(t *testing.T) {
+	t.Parallel()
+	root := confinedRoot(t)
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := filepath.Join(t.TempDir(), "log")
+	if _, ref := confinedRun(t, root, "pi", hookScript, "ARGV_LOG="+log, "OPERATOR_ROOT="+root, "OPERATOR_REAL="+resolved,
+		"GIT_DIR="+filepath.Join(root, ".git")); ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	if lines := readLines(t, log); !slices.Equal(lines, []string{"git=dir", "gitenv=unset"}) {
+		t.Errorf("the copy's own report = %q, want a standalone .git directory, no GIT_DIR, "+
+			"and no file naming the checkout", lines)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".git", "hooks", "pre-commit")); !os.IsNotExist(err) {
+		t.Errorf("a hook reached the operator's repository (err = %v)", err)
+	}
+}
+
+// linkScript writes through every committed symlink, then reports which of
+// them the copy kept.
+const linkScript = "#!/bin/sh\n" +
+	"printf 'planted\\n' > abs/main.go\n" +
+	"printf 'planted\\n' > \"esc$OPERATOR_REAL/src/main.go\"\n" +
+	"printf 'inside\\n' > in/main.go\n" +
+	"for l in abs esc in; do if [ -L \"$l\" ]; then echo \"kept=$l\"; fi; done > \"$ARGV_LOG\"\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSnapshotDropsLinksThatLeaveIt proves a committed symlink whose
+// target leaves the copy — absolute, or climbing out with `..` — is left out
+// of the copy an agent runs in and named in a warning, so a write through it
+// changes nothing of the operator's, while a link that stays inside is kept.
+func TestReviewSnapshotDropsLinksThatLeaveIt(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	writeUnder(t, root, filepath.Join("src", "main.go"), originalMain)
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range map[string]string{
+		"abs": filepath.Join(resolved, "src"),
+		"esc": strings.Repeat("../", 24),
+		"in":  "src",
+	} {
+		if err := os.Symlink(target, filepath.Join(root, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	testenv.Checkout(t, root)
+	log := filepath.Join(t.TempDir(), "log")
+	resp, ref := confinedRun(t, root, "pi", linkScript, "ARGV_LOG="+log, "OPERATOR_REAL="+resolved)
+	if ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	assertCheckoutUntouched(t, root)
+	if lines := readLines(t, log); !slices.Equal(lines, []string{"kept=in"}) {
+		t.Errorf("links the copy kept = %q, want only the one inside it", lines)
+	}
+	assertWarned(t, resp.Warnings, "the review snapshot leaves out 2 symlink(s) that lead outside it: abs, esc")
+}

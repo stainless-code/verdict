@@ -105,11 +105,12 @@ In scope (highest priority first):
   with the pre-launch walk that refuses a symlink, a non-regular entry, or a
   hard-linked file in the bundle. A review launch that runs in the checkout,
   copies back a file outside its expected artifacts or through a link, runs
-  without the denial, or carries a grant verdict renders wider than the
-  launch's own bundle directory, is a vulnerability. Review launches are not
+  in a copy holding a `.git` pointer into the operator's repository or a
+  symlink that resolves outside the copy, runs without the denial, or carries
+  a grant verdict renders wider than the launch's own bundle directory, is a
+  vulnerability. Review launches are not
   OS-sandboxed — agents need the network — so an agent tool that accepts an
-  absolute path outside its working directory, or a tracked symlink pointing
-  out of the tree, still reaches what the operator's account can write; that
+  absolute path outside its working directory still reaches what the operator's account can write; that
   is the documented limitation, not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the

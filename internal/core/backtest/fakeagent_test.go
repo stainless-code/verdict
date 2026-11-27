@@ -1,11 +1,11 @@
 package backtest
 
 import (
-	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -72,7 +72,7 @@ func fakeAgentMain(mode string) int {
 		fmt.Fprintln(os.Stderr, "fake agent: getwd:", err)
 		return 90
 	}
-	line := cwd + "\t" + artifact + "\t" + fakeArgvTail() + "\t" + fakeHead(cwd) + "\n"
+	line := cwd + "\t" + artifact + "\t" + fakeArgvTail() + "\t" + fakeContent(cwd) + "\n"
 	prior, code := fakeAppendLog(line)
 	if code != 0 {
 		return code
@@ -91,14 +91,31 @@ func fakeAgentMain(mode string) int {
 	}
 }
 
-// fakeHead resolves the checkout the launcher started the agent in, so a test
-// proves the tree is the candidate's historical head, not today's.
-func fakeHead(dir string) string {
-	out, err := exec.CommandContext(context.Background(), "git", "-C", dir, "rev-parse", "HEAD").Output()
-	if err != nil {
-		return ""
+// fakeContent fingerprints the tree the launcher started the agent in by the
+// files the fixture's candidates change, so a test proves the tree is the
+// candidate's historical head, not today's. The review snapshot has no git
+// history to ask: it holds the content alone.
+func fakeContent(dir string) string {
+	return contentPrint(func(name string) ([]byte, bool) {
+		raw, err := os.ReadFile(filepath.Join(dir, name))
+		return raw, err == nil
+	})
+}
+
+// contentFiles are the files whose bytes tell the fixture's commits apart.
+var contentFiles = []string{"a.txt", "b.txt"}
+
+// contentPrint is the fingerprint of contentFiles as read reads them.
+func contentPrint(read func(name string) ([]byte, bool)) string {
+	h := sha256.New()
+	for _, name := range contentFiles {
+		raw, ok := read(name)
+		if !ok {
+			raw = []byte("<absent>")
+		}
+		fmt.Fprintf(h, "%s\x00%s\x00", name, raw)
 	}
-	return strings.TrimSpace(string(out))
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // fakeArgvTail renders the launch's own arguments without the directive, whose

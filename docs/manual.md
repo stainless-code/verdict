@@ -4294,15 +4294,25 @@ back the same way, so salvage, repair rounds, and `--resume` read the bundle
 exactly as before. The loop's fix phase is the one launch that runs in your
 checkout: editing it is its job.
 
+The copy holds nothing that leads back to your repository. Its `.git` is an
+empty repository of its own — no history, no hooks — never the snapshot's
+worktree pointer, whose admin directory sits in your repository's `.git`,
+where a planted hook would run on your next commit; agent CLIs that look for
+a git checkout (codex, opencode) find the copy itself. A committed symlink is
+kept only when it resolves inside the copy: an absolute target, or one that
+climbs out with `..` (directly or through another link), is left out and
+named in one warning, so no write through it can leave the copy. The agent's
+environment names the copy as `PWD`, drops `OLDPWD`, and carries none of
+git's location variables (`GIT_DIR`, `GIT_WORK_TREE`, and the like).
+
 What a review agent can still do: read the reviewed tree and the bundle, and
 use the network. What it can no longer do: write your checkout through a path
 relative to its working directory, which is where every agent's edit tools
 aim, and which `claude`'s and `codex`'s own workspace rules confine it to.
 verdict does not OS-sandbox a review launch (agents need the network), so a
-tool that accepts an absolute path outside its working directory — or a
-tracked symlink that points out of the tree — still reaches what your user
-account can write; review an untrusted pull request in a disposable checkout
-if your agent's tools allow that. A tree outside any git checkout — the
+tool that accepts an absolute path outside its working directory still
+reaches what your user account can write; review an untrusted pull request in
+a disposable checkout if your agent's tools allow that. A tree outside any git checkout — the
 temp directory `demo` reviews a pull request URL in — has no index to name
 content by, so it is copied as it stands, verdict's state left out. A
 snapshot that cannot be made (a git failure, `TMPDIR` inside the repository)
