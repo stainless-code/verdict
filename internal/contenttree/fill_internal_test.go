@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/testenv"
@@ -69,6 +70,8 @@ func run(t *testing.T, dir string, args ...string) {
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(nil)
+	// A descendant holding the captured pipes open must not hold the test.
+	cmd.WaitDelay = 10 * time.Second
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}

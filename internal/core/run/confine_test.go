@@ -748,14 +748,17 @@ const forgedClaim = "Forged by finder 1."
 func forgeLiveSibling(t *testing.T) func(phase, view string, cmd *core.Command) {
 	t.Helper()
 	live, forged := make(chan string, 1), make(chan struct{})
+	var release sync.Once
 	return func(phase, _ string, cmd *core.Command) {
 		switch phase {
 		case "x-finder-2":
 			live <- cmd.Dir
 			waitFor(t, forged)
 		case "x-finder-1":
+			// Released however the forgery ends: a failed write's t.Fatal must
+			// not leave finder 2 waiting.
+			defer release.Do(func() { close(forged) })
 			forgeInto(t, cmd.Dir, receive(t, live))
-			close(forged)
 		}
 	}
 }
@@ -879,5 +882,76 @@ func assertWarned(t *testing.T, warnings []string, want string) {
 	t.Helper()
 	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, want) }) {
 		t.Errorf("warnings = %q, want one carrying %q", warnings, want)
+	}
+}
+
+// TestTempAndCacheDirectoriesFollowThePlatform proves the temp and cache
+// directories are read from the injected environment as each platform's own
+// library reads them: TMP and TEMP, and %LocalAppData%, on Windows; TMPDIR,
+// and XDG_CACHE_HOME or HOME, elsewhere.
+func TestTempAndCacheDirectoriesFollowThePlatform(t *testing.T) {
+	t.Parallel()
+	tmp, local, home, xdg := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	if got := tempDir(map[string]string{"TMPDIR": home, "TMP": tmp, "TEMP": local}, goosWindows); got != tmp {
+		t.Errorf("windows temp = %q, want TMP %q", got, tmp)
+	}
+	if got := tempDir(map[string]string{"TMPDIR": home, "TEMP": local}, goosWindows); got != local {
+		t.Errorf("windows temp = %q, want TEMP %q", got, local)
+	}
+	if got := tempDir(map[string]string{"TMPDIR": home, "TMP": tmp}, "linux"); got != home {
+		t.Errorf("linux temp = %q, want TMPDIR %q", got, home)
+	}
+	for _, tc := range []struct {
+		env        map[string]string
+		goos, want string
+	}{
+		{env: map[string]string{"LOCALAPPDATA": local, "HOME": home}, goos: goosWindows, want: local},
+		{env: map[string]string{"HOME": home}, goos: goosWindows, want: ""},
+		{env: map[string]string{"XDG_CACHE_HOME": xdg, "LOCALAPPDATA": local}, goos: goosWindows, want: xdg},
+		{env: map[string]string{"HOME": home}, goos: "linux", want: filepath.Join(home, ".cache")},
+		{env: map[string]string{"HOME": home}, goos: "darwin", want: filepath.Join(home, "Library", "Caches")},
+		{env: map[string]string{"HOME": "relative"}, goos: "linux", want: ""},
+	} {
+		if got := cacheDir(tc.env, tc.goos); got != tc.want {
+			t.Errorf("cacheDir(%v, %s) = %q, want %q", tc.env, tc.goos, got, tc.want)
+		}
+	}
+}
+
+// TestDeletedSeedsAreNamed proves a bundle file the agent deleted from its
+// copy is named among the discarded writes, while the bundle keeps it.
+func TestDeletedSeedsAreNamed(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	resp, ref, _ := confinedRun(t, root, nameClaude, func(cmd *core.Command) {
+		if err := os.Remove(filepath.Join(cmd.Dir, ".verdict", "state", "42", "PR.json")); err != nil {
+			t.Error(err)
+		}
+		inView(t, cmd, viewReview, reviewDoc)
+	})
+	if ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir(root), "PR.json")); err != nil {
+		t.Errorf("the deletion reached the bundle: %v", err)
+	}
+	assertWarned(t, resp.Warnings, "claude wrote outside its review artifacts: .verdict/state/42/PR.json")
+}
+
+// TestSnapshotBaseAcceptsACacheHoldingTheTempDirectory proves the Windows
+// layout works: %TEMP% lies inside %LocalAppData%, so a checkout in the temp
+// directory lies inside the cache directory too, and its snapshots still go
+// to verdict's own directory there, which holds neither.
+func TestSnapshotBaseAcceptsACacheHoldingTheTempDirectory(t *testing.T) {
+	t.Parallel()
+	local := contenttree.Resolved(t.TempDir())
+	tmp := filepath.Join(local, "Temp")
+	root := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	got, err := snapshotBase(root, tmp, map[string]string{"XDG_CACHE_HOME": local}, true)
+	if want := filepath.Join(local, "verdict", "snapshots"); err != nil || got != want {
+		t.Errorf("base = %q (%v), want %q", got, err, want)
 	}
 }

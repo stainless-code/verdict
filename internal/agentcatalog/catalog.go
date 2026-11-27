@@ -208,7 +208,8 @@ const (
 // launch: outside trustedWorkspaces, `agy -p` auto-denies file edits and exits
 // 0 with no artifact, while approval flags stay with the operator after `--`.
 const agyLaunchWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
-	"so review.json may never be written; trust this repository in agy's settings or pass " +
+	"and a review runs in a fresh copy outside them, so review.json may never be written; " +
+	"allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass " +
 	"-- --dangerously-skip-permissions (your approval bypass)"
 
 const valueHome = "home"

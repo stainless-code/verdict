@@ -170,7 +170,7 @@ func (w *workspace) canonical(ctx context.Context) (string, error) {
 // from which a remote review reads its diff.
 func (w *workspace) take(ctx context.Context) (string, error) {
 	git := insideGitCheckout(w.git.Root)
-	base, err := snapshotBase(w.git.Root, contenttree.Resolved(tempDir(w.env)), w.env, git)
+	base, err := snapshotBase(w.git.Root, contenttree.Resolved(tempDir(w.env, runtime.GOOS)), w.env, git)
 	if err != nil {
 		return "", err
 	}
@@ -329,18 +329,10 @@ func snapshotBase(root, tmp string, env map[string]string, git bool) (string, er
 	if !git || !contenttree.Inside(tmp, root) {
 		return tmp, nil
 	}
-	cache := cacheDir(env)
-	if cache == "" {
-		return "", jq.NewErrf("the checkout %s is inside the temp directory %s, and no cache directory "+
-			"(XDG_CACHE_HOME or HOME) is set to hold its review snapshots apart from it", root, tmp)
+	dir, err := plannedSnapshotDir(root, tmp, cacheDir(env, runtime.GOOS))
+	if err != nil {
+		return "", err
 	}
-	// Checked before anything is created: a cache under the checkout (HOME
-	// unset reads as the working directory) must not grow a directory there.
-	if apart := apartFrom(contenttree.Resolved(cache), root, tmp); apart != "" {
-		return "", jq.NewErrf("the cache directory %s %s — set XDG_CACHE_HOME outside both the checkout "+
-			"and the temp directory", cache, apart)
-	}
-	dir := filepath.Join(cache, "verdict", "snapshots")
 	if err := os.MkdirAll(dir, viewDirMode); err != nil {
 		return "", jq.Sealed(opCreate+dir, err)
 	}
@@ -349,6 +341,50 @@ func snapshotBase(root, tmp string, env map[string]string, git bool) (string, er
 		return "", jq.NewErrf("the snapshot directory %s %s", dir, apart)
 	}
 	return dir, nil
+}
+
+// plannedSnapshotDir is the snapshot directory verdict would create under
+// cache, checked before anything is created there: a cache under the checkout
+// (HOME unset reads as the working directory) must not grow a directory
+// there, and no component verdict would create below the cache may be a link
+// that leads somewhere else.
+func plannedSnapshotDir(root, tmp, cache string) (string, error) {
+	if cache == "" {
+		return "", jq.NewErrf("the checkout %s is inside the temp directory %s, and no cache directory "+
+			"(XDG_CACHE_HOME, else HOME, or LOCALAPPDATA on Windows) is set to hold its review snapshots "+
+			"apart from it", root, tmp)
+	}
+	base := contenttree.Resolved(cache)
+	dir := filepath.Join(base, "verdict", "snapshots")
+	if err := noLinkBelow(base, dir); err != nil {
+		return "", err
+	}
+	if apart := apartFrom(dir, root, tmp); apart != "" {
+		return "", jq.NewErrf("the snapshot directory %s %s — set XDG_CACHE_HOME outside both the checkout "+
+			"and the temp directory", dir, apart)
+	}
+	return dir, nil
+}
+
+// noLinkBelow refuses when any existing component of dir below base is a
+// link or not a directory: MkdirAll would follow it.
+func noLinkBelow(base, dir string) error {
+	rel, err := filepath.Rel(base, dir)
+	if err != nil {
+		return jq.Sealed("place "+dir, err)
+	}
+	at := base
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		at = filepath.Join(at, part)
+		info, err := os.Lstat(at)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return nil
+		case err != nil || !info.IsDir():
+			return jq.NewErrf("%s is a link or not a directory — verdict creates its review snapshots below it", at)
+		}
+	}
+	return nil
 }
 
 // apartFrom says how dir fails to stand apart from the checkout at root and
@@ -366,11 +402,12 @@ func apartFrom(dir, root, tmp string) string {
 // goosWindows is Windows' GOOS, whose temp and cache variables differ.
 const goosWindows = "windows"
 
-// tempDir is the host temp root the injected environment names — TMPDIR, or
-// TMP and TEMP on Windows — else the process's own.
-func tempDir(env map[string]string) string {
+// tempDir is the host temp root the injected environment names on goos —
+// TMPDIR, or TMP and TEMP on Windows, as [os.TempDir] reads them — else the
+// process's own.
+func tempDir(env map[string]string, goos string) string {
 	keys := []string{"TMPDIR"}
-	if runtime.GOOS == goosWindows {
+	if goos == goosWindows {
 		keys = []string{"TMP", "TEMP"}
 	}
 	for _, key := range keys {
@@ -381,23 +418,24 @@ func tempDir(env map[string]string) string {
 	return os.TempDir()
 }
 
-// cacheDir is the user cache directory the injected environment names:
-// XDG_CACHE_HOME when absolute, else the platform's own under HOME
-// (LOCALAPPDATA on Windows), "" when none is set.
-func cacheDir(env map[string]string) string {
+// cacheDir is the user cache directory the injected environment names on
+// goos: XDG_CACHE_HOME when absolute, else the platform's own, as
+// [os.UserCacheDir] names it — %LocalAppData% on Windows, under HOME
+// elsewhere — "" when none is set.
+func cacheDir(env map[string]string, goos string) string {
 	if xdg := env["XDG_CACHE_HOME"]; filepath.IsAbs(xdg) {
 		return xdg
 	}
 	home := env["HOME"]
 	switch {
-	case runtime.GOOS == goosWindows:
+	case goos == goosWindows:
 		if local := env["LOCALAPPDATA"]; filepath.IsAbs(local) {
 			return local
 		}
 		return ""
 	case !filepath.IsAbs(home):
 		return ""
-	case runtime.GOOS == "darwin":
+	case goos == "darwin":
 		return filepath.Join(home, "Library", "Caches")
 	}
 	return filepath.Join(home, ".cache")
@@ -851,14 +889,27 @@ func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
 		return
 	}
 	defer func() { _ = to.Close() }()
+	seen := map[string]bool{}
 	//nolint:errcheck // best effort: an entry the walk cannot read is never copied back
 	_ = fs.WalkDir(from.FS(), here, func(rel string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil //nolint:nilerr // an unreadable entry is never copied back
 		}
+		seen[rel] = true
 		v.settleOne(from, to, rel, d, expect(rel), out)
 		return nil
 	})
+	v.deletedSeeds(seen, out)
+}
+
+// deletedSeeds names every file verdict seeded in the bundle copy that the
+// agent removed: a deletion is a write too, and it never reaches the bundle.
+func (v *view) deletedSeeds(seen map[string]bool, out *settled) {
+	for rel := range v.seed {
+		if !seen[rel] {
+			out.strays = append(out.strays, v.rel+slash+rel)
+		}
+	}
 }
 
 // settleOne settles one file of the bundle copy: an unchanged seed is left

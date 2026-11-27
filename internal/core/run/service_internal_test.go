@@ -186,7 +186,7 @@ func missingLookPath(string) (string, error) {
 func fixtureEnv(root string) map[string]string {
 	tmp := filepath.Join(filepath.Dir(root), "tmp")
 	_ = os.MkdirAll(tmp, 0o700) //nolint:errcheck // a failure surfaces as the run's own refusal
-	return map[string]string{"TMPDIR": tmp}
+	return map[string]string{"TMPDIR": tmp, "TMP": tmp, "TEMP": tmp}
 }
 
 // request builds a service request whose PATH probe resolves the agent, with
@@ -1577,8 +1577,8 @@ func (*warnSpy) Diag(string)       {}
 // the first child starts, proceeds without refusing, emits nothing on --print,
 // and leaves other agents silent.
 func TestRunAgyEmitsLaunchWarningBeforeSpawn(t *testing.T) {
-	const wantWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
-		"so review.json may never be written; trust this repository in agy's settings or pass " +
+	const wantWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, " +
+		"so review.json may never be written; allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass " +
 		"-- --dangerously-skip-permissions (your approval bypass)"
 
 	t.Run("one-shot warns before spawn and succeeds", func(t *testing.T) {

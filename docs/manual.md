@@ -4422,12 +4422,19 @@ wherever you run it — and your own `--sandbox`, `--ask-for-approval`,
 `agy` print mode (`-p`) soft-denies file edits (`Edit` / `write_file`) outside
 trusted workspaces — even under default `auto` mode or `--mode accept-edits` —
 and exits `0` without writing `review.json`, so `run` refuses
-`no-review-artifact`. Two operator-side remedies apply: add the repository to
-`trustedWorkspaces` (or allow `write_file(...)` under `permissions.allow`) in
-`~/.gemini/antigravity-cli/settings.json` (see the
+`no-review-artifact`. Every review runs in a fresh copy of the tree (see
+[Review snapshot](#review-snapshot)), never in your checkout, so trusting the
+checkout in `trustedWorkspaces` does not cover it, and agy's docs define no
+flag that trusts one launch's directory alone; never trust the whole temp or
+cache directory instead. Two operator-side remedies apply: allow exactly the
+bundle copy's writes with `"write_file(.verdict/state/)"` under
+`permissions.allow` in `~/.gemini/antigravity-cli/settings.json` (a relative
+target resolves against each workspace root, so it names the bundle copy in
+whatever copy a review runs in, and nothing else; see the
 [Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json)
-and [headless mode docs](https://antigravity.google/docs/cli/headless)), or
-pass `-- --dangerously-skip-permissions` explicitly (an approval bypass stays
+[headless mode docs](https://antigravity.google/docs/cli/headless), and
+[permissions](https://antigravity.google/docs/permissions?tab=cli)), or pass
+`-- --dangerously-skip-permissions` explicitly (an approval bypass stays
 the operator's choice and is never baked into the shipped row):
 
 ```bash
@@ -4435,7 +4442,7 @@ verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-hi
 ```
 
 Because that soft-denial exits `0` silently unless configured, `run --agent agy`
-prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
+prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, so review.json may never be written; allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
 and proceeds rather than refusing. The warning is skipped when the arguments
 after `--` already carry `--dangerously-skip-permissions`. As history, `agy` versions before 1.5.13
 were observed returning before sub-agents finished (2026-11-18).
