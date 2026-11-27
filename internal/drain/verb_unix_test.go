@@ -166,7 +166,12 @@ func procedureProbe(t *testing.T, expected []byte) string {
 	if err := os.WriteFile(expectedPath, expected, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	probe := filepath.Join(t.TempDir(), "probe")
+	// The draft launch runs in the OS review sandbox, which lets claude
+	// write only its snapshot, TMPDIR, and its own state: the probe lands in
+	// its state directory, relocated into the test by CLAUDE_CONFIG_DIR.
+	state := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", state)
+	probe := filepath.Join(state, "probe")
 	t.Setenv("VERDICT_TEST_EXPECTED_PROCEDURE", expectedPath)
 	t.Setenv("VERDICT_TEST_PROCEDURE_PROBE", probe)
 	return probe

@@ -104,7 +104,9 @@ chmod +x "$EVAL_STUBBIN/gh"
 cat >"$EVAL_STUBBIN/claude" <<'AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
-echo "stub-agent $*" >>"$EVAL_STUBLOG"
+# The drafting launch runs in the OS review sandbox, which denies a write to
+# the case's stub log; the line goes to the agent's own output instead.
+echo "stub-agent $*" >&2
 prompt="${@: -1}"
 target="${prompt#*Write exactly one file, }"
 target="${target%%,*}"

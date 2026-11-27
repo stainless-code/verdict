@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -58,6 +59,10 @@ type PersonalAgent struct {
 	ProbeMatch string
 	Args       []string
 	ProbeArgs  []string
+	// StatePaths are the agent's own state paths, relative to HOME, which a
+	// review launch in verdict's OS sandbox may write: the same shape as a
+	// shipped row's (a trailing `*` names a prefix).
+	StatePaths []string
 }
 
 // PersonalSettings is the parsed personal layer: review defaults (every
@@ -379,15 +384,22 @@ func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *cor
 	if ref != nil {
 		return PersonalAgent{}, ref
 	}
-	probeArgs, probeMatch, ref := agentProbeFields(entry, path)
-	if ref != nil {
-		return PersonalAgent{}, ref
-	}
-	return PersonalAgent{
+	row := PersonalAgent{
 		Name: name, Binary: binary, Args: args, PromptFlag: prompt,
-		ModelFlag: model, Install: install, ProbeArgs: probeArgs,
-		ProbeMatch: probeMatch,
-	}, nil
+		ModelFlag: model, Install: install,
+	}
+	return row, agentLaunchFields(entry, path, &row)
+}
+
+// agentLaunchFields reads the optional identity probe and state paths into
+// row.
+func agentLaunchFields(entry map[string]any, path string, row *PersonalAgent) *core.RefusalError {
+	var ref *core.RefusalError
+	if row.ProbeArgs, row.ProbeMatch, ref = agentProbeFields(entry, path); ref != nil {
+		return ref
+	}
+	row.StatePaths, ref = agentStatePaths(entry, path)
+	return ref
 }
 
 func agentOptionalFields(entry map[string]any, path string) (prompt, model, install string, ref *core.RefusalError) {
@@ -399,6 +411,21 @@ func agentOptionalFields(entry map[string]any, path string) (prompt, model, inst
 	}
 	install, ref = agentOptionalString(entry, "install", path)
 	return prompt, model, install, ref
+}
+
+// agentStatePaths reads the optional state path list: each a clean path
+// below HOME in slash form, optionally ending in `*`.
+func agentStatePaths(entry map[string]any, path string) ([]string, *core.RefusalError) {
+	paths, ref := agentStringArray(entry, "state_locations", path)
+	if ref != nil {
+		return nil, ref
+	}
+	for i, rel := range paths {
+		if why := agentcatalog.StatePathShape(strings.TrimSuffix(rel, "*")); why != "" {
+			return nil, agentRefuse(arrayPath(path+".state_locations", i), "%q %s", rel, why)
+		}
+	}
+	return paths, nil
 }
 
 // agentBinary requires a non-blank name on PATH or an absolute path, so a

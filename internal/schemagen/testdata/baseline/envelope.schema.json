@@ -102,6 +102,10 @@
         "budget": {
           "description": "The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reviewBudget" }]
+        },
+        "sandbox": {
+          "description": "The review launches' OS-sandbox posture: the mechanism (sandbox-exec, bwrap, or none) and whether launches were sandboxed, self-sandboxed by the agent, unsandboxed (an agent that confines its own writes on a host with no sandbox, or --allow-unsandboxed-review), or unavailable (a --print render whose launch would refuse review-sandbox-unavailable). A --print render adds the wrapper argv with {snapshot} and {tmpdir} placeholders. Absent when the runtime's commander starts no host process.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runSandbox" }]
         }
       },
       "required": [
@@ -290,6 +294,21 @@
         "cross_check",
         "reasons"
       ],
+      "additionalProperties": true
+    },
+    "runSandbox": {
+      "type": "object",
+      "properties": {
+        "mechanism": { "enum": ["sandbox-exec", "bwrap", "none"] },
+        "posture": {
+          "enum": ["sandboxed", "self-sandboxed", "unsandboxed", "unavailable"]
+        },
+        "wrapper": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["mechanism", "posture"],
       "additionalProperties": true
     },
     "runAttempt": {
@@ -1343,6 +1362,10 @@
         "argv": {
           "type": "array",
           "items": { "type": "string" }
+        },
+        "sandbox": {
+          "description": "The review step's OS-sandbox posture and wrapper, as run --print renders them; absent on every other step.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runSandbox" }]
         }
       },
       "required": ["round", "phase", "when", "argv"],

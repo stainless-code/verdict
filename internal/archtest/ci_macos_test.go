@@ -30,8 +30,13 @@ var macOSTwin = map[string]string{
 // why. Bubblewrap is Linux-only, so the verify sandbox install, namespace
 // sysctl, and namespace probe stay on the Linux eval lane; the same case
 // grades the macOS sandbox-exec network legs, and both lanes re-read its
-// summary.
+// summary. The Go lane installs it for the run review sandbox tests, which
+// take sandbox-exec on macOS.
 var macOSStepOmissions = map[string][]string{
+	"go": {
+		"Install bubblewrap (the review sandbox tests)",
+		"Allow unprivileged user namespaces (bubblewrap)",
+	},
 	"evals": {
 		"Install bubblewrap",
 		"Allow unprivileged user namespaces (bubblewrap)",

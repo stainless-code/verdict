@@ -694,7 +694,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	if err != nil {
 		return nil, st.viewFailure(ctx, err)
 	}
-	res, err := st.spawn(ctx, argv, args.timeout, tap, v.cwd, v.env(st.childEnv()))
+	res, err := st.spawnBoxed(ctx, args, argv, tap, v)
 	if res != nil {
 		s := v.settle(bundle, expect)
 		st.warnSettled(args.def.Name, &s)
@@ -704,6 +704,42 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	}
 	return res, err
 }
+
+// spawnBoxed runs one review launch in its view, wrapped in the execution's
+// OS sandbox when it has one. A sandbox that cannot be built for the launch
+// refuses it as never started: a sandboxed execution never falls back to a
+// bare launch.
+func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string, tap *agentusage.Tap, v *view,
+) (*core.Result, error) {
+	env := v.env(st.childEnv())
+	if st.box == nil && core.StartsHostProcesses(st.commander()) {
+		return nil, &core.StartError{Err: errNoBox}
+	}
+	if !st.box.sandboxed() {
+		return st.spawn(ctx, argv, args.timeout, tap, v.cwd, env)
+	}
+	w, err := st.box.wrap(v.wrapper, resolvedArgv(args, argv), env)
+	if err != nil {
+		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
+	}
+	defer st.removePrivate(w.private)
+	return st.spawn(ctx, w.argv, args.timeout, tap, v.cwd, w.env)
+}
+
+// resolvedArgv names the binary the resolution found in place of the bare
+// name: the wrapper would resolve that name again against the child's PATH,
+// whose relative entries reach into the reviewed snapshot.
+func resolvedArgv(args *launchArgs, argv []string) []string {
+	inner := slices.Clone(argv)
+	if args.bin != "" {
+		inner[0] = args.bin
+	}
+	return inner
+}
+
+// errNoBox is a host launch reached without its execution's sandbox
+// decision: a wiring bug, refused rather than run bare.
+var errNoBox = jq.NewErr("no review sandbox decision for this launch")
 
 // reviewDirs is a review launch's bundle and its output directory relative
 // to the bundle, in slash form ("." for the bundle itself).

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -14,17 +13,17 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
 	codeSandboxUnavailable = "sandbox-unavailable"
-	bwrapTool              = "bwrap"
+	bwrapTool              = hostsandbox.BwrapTool
 	unshareTool            = "unshare"
-	sandboxExecTool        = "sandbox-exec"
-	sandboxExecPath        = "/usr/bin/sandbox-exec"
-	sandboxTmpfs           = "--tmpfs"
+	sandboxExecTool        = hostsandbox.SandboxExecTool
+	sandboxExecPath        = hostsandbox.SandboxExecPath
+	sandboxTmpfs           = hostsandbox.Tmpfs
 	sandboxProbeTimeout    = 15 * time.Second
 	sandboxProbeCap        = 4 << 10
 	sandboxShellArgs       = 3
@@ -36,30 +35,9 @@ const (
 	sandboxMechanismUnshareNet  = "unshare-net"
 	sandboxMechanismSandboxExec = "sandbox-exec"
 
-	// sandboxPrivateDirPrefix names the per-run temporary directory the macOS
-	// child gets as TMPDIR/TMP/TEMP; the profile allows it and denies the
-	// shared host temp roots around it.
-	sandboxPrivateDirPrefix = "verdict-sandbox-"
-
-	// sandboxPrivateDirMode restores owner access to every directory under
-	// the private tree before removal, so a child that dropped its own
-	// permissions cannot strand the tree on the host.
-	sandboxPrivateDirMode = 0o700
-
-	// sandboxGoCacheDir and sandboxCacheDir are the toolchain caches the
-	// macOS child is pointed at inside its private directory: the profile
-	// denies writes everywhere else, so the default caches under HOME fail.
-	sandboxGoCacheDir = "go-build"
-	sandboxCacheDir   = "cache"
-
 	// sandboxHostTmpDir is the shared host temp root the bwrap shape replaces
 	// and the macOS profile denies.
 	sandboxHostTmpDir = "/tmp"
-
-	// seatbeltFirstPrintable and seatbeltDelete bound the characters a
-	// Seatbelt string literal can represent; anything below or DEL refuses.
-	seatbeltFirstPrintable = ' '
-	seatbeltDelete         = 0x7f
 
 	// seatbeltHeader keeps the network denial, denies every Mach service
 	// lookup but the allowlist after it, and denies every write outside the
@@ -73,20 +51,8 @@ const (
 	// applies the last matching rule, so the allows that follow re-open only
 	// what they name.
 	seatbeltHeader = `(version 1)(allow default)(deny network*)` +
-		`(deny mach-lookup)` + seatbeltMachAllow + seatbeltServiceDenials +
+		`(deny mach-lookup)` + seatbeltMachAllow + hostsandbox.SeatbeltServiceDenials +
 		`(deny file-write* (subpath "/"))`
-
-	// seatbeltServiceDenials closes the remaining operations `(allow
-	// default)` grants that reach outside the run without a file write:
-	// LaunchServices (lsopen, which alone stops `open` and `osascript ...
-	// launch`), AppleEvents (appleevent-send), launchd job submission
-	// (job-creation), distributed notifications, and signals to any process
-	// the command did not start. The first four also need a Mach lookup the
-	// default-deny refuses, so they are a second layer; the signal rule is
-	// the only guard against the command killing the operator's own
-	// processes, since Seatbelt has no PID namespace.
-	seatbeltServiceDenials = `(deny lsopen)(deny appleevent-send)(deny job-creation)` +
-		`(deny distributed-notification-post)(deny signal)(allow signal (target same-sandbox))`
 
 	// seatbeltMachAllow is the whole Mach allowlist, found by running git,
 	// go build/test, node/npm, python3, make, cc, perl, ruby, and a shell
@@ -97,11 +63,6 @@ const (
 	// lookup-only: record writes go through opendirectoryd's separate API
 	// service, which stays denied.
 	seatbeltMachAllow = `(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))`
-
-	// seatbeltDeviceWrites re-allows the device writes a shell needs after the
-	// blanket write denial: the bit bucket, the controlling terminal, and the
-	// descriptor aliases (/dev/stdout and /dev/stderr resolve under /dev/fd).
-	seatbeltDeviceWrites = `(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))`
 
 	// sandboxProbeScript is the macOS probe body: it proves Seatbelt permits
 	// bash, mktemp, a write and read inside the private TMPDIR, and a read of
@@ -150,62 +111,7 @@ const (
 	// followed by a slash or the end of the path, so `.gitignore`, `.github`,
 	// and `.git-blame-ignore-revs` stay writable.
 	seatbeltGitComponent = `/(.*/)?\.[Gg][Ii][Tt](/|$)`
-
-	// envSeparator splits one environment entry into its name and value.
-	envSeparator = "="
-
-	msgSandboxHomeUnset = "HOME is unset in the child environment, so the credential paths under it cannot be hidden"
 )
-
-// sandboxCredentialPaths is the one credential table both platforms hide,
-// relative to every home the account answers to: directories behind an empty
-// tmpfs, files behind a read-only /dev/null bind on Linux, and denied reads
-// and writes under Seatbelt on macOS. Only entries that exist are mounted on
-// Linux; macOS denies the whole table. New entries go at the end so the
-// mount order of the existing ones never moves.
-var sandboxCredentialPaths = []string{
-	".aws",
-	".ssh",
-	filepath.Join(".config", "gh"),
-	".docker",
-	".kube",
-	filepath.Join(".config", "gcloud"),
-	".azure",
-	".gnupg",
-	".netrc",
-	".git-credentials",
-	".npmrc",
-	".pypirc",
-	".terraform.d",
-	filepath.Join(".cargo", "credentials.toml"),
-	filepath.Join(".cargo", "credentials"),
-	".vault-token",
-	filepath.Join("Library", "Keychains"),
-}
-
-// sandboxCredentialVar is one environment variable that relocates a
-// credential store away from its home-relative default: the path it names
-// (joined with suffix), or every entry of a path list.
-type sandboxCredentialVar struct {
-	name   string
-	suffix string
-	list   bool
-}
-
-// sandboxCredentialEnv is the relocation half of the table, read from both
-// the child environment and the verdict process environment, so a store
-// moved by the operator's shell is hidden even when the child never sees the
-// variable. Relative values are skipped: they resolve against the reviewed
-// root the command may already read.
-var sandboxCredentialEnv = []sandboxCredentialVar{
-	{name: "XDG_CONFIG_HOME", suffix: "gh"},
-	{name: "GH_CONFIG_DIR"},
-	{name: "AWS_SHARED_CREDENTIALS_FILE"},
-	{name: "AWS_CONFIG_FILE"},
-	{name: "DOCKER_CONFIG"},
-	{name: "KUBECONFIG", list: true},
-	{name: "CLOUDSDK_CONFIG"},
-}
 
 // sandboxHostTempDirs are the shared host temp roots macOS denies outside the
 // per-run private directory. /tmp and /var/tmp are symlinks into /private on
@@ -243,147 +149,39 @@ func (in sandboxInputs) sharedDirs() []sharedDir {
 	return *in.shared
 }
 
+// host is the shared resolver's view of the inputs.
+func (in sandboxInputs) host() hostsandbox.Inputs {
+	return hostsandbox.Inputs{AccountHome: in.accountHome, ChildEnv: in.childEnv, HostEnv: in.hostEnv}
+}
+
 // homes lists every home the credential table resolves under, the child's
 // first. An unset child HOME is the one refusal: its paths cannot be named.
 func (in sandboxInputs) homes() ([]string, *core.RefusalError) {
-	home, ok := sandboxHome(in.childEnv)
-	if !ok {
-		return nil, sandboxUnavailable(msgSandboxHomeUnset)
-	}
-	if !filepath.IsAbs(home) {
-		return nil, sandboxUnavailable(fmt.Sprintf(
-			"HOME %q in the child environment is not an absolute path, so the credential paths under it cannot be hidden", home))
-	}
-	homes := []string{home}
-	if host := envLookup(in.hostEnv, "HOME"); filepath.IsAbs(host) {
-		homes = append(homes, host)
-	}
-	if filepath.IsAbs(in.accountHome) {
-		homes = append(homes, in.accountHome)
-	}
-	return sandboxCleanUnique(homes), nil
+	homes, err := in.host().Homes()
+	return homes, unavailable(err)
 }
 
-// credentialLocations resolves the shared table: every home-relative entry
-// under every home, then every relocation variable from the child and host
-// environments. A reviewed root inside a credential location refuses, since
-// hiding the location would hide the code under review and allowing the root
-// would expose the credential. expandHomes adds each home's realpath first
-// (Seatbelt matches resolved vnodes; bwrap follows the literal path itself).
+// credentialLocations resolves the shared credential table under every home
+// and relocation variable ([hostsandbox.Inputs.CredentialLocations]).
 func (in sandboxInputs) credentialLocations(root string, expandHomes bool) ([]string, *core.RefusalError) {
-	homes, ref := in.homes()
-	if ref != nil {
-		return nil, ref
-	}
-	if expandHomes {
-		homes = sandboxExpandRealpaths(homes)
-	}
-	locations := sandboxHomeCredentials(homes)
-	for _, env := range [][]string{in.childEnv, in.hostEnv} {
-		for _, v := range sandboxCredentialEnv {
-			locations = append(locations, v.paths(env)...)
-		}
-	}
-	locations = sandboxCleanUnique(locations)
-	if location, ok := sandboxEnclosing(locations, root); ok {
-		return nil, sandboxUnavailable(fmt.Sprintf(
-			"the reviewed root %s is inside the credential path %s; refusing to expose or hide it", root, location))
-	}
-	return locations, nil
+	locations, err := in.host().CredentialLocations(root, expandHomes)
+	return locations, unavailable(err)
 }
 
-// sandboxHomeCredentials joins the home-relative table under every home.
-func sandboxHomeCredentials(homes []string) []string {
-	locations := make([]string, 0, len(homes)*len(sandboxCredentialPaths)+len(sandboxCredentialEnv))
-	for _, home := range homes {
-		for _, rel := range sandboxCredentialPaths {
-			locations = append(locations, filepath.Join(home, rel))
-		}
+// unavailable maps a shared builder's failure onto this verb's refusal, nil
+// for nil.
+func unavailable(err error) *core.RefusalError {
+	if err == nil {
+		return nil
 	}
-	return locations
+	return sandboxUnavailable(err.Error())
 }
 
-// sandboxEnclosing returns the first location that is root or one of its
-// ancestors.
-func sandboxEnclosing(locations []string, root string) (string, bool) {
-	for _, location := range locations {
-		if root == location || strings.HasPrefix(root, location+string(filepath.Separator)) {
-			return location, true
-		}
-	}
-	return "", false
-}
-
-// paths returns the absolute credential paths one environment's value of the
-// variable names; an unset, empty, or relative value names nothing.
-func (v sandboxCredentialVar) paths(env []string) []string {
-	value := envLookup(env, v.name)
-	values := []string{value}
-	if v.list {
-		values = filepath.SplitList(value)
-	}
-	var paths []string
-	for _, path := range values {
-		if filepath.IsAbs(path) {
-			paths = append(paths, filepath.Join(path, v.suffix))
-		}
-	}
-	return paths
-}
-
-// envLookup reads one name from an environment snapshot; the last entry wins,
-// as it does for a spawned child.
-func envLookup(env []string, name string) string {
-	value := ""
-	for _, kv := range env {
-		if key, v, ok := strings.Cut(kv, envSeparator); ok && key == name {
-			value = v
-		}
-	}
-	return value
-}
-
-// sandboxCleanUnique cleans every path and drops empties and duplicates while
-// keeping first-seen order.
-func sandboxCleanUnique(paths []string) []string {
-	seen := make(map[string]bool, len(paths))
-	out := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		path = filepath.Clean(path)
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
-		out = append(out, path)
-	}
-	return out
-}
-
-// sandboxAccountHome is the passwd-database home of the current uid, or
-// empty when the lookup fails; HOME alone can point anywhere.
-func sandboxAccountHome() string {
-	u, err := user.Current()
-	if err != nil {
-		return ""
-	}
-	return u.HomeDir
-}
-
-// sandboxMount is one path the wrapper replaces; dir mounts an empty tmpfs,
-// a file binds /dev/null read-only over it.
-type sandboxMount struct {
-	dest string
-	dir  bool
-}
-
-func (m sandboxMount) argv() []string {
-	if m.dir {
-		return []string{sandboxTmpfs, m.dest}
-	}
-	return []string{bwrapROBind, "/dev/null", m.dest}
+// seatbeltLiteral quotes one path for the profile
+// ([hostsandbox.SeatbeltLiteral]).
+func seatbeltLiteral(path string) (string, *core.RefusalError) {
+	literal, err := hostsandbox.SeatbeltLiteral(path)
+	return literal, unavailable(err)
 }
 
 // sandbox is one prepared mechanism: the argv prefix that wraps the command,
@@ -425,19 +223,7 @@ func (sb *sandbox) childEnv(base []string) []string {
 	if sb == nil || len(sb.env) == 0 {
 		return base
 	}
-	overridden := make(map[string]bool, len(sb.env))
-	for _, kv := range sb.env {
-		name, _, _ := strings.Cut(kv, envSeparator)
-		overridden[name] = true
-	}
-	env := make([]string, 0, len(base)+len(sb.env))
-	for _, kv := range base {
-		if name, _, ok := strings.Cut(kv, envSeparator); ok && overridden[name] {
-			continue
-		}
-		env = append(env, kv)
-	}
-	return append(env, sb.env...)
+	return hostsandbox.OverrideEnv(base, sb.env)
 }
 
 // close removes the mechanism's private state and reports what survived. It
@@ -588,8 +374,8 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 		argv = append(argv, bwrapROBind, dir, dir)
 	}
 	argv = append(argv, bwrapShareBinds(repo, in.sharedDirs())...)
-	for _, mount := range sandboxCredentialMounts(locations) {
-		argv = append(argv, mount.argv()...)
+	for _, mount := range hostsandbox.CredentialMounts(locations) {
+		argv = append(argv, mount.Argv()...)
 	}
 	return append(argv, "--unshare-net", "--new-session", "--die-with-parent", "--"), nil
 }
@@ -682,8 +468,8 @@ func sandboxGitBindPlan(root sandboxGitRoot, walked, held []string) sandboxGitBi
 			plan.held = append(plan.held, path)
 		}
 	}
-	plan.pins, plan.anchors, plan.held = sandboxCleanUnique(plan.pins), sandboxCleanUnique(plan.anchors),
-		sandboxCleanUnique(plan.held)
+	plan.pins, plan.anchors, plan.held = hostsandbox.CleanUnique(plan.pins), hostsandbox.CleanUnique(plan.anchors),
+		hostsandbox.CleanUnique(plan.held)
 	return plan
 }
 
@@ -1117,7 +903,7 @@ func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
 	if len(dirs) == 0 {
 		return nil, nil
 	}
-	return sandboxCleanUnique(dirs), nil
+	return hostsandbox.CleanUnique(dirs), nil
 }
 
 // sandboxRootGitDirs lists the in-root paths the root's own `.git` walks
@@ -1241,7 +1027,7 @@ func sandboxGitInRoot(pointer string, steps []sandboxGitStep, final string, root
 // A location that does not exist, or an entry that vanishes mid-walk, has
 // nothing left to alias; every other walk error refuses.
 func sandboxGitLocationsRefusal(root sandboxGitRoot, locations ...string) *core.RefusalError {
-	locations = sandboxCleanUnique(locations)
+	locations = hostsandbox.CleanUnique(locations)
 	var protected []os.FileInfo
 	for _, location := range locations {
 		if info, err := os.Lstat(location); err == nil {
@@ -1481,20 +1267,6 @@ func sandboxGitPointerRaw(path, prefix string) (target string, present bool, ref
 	return target, true, nil
 }
 
-// sandboxCredentialMounts resolves the locations against the host, so a
-// missing entry adds no mount and a file never gets a directory's tmpfs.
-func sandboxCredentialMounts(locations []string) []sandboxMount {
-	mounts := make([]sandboxMount, 0, len(locations))
-	for _, dest := range locations {
-		info, err := os.Stat(dest)
-		if err != nil {
-			continue
-		}
-		mounts = append(mounts, sandboxMount{dest: dest, dir: info.IsDir()})
-	}
-	return mounts
-}
-
 // sandboxVarRunMount hides /var/run only when it is a real directory: a
 // symlink to /run is already covered by the runtime mount, and bwrap refuses
 // to mount over a symlink.
@@ -1517,39 +1289,12 @@ func lstatMode(path string) (os.FileMode, bool) {
 // to, the filesystem root: a root that is a symlink to `/` would otherwise
 // make the whole host writable once the mechanism resolves it.
 func sandboxFilesystemRootRefusal(repo, verb string) *core.RefusalError {
-	spellings := []string{repo}
-	if resolved, err := filepath.EvalSymlinks(repo); err == nil {
-		spellings = append(spellings, resolved)
+	path, ok := hostsandbox.FilesystemRoot(repo)
+	if !ok {
+		return nil
 	}
-	for _, path := range spellings {
-		if filepath.Dir(path) == path {
-			return sandboxUnavailable(fmt.Sprintf(
-				"the reviewed root %s is the filesystem root %s; refusing to %s the whole host writable", repo, path, verb))
-		}
-	}
-	return nil
-}
-
-// sandboxHome reads the home the child will see: the environment snapshot
-// when it carries one, else the process home an inherited child environment
-// resolves to. An explicit snapshot without HOME cannot be hidden.
-func sandboxHome(env []string) (string, bool) {
-	// os/exec keeps the last of duplicate entries, so the child's HOME is the
-	// last one; hiding credentials under an earlier one would miss them.
-	home, found := "", false
-	for _, kv := range env {
-		if name, value, ok := strings.Cut(kv, envSeparator); ok && name == "HOME" {
-			home, found = value, true
-		}
-	}
-	if found {
-		return home, home != ""
-	}
-	if len(env) == 0 {
-		home, err := os.UserHomeDir()
-		return home, err == nil && home != ""
-	}
-	return "", false
+	return sandboxUnavailable(fmt.Sprintf(
+		"the reviewed root %s is the filesystem root %s; refusing to %s the whole host writable", repo, path, verb))
 }
 
 // sandboxExecMechanism is the macOS shape: a generated Seatbelt profile that
@@ -1579,8 +1324,8 @@ func sandboxExecMechanism(root string, in sandboxInputs, tmpBase string) (*sandb
 		tool:      sandboxExecTool,
 		mechanism: sandboxMechanismSandboxExec,
 		prefix:    []string{sandboxExecPath, "-p", profile},
-		env:       sandboxPrivateEnv(private),
-		cleanup:   func() error { return removePrivateDir(private) },
+		env:       hostsandbox.PrivateEnv(private),
+		cleanup:   func() error { return hostsandbox.RemovePrivateDir(private) },
 	}, nil
 }
 
@@ -1589,7 +1334,7 @@ func sandboxExecMechanism(root string, in sandboxInputs, tmpBase string) (*sandb
 // guarded deferred cleanup at its acquisition (GO-DEFER-01); the caller's
 // sandbox owns it on success.
 func sandboxExecPrivate(in sandboxInputs, repo, tmpBase string) (private, profile string, ref *core.RefusalError) {
-	private, err := os.MkdirTemp(tmpBase, sandboxPrivateDirPrefix)
+	private, err := os.MkdirTemp(tmpBase, hostsandbox.PrivateDirPrefix)
 	if err != nil {
 		return "", "", sandboxUnavailable(fmt.Sprintf("could not create the private temporary directory: %v", err))
 	}
@@ -1599,7 +1344,7 @@ func sandboxExecPrivate(in sandboxInputs, repo, tmpBase string) (private, profil
 		if ref == nil {
 			return
 		}
-		if err := removePrivateDir(acquired); err != nil {
+		if err := hostsandbox.RemovePrivateDir(acquired); err != nil {
 			ref.Message += core.Msgf(" (the private directory %s could not be removed: %v)", acquired, err)
 		}
 	}(private)
@@ -1613,7 +1358,7 @@ func sandboxExecPrivate(in sandboxInputs, repo, tmpBase string) (private, profil
 // sandboxExecPrivateProfile creates the private cache directory, then builds
 // the profile around the private tree.
 func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) (string, *core.RefusalError) {
-	if err := os.Mkdir(filepath.Join(private, sandboxCacheDir), sandboxPrivateDirMode); err != nil {
+	if err := os.Mkdir(filepath.Join(private, hostsandbox.CacheDir), hostsandbox.PrivateDirMode); err != nil {
 		return "", sandboxUnavailable(fmt.Sprintf("could not create the private cache directory: %v", err))
 	}
 	locations, ref := in.credentialLocations(repo, true)
@@ -1628,44 +1373,6 @@ func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) 
 		credentials: locations, gitDirs: gitDirs, gitReads: sandboxGitOutsideDirs(repo),
 		shared: sharedReals(in.sharedDirs()), root: repo, private: private, tmpBase: tmpBase,
 	})
-}
-
-// sandboxPrivateEnv is the child-environment override that keeps scratch and
-// caches inside the one writable private tree.
-func sandboxPrivateEnv(private string) []string {
-	return []string{
-		"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private, "GOTMPDIR=" + private,
-		"GOCACHE=" + filepath.Join(private, sandboxGoCacheDir),
-		"XDG_CACHE_HOME=" + filepath.Join(private, sandboxCacheDir),
-	}
-}
-
-// removePrivateDir restores owner access to every directory in the private
-// tree, then removes it, so a child that ran `chmod 0` on its own scratch
-// cannot strand the tree. Symlinks are never followed: the walk reports them
-// as non-directories, and only directories are re-permissioned.
-func removePrivateDir(private string) error {
-	var restoreErrs []error
-	walkErr := filepath.WalkDir(private, func(path string, d fs.DirEntry, err error) error {
-		restoreErrs = append(restoreErrs, restoreOwnerDir(path, d, err))
-		return nil
-	})
-	if err := os.RemoveAll(private); err != nil {
-		return jq.Sealed("remove "+private, errors.Join(append([]error{err, walkErr}, restoreErrs...)...))
-	}
-	return nil
-}
-
-// restoreOwnerDir gives one walked directory back its owner access; a walk
-// error or a non-directory (a symlink included) is left as found.
-func restoreOwnerDir(path string, d fs.DirEntry, walkErr error) error {
-	if walkErr != nil {
-		return walkErr
-	}
-	if !d.IsDir() {
-		return nil
-	}
-	return os.Chmod(path, sandboxPrivateDirMode) //nolint:wrapcheck // joined and sealed by removePrivateDir
 }
 
 // sandboxExecProfile builds the profile in precedence order — Seatbelt
@@ -1696,25 +1403,25 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 	if hostTemp == "" {
 		hostTemp = os.TempDir()
 	}
-	denyTemp := sandboxExpandRealpaths(append(slices.Clone(sandboxHostTempDirs), hostTemp))
-	roots := sandboxExpandRealpaths([]string{in.root})
-	allow := sandboxExpandRealpaths([]string{in.private, in.root})
+	denyTemp := hostsandbox.ExpandRealpaths(append(slices.Clone(sandboxHostTempDirs), hostTemp))
+	roots := hostsandbox.ExpandRealpaths([]string{in.root})
+	allow := hostsandbox.ExpandRealpaths([]string{in.private, in.root})
 	var b strings.Builder
 	b.WriteString(seatbeltHeader)
-	if ref := sandboxWriteRules(&b, "deny", denyTemp); ref != nil {
+	if ref := unavailable(hostsandbox.WriteRules(&b, "deny", denyTemp)); ref != nil {
 		return "", ref
 	}
-	if ref := sandboxWriteRules(&b, "allow", allow); ref != nil {
+	if ref := unavailable(hostsandbox.WriteRules(&b, "allow", allow)); ref != nil {
 		return "", ref
 	}
-	reads := sandboxExpandRealpaths(append(slices.Clone(in.gitReads), in.shared...))
-	if ref := sandboxReadRules(&b, reads); ref != nil {
+	reads := hostsandbox.ExpandRealpaths(append(slices.Clone(in.gitReads), in.shared...))
+	if ref := unavailable(hostsandbox.ReadRules(&b, reads)); ref != nil {
 		return "", ref
 	}
-	if ref := sandboxAncestorMetadata(&b, append(allow, reads...)); ref != nil {
+	if ref := unavailable(hostsandbox.AncestorMetadata(&b, append(allow, reads...))); ref != nil {
 		return "", ref
 	}
-	b.WriteString(seatbeltDeviceWrites)
+	b.WriteString(hostsandbox.SeatbeltDeviceWrites)
 	if ref := sandboxProfileDenials(&b, roots, in); ref != nil {
 		return "", ref
 	}
@@ -1728,10 +1435,10 @@ func sandboxProfileDenials(b *strings.Builder, roots []string, in *sandboxProfil
 	if ref := sandboxGitWriteDenials(b, roots, sandboxNodePaths(in.gitDirs)); ref != nil {
 		return ref
 	}
-	if ref := sandboxWriteDenials(b, sandboxExpandRealpaths(in.shared)); ref != nil {
+	if ref := unavailable(hostsandbox.WriteDenials(b, hostsandbox.ExpandRealpaths(in.shared))); ref != nil {
 		return ref
 	}
-	return sandboxWriteRules(b, "deny", sandboxExpandRealpaths(in.credentials))
+	return unavailable(hostsandbox.WriteRules(b, "deny", hostsandbox.ExpandRealpaths(in.credentials)))
 }
 
 // sandboxProfileInputs is what one Seatbelt profile is built from.
@@ -1754,7 +1461,7 @@ type sandboxProfileInputs struct {
 // git directory (which may sit under the root without a `.git` name).
 func sandboxGitWriteDenials(b *strings.Builder, roots, gitDirs []string) *core.RefusalError {
 	for _, root := range roots {
-		literal, ref := seatbeltLiteral("^" + seatbeltRegexQuote(root) + seatbeltGitComponent)
+		literal, ref := seatbeltLiteral("^" + hostsandbox.SeatbeltRegexQuote(root) + seatbeltGitComponent)
 		if ref != nil {
 			return ref
 		}
@@ -1770,50 +1477,10 @@ func sandboxGitWriteDenials(b *strings.Builder, roots, gitDirs []string) *core.R
 	return nil
 }
 
-// seatbeltRegexQuote escapes every regex metacharacter in a path so the root
-// matches only itself.
-func seatbeltRegexQuote(path string) string {
-	var b strings.Builder
-	for _, r := range path {
-		if strings.ContainsRune(`\.^$|()[]{}*+?`, r) {
-			b.WriteByte('\\')
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
-
-// sandboxExpandRealpaths cleans every path, adds its resolved realpath, and
-// removes duplicates while keeping first-seen order. Seatbelt matches the
-// resolved vnode path, so the /var -> /private/var spelling of a temp root
-// needs both forms. A path that does not exist yet (a git directory a `.git`
-// file names, a credential file not created) resolves through its deepest
-// existing ancestor, so a rule still matches the spelling the kernel will
-// see when the command tries to create it. A path that is itself a symlink
-// also gets its own node's spelling (its resolved parent plus its name), not
-// only its target's: Seatbelt checks an unlink or rename against the link's
-// canonical path, so without it the link could be replaced.
-func sandboxExpandRealpaths(paths []string) []string {
-	expanded := make([]string, 0, len(paths))
-	for _, path := range paths {
-		if path == "" {
-			continue
-		}
-		expanded = append(expanded, path)
-		if resolved, ok := sandboxRealpath(path); ok {
-			expanded = append(expanded, resolved)
-		}
-		if parent, ok := sandboxRealpath(filepath.Dir(path)); ok {
-			expanded = append(expanded, filepath.Join(parent, filepath.Base(path)))
-		}
-	}
-	return sandboxCleanUnique(expanded)
-}
-
 // sandboxNodePaths cleans every path and adds the spelling of its own node —
 // its resolved parent plus its name — without ever following the path
-// itself. The git denials use it instead of [sandboxExpandRealpaths]: every
-// git path is strictly below the root, and a walked in-root link must be
+// itself. The git denials use it instead of [hostsandbox.ExpandRealpaths]:
+// every git path is strictly below the root, and a walked in-root link must be
 // denied as the link (so it cannot be replaced), never as its target — a
 // link to `..` would otherwise deny the root's parent and with it every
 // write to the root. A link's in-root target is a walked path of its own.
@@ -1824,114 +1491,11 @@ func sandboxNodePaths(paths []string) []string {
 			continue
 		}
 		nodes = append(nodes, path)
-		if parent, ok := sandboxRealpath(filepath.Dir(path)); ok {
+		if parent, ok := hostsandbox.Realpath(filepath.Dir(path)); ok {
 			nodes = append(nodes, filepath.Join(parent, filepath.Base(path)))
 		}
 	}
-	return sandboxCleanUnique(nodes)
-}
-
-// sandboxRealpath resolves path, or the deepest existing ancestor of it with
-// the missing tail appended.
-func sandboxRealpath(path string) (string, bool) {
-	tail := ""
-	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
-		if resolved, err := filepath.EvalSymlinks(current); err == nil {
-			return filepath.Join(resolved, tail), true
-		}
-		if filepath.Dir(current) == current {
-			return "", false
-		}
-		tail = filepath.Join(filepath.Base(current), tail)
-	}
-}
-
-// sandboxReadRules renders one read-only allow per path; the header's write
-// denial still covers it.
-func sandboxReadRules(b *strings.Builder, paths []string) *core.RefusalError {
-	for _, path := range paths {
-		literal, ref := seatbeltLiteral(path)
-		if ref != nil {
-			return ref
-		}
-		fmt.Fprintf(b, "(allow file-read* (subpath %s))", literal)
-	}
-	return nil
-}
-
-// sandboxWriteDenials renders one write denial per path, leaving reads to
-// the rules before it.
-func sandboxWriteDenials(b *strings.Builder, paths []string) *core.RefusalError {
-	for _, path := range paths {
-		literal, ref := seatbeltLiteral(path)
-		if ref != nil {
-			return ref
-		}
-		fmt.Fprintf(b, "(deny file-write* (subpath %s))", literal)
-	}
-	return nil
-}
-
-// sandboxWriteRules renders one subpath rule per path, refusing a path whose
-// control characters have no safe Seatbelt literal.
-func sandboxWriteRules(b *strings.Builder, action string, paths []string) *core.RefusalError {
-	for _, path := range paths {
-		literal, ref := seatbeltLiteral(path)
-		if ref != nil {
-			return ref
-		}
-		fmt.Fprintf(b, "(%s file-read* file-write* (subpath %s))", action, literal)
-	}
-	return nil
-}
-
-// sandboxAncestorMetadata renders one rule allowing metadata reads (stat,
-// never a listing or a file's contents) of every proper ancestor of the
-// allowed paths, matched literally.
-func sandboxAncestorMetadata(b *strings.Builder, paths []string) *core.RefusalError {
-	ancestors := sandboxAncestors(paths)
-	if len(ancestors) == 0 {
-		return nil
-	}
-	b.WriteString("(allow file-read-metadata")
-	for _, dir := range ancestors {
-		literal, ref := seatbeltLiteral(dir)
-		if ref != nil {
-			return ref
-		}
-		b.WriteString(" (literal " + literal + ")")
-	}
-	b.WriteString(")")
-	return nil
-}
-
-// sandboxAncestors lists every proper ancestor of the paths, nearest first,
-// without duplicates.
-func sandboxAncestors(paths []string) []string {
-	var ancestors []string
-	for _, path := range paths {
-		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
-			ancestors = append(ancestors, dir)
-			if filepath.Dir(dir) == dir {
-				break
-			}
-		}
-	}
-	return sandboxCleanUnique(ancestors)
-}
-
-// seatbeltLiteral quotes one path for the Seatbelt profile. Backslashes and
-// quotes are escaped; a control character (including a newline) refuses,
-// because the profile must never be built from a path it cannot represent.
-func seatbeltLiteral(path string) (string, *core.RefusalError) {
-	if strings.ContainsFunc(path, func(r rune) bool {
-		return r < seatbeltFirstPrintable || r == seatbeltDelete
-	}) {
-		return "", sandboxUnavailable(fmt.Sprintf(
-			"the sandbox path %q contains a control character the Seatbelt profile cannot represent", path))
-	}
-	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
-	return `"` + quoted + `"`, nil
+	return hostsandbox.CleanUnique(nodes)
 }
 
 func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir string, env []string) *core.RefusalError {

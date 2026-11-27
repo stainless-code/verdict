@@ -35,8 +35,14 @@ mkdir -p "$AGENTBIN"
 cp "$STUB_SRC" "$AGENTBIN/claude"
 chmod +x "$AGENTBIN/claude"
 export PATH="$AGENTBIN:$PATH"
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
-export STUB_REPAIR_COUNT="$SANDBOX/repair-count"
+# Every review launch runs in the OS review sandbox, which lets the agent
+# write only its snapshot, a private TMPDIR, and its own state paths: the
+# stub's argv log lives in claude's state directory, relocated into the
+# sandbox by CLAUDE_CONFIG_DIR so the case never touches the real ~/.claude.
+export CLAUDE_CONFIG_DIR="$SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/agent-argv.log"
+export STUB_REPAIR_COUNT="$CLAUDE_CONFIG_DIR/repair-count"
 
 # spawns counts the agent processes the stub itself recorded. A leg that should
 # not launch anything leaves the count where it was.

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 )
 
 // TestRemovePrivateDirRestoresPermissions proves a child that strips its own
@@ -14,8 +16,8 @@ import (
 // directory.
 func TestRemovePrivateDirRestoresPermissions(t *testing.T) {
 	private, outside := lockedPrivateTree(t)
-	if err := removePrivateDir(private); err != nil {
-		t.Fatalf("removePrivateDir: %v", err)
+	if err := hostsandbox.RemovePrivateDir(private); err != nil {
+		t.Fatalf("RemovePrivateDir: %v", err)
 	}
 	if _, err := os.Lstat(private); !os.IsNotExist(err) {
 		t.Errorf("private tree survived (%v)", err)

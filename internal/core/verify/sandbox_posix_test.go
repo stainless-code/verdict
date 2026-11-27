@@ -156,6 +156,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		hostEnv: []string{
 			"HOME=/h/host", "GH_CONFIG_DIR=/x/gh", "AWS_CONFIG_FILE=/x/aws/config",
 			"DOCKER_CONFIG=/x/docker", "CLOUDSDK_CONFIG=/x/gcloud", "XDG_CONFIG_HOME=/x/cfg",
+			"GLAB_CONFIG_DIR=/x/glab",
 		},
 		accountHome: "/h/account",
 	}
@@ -167,6 +168,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		".aws", ".ssh", ".config/gh", ".docker", ".kube", ".config/gcloud", ".azure", ".gnupg",
 		".netrc", ".git-credentials", ".npmrc", ".pypirc", ".terraform.d",
 		".cargo/credentials.toml", ".cargo/credentials", ".vault-token", "Library/Keychains",
+		".config/glab-cli",
 	}
 	var want []string
 	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {
@@ -175,8 +177,8 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		}
 	}
 	want = append(want,
-		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2",
-		"/x/gh", "/x/aws/config", "/x/docker", "/x/gcloud",
+		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2", "/x/cfg/glab-cli",
+		"/x/gh", "/x/aws/config", "/x/docker", "/x/gcloud", "/x/glab",
 	)
 	if !slices.Equal(got, want) {
 		t.Errorf("locations =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

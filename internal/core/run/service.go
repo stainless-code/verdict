@@ -159,7 +159,18 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
-	return st.launchSelected(ctx, args, rounds)
+	return st.launchBoxed(ctx, args, rounds)
+}
+
+// launchBoxed settles the execution's review sandbox before any agent
+// starts, then launches, recording the posture in the response.
+func (st *state) launchBoxed(ctx context.Context, args *launchArgs, rounds int) (*core.RunResponse, *core.RefusalError) {
+	if ref := st.settleBox(ctx, &args.def); ref != nil {
+		return nil, ref
+	}
+	resp, ref := st.launchSelected(ctx, args, rounds)
+	st.box.annotate(resp, st.req.Print)
+	return resp, ref
 }
 
 // argsFor resolves everything one invocation works from: the declared pipeline,
@@ -583,7 +594,10 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	receiptID   string
 	// ws is the execution's reviewed tree every review launch copies its
 	// view from; nil for a render and for a dispatch, which run no review.
-	ws         *workspace
+	ws *workspace
+	// box is the execution's review-sandbox posture, decided before any
+	// agent starts; nil when the commander starts no host process.
+	box        *reviewBox
 	twoFinders bool
 }
 
@@ -804,6 +818,7 @@ func operatorAgent(def *config.PersonalAgent) agentcatalog.Launch {
 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
 		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
 		ProbeArgs: slices.Clone(def.ProbeArgs), Source: agentSourcePrefs,
+		StatePaths: slices.Clone(def.StatePaths), StateCitation: "prefs",
 	}
 }
 

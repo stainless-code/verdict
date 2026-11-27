@@ -46,7 +46,11 @@ mkdir -p "$AGENTBIN"
 cp "$STUB_SRC" "$AGENTBIN/claude"
 chmod +x "$AGENTBIN/claude"
 export PATH="$AGENTBIN:$PATH"
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+# The review sandbox lets the agent write only its snapshot, TMPDIR, and its
+# own state paths: the argv log lives in claude's relocated state directory.
+export CLAUDE_CONFIG_DIR="$SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/agent-argv.log"
 
 # spawns counts the agent processes the stub itself recorded, so "no process
 # started" is the child's own evidence rather than an inference from output.

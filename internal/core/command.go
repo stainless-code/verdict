@@ -53,6 +53,22 @@ type Commander interface {
 	Run(ctx context.Context, cmd *Command) (Result, error)
 }
 
+// HostCommander is a commander whose Run starts real host processes: the
+// production runners in internal/core/exec and the commanders that forward
+// to them. Only a launch through one is wrapped in the host's OS sandbox — a
+// scripted commander starts nothing to confine, so a review launch it runs
+// carries no sandbox posture at all.
+type HostCommander interface {
+	Commander
+	StartsHostProcesses() bool
+}
+
+// StartsHostProcesses reports whether c runs real host processes.
+func StartsHostProcesses(c Commander) bool {
+	h, ok := c.(HostCommander)
+	return ok && h.StartsHostProcesses()
+}
+
 // ExitFailure renders the completed process as the error its wait code
 // implies — `<bin>: exit status N` — for the callers whose retry loop or
 // refusal text carries a command failure. A zero wait code reads nil. The

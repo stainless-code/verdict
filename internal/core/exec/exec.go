@@ -24,6 +24,10 @@ import (
 // combined-capture runner; every other verb uses [Runner].
 type Watchdog struct{}
 
+// StartsHostProcesses marks the watchdog as a host commander, whose review
+// launches the run service wraps in the host's OS sandbox.
+func (Watchdog) StartsHostProcesses() bool { return true }
+
 // Run starts cmd.Argv in its own process group with combined output
 // capture, returning the wait status. The context deadline is the watchdog
 // budget: expiry SIGKILLs the group and records itself, so TimedOut reports

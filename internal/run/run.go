@@ -53,17 +53,20 @@ const (
 	findersFlag    = "--finders"
 	budgetFlag     = "--budget"
 	allowShellFlag = "--allow-shell"
-	coverageFlag   = "--require-coverage"
+	// unsandboxedFlag runs every review launch without verdict's OS sandbox.
+	unsandboxedFlag = "--allow-unsandboxed-review"
+	coverageFlag    = "--require-coverage"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
 	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
-	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --require-coverage, --print, " +
-	"-- <agent args>, --json"
+	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --allow-unsandboxed-review, " +
+	"--require-coverage, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--allow-shell]
+// [--allow-unsandboxed-review]
 // [--require-coverage] [--print] [-- <agent args>...] [--json]`, returning
 // the process exit code. A non-zero agent exit is preserved as this process's
 // exit code after the typed refusal is rendered, so CI surfaces the real
@@ -162,23 +165,24 @@ func runRequest(r *cli.Runner, req *readcommon.Request, flags *flags) *core.RunR
 	return &core.RunRequest{
 		Runtime: r.Read(*req, coreexec.Watchdog{}).Runtime,
 		Repo:    req.Repo, Pr: req.Pr, Root: req.Root, RepoRoot: req.RepoRoot,
-		LookPath:          exec.LookPath,
-		PassThrough:       flags.pass,
-		Environ:           os.Environ(),
-		Agent:             flags.agent,
-		Recipe:            flags.recipe,
-		StageRaw:          flags.stage,
-		TimeoutRaw:        flags.timeout,
-		RoundsRaw:         requestedRounds(flags),
-		FindersRaw:        flags.finders,
-		BudgetRaw:         flags.budget,
-		Print:             flags.print,
-		Resume:            flags.resume,
-		AllowShell:        flags.allowShell,
-		RequireCoverage:   flags.requireCoverage,
-		ConsentOverBudget: flags.consent,
-		JSONMode:          r.JSONMode,
-		Warnings:          append([]string{}, r.Warnings...),
+		LookPath:               exec.LookPath,
+		PassThrough:            flags.pass,
+		Environ:                os.Environ(),
+		Agent:                  flags.agent,
+		Recipe:                 flags.recipe,
+		StageRaw:               flags.stage,
+		TimeoutRaw:             flags.timeout,
+		RoundsRaw:              requestedRounds(flags),
+		FindersRaw:             flags.finders,
+		BudgetRaw:              flags.budget,
+		Print:                  flags.print,
+		Resume:                 flags.resume,
+		AllowShell:             flags.allowShell,
+		AllowUnsandboxedReview: flags.unsandboxed,
+		RequireCoverage:        flags.requireCoverage,
+		ConsentOverBudget:      flags.consent,
+		JSONMode:               r.JSONMode,
+		Warnings:               append([]string{}, r.Warnings...),
 	}
 }
 
@@ -211,6 +215,8 @@ type flags struct {
 	resume     bool
 	allowShell bool
 	roundsSet  bool
+	// unsandboxed is --allow-unsandboxed-review.
+	unsandboxed bool
 	// requireCoverage is record --require-coverage carried into the launch.
 	requireCoverage bool
 }
@@ -234,6 +240,23 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 	return f, 0, false
 }
 
+// switchFor is the field one boolean run flag sets.
+func (f *flags) switchFor(flag string) *bool {
+	switch flag {
+	case "--consent-over-budget":
+		return &f.consent
+	case "--resume":
+		return &f.resume
+	case allowShellFlag:
+		return &f.allowShell
+	case unsandboxedFlag:
+		return &f.unsandboxed
+	case coverageFlag:
+		return &f.requireCoverage
+	}
+	return &f.print
+}
+
 // parseToken consumes one run argument, returning the next index plus a usage
 // refusal when the token is unknown or a value flag lost its operand.
 func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
@@ -249,20 +272,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return parseStageFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
 		return parseCountedFlag(r, f, args, i)
-	case "--consent-over-budget":
-		f.consent = true
-		return i, 0, false
-	case "--resume":
-		f.resume = true
-		return i, 0, false
-	case allowShellFlag:
-		f.allowShell = true
-		return i, 0, false
-	case coverageFlag:
-		f.requireCoverage = true
-		return i, 0, false
-	case "--print":
-		f.print = true
+	case "--consent-over-budget", "--resume", allowShellFlag, unsandboxedFlag, coverageFlag, "--print":
+		*f.switchFor(a) = true
 		return i, 0, false
 	default:
 		return i, r.ReportUsage(&cli.UsageError{Message: core.Msgf(
@@ -409,6 +420,7 @@ func flagArgv(f *flags, resume bool) []string {
 	add(f.budget != "", budgetFlag, f.budget)
 	add(resume, "--resume")
 	add(f.allowShell, allowShellFlag)
+	add(f.unsandboxed, unsandboxedFlag)
 	add(f.requireCoverage, coverageFlag)
 	add(f.agent != "", "--agent", f.agent)
 	add(f.recipe != "", recipeFlag, f.recipe)

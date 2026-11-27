@@ -17,7 +17,7 @@ for agent in claude codex opencode my-agent; do
 done
 # An operator-defined agent: the loop takes any settings.json row, not a
 # hardcoded list.
-printf '{"agents":{"mine":{"binary":"my-agent","args":["exec"]}}}\n' \
+printf '{"agents":{"mine":{"binary":"my-agent","args":["exec"],"state_locations":[".mine"]}}}\n' \
   >"$EVAL_SANDBOX/home/.config/verdict/settings.json"
 PATH="$EVAL_SANDBOX/agentbin:$(dirname "$EVAL_CLI"):$PATH"
 HOME="$EVAL_SANDBOX/home"
@@ -32,7 +32,18 @@ loop_leg() {
   repo="$EVAL_SANDBOX/repo-$leg"
   output="$EVAL_SANDBOX/$leg"
   eval_fixture_repo "$repo"
-  export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$leg.log" LOOP_REPO="$repo"
+  # The review runs in the OS review sandbox, which lets an agent write only
+  # its snapshot, a private TMPDIR, and its own state paths, so each agent's
+  # spawn log lives in its state directory under the case's HOME (mine
+  # declares its own in prefs; codex keeps its own sandbox instead).
+  case "$agent" in
+    claude) state="$HOME/.claude" ;;
+    codex) state="$HOME/.codex" ;;
+    opencode) state="$HOME/.local/share/opencode" ;;
+    mine) state="$HOME/.mine" ;;
+  esac
+  mkdir -p "$state"
+  export LOOP_MODE="$mode" LOOP_LOG="$state/$leg.log" LOOP_REPO="$repo"
   : >"$LOOP_LOG"
   set +e
   (cd "$repo" && "$EVAL_CLI" loop acme/app --agent "$agent" --output "$output" --json "$@") \
@@ -78,7 +89,9 @@ assert_json_field "an unattested review refuses" review-insufficient '.refusal.c
 assert_json_field "a refusal is the refused stop" refused '.stop' "$output/summary.json"
 assert_json_field "empty review never reaches gate" null '.rounds[0].gate' "$output/summary.json"
 
-loop_leg stale opencode stale
+# The edit from outside the review is the stub writing the checkout, which the
+# review sandbox denies, so this leg opts the review out of it.
+loop_leg stale opencode stale --allow-unsandboxed-review
 assert_exit "edit during review refuses" 1
 assert_json_field "edit after fetch is typed" coverage-stale '.refusal.code' "$output/summary.json"
 

@@ -53,6 +53,9 @@ const (
 	flagPrint     = "--print"
 	// flagNoSandbox opts the verify step out of its default sandbox.
 	flagNoSandbox = "--no-sandbox"
+	// flagUnsandboxedReview runs the review step without verdict's OS
+	// sandbox; --no-sandbox is verify's alone.
+	flagUnsandboxedReview = "--allow-unsandboxed-review"
 	// flagSandbox and flagSandboxNet pass verify's own sandbox flags to the
 	// fix phase's verify step.
 	flagSandbox    = "--sandbox"
@@ -68,7 +71,7 @@ const (
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
 		"--max-severity <critical|important|informational>, " +
 		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
-		"--sandbox-network-only, --no-sandbox, --print, -- <agent args>, --json)"
+		"--sandbox-network-only, --no-sandbox, --allow-unsandboxed-review, --print, -- <agent args>, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
@@ -88,12 +91,15 @@ type flags struct {
 	sandbox    bool
 	sandboxNet bool
 	noSandbox  bool
+	// unsandboxedReview is --allow-unsandboxed-review.
+	unsandboxedReview bool
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
 // [--max-severity <tier>]
 // [--max-cost-usd <usd>] [--timeout <duration>] [--output <dir>]
-// [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
+// [--fix-prompt <file>] [--sandbox | --sandbox-network-only]
+// [--allow-unsandboxed-review] [--print]
 // [-- <agent args>...] [--json]`.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, ""
@@ -183,6 +189,7 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 
 		VerifySandboxNetworkOnly: f.sandboxNet,
 		VerifyNoSandbox:          f.noSandbox,
+		AllowUnsandboxedReview:   f.unsandboxedReview,
 	}, nil
 }
 
@@ -357,6 +364,8 @@ func boolFlag(f *flags, arg string) *bool {
 		return &f.sandboxNet
 	case flagNoSandbox:
 		return &f.noSandbox
+	case flagUnsandboxedReview:
+		return &f.unsandboxedReview
 	}
 	return nil
 }

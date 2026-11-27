@@ -33,6 +33,7 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		return nil, ref
 	}
 	steps := []PlanStep{}
+	sandbox := lp.reviewSandbox(ctx)
 	timeout := strconv.Itoa(lp.data.TimeoutS)
 	reviewTimeout := strconv.Itoa(max(1, (lp.data.TimeoutS+reviewAttempts-1)/reviewAttempts))
 	for n := 1; n <= lp.req.MaxRounds; n++ {
@@ -41,7 +42,10 @@ func (lp *loop) plan(ctx context.Context) ([]PlanStep, *core.RefusalError) {
 		repo := lp.req.Repo
 		steps = append(steps,
 			PlanStep{Round: n, Phase: PhaseFetch, When: whenAlways, Argv: []string{verbName, "fetch-local", repo, name}},
-			PlanStep{Round: n, Phase: PhaseReview, When: whenAlways, Argv: lp.reviewArgv(repo, local, reviewTimeout)},
+			PlanStep{
+				Round: n, Phase: PhaseReview, When: whenAlways, Argv: lp.reviewArgv(repo, local, reviewTimeout),
+				Sandbox: sandbox,
+			},
 			PlanStep{Round: n, Phase: PhaseRecord, When: whenAlways, Argv: []string{
 				verbName, "record", repo, local, "--require-coverage",
 			}},
@@ -87,10 +91,23 @@ func (lp *loop) reviewArgv(repo, local, timeout string) []string {
 		verbName, "run", repo, local, "--agent", lp.req.Agent, "--finders", findersOne,
 		"--rounds", strconv.Itoa(reviewAttempts), "--timeout", timeout, "--require-coverage",
 	}
+	if lp.req.AllowUnsandboxedReview {
+		argv = append(argv, "--allow-unsandboxed-review")
+	}
 	if len(lp.req.AgentArgs) > 0 {
 		argv = append(append(argv, "--"), lp.req.AgentArgs...)
 	}
 	return argv
+}
+
+// reviewSandbox is the review step's OS-sandbox posture, as run's --print
+// renders it: the same agent resolution and decision, nothing probed.
+func (lp *loop) reviewSandbox(ctx context.Context) *core.RunSandbox {
+	b := lp.bundle(1)
+	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent}, nil)
+	req.PassThrough = lp.req.AgentArgs
+	req.AllowUnsandboxedReview = lp.req.AllowUnsandboxedReview
+	return runcore.ReviewSandbox(ctx, req, lp.req.Flow.Agents)
 }
 
 // verifyArgv is the verify step's CLI equivalent, with its sandbox: the full

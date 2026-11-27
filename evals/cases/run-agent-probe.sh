@@ -74,8 +74,10 @@ if [ -s "$STUB_LOG" ]; then
 fi
 
 # --- the real agent passes the probe and records it before the launch --------
+# fx declares no state paths, so in the OS review sandbox its launch could not
+# write the case's log; this leg grades the probe, so the review opts out.
 : >"$STUB_LOG"
-run_review run acme/app "$LOCAL" --finders 1 --agent fx --json -- --model M
+run_review run acme/app "$LOCAL" --finders 1 --agent fx --allow-unsandboxed-review --json -- --model M
 assert_exit "fx launches after a matching probe" 0
 assert_envelope "fx launch envelope"
 assert_json_field "the launch accepts one fresh review" "true" '.data.artifact_fresh'

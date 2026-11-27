@@ -1,5 +1,7 @@
 package loopcore
 
+import "github.com/stainless-code/verdict/internal/core"
+
 // Stop reasons, one per way a loop ends. A pass exits 0 and so does a
 // --print render (planned); an operator cancel (refused, carrying the
 // canceled refusal) exits 3; every other reason exits 1. The receipts are
@@ -91,4 +93,7 @@ type PlanStep struct { //nolint:govet // field order is the published property o
 	Phase string   `enum:"fetch|review|record|gate|fix|verify"    json:"phase"`
 	When  string   `enum:"always|gate-failed|verify-cmd-declared" json:"when"`
 	Argv  []string `json:"argv"`
+	// Sandbox is the review step's OS-sandbox posture and wrapper, as run's
+	// --print renders them; absent on every other step.
+	Sandbox *core.RunSandbox `anyOf:"null" json:"sandbox,omitempty"`
 }

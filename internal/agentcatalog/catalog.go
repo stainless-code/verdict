@@ -1,7 +1,11 @@
 // Package agentcatalog owns the capabilities of shipped agents.
 package agentcatalog
 
-import "slices"
+import (
+	"path"
+	"slices"
+	"strings"
+)
 
 // Agent has optional capabilities; absence keeps it out of that verb.
 type Agent struct {
@@ -100,6 +104,44 @@ type Launch struct {
 	// like ReviewWriteArgs when the operator's `--` arguments decide
 	// permissions.
 	SnapshotWriteArgs []string
+	// StatePaths are the home-relative paths, in slash form, where the CLI
+	// keeps its own state: its login, settings, sessions, logs, and caches.
+	// A review launch in verdict's OS sandbox may write only these, its
+	// review snapshot, and a private TMPDIR, and may read them even where
+	// the credential table hides a path (claude's macOS login keychain). An
+	// entry ending in `*` names every path in its directory that starts with
+	// the rest — a config file beside its atomic-write siblings. StateCitation
+	// names where each was read or observed.
+	StatePaths    []string
+	StateCitation string
+	// Confinement is how the CLI confines its own review launch without
+	// verdict's OS sandbox, "" for not at all. [OwnSandbox]: its
+	// SnapshotWriteArgs start the CLI's own OS sandbox, which verdict's would
+	// nest — a nested Seatbelt profile fails on macOS (sandbox_apply:
+	// Operation not permitted) — so while those args apply its launch skips
+	// verdict's wrapper. [OwnWrites]: its shell is denied and its write grant
+	// scoped to the bundle. Either way, on a host with no OS sandbox it still
+	// runs, warned that its reads are not confined; every other row refuses
+	// there unless the operator opts out. ConfinementCitation names the doc.
+	Confinement         string
+	ConfinementCitation string
+	// StateEnv are the variables that relocate StatePaths: an absolute
+	// value, joined with Suffix, is a state path too.
+	StateEnv []StateVar
+}
+
+// The Confinement values.
+const (
+	// OwnSandbox is a CLI whose review launch runs its own OS sandbox.
+	OwnSandbox = "own-sandbox"
+	// OwnWrites is a CLI whose review launch confines its own writes.
+	OwnWrites = "own-writes"
+)
+
+// StateVar is one environment variable that relocates an agent's state.
+type StateVar struct {
+	Name   string
+	Suffix string
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -163,6 +205,22 @@ const (
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
 	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
 	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
+	// docClaudeSettings names ~/.claude/settings.json and ~/.claude.json,
+	// and CLAUDE_CONFIG_DIR — read 2026-11-27.
+	docClaudeSettings = "https://code.claude.com/docs/en/settings"
+	// docClaudeIAM states that macOS keeps Claude Code's credentials in the
+	// encrypted macOS Keychain — read 2026-11-27.
+	docClaudeIAM = "https://code.claude.com/docs/en/iam"
+	// docCodexSandbox states workspace-write's Seatbelt and Landlock
+	// sandboxes and what they let the agent write — read 2026-11-27.
+	docCodexSandbox = "https://developers.openai.com/codex/security"
+	// docOpenCodeStorage names opencode's data directory
+	// (~/.local/share/opencode: auth, sessions, logs) and its cache
+	// (~/.cache/opencode) — read 2026-11-27.
+	docOpenCodeStorage = "https://opencode.ai/docs/troubleshooting/"
+	// docPiConfig is getAgentDir: PI_CODING_AGENT_DIR, else ~/.pi/agent —
+	// read 2026-11-27.
+	docPiConfig = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts"
 )
 
 const (
@@ -320,6 +378,22 @@ var catalog = []Agent{
 				Args: []string{"--output-format", "json"},
 			},
 			Install: "curl -fsSL https://claude.ai/install.sh | bash",
+			// ~/.claude and ~/.claude.json per the settings doc, relocated by
+			// CLAUDE_CONFIG_DIR; the macOS login lives in the login keychain,
+			// which the Security framework reads and writes in-process. The
+			// `.claude.json*` siblings (.tmp.<pid>.<hex>, .backup.<ms>) and
+			// ~/Library/Caches/claude-cli-nodejs were observed from claude
+			// 2.1.331 on macOS — read and observed 2026-11-27.
+			StatePaths: []string{
+				".claude", ".claude.json*", "Library/Keychains", "Library/Caches/claude-cli-nodejs",
+			},
+			StateEnv:      []StateVar{{Name: "CLAUDE_CONFIG_DIR"}},
+			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
+			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
+			// under the bundle (ReviewWriteArgs): Write/Edit outside an allow
+			// rule are denied in print mode.
+			Confinement:         OwnWrites,
+			ConfinementCitation: docClaudePermissions,
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -400,6 +474,16 @@ var catalog = []Agent{
 			ResumeCitation: docCodexReadme,
 			Usage:          &Usage{Format: UsageCodexJSONL, Citation: docCodexExecJSON, Args: []string{"--json"}},
 			Install:        "npm install -g @openai/codex",
+			// CODEX_HOME, ~/.codex by default, holds config, auth, sessions,
+			// and logs — read 2026-11-27.
+			StatePaths:    []string{".codex"},
+			StateEnv:      []StateVar{{Name: "CODEX_HOME"}},
+			StateCitation: docCodexReadme,
+			// workspace-write runs codex's own Seatbelt (macOS) or
+			// Landlock/seccomp (Linux) sandbox, which confines its writes —
+			// shell included — to the working directory and temp roots.
+			Confinement:         OwnSandbox,
+			ConfinementCitation: docCodexSandbox,
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -761,6 +845,20 @@ var catalog = []Agent{
 				Args: []string{"--format", "json"},
 			},
 			Install: "npm install -g @opencode/cli",
+			// The XDG data, config, state, and cache directories, each under
+			// opencode/; ~/.local/state/opencode (model, kv, locks) was
+			// observed from opencode 2.4.2 on macOS — read and observed
+			// 2026-11-27.
+			StatePaths: []string{
+				".local/share/opencode", ".config/opencode", ".local/state/opencode", ".cache/opencode",
+			},
+			StateEnv: []StateVar{
+				{Name: "XDG_DATA_HOME", Suffix: nameOpenCode},
+				{Name: "XDG_CONFIG_HOME", Suffix: nameOpenCode},
+				{Name: "XDG_STATE_HOME", Suffix: nameOpenCode},
+				{Name: "XDG_CACHE_HOME", Suffix: nameOpenCode},
+			},
+			StateCitation: docOpenCodeStorage,
 		},
 		Skills: &Skills{
 			Base:     "config",
@@ -805,6 +903,12 @@ var catalog = []Agent{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 			Install: "curl -fsSL https://pi.dev/install.sh | sh",
+			// ~/.pi holds the agent directory (~/.pi/agent: auth, settings,
+			// sessions) and the extension state beside it (~/.pi/tasks was
+			// observed from pi 1.6.1) — read and observed 2026-11-27.
+			StatePaths:    []string{".pi"},
+			StateEnv:      []StateVar{{Name: "PI_CODING_AGENT_DIR"}},
+			StateCitation: docPiConfig,
 		},
 	},
 	// --agent 'qoder' is the product slug.
@@ -931,6 +1035,8 @@ func All() []Agent {
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
+			v.StatePaths = slices.Clone(v.StatePaths)
+			v.StateEnv = slices.Clone(v.StateEnv)
 			a.Launch = &v
 		}
 		if a.Skills != nil {
@@ -954,4 +1060,20 @@ func Lookup(name string) (Agent, bool) {
 		}
 	}
 	return Agent{}, false
+}
+
+// StatePathShape checks one home-relative state entry, its trailing `*`
+// removed: a clean, relative, slash-form path strictly below HOME. It says
+// what is wrong, "" for a sound entry. The catalog's rows and an operator's
+// prefs entries share it.
+func StatePathShape(rel string) string {
+	switch {
+	case rel == "" || rel == ".":
+		return "names HOME itself"
+	case strings.HasPrefix(rel, "/") || strings.Contains(rel, `\`) || (len(rel) > 1 && rel[1] == ':'):
+		return "must be relative to HOME, in slash form"
+	case path.Clean(rel) != rel || rel == ".." || strings.HasPrefix(rel, "../"):
+		return "must be a clean path below HOME"
+	}
+	return ""
 }

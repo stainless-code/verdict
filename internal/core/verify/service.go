@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/envsecret"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -265,7 +266,7 @@ func (st *state) warnSandboxLimits(sb *sandbox) {
 func (st *state) sandboxInputs() sandboxInputs {
 	account := st.req.accountHome
 	if account == "" {
-		account = sandboxAccountHome()
+		account = hostsandbox.AccountHome()
 	}
 	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account, shared: &st.shared}
 }

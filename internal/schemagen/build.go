@@ -572,6 +572,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.RunPhaseFailure](), name: "runPhaseFailure"},
 		{typ: reflect.TypeFor[core.RunRepair](), name: "runRepair"},
 		{typ: reflect.TypeFor[core.ReviewBudget](), name: "reviewBudget"},
+		{typ: reflect.TypeFor[core.RunSandbox](), name: "runSandbox"},
 		{typ: reflect.TypeFor[core.RunAttempt](), name: "runAttempt"},
 		{typ: reflect.TypeFor[core.RunEvidence](), name: "runEvidence"},
 		{typ: reflect.TypeFor[core.Truncation](), name: "truncation"},

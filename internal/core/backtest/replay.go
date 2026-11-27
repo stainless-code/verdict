@@ -902,6 +902,10 @@ func (c rootedCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 	return c.inner.Run(ctx, cmd) //nolint:wrapcheck // the seam error passes through by design
 }
 
+// StartsHostProcesses forwards the inner commander's host marker, so a
+// replayed review is OS-sandboxed exactly when a direct one would be.
+func (c rootedCommander) StartsHostProcesses() bool { return core.StartsHostProcesses(c.inner) }
+
 // LookPath forwards the tool resolution the nested services need. A commander
 // that cannot resolve tools reports the tool as missing, which is exactly what
 // the nested service's own contract expects of that seam.

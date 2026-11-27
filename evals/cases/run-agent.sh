@@ -44,7 +44,13 @@ mkdir -p "$AGENTBIN"
 cp "$STUB_SRC" "$AGENTBIN/claude"
 chmod +x "$AGENTBIN/claude"
 export PATH="$AGENTBIN:$PATH"
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+# Every review launch runs in the OS review sandbox, which lets the agent
+# write only its snapshot, a private TMPDIR, and its own state paths: the
+# stub's argv log lives in claude's state directory, relocated into the
+# sandbox by CLAUDE_CONFIG_DIR so the case never touches the real ~/.claude.
+export CLAUDE_CONFIG_DIR="$SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/agent-argv.log"
 
 # A PATH carrying only the tools the launcher itself needs, for the
 # agent-missing leg: the point is that no agent binary resolves, not that the
@@ -407,7 +413,7 @@ export STUB_AGENT_LOG=/dev/stdout
 export STUB_AGENT_MODE=write
 run_review run acme/app "$LOCAL" --finders 1 --agent claude --json \
   -- --api-key "$ARG_SECRET" --fast
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/agent-argv.log"
 assert_exit "a child that echoes its own argv still launches" 0
 assert_json_field "the record still marks the credential's position" "true" \
   '.output_tail | contains("arg[4]=***REDACTED***") and contains("arg[5]=***REDACTED***")' "$LAUNCHER"
