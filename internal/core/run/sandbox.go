@@ -745,13 +745,11 @@ func seatbeltReadDenials(b *strings.Builder, writable []string) error {
 // itself or the directory the snapshots sit in, the binary alone, under
 // each spelling, so the allow does not re-open the root.
 func seatbeltBinaryRead(b *strings.Builder, bin string, writable []string) error {
-	if bin == "" {
-		return nil
+	dirs, files := binaryReach(bin, slices.Concat(seatbeltTempRoots, snapshotBases(writable)))
+	if err := hostsandbox.ReadRules(b, hostsandbox.ExpandRealpaths(dirs)); err != nil {
+		return err //nolint:wrapcheck // as above
 	}
-	if !bareParent(filepath.Dir(bin), slices.Concat(seatbeltTempRoots, snapshotBases(writable))) {
-		return hostsandbox.ReadRules(b, hostsandbox.ExpandRealpaths([]string{filepath.Dir(bin)})) //nolint:wrapcheck // as above
-	}
-	for _, path := range binarySpellings(bin) {
+	for _, path := range hostsandbox.ExpandRealpaths(files) {
 		literal, err := hostsandbox.SeatbeltLiteral(path)
 		if err != nil {
 			return err //nolint:wrapcheck // as above
@@ -759,6 +757,29 @@ func seatbeltBinaryRead(b *strings.Builder, bin string, writable []string) error
 		fmt.Fprintf(b, "(allow file-read* (literal %s))", literal)
 	}
 	return nil
+}
+
+// binaryReach is what of the agent binary the launch must read: for its
+// path and for the file it resolves to (a link's target may sit elsewhere,
+// another hidden directory included), that file's directory — or, when the
+// directory is one of roots, which a read allow would re-open, the file
+// alone.
+func binaryReach(bin string, roots []string) (dirs, files []string) {
+	if bin == "" {
+		return nil, nil
+	}
+	paths := []string{bin}
+	if target, err := filepath.EvalSymlinks(bin); err == nil && target != bin {
+		paths = append(paths, target)
+	}
+	for _, path := range paths {
+		if bareParent(filepath.Dir(path), roots) {
+			files = append(files, path)
+		} else if !slices.Contains(dirs, filepath.Dir(path)) {
+			dirs = append(dirs, filepath.Dir(path))
+		}
+	}
+	return dirs, files
 }
 
 // seatbeltAncestors allows metadata reads (stat, never a listing) of every
@@ -876,49 +897,61 @@ func seatbeltRegex(b *strings.Builder, rule, path, tail string) error {
 	return nil
 }
 
-// bwrapReviewArgv builds the Linux shape after the runner: the fixed head;
-// /tmp, /run, and a real /var/run as empty tmpfs mounts (the resolver file
-// behind /etc/resolv.conf bound back read-only when it lives there); the
-// credential table hidden (empty tmpfs over a directory, /dev/null over a
-// file); the launch's directories bound writable and the agent binary's
-// directory read-only; the row's data paths bound writable and its config
-// and code read-only, last, so a login inside a hidden location stays the
-// agent's; then the hidden roots remounted read-only. bwrap can bind only
-// what exists: a missing writable directory was created first, and a missing
-// file stays read-only.
+// bwrapReviewArgv builds the Linux shape after the runner, in mount order —
+// a later mount covers an earlier one: the fixed head; /tmp, /var/tmp, /run,
+// and a real /var/run as empty tmpfs mounts (the resolver file behind
+// /etc/resolv.conf bound back read-only when it lives there); the launch's
+// directories bound writable and the agent binary read-only; the row's data
+// paths bound writable and its config and code read-only; then the
+// credential table hidden over all of them (empty tmpfs over a directory,
+// /dev/null over a file), but the agent's own login; then the hidden roots
+// remounted read-only. bwrap can bind only what exists: a missing writable
+// directory was created first, and a missing file stays read-only.
 func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 	hidden := hiddenRoots(lstatMode)
 	argv := slices.Concat(bwrapReviewHead, pairs(hostsandbox.Tmpfs, hidden))
 	if resolver, ok := hiddenResolver(hidden); ok {
 		argv = append(argv, hostsandbox.ROBind, resolver, resolver)
 	}
-	for _, mount := range hostsandbox.CredentialMounts(box.credentials) {
-		argv = append(argv, mount.Argv()...)
-	}
 	argv = append(argv, binds(hostsandbox.Bind, writable)...)
 	argv = append(argv, binds(hostsandbox.ROBind, hiddenBinary(bin, hidden, writable))...)
 	argv = append(argv, binds(hostsandbox.Bind, existingState(box.state))...)
 	argv = append(argv, binds(hostsandbox.ROBind, existingState(box.readOnly))...)
+	// The credential table after every state bind — a later mount covers an
+	// earlier one, so a read-only bind of a directory holding a login
+	// (~/.pi, ~/.codex) would otherwise expose the real file again — less the
+	// agent's own login, which its writable state binds.
+	others := slices.DeleteFunc(slices.Clone(box.credentials), box.ownLogin())
+	for _, mount := range hostsandbox.CredentialMounts(others) {
+		argv = append(argv, mount.Argv()...)
+	}
 	argv = append(argv, pairs("--remount-ro", hidden)...)
 	return append(argv, bwrapReviewTail...)
 }
 
 // hiddenBinary is what of the agent binary a hidden root covers, to bind
-// back read-only: its directory, or — when that directory is a hidden root
-// itself or the directory the snapshots sit in — the binary alone, by its
-// path and the file it resolves to, so the bind does not re-open the root.
+// back read-only after the hidden roots' tmpfs: for its path and the file it
+// resolves to (a link into another hidden directory, as a test binary under
+// /tmp is), the directory — or, when that directory is a hidden root itself
+// or the directory the snapshots sit in, the file alone, so the bind does
+// not re-open the root.
 func hiddenBinary(bin string, hidden, writable []string) []string {
-	if bin == "" || !under(bin, hidden) {
-		return nil
+	dirs, files := binaryReach(bin, slices.Concat(hidden, snapshotBases(writable)))
+	var out []string
+	for _, path := range slices.Concat(dirs, files) {
+		if inside(path, hidden) {
+			out = append(out, path)
+		}
 	}
-	if !bareParent(filepath.Dir(bin), slices.Concat(hidden, snapshotBases(writable))) {
-		return []string{filepath.Dir(bin)}
-	}
-	paths := []string{bin}
-	if target, err := filepath.EvalSymlinks(bin); err == nil && target != bin && under(target, hidden) {
-		paths = append(paths, target)
-	}
-	return paths
+	return out
+}
+
+// inside reports whether path, as written, lies strictly below one of
+// roots.
+func inside(path string, roots []string) bool {
+	return slices.ContainsFunc(roots, func(root string) bool {
+		return hostsandbox.Within(path, root) && path != root
+	})
 }
 
 // pairs is option followed by each path.

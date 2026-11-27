@@ -18,7 +18,20 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 )
+
+// hostLook resolves the agent to bin and the sandbox runner on the real
+// PATH: a stub resolver that answered bwrap with the agent would run the
+// agent as the sandbox on Linux (macOS's sandbox-exec has a fixed path).
+func hostLook(bin string) func(string) (string, error) {
+	return func(name string) (string, error) {
+		if name == hostsandbox.BwrapTool {
+			return exec.LookPath(name)
+		}
+		return bin, nil
+	}
+}
 
 // capturedHost is the real watchdog behind a plain wrapper, which carries
 // no simulation marker, so the launch goes through the real review sandbox
@@ -387,7 +400,7 @@ func agentAt(argv []string) int {
 	if len(argv) > 2 && argv[0] == "/usr/bin/sandbox-exec" {
 		return 3
 	}
-	if i := slices.Index(argv, "--"); argv[0] == "bwrap" && i >= 0 {
+	if i := slices.Index(argv, "--"); filepath.Base(argv[0]) == "bwrap" && i >= 0 {
 		return i + 1
 	}
 	return 0
@@ -409,12 +422,13 @@ func TestReviewSandboxKeepsFindersOutOfEachOther(t *testing.T) {
 		inner: &phaseCommander{t: t, dir: dir}, ready: make(chan struct{}), done: make(chan struct{}),
 	}
 	req := request(root, commander)
+	req.LookPath = hostLook("/opt/agents/claude")
 	req.RoundsRaw, req.FindersRaw = "1", "2"
 	req.Environ = append(req.Environ, "HOME="+t.TempDir(), "PATH="+os.Getenv("PATH"))
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatalf("two finders refused: %v", ref)
 	}
-	assertSiblingAttackDenied(t, commander.attack)
+	assertSiblingAttackDenied(t, commander.attack, hiddenBase(commander.live))
 	if raw := readPhaseBytes(t, filepath.Join(dir, "x-finder-2", reviewFile)); strings.Contains(string(raw), "forged") {
 		t.Error("finder 1's forgery reached finder 2's review")
 	}
@@ -425,15 +439,29 @@ func TestReviewSandboxKeepsFindersOutOfEachOther(t *testing.T) {
 // the shared tree and finder 2's view, wrote nothing, reached finder 2's
 // bundle copy on Linux (where it stays readable), and listed nothing on
 // macOS.
-func assertSiblingAttackDenied(t *testing.T, log string) {
+func assertSiblingAttackDenied(t *testing.T, log string, hidden bool) {
 	t.Helper()
-	if strings.Count(log, "/forged") < 2 {
-		t.Fatalf("the attack reached fewer than two snapshot directories:\n%s", log)
-	}
 	if strings.Contains(log, "written") || !strings.Contains(log, "denied exact sibling\n") {
 		t.Errorf("finder 1 wrote outside its own view, or never tried finder 2's live path:\n%s", log)
 	}
+	if hidden {
+		// bwrap's tmpfs hides the whole snapshot directory but the launch's
+		// own wrapper: the attack sees no sibling to try.
+		if strings.Contains(log, "/forged") {
+			t.Errorf("finder 1 saw another snapshot directory in a hidden temp root:\n%s", log)
+		}
+		return
+	}
+	if strings.Count(log, "/forged") < 2 {
+		t.Fatalf("the attack reached fewer than two snapshot directories:\n%s", log)
+	}
 	assertSiblingReads(t, log)
+}
+
+// hiddenBase reports whether the snapshot directory a live view sits in lies
+// in a temp root bwrap hides on Linux.
+func hiddenBase(live string) bool {
+	return runtime.GOOS == "linux" && inside(filepath.Dir(filepath.Dir(live)), hiddenRoots(lstatMode))
 }
 
 // assertSiblingReads checks what each platform lets the attack read: macOS
@@ -474,7 +502,7 @@ func sandboxedRunWith(t *testing.T, agent, root, home, script, rounds string, pa
 	host := &capturedHost{}
 	req := request(root, host)
 	req.Agent, req.RoundsRaw, req.PassThrough = agent, rounds, pass
-	req.LookPath = func(string) (string, error) { return bin, nil }
+	req.LookPath = hostLook(bin)
 	req.Environ = append(append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH")), env...)
 	resp, ref := Run(t.Context(), req)
 	return resp, ref, host.output()
@@ -632,7 +660,8 @@ const opencodeStartScript = "#!/bin/sh\n" +
 	"  for f in opencode.db opencode.db-journal opencode.db-wal opencode.db-shm; do " +
 	"printf x > \"$d/$f\" && echo \"$f=written\" || echo \"$f=failed\"; done\n" +
 	"  /bin/cat \"$d/auth.json\" && echo; echo seeded\n" +
-	"  /bin/cat \"$real/auth.json\" && echo realauth=read || echo realauth=denied\n" +
+	"  /bin/cat \"$real/auth.json\" 2>/dev/null | /usr/bin/grep -q opencode-login && echo realauth=read " +
+	"|| echo realauth=hidden\n" +
 	"  /bin/mkdir -p \"$real/snapshot/x\" 2>/dev/null; printf evil > \"$real/snapshot/x/config\" && echo realsnap=written " +
 	"|| echo realsnap=denied\n" +
 	"  printf evil > \"$XDG_STATE_HOME/x\" && echo state=written || echo state=failed\n" +
@@ -661,7 +690,7 @@ func TestReviewSandboxStartsOpencodeEphemeral(t *testing.T) {
 	}
 	for _, want := range []string{
 		"data=ephemeral", "repos=made", "cachebin=made", "opencode.db=written", "opencode.db-journal=written",
-		"opencode.db-wal=written", "opencode.db-shm=written", opencodeLogin, "realauth=denied", "realsnap=denied",
+		"opencode.db-wal=written", "opencode.db-shm=written", opencodeLogin, "realauth=hidden", "realsnap=denied",
 		"state=written", "realstate=denied", "cachebinfile=denied",
 	} {
 		if !strings.Contains(log, want) {

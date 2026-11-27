@@ -199,10 +199,13 @@ func copyReview() int {
 	return 0
 }
 
-// writeReviewSrc plants the review the fake agent copies into the bundle.
+// writeReviewSrc plants the review the fake agent copies into the bundle,
+// beside the fake agent itself: the review sandbox lets it read its own
+// binary's directory, while on Linux it hides the rest of /tmp, the
+// fixture's checkout included.
 func (f *fixture) writeReviewSrc(t *testing.T) {
 	t.Helper()
-	path := filepath.Join(f.dir, "..", "review-src.json")
+	path := filepath.Join(f.bin, "review-src.json")
 	writeFile(t, path, validReview)
 	t.Setenv("FAKE_REVIEW_SRC", path)
 }

@@ -236,7 +236,7 @@ var printedWrapper = map[string]struct {
 	}},
 	"linux": {mechanism: "bwrap", parts: []string{
 		"bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid ",
-		"--bind {snapshot} {snapshot} --new-session",
+		"--bind {snapshot} {snapshot} ",
 		"--new-session --die-with-parent --",
 	}},
 }
@@ -482,10 +482,15 @@ func TestBwrapReviewArgvShape(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A login inside a read-only state directory, and the agent's own login.
+	inside := filepath.Join(extensions, "auth.json")
+	own := filepath.Join(home, "own-login")
+	writeUnder(t, extensions, "auth.json", "login")
+	writeUnder(t, home, "own-login", "login")
 	box := &reviewBox{
 		mechanism: "bwrap", runner: "/usr/bin/bwrap", home: home,
-		credentials: []string{filepath.Join(home, ".ssh")},
-		state:       []statePath{{path: sessions, base: home}},
+		credentials: []string{filepath.Join(home, ".ssh"), inside, own},
+		state:       []statePath{{path: sessions, base: home}, {path: own, base: home, prefix: true}},
 		readOnly:    []statePath{{path: extensions, base: home}},
 	}
 	argv, err := box.prefix([]string{"/w"}, "", false)
@@ -495,13 +500,17 @@ func TestBwrapReviewArgvShape(t *testing.T) {
 	joined := strings.Join(argv, " ")
 	ordered := []string{
 		"/usr/bin/bwrap --ro-bind / / --dev /dev --proc /proc --unshare-pid",
-		"--tmpfs " + filepath.Join(home, ".ssh"),
 		"--bind /w /w",
 		"--bind " + sessions + " " + sessions,
 		"--ro-bind " + extensions + " " + extensions,
+		"--tmpfs " + filepath.Join(home, ".ssh"),
+		"--ro-bind /dev/null " + inside,
 		"--new-session --die-with-parent --",
 	}
 	assertInOrder(t, joined, ordered)
+	if strings.Contains(joined, "/dev/null "+own) {
+		t.Errorf("the agent's own login was hidden from it: %s", joined)
+	}
 	hidden := hiddenRoots(lstatMode)
 	for _, dir := range hidden {
 		assertInOrder(t, joined, []string{"--tmpfs " + dir + " ", "--bind /w /w", "--remount-ro " + dir})
@@ -624,7 +633,7 @@ func TestBinaryInAHiddenRootStaysAlone(t *testing.T) {
 	if err := seatbeltBinaryRead(&b, "/tmp/agent", nil); err != nil {
 		t.Fatal(err)
 	}
-	if got := b.String(); strings.Contains(got, "subpath") || !strings.Contains(got, `(literal "/private/tmp/agent")`) {
+	if got := b.String(); strings.Contains(got, "subpath") || !strings.Contains(got, `/tmp/agent")`) {
 		t.Errorf("a binary in /tmp re-opened its directory: %s", got)
 	}
 	b.Reset()
@@ -1050,5 +1059,36 @@ path = "evil"
 		"base_url = \"http://127.0.0.1:9/v1\"\nenv_key = \"K\"\n"
 	if string(got) != want {
 		t.Errorf("seeded config.toml =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// TestBinaryLinkTargetStaysReachable proves an agent binary that is a link
+// into another hidden directory — a test binary under /tmp, a version
+// manager's shim — stays runnable: bwrap binds back, and Seatbelt allows
+// reading, the target's directory as well as the link's, so exec through the
+// link finds the file.
+func TestBinaryLinkTargetStaysReachable(t *testing.T) {
+	t.Parallel()
+	hidden := t.TempDir()
+	linkDir, targetDir := filepath.Join(hidden, "bin"), filepath.Join(hidden, "versions", "1")
+	writeUnder(t, targetDir, "agent", "#!/bin/sh\n")
+	if err := os.MkdirAll(linkDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(linkDir, "agent")
+	if err := os.Symlink(filepath.Join(targetDir, "agent"), link); err != nil {
+		t.Skipf("no symlinks here: %v", err)
+	}
+	resolvedTarget, err := filepath.EvalSymlinks(targetDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := hiddenBinary(link, []string{hidden, filepath.Dir(resolvedTarget)}, nil)
+	if !slices.Contains(got, linkDir) || !slices.Contains(got, resolvedTarget) {
+		t.Errorf("bwrap binds %v, want the link's directory %s and the target's %s", got, linkDir, resolvedTarget)
+	}
+	dirs, _ := binaryReach(link, nil)
+	if !slices.Contains(dirs, resolvedTarget) {
+		t.Errorf("Seatbelt reads %v, want the target's directory %s too", dirs, resolvedTarget)
 	}
 }

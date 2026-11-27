@@ -42,7 +42,12 @@ if [ ! -f "$STUB_AGENT_SRC" ]; then
 fi
 cp "$STUB_AGENT_SRC" "$AGENTBIN/claude"
 chmod +x "$AGENTBIN/claude"
-export STUB_AGENT_LOG="$EVAL_SANDBOX/agent-argv.log"
+# The review runs in the OS review sandbox, which lets claude write only its
+# snapshot, its private TMPDIR, and its own data paths: its config directory
+# lives in the case's sandbox, and the stub's argv log in its debug directory.
+export CLAUDE_CONFIG_DIR="$EVAL_SANDBOX/claude-config"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent-argv.log"
 
 # MINBIN carries only the tools the CLI itself shells, for the agent-missing
 # leg: the point is that no agent binary resolves, not that verdict loses git.
