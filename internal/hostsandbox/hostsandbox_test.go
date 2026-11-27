@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -254,31 +255,85 @@ func TestCredentialTableRefusesADataDirLinkedToAHome(t *testing.T) {
 }
 
 // TestCredentialTableHidesADanglingOpenCodeDBLinkTarget proves a database
-// link whose target does not exist yet still hides the directory it points
-// into, where the database would appear, and that a link into a directory
-// that does not resolve refuses rather than leaving it open.
+// link whose target does not exist yet hides the directory it points into,
+// where the database would appear — an existing one, or a missing one (made
+// before a Linux launch), never skipped.
 func TestCredentialTableHidesADanglingOpenCodeDBLinkTarget(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on Windows")
 	}
-	base := t.TempDir()
+	base := resolvedTempDir(t)
 	target := filepath.Join(base, "target")
-	link := symlinkIn(t, filepath.Join(base, "link"), "oc.db", filepath.Join(target, "oc.db"), target)
-	in := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "h"), "OPENCODE_DB=" + link}}
-	got, err := in.CredentialLocations(filepath.Join(base, "r"), false)
+	for name, want := range map[string]string{
+		"oc.db":      target,
+		"nowhere.db": filepath.Join(base, "missing", "deeper"),
+	} {
+		link := symlinkIn(t, filepath.Join(base, "link"), name, filepath.Join(want, "oc.db"), target)
+		got, err := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "h"), "OPENCODE_DB=" + link}}.
+			CredentialLocations(filepath.Join(base, "r"), false)
+		if err != nil || !slices.Contains(got, want) {
+			t.Errorf("%s: credential locations lack %s (%v):\n%s", name, want, err, strings.Join(got, "\n"))
+		}
+	}
+}
+
+// TestResolveDBDirFollowsTheKernelsPath proves a database link is resolved
+// as the kernel resolves it: every hop of a chain to a missing leaf, and a
+// relative `..` target against the real directory of a link reached through
+// a linked directory; a chain past the hop limit refuses.
+func TestResolveDBDirFollowsTheKernelsPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := resolvedTempDir(t)
+	// a → b → y/oc.db, missing: the database appears in y.
+	y := filepath.Join(base, "y")
+	b := symlinkIn(t, filepath.Join(base, "x"), "oc.db", filepath.Join(y, "oc.db"), y)
+	a := symlinkIn(t, filepath.Join(base, "w"), "oc.db", b)
+	// share/opencode → disk/oc, and disk/oc/opencode.db → ../store/opencode.db:
+	// the kernel lands in disk/store, not share/store.
+	disk := filepath.Join(base, "disk", "oc")
+	symlinkIn(t, filepath.Join(base, "share"), "opencode", disk, disk, filepath.Join(base, "disk", "store"))
+	symlinkIn(t, disk, "opencode.db", filepath.Join("..", "store", "opencode.db"))
+	for path, want := range map[string]string{
+		a: y,
+		filepath.Join(base, "share", "opencode", "opencode.db"): filepath.Join(base, "disk", "store"),
+	} {
+		if got, err := ResolveDBDir(path); err != nil || got != want {
+			t.Errorf("ResolveDBDir(%s) = %q, %v; want %q", path, got, err, want)
+		}
+	}
+}
+
+// TestResolveDBDirRefusesAChainPastTheHopLimit proves a link chain longer
+// than the kernel's bound refuses rather than hiding a guess.
+func TestResolveDBDirRefusesAChainPastTheHopLimit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	loop := filepath.Join(resolvedTempDir(t), "loop")
+	if err := os.MkdirAll(loop, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range maxLinkHops + 1 {
+		if err := os.Symlink(filepath.Join(loop, strconv.Itoa(i+1)), filepath.Join(loop, strconv.Itoa(i))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := ResolveDBDir(filepath.Join(loop, "0")); err == nil || !strings.Contains(err.Error(), "more than") {
+		t.Errorf("a chain past the hop limit = %v, want a refusal", err)
+	}
+}
+
+// resolvedTempDir is a test directory under its resolved spelling, so a
+// resolved path compares equal.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if resolved, err := filepath.EvalSymlinks(target); err != nil || !slices.Contains(got, resolved) {
-		t.Errorf("credential locations lack the dangling link's target %s (%v):\n%s", resolved, err,
-			strings.Join(got, "\n"))
-	}
-	in.ChildEnv[1] = "OPENCODE_DB=" + symlinkIn(t, filepath.Join(base, "link"), "nowhere.db",
-		filepath.Join(base, "missing", "oc.db"))
-	if _, err := in.CredentialLocations(filepath.Join(base, "r"), false); err == nil ||
-		!strings.Contains(err.Error(), "does not resolve") {
-		t.Fatalf("a link into a missing directory = %v, want a refusal", err)
-	}
+	return dir
 }
 
 // symlinkIn makes dir and every extra directory, then a link named name in

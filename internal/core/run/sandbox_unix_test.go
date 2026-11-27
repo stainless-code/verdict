@@ -759,7 +759,7 @@ func TestReviewSandboxSeedsOpencodesDatabaseLogins(t *testing.T) {
 		{agent: "opencode", want: []string{"realdb=hidden", seededLogins, "db=ephemeral"}},
 		{agent: "pi", want: []string{"realdb=hidden"}, leak: "an-key"},
 	} {
-		home := t.TempDir()
+		home := visibleTempDir(t)
 		plantOpencodeDB(t, filepath.Join(home, ".local", "share"))
 		_, ref, log := sandboxedRunAs(t, tc.agent, confinedRoot(t), home, opencodeDBScript, "1")
 		if ref != nil {
@@ -1016,7 +1016,7 @@ const linkedDBScript = "#!/bin/sh\n" +
 func TestReviewSandboxHidesALinkedOpencodeDBTarget(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
-	home, store := t.TempDir(), t.TempDir()
+	home, store := t.TempDir(), visibleTempDir(t)
 	target := filepath.Join(store, "real", "oc.db")
 	writeUnder(t, store, filepath.Join("real", "oc.db"), "LEAKED")
 	link := filepath.Join(store, "link", "oc.db")
@@ -1055,11 +1055,11 @@ func denyRead(t *testing.T, path string) {
 }
 
 // firstRunScript waits on a FIFO in pi's own read-only directory — the test
-// opens it once the sandbox is up — then reads a sentinel beside opencode's
-// data root and the database a host opencode wrote on its first run there.
+// opens it once the sandbox is up — then reads a sentinel in the home and
+// the database a host opencode wrote on its first run, data root and all.
 const firstRunScript = "#!/bin/sh\n" +
 	"/bin/cat \"$HOME/.pi/go.fifo\" >/dev/null\n" +
-	"{ /bin/cat \"$HOME/.local/share/sentinel\" 2>/dev/null | /usr/bin/grep -q seen && echo home=visible " +
+	"{ /bin/cat \"$HOME/sentinel\" 2>/dev/null | /usr/bin/grep -q seen && echo home=visible " +
 	"|| echo home=hidden\n" +
 	"  /usr/bin/head -c 6 \"$HOME/.local/share/opencode/opencode.db\" 2>/dev/null | /usr/bin/grep -q LEAKED " +
 	"&& echo firstrun=read || echo firstrun=hidden\n" +
@@ -1067,16 +1067,17 @@ const firstRunScript = "#!/bin/sh\n" +
 	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
 
 // TestReviewSandboxHidesAFirstRunOpencodeDataDir proves, under the real
-// mechanism, that opencode's data directory, absent when a launch starts,
-// stays hidden when a host opencode makes it and writes its database during
-// the launch: on Linux verdict makes the directory first so bwrap can hide
-// it. Where the home itself sits in a hidden temp root nothing in it could
-// leak, so the case needs a TMPDIR outside them.
+// mechanism, that opencode's data directory — and its data root
+// (~/.local/share), both absent when a launch starts — stays hidden when a
+// host opencode makes them and writes its database during the launch: on
+// Linux verdict makes the missing chain first so bwrap can hide it. The home
+// sits outside the hidden temp roots (visibleTempDir), so a leak would
+// show.
 func TestReviewSandboxHidesAFirstRunOpencodeDataDir(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
-	home := t.TempDir()
-	writeUnder(t, home, filepath.Join(".local", "share", "sentinel"), "seen")
+	home := visibleTempDir(t)
+	writeUnder(t, home, "sentinel", "seen")
 	fifo := filepath.Join(home, ".pi", "go.fifo")
 	if err := os.MkdirAll(filepath.Dir(fifo), 0o700); err != nil {
 		t.Fatal(err)
@@ -1105,21 +1106,60 @@ func TestReviewSandboxHidesAFirstRunOpencodeDataDir(t *testing.T) {
 }
 
 // TestReviewSandboxHidesADanglingOpencodeDBTarget proves, under the real
-// mechanism, that an OPENCODE_DB link whose target does not exist when a
-// launch starts hides the directory it points into: the database a host
-// opencode creates there during the launch is unreadable to another agent.
+// mechanism, that a database link whose target does not exist when a launch
+// starts hides the directory the kernel will create it in — a direct link,
+// a chain of links, and the default opencode.db as a relative `..` link in a
+// linked data directory — so the database a host opencode creates there
+// during the launch is unreadable to another agent.
 func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 	t.Parallel()
 	requireReviewSandbox(t)
-	home, store := t.TempDir(), t.TempDir()
-	target := filepath.Join(store, "real", "oc.db")
-	link := danglingLink(t, store, target)
+	for name, layout := range map[string]func(t *testing.T, home, store string) (env []string, target string){
+		"direct": func(t *testing.T, _, store string) ([]string, string) {
+			t.Helper()
+			target := filepath.Join(store, "real", "oc.db")
+			return []string{"OPENCODE_DB=" + danglingLink(t, store, target)}, target
+		},
+		"chain": func(t *testing.T, _, store string) ([]string, string) {
+			t.Helper()
+			target := filepath.Join(store, "y", "oc.db")
+			b := danglingLink(t, filepath.Join(store, "b"), target)
+			return []string{"OPENCODE_DB=" + danglingLink(t, filepath.Join(store, "a"), b)}, target
+		},
+		"default relative": func(t *testing.T, home, store string) ([]string, string) {
+			t.Helper()
+			disk := filepath.Join(store, "disk", "oc")
+			for _, dir := range []string{
+				disk, filepath.Join(store, "disk", "store"),
+				filepath.Join(home, ".local", "share"),
+			} {
+				mustMkdir(t, dir)
+			}
+			mustSymlink(t, disk, filepath.Join(home, ".local", "share", "opencode"))
+			mustSymlink(t, filepath.Join("..", "store", "opencode.db"), filepath.Join(disk, "opencode.db"))
+			return nil, filepath.Join(store, "disk", "store", "opencode.db")
+		},
+	} {
+		home, store := t.TempDir(), visibleTempDir(t)
+		env, target := layout(t, home, store)
+		log := lateWriteRun(t, home, target, append(env, "REAL_DB="+target)...)
+		if !strings.Contains(log, "target=hidden") {
+			t.Errorf("%s: the database created at a dangling link's target was readable:\n%s", name, log)
+		}
+	}
+}
+
+// lateWriteRun launches pi, waits for it to open a FIFO in its own read-only
+// directory, writes LEAKED at target, and returns the launch's log, the
+// stand-in reading REAL_DB.
+func lateWriteRun(t *testing.T, home, target string, env ...string) string {
+	t.Helper()
 	fifo := filepath.Join(home, ".pi", "go.fifo")
 	makeFIFO(t, fifo)
 	done := make(chan string, 1)
 	go func() {
 		_, ref, log := sandboxedRunAs(t, "pi", confinedRoot(t), home, "#!/bin/sh\n/bin/cat \"$HOME/.pi/go.fifo\" "+
-			">/dev/null\n"+linkedDBScript[len("#!/bin/sh\n"):], "1", "OPENCODE_DB="+link, "REAL_DB="+target)
+			">/dev/null\n"+linkedDBScript[len("#!/bin/sh\n"):], "1", env...)
 		if ref != nil {
 			log += "\nrefused: " + ref.Message
 		}
@@ -1130,9 +1170,72 @@ func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = w.Close()
-	if log := <-done; !strings.Contains(log, "target=hidden") {
-		t.Errorf("the database created at a dangling link's target was readable:\n%s", log)
+	return <-done
+}
+
+// mustMkdir makes dir and its parents.
+func mustMkdir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
 	}
+}
+
+// mustSymlink makes link pointing at target.
+func mustSymlink(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// visibleTempDir is a test directory the review sandbox does not already
+// hide wholesale: t.TempDir(), unless it sits in a hidden temp root (Linux's
+// /tmp), then one under the user cache directory, removed after. A test of
+// what the sandbox hides would otherwise pass with or without the fix. It
+// skips, saying why, when there is no such directory.
+func visibleTempDir(t *testing.T) string {
+	t.Helper()
+	if dir := t.TempDir(); !inHiddenRoot(dir) {
+		return dir
+	}
+	if dir := cacheTempDir(t); dir != "" && !inHiddenRoot(dir) {
+		return dir
+	}
+	t.Skip("no test directory outside the review sandbox's hidden roots, so nothing here could leak")
+	return ""
+}
+
+// cacheTempDir is a new directory under the user cache directory, removed
+// after the test; "" when none can be made.
+func cacheTempDir(t *testing.T) string {
+	t.Helper()
+	base, err := os.UserCacheDir()
+	if err != nil || os.MkdirAll(base, 0o700) != nil {
+		return ""
+	}
+	dir, err := os.MkdirTemp(base, "verdict-sandbox-test-") //nolint:usetesting // t.TempDir sits in the hidden root
+	if err != nil {
+		return ""
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// inHiddenRoot reports whether dir, resolved, sits in a root the review
+// sandbox hides whole on this host.
+func inHiddenRoot(dir string) bool {
+	roots := bwrapHiddenRoots
+	if runtime.GOOS == "darwin" {
+		roots = seatbeltTempRoots
+	}
+	resolved, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		resolved = dir
+	}
+	return slices.ContainsFunc(hostsandbox.ExpandRealpaths(roots), func(root string) bool {
+		return hostsandbox.Within(resolved, root)
+	})
 }
 
 // danglingLink makes target's directory, empty, and a link to target in a
@@ -1159,5 +1262,31 @@ func makeFIFO(t *testing.T, path string) {
 	}
 	if err := syscall.Mkfifo(path, 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestMakeHiddenDirRefusesAnUnwritableRoot proves a missing credential
+// directory that cannot be made — its data root is read-only — refuses,
+// naming the directory and the fix, rather than launching it unhidden.
+func TestMakeHiddenDirRefusesAnUnwritableRoot(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	locked := filepath.Join(root, "locked")
+	if err := os.Mkdir(locked, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(locked, 0o700); err != nil {
+			t.Error(err)
+		}
+	})
+	if f, err := os.Create(filepath.Join(locked, "probe")); err == nil {
+		_ = f.Close()
+		t.Skip("this user writes a read-only directory (root); the refusal cannot be staged")
+	}
+	dir := filepath.Join(locked, "share", "opencode")
+	err := makeHiddenDir(dir)
+	if err == nil || !strings.Contains(err.Error(), "must hide "+dir) || !strings.Contains(err.Error(), "create "+dir) {
+		t.Fatalf("an unwritable root = %v, want a refusal naming %s", err, dir)
 	}
 }

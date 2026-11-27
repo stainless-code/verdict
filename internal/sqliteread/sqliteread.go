@@ -132,7 +132,8 @@ const (
 type DB struct {
 	file     io.ReaderAt
 	wal      io.ReaderAt
-	frames   map[uint32]int64
+	frames   map[uint32]frameRef
+	order    binary.ByteOrder
 	salt     []byte
 	pageSize int
 	usable   int
@@ -212,7 +213,7 @@ func geometry(head []byte) (*DB, error) {
 // walScan is the state of one pass over the log's frames.
 type walScan struct {
 	order   binary.ByteOrder
-	pending map[uint32]int64
+	pending map[uint32]frameRef
 	salt    []byte
 	s0, s1  uint32
 }
@@ -226,7 +227,7 @@ func (d *DB) indexWAL(wal io.ReaderAt, walSize, limit int64) error {
 	if err != nil || !ok {
 		return err
 	}
-	d.wal, d.frames, d.salt = wal, map[uint32]int64{}, slices.Clone(scan.salt)
+	d.wal, d.frames, d.salt, d.order = wal, map[uint32]frameRef{}, slices.Clone(scan.salt), scan.order
 	frame := make([]byte, walFrameHead+d.pageSize)
 	for i := range limit {
 		if more, err := d.nextFrame(scan, frame, walHeaderSize+i*int64(len(frame)), walSize); !more {
@@ -250,17 +251,25 @@ func (d *DB) nextFrame(scan *walScan, frame []byte, off, walSize int64) (bool, e
 	if _, err := d.wal.ReadAt(frame, off); err != nil {
 		return false, jq.NewErr("write-ahead log frame unreadable")
 	}
+	prior := frameRef{at: off, s0: scan.s0, s1: scan.s1}
 	if !scan.frame(frame) {
 		return false, nil
 	}
-	d.commit(scan, frame, off)
+	d.commit(scan, frame, prior)
 	return true, nil
+}
+
+// frameRef is one indexed frame: its offset in the log and the running
+// checksum before it, which its own checksum continues.
+type frameRef struct {
+	at     int64
+	s0, s1 uint32
 }
 
 // commit records one valid frame, and when it ends a transaction makes the
 // transaction's frames the pages read.
-func (d *DB) commit(scan *walScan, frame []byte, off int64) {
-	scan.pending[binary.BigEndian.Uint32(frame)] = off + walFrameHead
+func (d *DB) commit(scan *walScan, frame []byte, ref frameRef) {
+	scan.pending[binary.BigEndian.Uint32(frame)] = ref
 	if size := binary.BigEndian.Uint32(frame[offFrameSize:]); size != 0 {
 		maps.Copy(d.frames, scan.pending)
 		clear(scan.pending)
@@ -285,7 +294,7 @@ func (d *DB) walHeader(wal io.ReaderAt, walSize int64) (*walScan, bool, error) {
 	if binary.BigEndian.Uint32(head[offWALPage:]) != uint32(d.pageSize) { //nolint:gosec // a page size is at most 64 KiB
 		return nil, false, jq.NewErr("write-ahead log page size differs from the database's")
 	}
-	scan := &walScan{order: order, salt: head[offWALSalt : offWALSalt+saltSize], pending: map[uint32]int64{}}
+	scan := &walScan{order: order, salt: head[offWALSalt : offWALSalt+saltSize], pending: map[uint32]frameRef{}}
 	scan.s0, scan.s1 = walChecksum(order, head[:offWALSum], 0, 0)
 	return scan, scan.matches(head[offWALSum:]), nil
 }
@@ -335,37 +344,41 @@ func (d *DB) page(n uint32) ([]byte, error) {
 	if d.reads++; d.reads > maxPages {
 		return nil, jq.NewErr("table larger than the read cap")
 	}
-	buf := make([]byte, d.pageSize)
-	src, off := d.file, int64(n-1)*int64(d.pageSize)
-	at, logged := d.frames[n]
-	if logged {
-		if err := d.sameFrame(n, at); err != nil {
-			return nil, err
-		}
-		src, off = d.wal, at
+	if ref, logged := d.frames[n]; logged {
+		return d.loggedPage(n, ref)
 	}
-	if _, err := src.ReadAt(buf, off); err != nil {
+	buf := make([]byte, d.pageSize)
+	if _, err := d.file.ReadAt(buf, int64(n-1)*int64(d.pageSize)); err != nil {
 		return nil, jq.NewErr("page unreadable")
 	}
 	return buf, nil
 }
 
-// sameFrame checks that the log still holds, at the offset indexWAL
-// recorded, page n's frame of the same log: its header names page n and
-// carries the log's salts, and the log header's salts have not moved. A
-// writer that reset the log since would otherwise hand back another valid
-// page there, read as rows with no error.
-func (d *DB) sameFrame(n uint32, at int64) error {
-	head := make([]byte, walFrameHead)
-	salts := make([]byte, saltSize)
-	_, errFrame := d.wal.ReadAt(head, at-walFrameHead)
-	_, errLog := d.wal.ReadAt(salts, offWALSalt)
-	if errFrame != nil || errLog != nil || binary.BigEndian.Uint32(head) != n ||
-		!bytes.Equal(head[offFrameSalt:offFrameSalt+saltSize], d.salt) || !bytes.Equal(salts, d.salt) {
-		return jq.NewErr("write-ahead log changed while it was read")
+// loggedPage reads page n's frame — its header and its page in one read —
+// and returns the page only when that very buffer is the frame indexWAL
+// indexed: its header names page n, carries the log's salts, and its
+// checksum continues the running checksum recorded before it. A writer that
+// reset or rewrote the log since would otherwise hand back another page
+// there, read as rows with no error.
+func (d *DB) loggedPage(n uint32, ref frameRef) ([]byte, error) {
+	frame := make([]byte, walFrameHead+d.pageSize)
+	if _, err := d.wal.ReadAt(frame, ref.at); err != nil {
+		return nil, jq.NewErr("page unreadable")
 	}
-	return nil
+	if binary.BigEndian.Uint32(frame) != n || !bytes.Equal(frame[offFrameSalt:offFrameSalt+saltSize], d.salt) {
+		return nil, errLogChanged
+	}
+	check := walScan{order: d.order, s0: ref.s0, s1: ref.s1}
+	check.s0, check.s1 = walChecksum(d.order, frame[:offFrameSalt], check.s0, check.s1)
+	check.s0, check.s1 = walChecksum(d.order, frame[walFrameHead:], check.s0, check.s1)
+	if !check.matches(frame[offFrameSum:]) {
+		return nil, errLogChanged
+	}
+	return frame[walFrameHead:], nil
 }
+
+// errLogChanged reports a log that no longer holds the frame indexed.
+var errLogChanged = jq.NewErr("write-ahead log changed while it was read")
 
 // Table returns every row of the named rowid table, each a map from column
 // name to value.
@@ -763,21 +776,18 @@ func Columns(sql string) ([]string, error) {
 }
 
 // virtualColumn reports a generated column SQLite does not store: one with
-// an AS (expression) clause and no STORED storage clause after it. Quoted
-// text and parenthesized expressions are skipped, so a ' STORED' inside the
-// expression is not the clause.
+// an AS (expression) clause whose next token is not STORED — SQLite takes
+// the storage clause only right after the expression, so STORED anywhere
+// else (quoted, inside the expression, a CONSTRAINT's name) leaves the
+// column VIRTUAL.
 func virtualColumn(def string) bool {
 	words := strings.Fields(clauseSkeleton(strings.ToUpper(def)))
-	generated := false
-	for i, w := range words {
-		switch {
-		case w == "AS" && i+1 < len(words) && words[i+1] == "()":
-			generated = true
-		case generated && w == "STORED":
-			return false
+	for i := 0; i+1 < len(words); i++ {
+		if words[i] == "AS" && words[i+1] == "()" {
+			return i+2 >= len(words) || words[i+2] != "STORED"
 		}
 	}
-	return generated
+	return false
 }
 
 // clauseSkeleton is a definition with every quoted text dropped and every

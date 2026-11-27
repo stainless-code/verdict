@@ -298,9 +298,9 @@ func assertShellKeychain(t *testing.T, shell bool) {
 }
 
 // TestMakeHiddenDirMakesAMissingDataDir proves a missing opencode data
-// directory is made, empty and private, below an existing parent, that one
-// already there is left alone, that a missing parent makes nothing, and that
-// a parent that is a link refuses.
+// directory is made, empty and private, that one already there is left
+// alone, and that a missing data root is made too: every missing level from
+// the deepest existing ancestor down, each 0700.
 func TestMakeHiddenDirMakesAMissingDataDir(t *testing.T) {
 	t.Parallel()
 	share := t.TempDir()
@@ -316,12 +316,12 @@ func TestMakeHiddenDirMakesAMissingDataDir(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "kept")); err != nil {
 		t.Errorf("an existing directory was replaced: %v", err)
 	}
-	gone := filepath.Join(share, "missing", "opencode")
-	if err := makeHiddenDir(gone); err != nil {
+	chain := filepath.Join(share, "local", "share", "opencode")
+	if err := makeHiddenDir(chain); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Dir(gone)); !os.IsNotExist(err) {
-		t.Errorf("a missing parent was made (err = %v)", err)
+	for _, level := range []string{filepath.Join(share, "local"), filepath.Join(share, "local", "share"), chain} {
+		assertPrivateDir(t, level)
 	}
 }
 
@@ -335,9 +335,10 @@ func assertPrivateDir(t *testing.T, dir string) {
 	}
 }
 
-// TestMakeHiddenDirRefusesALinkedParent proves a data root that is a link
-// refuses rather than making the directory wherever it points.
-func TestMakeHiddenDirRefusesALinkedParent(t *testing.T) {
+// TestMakeHiddenDirMakesBelowALinkedRoot proves a data root that is a link
+// gets its directory below the real directory it names — where the kernel,
+// and bwrap's mount over the link, land — never through the link.
+func TestMakeHiddenDirMakesBelowALinkedRoot(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on Windows")
@@ -347,10 +348,29 @@ func TestMakeHiddenDirRefusesALinkedParent(t *testing.T) {
 	if err := os.Symlink(elsewhere, share); err != nil {
 		t.Fatal(err)
 	}
-	if err := makeHiddenDir(filepath.Join(share, "opencode")); err == nil || !strings.Contains(err.Error(), "is a symlink") {
-		t.Fatalf("a linked parent = %v, want a refusal", err)
+	if err := makeHiddenDir(filepath.Join(share, "opencode")); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Lstat(filepath.Join(elsewhere, "opencode")); !os.IsNotExist(err) {
-		t.Errorf("the directory was made through the link (err = %v)", err)
+	assertPrivateDir(t, filepath.Join(elsewhere, "opencode"))
+}
+
+// TestLinuxLaunchMakesTheOpencodeDBDir proves the directories a Linux launch
+// makes before bwrap include the one an OPENCODE_DB in a missing directory
+// names, beside every opencode data directory, so its database is hidden
+// once a host opencode creates it.
+func TestLinuxLaunchMakesTheOpencodeDBDir(t *testing.T) {
+	t.Parallel()
+	base := t.TempDir()
+	home, db := filepath.Join(base, "h"), filepath.Join(base, "missing", "deeper", "oc.db")
+	dirs, err := openCodeDataDirs(hostsandbox.Inputs{ChildEnv: []string{"HOME=" + home, "OPENCODE_DB=" + db}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		filepath.Join(home, ".local", "share", "opencode"), hostsandbox.ResolveExisting(filepath.Dir(db)),
+	} {
+		if !slices.Contains(dirs, want) {
+			t.Errorf("dirs = %q, want %s among them", dirs, want)
+		}
 	}
 }

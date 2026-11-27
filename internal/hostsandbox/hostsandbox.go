@@ -243,16 +243,16 @@ func envLocations(env, homes []string) ([]string, error) {
 	for _, v := range credentialEnv {
 		locations = append(locations, v.paths(env)...)
 	}
-	dirs, err := openCodeDBDirs(env, homes)
+	dirs, err := OpenCodeDBDirs(env, homes)
 	return append(locations, dirs...), err
 }
 
-// openCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
+// OpenCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
 // with its journal and log beside it: an absolute value's own directory, a
 // relative one resolved against every opencode data directory, as opencode
 // resolves it, and for a value that is a link the target's directory too;
 // ":memory:" names no file.
-func openCodeDBDirs(env, homes []string) ([]string, error) {
+func OpenCodeDBDirs(env, homes []string) ([]string, error) {
 	value := EnvLookup(env, envOpenCodeDB)
 	switch {
 	case value == memoryDB:
@@ -291,59 +291,75 @@ func OpenCodeDataDirs(env, homes []string) []string {
 // openCodeDir is opencode's directory under a data root.
 const openCodeDir = "opencode"
 
-// dbDirs is the directory of each database path and, when the path is or
-// runs through a link, of the file it resolves to: SQLite opens the target
-// and keeps its journal and log beside it, in a directory the path's own
-// does not cover. A link whose target does not exist yet is read, not
-// resolved: the target's directory is where the database will appear, so
-// it is hidden too, and a link whose target directory cannot be resolved
-// refuses rather than leaving it open. (A location that is a directory
-// reached through a link needs nothing more: bwrap mounts over its target,
-// and the Seatbelt profile matches every realpath spelling.)
+// dbDirs is the directory of each database path as written and the one
+// the database's file actually lives in (ResolveDBDir): SQLite resolves a
+// link to the database and keeps its journal and log beside the target,
+// in a directory the path's own does not cover.
 func dbDirs(paths []string) ([]string, error) {
 	var dirs []string
 	for _, path := range paths {
-		dirs = append(dirs, filepath.Dir(path))
-		target, err := linkTargetDir(path)
+		resolved, err := ResolveDBDir(path)
 		if err != nil {
 			return nil, err
 		}
-		if target != "" {
-			dirs = append(dirs, target)
-		}
+		dirs = append(dirs, filepath.Dir(path), resolved)
 	}
 	return dirs, nil
 }
 
-// linkTargetDir is the resolved directory a database path's file lives in
-// when the path is a link or runs through one, "" when it is neither.
-func linkTargetDir(path string) (string, error) {
-	if resolved, err := filepath.EvalSymlinks(path); err == nil {
-		return filepath.Dir(resolved), nil
+// maxLinkHops bounds the links a database path is followed through, as the
+// kernel bounds a path walk (ELOOP).
+const maxLinkHops = 40
+
+// ResolveDBDir is the directory a database path's file lives in, or will be
+// created in, resolved the way the kernel resolves it: each hop's directory
+// through EvalSymlinks (as deep as it exists, the missing rest appended), a
+// relative link target joined against that resolved directory, followed hop
+// by hop until the leaf exists as a file or is missing. A chain longer than
+// maxLinkHops, or a link that cannot be read, refuses: where the database
+// would appear cannot be pinned down.
+func ResolveDBDir(path string) (string, error) {
+	cur := filepath.Clean(path)
+	for range maxLinkHops + 1 {
+		dir := ResolveExisting(filepath.Dir(cur))
+		leaf := filepath.Join(dir, filepath.Base(cur))
+		info, err := os.Lstat(leaf)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return dir, nil
+		case err != nil:
+			return "", jq.NewErrf("the database path %s cannot be inspected (%v); fix its permissions", leaf, err)
+		case info.Mode()&fs.ModeSymlink == 0:
+			return dir, nil
+		}
+		target, err := os.Readlink(leaf)
+		if err != nil {
+			return "", jq.NewErrf("the database link %s cannot be read (%v); remove it or point it at a file",
+				leaf, err)
+		}
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(dir, target)
+		}
+		cur = filepath.Clean(target)
 	}
-	if info, err := os.Lstat(path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-		return danglingTargetDir(path)
-	}
-	return "", nil
+	return "", jq.NewErrf("the database path %s runs through more than %d links, so the review sandbox cannot "+
+		"pin down where the database lives; point it at the file directly", path, maxLinkHops)
 }
 
-// danglingTargetDir is the resolved directory a link whose target does not
-// exist points into, read with Readlink against the link's own directory.
-func danglingTargetDir(path string) (string, error) {
-	target, err := os.Readlink(path)
-	if err != nil {
-		return "", jq.NewErrf("the database link %s cannot be read (%v); remove it or point it at a file", path, err)
+// ResolveExisting is dir with its deepest existing ancestor resolved through
+// every link and the missing rest appended as written: a component that
+// does not exist cannot be a link yet.
+func ResolveExisting(dir string) string {
+	var rest []string
+	for at := filepath.Clean(dir); ; at = filepath.Dir(at) {
+		if resolved, err := filepath.EvalSymlinks(at); err == nil {
+			return filepath.Join(append([]string{resolved}, rest...)...)
+		}
+		if filepath.Dir(at) == at {
+			return filepath.Clean(dir)
+		}
+		rest = append([]string{filepath.Base(at)}, rest...)
 	}
-	if !filepath.IsAbs(target) {
-		target = filepath.Join(filepath.Dir(path), target)
-	}
-	dir, err := filepath.EvalSymlinks(filepath.Dir(target))
-	if err != nil {
-		return "", jq.NewErrf("the database link %s points into %s, which does not resolve, so the review "+
-			"sandbox cannot hide where the database would appear; point the link into an existing directory "+
-			"or remove it", path, filepath.Dir(target))
-	}
-	return dir, nil
 }
 
 // memoryDB is the OPENCODE_DB value that keeps the database in memory.

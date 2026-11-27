@@ -4416,15 +4416,18 @@ On Linux that means the network namespace is shared too (see Sockets below).
   `~/.local/share/opencode/mcp-auth.json`, `~/.claude/.credentials.json`,
   `~/.config/github-copilot`, `~/.gemini/oauth_creds.json`, and opencode's
   whole data directory `~/.local/share/opencode`, whose database holds its
-  logins (and the directory `OPENCODE_DB` puts the database in, resolved as
-  opencode resolves it, with the directory of the file it names when it is a
-  link — the default `opencode.db` too, and for a link whose file does not
-  exist yet the directory it points into; a link into a directory that does
-  not resolve, or a location that is or resolves to a home, refuses). On Linux, where bwrap can hide only what exists, a missing
-  opencode data directory whose parent exists is made empty (mode 0700)
-  before the launch, and kept, so a host opencode's first run during the
-  review writes into a hidden directory; a parent that is a link refuses the
-  launch; the X11
+  logins (and the directory `OPENCODE_DB` puts the database in), plus the
+  directory the database — the default `opencode.db` or `OPENCODE_DB` — will
+  actually live in, resolved the way the kernel walks it: every link of a
+  chain followed (at most 40; more refuses), a relative target joined to the
+  real directory of the link, and for a file that does not exist yet the
+  directory it will be created in. A location that is or resolves to a home
+  refuses. On Linux, where bwrap can hide only what exists, every one of
+  those directories that is missing is made before the launch — the whole
+  missing chain, each level empty and mode 0700, below the real directory of
+  its deepest existing ancestor, and kept — so a host opencode's first run
+  during the review writes into a hidden directory; a level that cannot be
+  made refuses the launch, naming the directory to create; the X11
   cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
   Bitwarden, and Secretive — under your child, process, and account homes,
   plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,

@@ -512,6 +512,8 @@ func TestColumnsReadsTheStorageClauseOnly(t *testing.T) {
 	for sql, want := range map[string][]string{
 		"CREATE TABLE t(a, b AS (length(' STORED')), c)":                         nil,
 		"CREATE TABLE t(a, b AS (a || \"STORED\") VIRTUAL, c)":                   nil,
+		"CREATE TABLE t(a, b AS (a) CONSTRAINT stored NOT NULL, c)":              nil,
+		"CREATE TABLE t(a, b AS (a) NOT NULL STORED, c)":                         nil,
 		"CREATE TABLE t(a, b AS (stored_fn(a)), c)":                              nil,
 		"CREATE TABLE t(a, b AS (length(' x ')) STORED, c)":                      {"a", "b", "c"},
 		"CREATE TABLE t(a, b INT GENERATED ALWAYS AS ((a + 1)) STORED NOT NULL)": {"a", "b"},
@@ -542,5 +544,52 @@ func TestTableRefusesALogResetUnderIt(t *testing.T) {
 	}
 	if _, err := db.Table("credential"); err == nil || !strings.Contains(err.Error(), "changed while it was read") {
 		t.Fatalf("Table over a reset log = %v, want the change refused", err)
+	}
+}
+
+// loggedFixture opens wal.db over a mutable copy of its log and returns the
+// log, one page the log holds, and that page's indexed frame.
+func loggedFixture(t *testing.T) (*DB, []byte, uint32, frameRef) {
+	t.Helper()
+	file, wal := readFixture(t, "wal.db"), slices.Clone(readFixture(t, "wal.db-wal"))
+	db, err := Open(bytes.NewReader(file), int64(len(file)), bytes.NewReader(wal), int64(len(wal)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, ref := range db.frames {
+		return db, wal, n, ref
+	}
+	t.Fatal("the fixture's log holds no page")
+	return nil, nil, 0, frameRef{}
+}
+
+// resum rewrites a frame's checksum over its current bytes, continuing the
+// running checksum recorded before it, so only another check can catch it.
+func resum(db *DB, frame []byte, ref frameRef) {
+	s0, s1 := walChecksum(db.order, frame[:offFrameSalt], ref.s0, ref.s1)
+	s0, s1 = walChecksum(db.order, frame[walFrameHead:], s0, s1)
+	binary.BigEndian.PutUint32(frame[offFrameSum:], s0)
+	binary.BigEndian.PutUint32(frame[offFrameSum+sumWord:], s1)
+}
+
+// TestLoggedPageChecksEachFrameField proves each check a page read from the
+// log makes, the frame swapped under the read after indexing: another page
+// number (its checksum rewritten to hold), other salts, and a page byte that
+// breaks the checksum each refuse, never returning the bytes.
+func TestLoggedPageChecksEachFrameField(t *testing.T) {
+	t.Parallel()
+	for name, mutate := range map[string]func(db *DB, frame []byte, ref frameRef){
+		"page number": func(db *DB, frame []byte, ref frameRef) {
+			binary.BigEndian.PutUint32(frame, binary.BigEndian.Uint32(frame)+7)
+			resum(db, frame, ref)
+		},
+		"salts":    func(_ *DB, frame []byte, _ frameRef) { frame[offFrameSalt] ^= 0x5a },
+		"checksum": func(_ *DB, frame []byte, _ frameRef) { frame[walFrameHead+16] ^= 0x5a },
+	} {
+		db, wal, n, ref := loggedFixture(t)
+		mutate(db, wal[ref.at:ref.at+walFrameHead+1024], ref)
+		if _, err := db.page(n); !errors.Is(err, errLogChanged) {
+			t.Errorf("%s: page(%d) = %v, want the change refused", name, n, err)
+		}
 	}
 }

@@ -449,15 +449,9 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if err != nil {
 		return nil, "", err //nolint:wrapcheck // the shared resolver's message is the refusal's reason
 	}
-	box, err := newReviewBox(def, env, credentials)
+	box, err := st.policyBox(def, env, credentials, in, mechanism)
 	if err != nil {
 		return nil, "", err
-	}
-	if mechanism == hostsandbox.BwrapTool {
-		box.hiddenDataDirs = openCodeDataDirs(in)
-	}
-	if st.req.AllowShell {
-		box.dropKeychain()
 	}
 	box.mechanism, box.runner, box.posture = mechanism, runner, postureSandboxed
 	if _, err := box.prefix([]string{os.TempDir()}, "", false); err != nil {
@@ -466,7 +460,33 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if st.req.Print {
 		return box, "", nil
 	}
+	// Made here, before the probe, so a directory that cannot be made is
+	// the policy's refusal, never a host without a sandbox.
+	if err := makeHiddenDirs(box.hiddenDataDirs); err != nil {
+		return nil, "", err
+	}
 	return box, st.probeBox(ctx, box), nil
+}
+
+// policyBox resolves the launch's state and what it must hide: on Linux
+// the credential directories a launch makes when missing, and under
+// --allow-shell no keychain.
+func (st *state) policyBox(def *agentcatalog.Launch, env, credentials []string, in hostsandbox.Inputs,
+	mechanism string,
+) (*reviewBox, error) {
+	box, err := newReviewBox(def, env, credentials)
+	if err != nil {
+		return nil, err
+	}
+	if mechanism == hostsandbox.BwrapTool {
+		if box.hiddenDataDirs, err = openCodeDataDirs(in); err != nil {
+			return nil, err
+		}
+	}
+	if st.req.AllowShell {
+		box.dropKeychain()
+	}
+	return box, nil
 }
 
 // reviewMechanism names the host's sandbox mechanism and the runner it
@@ -1132,24 +1152,35 @@ func (b *reviewBox) makeLaunchDirs() error {
 	return makeHiddenDirs(b.hiddenDataDirs)
 }
 
-// openCodeDataDirs is opencode's data directory under every data root the
-// child and host environments and the homes name.
-func openCodeDataDirs(in hostsandbox.Inputs) []string {
+// openCodeDataDirs is every directory a host opencode may make and write
+// its database in during a launch: its data directory under every data root
+// the child and host environments and the homes name, and the directories
+// its database (default or OPENCODE_DB) resolves to.
+func openCodeDataDirs(in hostsandbox.Inputs) ([]string, error) {
 	homes, err := in.Homes()
 	if err != nil {
-		return nil
+		return nil, err //nolint:wrapcheck // the shared resolver's message is the refusal's reason
 	}
-	return hostsandbox.CleanUnique(slices.Concat(hostsandbox.OpenCodeDataDirs(in.ChildEnv, homes),
-		hostsandbox.OpenCodeDataDirs(in.HostEnv, homes)))
+	var dirs []string
+	for _, env := range [][]string{in.ChildEnv, in.HostEnv} {
+		db, err := hostsandbox.OpenCodeDBDirs(env, homes)
+		if err != nil {
+			return nil, err //nolint:wrapcheck // as above
+		}
+		dirs = slices.Concat(dirs, hostsandbox.OpenCodeDataDirs(env, homes), db)
+	}
+	return hostsandbox.CleanUnique(dirs), nil
 }
 
-// makeHiddenDirs makes each missing credential directory whose parent
-// exists, empty and private, before a Linux launch: bwrap mounts only what
-// exists, so a directory opencode makes on its first run during the review
-// would otherwise be readable through the host's read-only root. Each is
-// made below a root handle on its parent, never removed (opencode uses it
-// later); a parent that is a link refuses the launch, since the directory
-// would land wherever it points.
+// makeHiddenDirs makes each missing credential directory, and every missing
+// directory above it, before a Linux launch: bwrap mounts only what exists,
+// so a directory a host opencode makes on its first run during the review
+// — or makes a whole data root for — would otherwise be readable through
+// the host's read-only root. Each level is made empty and private below a
+// root handle on the deepest existing ancestor and kept (opencode uses it
+// later). An ancestor that is (still) a link or not a directory, or a level
+// that cannot be made, refuses the launch: the directory could not be
+// hidden.
 func makeHiddenDirs(dirs []string) error {
 	for _, dir := range dirs {
 		if err := makeHiddenDir(dir); err != nil {
@@ -1159,31 +1190,55 @@ func makeHiddenDirs(dirs []string) error {
 	return nil
 }
 
-// makeHiddenDir makes one missing directory below its existing parent.
+// makeHiddenDir makes one missing directory and the missing chain above it.
 func makeHiddenDir(dir string) error {
-	if _, err := os.Lstat(dir); !errors.Is(err, fs.ErrNotExist) {
+	// Resolved as the kernel walks it, so the chain is made below the real
+	// directory a linked data root names, and no link is followed after.
+	ancestor, missing := missingChain(hostsandbox.ResolveExisting(dir))
+	if len(missing) == 0 {
 		return nil
 	}
-	parent := filepath.Dir(dir)
-	info, err := os.Lstat(parent)
+	info, err := os.Lstat(ancestor)
 	switch {
 	case err != nil:
-		return nil
+		return hiddenDirRefusal(dir, ancestor, err.Error())
 	case info.Mode()&fs.ModeSymlink != 0:
-		return jq.NewErrf("%s is a symlink, so the review sandbox cannot make and hide %s below it; replace "+
-			"the link with the directory it names", parent, filepath.Base(dir))
+		return hiddenDirRefusal(dir, ancestor, "it is a symlink; replace the link with the directory it names")
 	case !info.IsDir():
-		return nil
+		return hiddenDirRefusal(dir, ancestor, "it is not a directory")
 	}
-	root, err := os.OpenRoot(parent)
+	root, err := os.OpenRoot(ancestor)
 	if err != nil {
-		return jq.Sealed("open "+parent, err)
+		return hiddenDirRefusal(dir, ancestor, err.Error())
 	}
 	defer func() { _ = root.Close() }()
-	if err := root.Mkdir(filepath.Base(dir), hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
-		return jq.Sealed("make "+dir, err)
+	rel := ""
+	for _, part := range missing {
+		rel = filepath.Join(rel, part)
+		if err := root.Mkdir(rel, hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+			return hiddenDirRefusal(dir, filepath.Join(ancestor, rel), err.Error())
+		}
 	}
 	return nil
+}
+
+// missingChain splits dir into its deepest ancestor that exists (as
+// anything, a link included) and the missing components below it.
+func missingChain(dir string) (string, []string) {
+	var missing []string
+	for at := dir; ; at = filepath.Dir(at) {
+		if _, err := os.Lstat(at); !errors.Is(err, fs.ErrNotExist) || filepath.Dir(at) == at {
+			return at, missing
+		}
+		missing = append([]string{filepath.Base(at)}, missing...)
+	}
+}
+
+// hiddenDirRefusal is the refusal for a credential directory that cannot be
+// made where the review sandbox must hide it.
+func hiddenDirRefusal(dir, at, why string) error {
+	return jq.NewErrf("the review sandbox must hide %s, which does not exist yet, but cannot make it at %s (%s); "+
+		"create %s yourself, or fix that path", dir, at, why, dir)
 }
 
 // hiddenDirMode is a made credential directory's mode: the operator's own.
