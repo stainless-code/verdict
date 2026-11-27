@@ -1108,8 +1108,9 @@ func TestReviewSandboxHidesAFirstRunOpencodeDataDir(t *testing.T) {
 // TestReviewSandboxHidesADanglingOpencodeDBTarget proves, under the real
 // mechanism, that a database link whose target does not exist when a launch
 // starts hides the directory the kernel will create it in — a direct link,
-// a chain of links, and the default opencode.db as a relative `..` link in a
-// linked data directory — so the database a host opencode creates there
+// a chain of links, the default opencode.db as a relative `..` link in a
+// linked data directory, and a data directory that is itself a dangling
+// link — so the database a host opencode creates there
 // during the launch is unreadable to another agent.
 func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 	t.Parallel()
@@ -1139,6 +1140,13 @@ func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 			mustSymlink(t, filepath.Join("..", "store", "opencode.db"), filepath.Join(disk, "opencode.db"))
 			return nil, filepath.Join(store, "disk", "store", "opencode.db")
 		},
+		"dangling data dir": func(t *testing.T, home, store string) ([]string, string) {
+			t.Helper()
+			mustMkdir(t, filepath.Join(home, ".local", "share"))
+			elsewhere := filepath.Join(store, "elsewhere", "oc")
+			mustSymlink(t, elsewhere, filepath.Join(home, ".local", "share", "opencode"))
+			return nil, filepath.Join(elsewhere, "opencode.db")
+		},
 	} {
 		home, store := t.TempDir(), visibleTempDir(t)
 		env, target := layout(t, home, store)
@@ -1166,6 +1174,7 @@ func lateWriteRun(t *testing.T, home, target string, env ...string) string {
 		done <- log
 	}()
 	w := openFIFOWriter(t, fifo, done)
+	mustMkdir(t, filepath.Dir(target))
 	if err := os.WriteFile(target, []byte("LEAKED"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1289,4 +1298,102 @@ func TestMakeHiddenDirRefusesAnUnwritableRoot(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "must hide "+dir) || !strings.Contains(err.Error(), "create "+dir) {
 		t.Fatalf("an unwritable root = %v, want a refusal naming %s", err, dir)
 	}
+}
+
+// TestReviewSandboxPolicyRefusalNeverRunsUnsandboxed proves, under the real
+// mechanism on Linux, that a credential directory the sandbox cannot make —
+// opencode's data root a file, or read-only (refused only once the launch
+// tries to make it), the directory missing — refuses claude, a
+// row that confines its own writes, typed review-sandbox-unavailable before
+// anything spawns, never running it unsandboxed with a warning; and codex
+// when its `--` arguments give it verdict's sandbox.
+func TestReviewSandboxPolicyRefusalNeverRunsUnsandboxed(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("a credential directory is made only before a bwrap launch")
+	}
+	for _, tc := range []struct {
+		agent, layout string
+		pass          []string
+	}{
+		{agent: "claude", layout: "file"},
+		{agent: "claude", layout: "read-only"},
+		{agent: "codex", layout: "file", pass: []string{"--sandbox", "danger-full-access"}},
+		{agent: "codex", layout: "read-only", pass: []string{"--sandbox", "danger-full-access"}},
+	} {
+		t.Run(tc.agent+"/"+tc.layout, func(t *testing.T) { assertPolicyRefused(t, tc.agent, tc.layout, tc.pass) })
+	}
+}
+
+// assertPolicyRefused runs agent over an unmakeable data directory and
+// checks the launch refuses on the policy and spawns nothing.
+func assertPolicyRefused(t *testing.T, agent, layout string, pass []string) {
+	t.Helper()
+	home := t.TempDir()
+	stageUnmakeableDataDir(t, home, layout)
+	resp, ref, log := sandboxedRunWith(t, agent, confinedRoot(t), home, "#!/bin/sh\necho spawned=yes\n", "1", pass)
+	if ref == nil || ref.Code != codeReviewSandboxUnavailable || !strings.Contains(ref.Message, "policy refused") {
+		t.Errorf("refusal = %v (posture %q), want the policy refused", ref, postureOf(resp))
+	}
+	if strings.Contains(log, "spawned=yes") {
+		t.Errorf("spawned before the refusal:\n%s", log)
+	}
+}
+
+// stageUnmakeableDataDir leaves opencode's data directory missing below a
+// data root the sandbox cannot make it in: a file, or a read-only
+// directory (skipped for a user who writes one anyway, root).
+func stageUnmakeableDataDir(t *testing.T, home, layout string) {
+	t.Helper()
+	share := filepath.Join(home, ".local", "share")
+	if layout == "file" {
+		writeUnder(t, home, filepath.Join(".local", "share"), "a file where the data root goes")
+		return
+	}
+	mustMkdir(t, share)
+	if err := os.Chmod(share, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(share, 0o700); err != nil {
+			t.Error(err)
+		}
+	})
+	if f, err := os.Create(filepath.Join(share, "probe")); err == nil {
+		_ = f.Close()
+		t.Skip("this user writes a read-only directory (root); the refusal cannot be staged")
+	}
+}
+
+// TestReviewSandboxLinkedDataRootStaysSandboxed proves, under the real
+// mechanism on Linux, that a data root that is a link — ~/.local/share on
+// another disk, opencode's directory missing — keeps claude sandboxed: the
+// directory is made at the link's target and hidden, never a refusal the
+// probe turns into an unsandboxed run.
+func TestReviewSandboxLinkedDataRootStaysSandboxed(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("a credential directory is made only before a bwrap launch")
+	}
+	home, disk := t.TempDir(), t.TempDir()
+	mustMkdir(t, filepath.Join(home, ".local"))
+	mustSymlink(t, disk, filepath.Join(home, ".local", "share"))
+	resp, ref, _ := sandboxedRunAs(t, "claude", confinedRoot(t), home, "#!/bin/sh\nprintf '%s' '"+reviewDoc+
+		"' > .verdict/state/42/review.json\n", "1")
+	if ref != nil || postureOf(resp) != postureSandboxed {
+		t.Fatalf("refusal = %v, posture %q; want a sandboxed review", ref, postureOf(resp))
+	}
+	if info, err := os.Lstat(filepath.Join(disk, "opencode")); err != nil || !info.IsDir() {
+		t.Errorf("opencode's directory was not made at the link's target (%v)", err)
+	}
+}
+
+// postureOf is a response's sandbox posture, "" for none.
+func postureOf(resp *core.RunResponse) string {
+	if resp == nil || resp.Data == nil || resp.Data.Sandbox == nil {
+		return ""
+	}
+	return resp.Data.Sandbox.Posture
 }

@@ -465,7 +465,8 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if err := makeHiddenDirs(box.hiddenDataDirs); err != nil {
 		return nil, "", err
 	}
-	return box, st.probeBox(ctx, box), nil
+	why, perr := st.probeBox(ctx, box)
+	return box, why, perr
 }
 
 // policyBox resolves the launch's state and what it must hide: on Linux
@@ -524,15 +525,19 @@ func bwrapMechanism(look func(string) (string, error)) (mechanism, runner, why s
 // before any agent starts, so a host that cannot build the sandbox (user
 // namespaces restricted, a profile Seatbelt rejects) is found here rather
 // than as a failed review.
-func (st *state) probeBox(ctx context.Context, box *reviewBox) string {
+func (st *state) probeBox(ctx context.Context, box *reviewBox) (string, error) {
 	private, err := hostsandbox.MakePrivateDir("")
 	if err != nil {
-		return err.Error()
+		return err.Error(), nil
 	}
 	defer st.removePrivate(private)
 	argv, err := box.prefix([]string{private}, "", true)
 	if err != nil {
-		return err.Error()
+		// Building the wrapper runs no mechanism: its failure is the
+		// policy's (a credential layout the sandbox cannot hide), which
+		// refuses every launch — never a host without a sandbox, which
+		// would let a self-confining row run unsandboxed.
+		return "", &policyError{err: err}
 	}
 	if box.mechanism == hostsandbox.SandboxExecTool {
 		argv = append(argv, "bash", "-c", reviewProbeScript)
@@ -547,17 +552,26 @@ func (st *state) probeBox(ctx context.Context, box *reviewBox) string {
 	})
 	switch {
 	case ctx.Err() != nil:
-		return ctx.Err().Error()
+		return ctx.Err().Error(), nil
 	case err != nil:
-		return fmt.Sprintf("%s could not start (%v)", box.mechanism, err)
+		return fmt.Sprintf("%s could not start (%v)", box.mechanism, err), nil
 	case res.TimedOut:
-		return fmt.Sprintf("%s did not finish its probe within %s", box.mechanism, reviewProbeTimeout)
+		return fmt.Sprintf("%s did not finish its probe within %s", box.mechanism, reviewProbeTimeout), nil
 	case res.ExitCode != 0:
 		detail, _, _ := strings.Cut(strings.TrimSpace(res.Stdout+res.Stderr), "\n")
-		return fmt.Sprintf("%s could not create the sandbox (exit %d: %s)", box.mechanism, res.ExitCode, detail)
+		return fmt.Sprintf("%s could not create the sandbox (exit %d: %s)", box.mechanism, res.ExitCode, detail), nil
 	}
-	return ""
+	return "", nil
 }
+
+// policyError is a review-sandbox policy that cannot be built — a credential
+// layout the sandbox cannot hide safely. It refuses every launch, a
+// self-confining row's included, unlike a host whose mechanism is missing
+// or fails its probe run.
+type policyError struct{ err error }
+
+func (e *policyError) Error() string { return e.err.Error() }
+func (e *policyError) Unwrap() error { return e.err }
 
 // removePrivate removes one private TMPDIR, warning when any of it survives
 // so a stranded directory is visible.
@@ -1167,7 +1181,11 @@ func openCodeDataDirs(in hostsandbox.Inputs) ([]string, error) {
 		if err != nil {
 			return nil, err //nolint:wrapcheck // as above
 		}
-		dirs = slices.Concat(dirs, hostsandbox.OpenCodeDataDirs(env, homes), db)
+		data, err := hostsandbox.ResolvedOpenCodeDataDirs(env, homes)
+		if err != nil {
+			return nil, err //nolint:wrapcheck // as above
+		}
+		dirs = slices.Concat(dirs, data, db)
 	}
 	return hostsandbox.CleanUnique(dirs), nil
 }
@@ -1227,7 +1245,9 @@ func makeHiddenDir(dir string) error {
 func missingChain(dir string) (string, []string) {
 	var missing []string
 	for at := dir; ; at = filepath.Dir(at) {
-		if _, err := os.Lstat(at); !errors.Is(err, fs.ErrNotExist) || filepath.Dir(at) == at {
+		// Any error walks up (ENOTDIR below a file included): the ancestor
+		// that does exist then decides, a file refusing.
+		if _, err := os.Lstat(at); err == nil || filepath.Dir(at) == at {
 			return at, missing
 		}
 		missing = append([]string{filepath.Base(at)}, missing...)

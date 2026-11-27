@@ -243,8 +243,29 @@ func envLocations(env, homes []string) ([]string, error) {
 	for _, v := range credentialEnv {
 		locations = append(locations, v.paths(env)...)
 	}
+	data, err := ResolvedOpenCodeDataDirs(env, homes)
+	if err != nil {
+		return nil, err
+	}
 	dirs, err := OpenCodeDBDirs(env, homes)
-	return append(locations, dirs...), err
+	return slices.Concat(locations, data, dirs), err
+}
+
+// ResolvedOpenCodeDataDirs is every opencode data directory as written and
+// where the kernel lands for it (ResolvePath): a data directory that is a
+// link — dangling included, which no mount or realpath spelling would follow
+// — is hidden, and made on Linux, at its target.
+func ResolvedOpenCodeDataDirs(env, homes []string) ([]string, error) {
+	raw := OpenCodeDataDirs(env, homes)
+	out := slices.Clone(raw)
+	for _, dir := range raw {
+		resolved, err := ResolvePath(dir)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
 }
 
 // OpenCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
@@ -312,38 +333,43 @@ func dbDirs(paths []string) ([]string, error) {
 const maxLinkHops = 40
 
 // ResolveDBDir is the directory a database path's file lives in, or will be
-// created in, resolved the way the kernel resolves it: each hop's directory
-// through EvalSymlinks (as deep as it exists, the missing rest appended), a
-// relative link target joined against that resolved directory, followed hop
-// by hop until the leaf exists as a file or is missing. A chain longer than
-// maxLinkHops, or a link that cannot be read, refuses: where the database
-// would appear cannot be pinned down.
+// created in (ResolvePath's directory).
 func ResolveDBDir(path string) (string, error) {
+	resolved, err := ResolvePath(path)
+	return filepath.Dir(resolved), err
+}
+
+// ResolvePath is where the kernel lands for path, existing or not: each
+// hop's directory resolved through EvalSymlinks (as deep as it exists, the
+// missing rest appended), a relative link target joined against that
+// resolved directory, followed hop by hop until the leaf exists as other
+// than a link or is missing — the path a file or directory created there
+// will have. A chain longer than maxLinkHops, or a link that cannot be read,
+// refuses: where the path leads cannot be pinned down.
+func ResolvePath(path string) (string, error) {
 	cur := filepath.Clean(path)
 	for range maxLinkHops + 1 {
-		dir := ResolveExisting(filepath.Dir(cur))
-		leaf := filepath.Join(dir, filepath.Base(cur))
+		leaf := filepath.Join(ResolveExisting(filepath.Dir(cur)), filepath.Base(cur))
 		info, err := os.Lstat(leaf)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			return dir, nil
+			return leaf, nil
 		case err != nil:
-			return "", jq.NewErrf("the database path %s cannot be inspected (%v); fix its permissions", leaf, err)
+			return "", jq.NewErrf("the path %s cannot be inspected (%v); fix it or the directories above it", leaf, err)
 		case info.Mode()&fs.ModeSymlink == 0:
-			return dir, nil
+			return leaf, nil
 		}
 		target, err := os.Readlink(leaf)
 		if err != nil {
-			return "", jq.NewErrf("the database link %s cannot be read (%v); remove it or point it at a file",
-				leaf, err)
+			return "", jq.NewErrf("the link %s cannot be read (%v); remove it or point it at a real path", leaf, err)
 		}
 		if !filepath.IsAbs(target) {
-			target = filepath.Join(dir, target)
+			target = filepath.Join(filepath.Dir(leaf), target)
 		}
 		cur = filepath.Clean(target)
 	}
-	return "", jq.NewErrf("the database path %s runs through more than %d links, so the review sandbox cannot "+
-		"pin down where the database lives; point it at the file directly", path, maxLinkHops)
+	return "", jq.NewErrf("the path %s runs through more than %d links, so the review sandbox cannot pin "+
+		"down where it leads; point it at the real path directly", path, maxLinkHops)
 }
 
 // ResolveExisting is dir with its deepest existing ancestor resolved through

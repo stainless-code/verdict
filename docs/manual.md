@@ -4642,7 +4642,11 @@ through, count as your `--` deciding its permissions.
 A sandbox policy that cannot be built refuses the launch
 (`review-sandbox-unavailable`), whatever the agent: a state path or root that
 fails the checks above, an unset or relative `HOME`, a credential location
-that holds the reviewed tree, a path the profile cannot spell. With no
+that holds the reviewed tree, a path the profile cannot spell, or a
+credential layout the sandbox cannot hide safely (a location that is or
+resolves to a home, a link chain it cannot pin down, a credential directory
+it cannot make). These refusals apply to every agent, `claude` and `codex`
+included: none falls back to an unsandboxed run. With no
 sandbox at all — Windows, Linux without `bwrap`, a probe that fails (Ubuntu
 24.04 restricts the unprivileged user namespaces `bwrap` needs unless
 `kernel.apparmor_restrict_unprivileged_userns=0`) — `claude` (shell denied,

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -372,5 +373,24 @@ func TestLinuxLaunchMakesTheOpencodeDBDir(t *testing.T) {
 		if !slices.Contains(dirs, want) {
 			t.Errorf("dirs = %q, want %s among them", dirs, want)
 		}
+	}
+}
+
+// TestProbeRefusesAPolicyItCannotBuild proves a wrapper the probe cannot
+// build — a credential directory that cannot be made — is a policy error,
+// which refuses every launch, never a reason the host has no sandbox, which
+// would let a self-confining row run unsandboxed.
+func TestProbeRefusesAPolicyItCannotBuild(t *testing.T) {
+	t.Parallel()
+	file := filepath.Join(t.TempDir(), "file")
+	writeUnder(t, filepath.Dir(file), "file", "x")
+	box := &reviewBox{mechanism: hostsandbox.BwrapTool, runner: "/bin/false", hiddenDataDirs: []string{
+		filepath.Join(file, "share", "opencode"),
+	}}
+	st := &state{req: &core.RunRequest{}}
+	why, err := st.probeBox(t.Context(), box)
+	var policy *policyError
+	if why != "" || !errors.As(err, &policy) {
+		t.Fatalf("probeBox = %q, %v; want a policy error", why, err)
 	}
 }
