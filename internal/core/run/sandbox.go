@@ -121,6 +121,12 @@ const seatbeltMachAllow = `(allow mach-lookup` +
 const seatbeltKeychainAllow = `(allow mach-lookup (global-name "com.apple.SecurityServer")` +
 	` (global-name "com.apple.securityd.xpc"))`
 
+// seatbeltTTYDenial closes every terminal to a review launch, after the
+// shared device writes re-open /dev/tty: with a terminal fd an agent can push
+// input into the operator's shell (TIOCSTI), read-only or not. The launch
+// also starts in a session of its own, with no controlling terminal.
+const seatbeltTTYDenial = `(deny file-read* file-write* file-ioctl (literal "/dev/tty") (regex #"^/dev/ttys[0-9]+$"))`
+
 // systemCABundle is macOS's PEM bundle of the system roots. A TLS client that
 // loads its roots from the keychain (codex's) fails without the keychain
 // brokers; SSL_CERT_FILE points it at the bundle instead.
@@ -687,7 +693,8 @@ func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]strin
 //     directory beside the launch's own;
 //  4. the launch's own directories re-allowed, reads and writes, the agent
 //     binary (or its directory) readable, their ancestors' metadata
-//     readable, and the device writes a process needs;
+//     readable, the device writes a process needs, and every terminal
+//     closed;
 //  5. the credential table denied, reads and writes;
 //  6. the row's data paths re-allowed, reads and writes, so a login the
 //     table would hide stays the agent's, each directory's own entry pinned
@@ -704,7 +711,7 @@ func seatbeltReviewProfile(writable []string, bin string, box *reviewBox) (strin
 		func() error { return hostsandbox.WriteRules(&b, "allow", writable) },
 		func() error { return seatbeltBinaryRead(&b, bin, writable) },
 		func() error { return seatbeltAncestors(&b, writable, bin) },
-		func() error { b.WriteString(hostsandbox.SeatbeltDeviceWrites); return nil },
+		func() error { b.WriteString(hostsandbox.SeatbeltDeviceWrites + seatbeltTTYDenial); return nil },
 		func() error { return hostsandbox.WriteRules(&b, "deny", hostsandbox.ExpandRealpaths(box.credentials)) },
 		func() error { return seatbeltStateRules(&b, box.state, true) },
 		func() error { return seatbeltStateRules(&b, box.readOnly, false) },

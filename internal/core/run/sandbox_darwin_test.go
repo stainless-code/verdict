@@ -4,6 +4,8 @@ package run
 
 import (
 	"encoding/pem"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,7 +13,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"unsafe"
 
 	"github.com/stainless-code/verdict/internal/hostsandbox"
 )
@@ -40,7 +44,7 @@ func TestReviewSandboxClosesMacOSServices(t *testing.T) {
 			t.Logf("defaults delete %s: %v: %s", serviceDomain, err, out)
 		}
 	})
-	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), serviceScript, "1")
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), serviceScript)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
@@ -95,7 +99,7 @@ func TestReviewSandboxDeniesMachServicesPastTheAllowlist(t *testing.T) {
 	// The planted app lives in the launch's private TMPDIR, removed with it:
 	// a registration that got through names a bundle that is gone.
 	plain, tlsSrv, cert := machStubs(t, t.TempDir())
-	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), machScript, "1",
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), machScript,
 		"STUB_PORT="+stubPort(t, plain),
 		"STUB_TLS="+tlsSrv.URL, "STUB_CERT="+cert)
 	if ref != nil {
@@ -162,4 +166,114 @@ func TestReviewSandboxResolvesAWrapperUnderTmp(t *testing.T) {
 	if out, err := list.CombinedOutput(); err == nil {
 		t.Errorf("the temp root was listed:\n%s", out)
 	}
+}
+
+// ttyHelperEnv marks the re-executed test process that plays the operator's
+// shell: the leader of a session whose controlling terminal is a pty.
+const ttyHelperEnv = "VERDICT_TTY_HELPER"
+
+// ttyMarker is the command the hostile agent pushes into the terminal.
+const ttyMarker = "echo VERDICT_TTY_MARK"
+
+// ttyScript is a prompt-injected agent with a shell: it ignores SIGTTOU,
+// opens /dev/tty read-only, and pushes ttyMarker into the terminal's input
+// queue one character at a time (TIOCSTI), for the operator's shell to run
+// once verdict exits.
+const ttyScript = "#!/bin/sh\n" +
+	"/usr/bin/perl -e '$SIG{TTOU}=\"IGNORE\"; open(T, \"<\", \"/dev/tty\") or do { print \"tty=closed\\n\"; exit 0 };" +
+	" for my $c (split //, \"" + ttyMarker + "\\n\") { ioctl(T, 0x80017472, $c) or do { print \"sti=denied\\n\"; exit 0 } }" +
+	" print \"sti=pushed\\n\"'\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxBlocksTerminalInjection proves a sandboxed review agent
+// cannot push input into the operator's terminal: run from a shell whose
+// controlling terminal is a pty, the agent's TIOCSTI reaches nothing, and
+// the terminal's input queue holds no marker for the shell to run after.
+func TestReviewSandboxBlocksTerminalInjection(t *testing.T) {
+	if os.Getenv(ttyHelperEnv) == "1" {
+		runTTYHelper(t)
+		return
+	}
+	t.Parallel()
+	requireReviewSandbox(t)
+	master, slave := openPTY(t)
+	defer func() { _ = master.Close() }()
+	// Drain the terminal's output: a session leader's exit waits for it to
+	// empty, and an injected line echoes there.
+	go drainPTY(master)
+	helper := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestReviewSandboxBlocksTerminalInjection$",
+		"-test.count=1", "-test.v")
+	helper.Env = append(os.Environ(), ttyHelperEnv+"=1")
+	var out strings.Builder
+	helper.Stdin, helper.Stdout, helper.Stderr = slave, &out, &out
+	helper.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 0}
+	err := helper.Run()
+	_ = slave.Close()
+	if err != nil {
+		t.Fatalf("helper: %v\n%s", err, out.String())
+	}
+	log := out.String()
+	t.Logf("helper:\n%s", log)
+	if !strings.Contains(log, "QUEUE[") || strings.Contains(log, "VERDICT_TTY_MARK\n]") ||
+		strings.Contains(log, "sti=pushed") {
+		t.Errorf("the agent pushed input into the operator's terminal:\n%s", log)
+	}
+}
+
+// runTTYHelper is the operator's shell: it runs one sandboxed review as pi,
+// then reports what waits in its terminal's input queue.
+func runTTYHelper(t *testing.T) {
+	t.Helper()
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), ttyScript)
+	t.Logf("review refusal: %v; agent output:\n%s", ref, log)
+	if err := syscall.SetNonblock(0, true); err != nil {
+		t.Fatal(err)
+	}
+	buf := make([]byte, 256)
+	n, _ := syscall.Read(0, buf) //nolint:errcheck // EAGAIN is an empty queue
+	t.Logf("QUEUE[%s]", buf[:max(n, 0)])
+	fmt.Printf("QUEUE[%s]\n%s\n", buf[:max(n, 0)], log)
+}
+
+// drainPTY discards a terminal's output until it closes.
+func drainPTY(master io.Reader) {
+	if _, err := io.Copy(io.Discard, master); err != nil {
+		return
+	}
+}
+
+// openPTY opens a pseudo-terminal pair: the master, and the slave opened
+// without becoming this process's controlling terminal.
+func openPTY(t *testing.T) (master, slave *os.File) {
+	t.Helper()
+	master, err := os.OpenFile("/dev/ptmx", os.O_RDWR|syscall.O_NOCTTY, 0)
+	if err != nil {
+		t.Skipf("no pty: %v", err)
+	}
+	for _, req := range []uintptr{syscall.TIOCPTYGRANT, syscall.TIOCPTYUNLK} {
+		if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, master.Fd(), req, 0); errno != 0 {
+			t.Fatalf("pty ioctl: %v", errno)
+		}
+	}
+	var name [128]byte
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, master.Fd(), syscall.TIOCPTYGNAME,
+		uintptr(unsafe.Pointer(&name[0]))); errno != 0 {
+		t.Fatalf("pty name: %v", errno)
+	}
+	path := string(name[:bytesIndexZero(name[:])])
+	slave, err = os.OpenFile(path, os.O_RDWR|syscall.O_NOCTTY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return master, slave
+}
+
+// bytesIndexZero is the length of a NUL-terminated name.
+func bytesIndexZero(b []byte) int {
+	for i, c := range b {
+		if c == 0 {
+			return i
+		}
+	}
+	return len(b)
 }

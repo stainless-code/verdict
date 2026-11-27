@@ -163,7 +163,13 @@ In scope (highest priority first):
   Shortcuts. On Linux it cannot reach a filesystem socket in `/tmp`,
   `/var/tmp`, `/run`, `/var/run`, or the table, and other processes'
   environments are hidden (a private PID namespace). It inherits no socket
-  or display variable. A sandbox policy that
+  or display variable, and it cannot push input into the operator's
+  terminal: it starts in a session of its own with no controlling terminal,
+  and on macOS every read, write, and ioctl on `/dev/tty` and `/dev/ttys*` is
+  denied. codex's throwaway home gets only the model, provider, and
+  connection keys of the operator's `config.toml` — never its MCP servers,
+  `notify` or hook commands, profiles, or sandbox settings, which codex would
+  start or apply outside every sandbox. A sandbox policy that
   cannot be built refuses the launch. A review launch that writes, reads,
   connects, or reaches a service past that policy is a vulnerability. Not
   boundaries, and so not findings: everything else stays readable (the agent

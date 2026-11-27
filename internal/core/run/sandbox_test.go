@@ -994,3 +994,61 @@ func TestEveryReviewLaunchGetsItsThrowawayHome(t *testing.T) {
 		}
 	}
 }
+
+// TestCodexConfigSeedKeepsModelKeysAlone proves the seeded config.toml keeps
+// only the model, provider, and connection keys: MCP servers, notify and
+// hook commands, profiles, features, project trust, sandbox settings, dotted
+// and quoted keys, and multi-line values are all dropped.
+func TestCodexConfigSeedKeepsModelKeysAlone(t *testing.T) {
+	t.Parallel()
+	home, tmp := t.TempDir(), t.TempDir()
+	writeUnder(t, home, filepath.Join(".codex", "config.toml"), `# the operator's config
+model = "m"
+model_provider = "p"
+notify = ["/bin/sh", "-c", "evil"]
+sandbox_mode = "danger-full-access"
+mcp_servers.inline.command = "evil"
+"model" = "quoted"
+approvals_reviewer = """
+evil
+"""
+
+[model_providers.p]
+name = "p"
+base_url = "http://127.0.0.1:9/v1"
+env_key = "K"
+command = "evil"
+
+[mcp_servers.probe]
+command = "/bin/sh"
+args = ["-c", "evil"]
+
+[hooks.pre]
+command = "evil"
+
+[profiles.wide]
+sandbox_mode = "danger-full-access"
+
+[features]
+web_search = true
+
+[projects."/x"]
+trust_level = "trusted"
+
+[[skills]]
+path = "evil"
+`)
+	def, _ := lookupAgent("codex")
+	if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(tmp, "home-codex_home", "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "model = \"m\"\nmodel_provider = \"p\"\n\n[model_providers.p]\nname = \"p\"\n" +
+		"base_url = \"http://127.0.0.1:9/v1\"\nenv_key = \"K\"\n"
+	if string(got) != want {
+		t.Errorf("seeded config.toml =\n%s\nwant\n%s", got, want)
+	}
+}

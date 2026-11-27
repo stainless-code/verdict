@@ -1019,14 +1019,14 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap, dir string,
 	env []string,
 ) (*core.Result, error) {
-	return st.spawnAt(ctx, "", argv, timeout, tap, dir, env)
+	return st.spawnAt(ctx, "", argv, timeout, tap, dir, env, false)
 }
 
 // spawnAt is spawn with the executable pinned to path (empty for argv[0]
 // resolved against PATH), so a review launch runs exactly the binary its
 // resolution found.
 func (st *state) spawnAt(ctx context.Context, path string, argv []string, timeout int, tap *agentusage.Tap,
-	dir string, env []string,
+	dir string, env []string, session bool,
 ) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
@@ -1041,6 +1041,7 @@ func (st *state) spawnAt(ctx context.Context, path string, argv []string, timeou
 		Dir:         dir,
 		OutputCap:   coreexec.VerifyOutputCap,
 		GracePeriod: agentGracePeriod,
+		NewSession:  session,
 	}
 	if tap != nil {
 		cmd.StdoutTap = tap

@@ -334,6 +334,7 @@ func TestReviewArgsAreScopedAndCited(t *testing.T) {
 		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
 		"codex": {
 			"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
+			"--ignore-user-config",
 		},
 		"pi": {
 			"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers", "--no-session", "--session-dir",

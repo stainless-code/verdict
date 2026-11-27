@@ -12,7 +12,15 @@ import (
 	"time"
 )
 
-func setGroup(cmd *osexec.Cmd) {
+// setGroup starts the child as the leader of a process group of its own, or,
+// with session, of a session of its own (and so of its group, the group id
+// its pid either way): the group kill and sweep reach it the same way, and a
+// new session has no controlling terminal.
+func setGroup(cmd *osexec.Cmd, session bool) {
+	if session {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+		return
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 }
 

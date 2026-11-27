@@ -1126,7 +1126,7 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 		return nil, err
 	}
 	if !st.box.sandboxed() {
-		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env)
+		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env, false)
 	}
 	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
 	launch, err := st.box.launch(v.cwd)
@@ -1138,7 +1138,9 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}
-	return st.spawn(ctx, wrapped, args.timeout, tap, v.cwd, env)
+	// A session of its own: the sandboxed agent has no controlling terminal
+	// to push input into (bwrap's --new-session does the same on Linux).
+	return st.spawnAt(ctx, "", wrapped, args.timeout, tap, v.cwd, env, true)
 }
 
 // resolvedArgv names the binary the resolution found in place of the bare

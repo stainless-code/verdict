@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -111,7 +112,7 @@ func seedOne(root *os.Root, dst, rel string, keys []string) error {
 		return err
 	}
 	if keys != nil {
-		if raw = keepKeys(raw, keys); raw == nil {
+		if raw = filterSeed(rel, raw, keys); raw == nil {
 			return nil
 		}
 	}
@@ -171,6 +172,110 @@ func dirsOnTheWay(root *os.Root, dir string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// filterSeed keeps only the allowed keys of a JSON or TOML seed, by its
+// extension.
+func filterSeed(rel string, raw []byte, keys []string) []byte {
+	if strings.HasSuffix(rel, ".toml") {
+		return keepTOMLKeys(raw, keys)
+	}
+	return keepKeys(raw, keys)
+}
+
+// tomlOther marks a TOML table no allowed key lives in.
+const tomlOther = "-"
+
+// keepTOMLKeys keeps only the allowed lines of a TOML configuration: a bare
+// `key = value` at the top level whose key is in keys, and in each
+// [<table>.<id>] table a bare key listed as "<table>.*.<key>". Every other
+// table (MCP servers, profiles, features, projects, hooks), array table,
+// dotted or quoted key, comment, and value that does not end on its line is
+// dropped, so nothing the allowlist does not name reaches the copy.
+func keepTOMLKeys(raw []byte, keys []string) []byte {
+	var out strings.Builder
+	table := ""
+	for line := range strings.Lines(string(raw)) {
+		var kept string
+		kept, table = tomlLine(strings.TrimSpace(line), table, keys)
+		out.WriteString(kept)
+	}
+	return []byte(strings.TrimPrefix(out.String(), newline))
+}
+
+// newline ends each kept TOML line.
+const newline = "\n"
+
+// tomlLine is what one trimmed line keeps, and the table it leaves open: a
+// header the allowlist reaches is kept (after a blank line), an allowed key
+// line is kept, and everything else is dropped.
+func tomlLine(t, table string, keys []string) (kept, next string) {
+	switch {
+	case t == "" || strings.HasPrefix(t, "#"):
+		return "", table
+	case strings.HasPrefix(t, "["):
+		if next = tomlTable(t, keys); next != tomlOther {
+			return newline + t + newline, next
+		}
+		return "", next
+	}
+	if line, ok := tomlKeyLine(t, table, keys); ok {
+		return line + newline, table
+	}
+	return "", table
+}
+
+// tomlTable is the allowlist pattern a table header opens ("<table>.*"), or
+// tomlOther when no allowed key lives in it: an array table, a header with
+// anything after it, or a name that is not <table>.<bare id>.
+func tomlTable(header string, keys []string) string {
+	end := strings.IndexByte(header, ']')
+	if strings.HasPrefix(header, "[[") || end < 0 || strings.TrimSpace(header[end+1:]) != "" {
+		return tomlOther
+	}
+	parent, id, ok := strings.Cut(strings.TrimSpace(header[1:end]), ".")
+	if !ok || !bareTOMLKey(parent) || !bareTOMLKey(id) ||
+		!slices.ContainsFunc(keys, func(k string) bool { return strings.HasPrefix(k, parent+".*.") }) {
+		return tomlOther
+	}
+	return parent + ".*"
+}
+
+// tomlKeyLine returns one `key = value` line when its bare key is allowed in
+// the current table and its value ends on the line.
+func tomlKeyLine(line, table string, keys []string) (string, bool) {
+	if table == tomlOther {
+		return "", false
+	}
+	key, value, ok := strings.Cut(line, "=")
+	key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+	name := key
+	if table != "" {
+		name = table + "." + key
+	}
+	if !ok || !bareTOMLKey(key) || !oneLineTOMLValue(value) || !slices.Contains(keys, name) {
+		return "", false
+	}
+	return key + " = " + value, true
+}
+
+// bareTOMLKey reports a TOML bare key: letters, digits, '_' and '-'.
+func bareTOMLKey(key string) bool {
+	return key != "" && strings.Trim(key, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == ""
+}
+
+// oneLineTOMLValue reports a value that ends on its own line: not a
+// multi-line string, and an array or inline table that closes there.
+func oneLineTOMLValue(value string) bool {
+	switch {
+	case value == "", strings.HasPrefix(value, `"""`), strings.HasPrefix(value, "'''"):
+		return false
+	case strings.HasPrefix(value, "["):
+		return strings.HasSuffix(value, "]")
+	case strings.HasPrefix(value, "{"):
+		return strings.HasSuffix(value, "}")
+	}
+	return true
 }
 
 // keepKeys keeps only the named top-level keys of a JSON object; nil when it

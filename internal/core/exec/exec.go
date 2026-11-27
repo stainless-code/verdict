@@ -77,7 +77,7 @@ func spawnWatched(ctx context.Context, cmd *core.Command,
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
 	proc := osexec.CommandContext(ctx, executable(cmd), cmd.Argv[1:]...)
 	proc.Args[0] = cmd.Argv[0]
-	setGroup(proc)
+	setGroup(proc, cmd.NewSession)
 	term := newTerminator(proc, cmd.GracePeriod, expired)
 	proc.Cancel = term.cancel(ctx)
 	proc.WaitDelay = waitDelay

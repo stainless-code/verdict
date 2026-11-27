@@ -25,6 +25,11 @@ type Command struct {
 	ExtraFiles  []*os.File
 	OutputCap   int
 	GracePeriod time.Duration
+	// NewSession starts the child in a session of its own, with no
+	// controlling terminal, instead of only a process group of its own: it
+	// cannot open the operator's /dev/tty to push input into it (TIOCSTI).
+	// The group kill reaches it alike, the session leader leading its group.
+	NewSession bool
 }
 
 // Result is one completed process: the captured streams plus the wait

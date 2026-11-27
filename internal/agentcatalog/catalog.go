@@ -580,6 +580,7 @@ var catalog = []Agent{
 			ReviewArgs: []string{"--ephemeral"},
 			ReviewOwnedFlags: []string{
 				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
+				"--ignore-user-config",
 			},
 			ReviewArgsCitation: docCodexCLIRef,
 			// `--model, -m` per the codex CLI reference.
@@ -618,7 +619,25 @@ var catalog = []Agent{
 			// the agent's CLI.
 			StateReadOnly: []string{dirCodex},
 			StateEphemeral: []EphemeralVar{
-				{Name: envCodexHome, Root: dirCodex, Seed: []string{"auth.json", "config.toml"}},
+				{
+					Name: envCodexHome, Root: dirCodex, Seed: []string{"auth.json", fileCodexConfig},
+					// Model, provider, and connection keys alone: an MCP server,
+					// a notify or hook command, a profile, a feature, project
+					// trust, or a sandbox setting would start or widen something
+					// outside every sandbox (codex merges `-c` overrides, so
+					// none can clear them).
+					SeedKeys: map[string][]string{fileCodexConfig: {
+						"model", "model_provider", "model_reasoning_effort", "model_reasoning_summary",
+						"model_verbosity", "model_context_window", "model_max_output_tokens",
+						"forced_login_method", "chatgpt_base_url",
+						"model_providers.*.name", "model_providers.*.base_url", "model_providers.*.env_key",
+						"model_providers.*.env_key_instructions", "model_providers.*.wire_api",
+						"model_providers.*.query_params", "model_providers.*.http_headers",
+						"model_providers.*.env_http_headers", "model_providers.*.request_max_retries",
+						"model_providers.*.stream_max_retries", "model_providers.*.stream_idle_timeout_ms",
+						"model_providers.*.requires_openai_auth",
+					}},
+				},
 			},
 			StateEnv:      []StateVar{{Name: envCodexHome, Root: dirCodex}},
 			StateCitation: docCodexReadme,
@@ -1199,11 +1218,12 @@ var catalog = []Agent{
 	},
 }
 
-// dirCodex is codex's home directory below HOME, and envCodexHome the
-// variable that relocates it.
+// dirCodex is codex's home directory below HOME, envCodexHome the variable
+// that relocates it, and fileCodexConfig its configuration file there.
 const (
-	dirCodex     = ".codex"
-	envCodexHome = "CODEX_HOME"
+	dirCodex        = ".codex"
+	envCodexHome    = "CODEX_HOME"
+	fileCodexConfig = "config.toml"
 )
 
 // cloneEphemeral copies the ephemeral variables and their seeds.

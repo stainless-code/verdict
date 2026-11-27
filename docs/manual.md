@@ -4431,7 +4431,12 @@ On Linux that means the network namespace is shared too (see Sockets below).
   for every other agent, LaunchServices' database (`lsregister` of a planted
   app), login items, the window server (synthetic input), and Shortcuts;
   LaunchServices launches, AppleEvents, launchd jobs, and signals to
-  processes outside the sandbox are denied too. A TLS client that loads its
+  processes outside the sandbox are denied too.
+- **Terminals.** A review launch cannot push input into your terminal
+  (`TIOCSTI`, which your shell would run once verdict exits): it starts in a
+  session of its own, with no controlling terminal (`--new-session` under
+  `bwrap`, a new session on macOS), and the macOS profile also denies every
+  read, write, and ioctl on `/dev/tty` and `/dev/ttys*`. A TLS client that loads its
   roots from the keychain (codex's) gets `SSL_CERT_FILE=/etc/ssl/cert.pem`
   unless you set one: a corporate root that lives only in your keychain
   must be in the bundle you point `SSL_CERT_FILE` at.
@@ -4459,7 +4464,15 @@ goes with the launch, including a token it refreshes:
   (`opencode/auth.json`, `opencode/mcp-auth.json`); its database, snapshot and
   repos shadow repositories (a planted git config there would run on your
   next opencode session), and logs land there. Its config stays where it is.
-- `codex`: `CODEX_HOME`, seeded with `auth.json` and `config.toml`. Its
+- `codex`: `CODEX_HOME`, seeded with `auth.json` and `config.toml` cut down
+  to its model, provider, and connection keys (`model`, `model_provider`,
+  the reasoning and verbosity settings, `forced_login_method`,
+  `chatgpt_base_url`, and each `[model_providers.<id>]` table's `name`,
+  `base_url`, `env_key`, `wire_api`, headers, query parameters, retries, and
+  timeouts). Your MCP servers, `notify` and hook commands, profiles,
+  features, project trust, and sandbox settings are dropped — codex starts
+  MCP servers outside every sandbox, and a `-c` override cannot clear them.
+  Its
   cache (MCP tool schemas, the plugin catalog), scratch (plugin and git
   staging), `tmp/arg0*` (the PATH shims of your running sessions), sessions,
   goals, and memories all land there; no plugin, skill, prompt, rule, or
@@ -4514,9 +4527,9 @@ directory.
 | Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                                                                                  | Relocated by                                                           | Source                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after                                                                   | `CLAUDE_CONFIG_DIR` (for `.claude`)                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
-| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`; `--ephemeral`                                              | `CODEX_HOME`                                                           | `CODEX_HOME`                                                                                            |
+| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`'s model and provider keys; `--ephemeral`                    | `CODEX_HOME`                                                           | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
 | `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its private `TMPDIR`, seeded with its logins                                                           | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
-| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                                                 |
+| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
 
 `codex`'s read-only list applies only when your `--` decides its permissions;
 otherwise it runs in its own sandbox (below), still with its throwaway
@@ -4554,7 +4567,8 @@ without taking its trust lock in `~/.pi/agent`); `--approve`, `-a`,
 `--session-dir` after `--` refuse `bad-flags` on a review launch unless
 `--allow-shell` is set. codex's `--ephemeral` is verdict's the same way, and
 codex's review-owned flags (`-C`/`--cd`, `--worktree`, `--approve-for-me`,
-`--dangerously-bypass-hook-trust`, `--ephemeral`), which `--allow-shell` lets
+`--dangerously-bypass-hook-trust`, `--ephemeral`, `--ignore-user-config`),
+which `--allow-shell` lets
 through, count as your `--` deciding its permissions.
 
 `claude`'s review launches pin `--permission-mode default`, so no

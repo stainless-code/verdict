@@ -453,10 +453,10 @@ func assertSiblingReads(t *testing.T, log string) {
 // sandboxedRun launches script as pi through the real review sandbox, with
 // HOME and the extra variables in env, and returns the response, the
 // refusal, and what the launches printed.
-func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string,
+func sandboxedRun(t *testing.T, root, home, script string, env ...string,
 ) (*core.RunResponse, *core.RefusalError, string) {
 	t.Helper()
-	return sandboxedRunAs(t, "pi", root, home, script, rounds, env...)
+	return sandboxedRunAs(t, "pi", root, home, script, "1", env...)
 }
 
 // sandboxedRunAs is sandboxedRun as another row.
@@ -603,7 +603,7 @@ func TestReviewSandboxDeniesUnixSockets(t *testing.T) {
 		t.Skipf("nc is not installed: %v", err)
 	}
 	sock, accepted := listenUnix(t)
-	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), socketScript, "1", "SOCK="+sock)
+	_, ref, log := sandboxedRun(t, confinedRoot(t), t.TempDir(), socketScript, "SOCK="+sock)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
@@ -716,5 +716,34 @@ func TestReviewSandboxScopesClaudesProjectDir(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(home, ".claude", "projects"))
 	if err != nil || len(entries) != 1 || entries[0].Name() != "other" {
 		t.Errorf("projects after the run = %v (%v), want the launch's own removed", entries, err)
+	}
+}
+
+// codexMCPScript stands in for codex starting the operator's MCP servers:
+// the real CLI runs every [mcp_servers] command its CODEX_HOME config names,
+// outside every sandbox, so the stand-in runs the one it finds there.
+const codexMCPScript = "#!/bin/sh\n" +
+	"cfg=\"$CODEX_HOME/config.toml\"; /bin/cat \"$cfg\"\n" +
+	"if /usr/bin/grep -q '^\\[mcp_servers' \"$cfg\" 2>/dev/null; then /usr/bin/touch \"$MCP_MARKER\"; fi\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestCodexStartsNoOperatorMCPServer proves a codex review launch starts
+// none of the operator's MCP servers: its throwaway CODEX_HOME holds the
+// operator's model and provider settings and nothing else.
+func TestCodexStartsNoOperatorMCPServer(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	writeUnder(t, home, filepath.Join(".codex", "config.toml"),
+		"model = \"m\"\n\n[mcp_servers.probe]\ncommand = \"/bin/sh\"\nargs = [\"-c\", \"evil\"]\n")
+	marker := filepath.Join(t.TempDir(), "mcp-started")
+	_, ref, log := sandboxedRunAs(t, "codex", confinedRoot(t), home, codexMCPScript, "1", "MCP_MARKER="+marker)
+	if ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Errorf("the operator's MCP server started (err = %v):\n%s", err, log)
+	}
+	if !strings.Contains(log, `model = "m"`) {
+		t.Errorf("the operator's model did not reach codex:\n%s", log)
 	}
 }

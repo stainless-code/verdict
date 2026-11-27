@@ -68,7 +68,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	proc.Env = cmd.Env
 	proc.Dir = cmd.Dir
 	proc.WaitDelay = waitDelay
-	setGroup(proc)
+	setGroup(proc, cmd.NewSession)
 	var expired atomic.Bool
 	proc.Cancel = newTerminator(proc, cmd.GracePeriod, &expired).cancel(ctx)
 	if err := startTree(proc); err != nil {
