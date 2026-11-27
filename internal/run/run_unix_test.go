@@ -634,8 +634,8 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 	const wantLine = "warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
 		"and a review runs in a fresh copy outside them, " +
-		"so review.json may never be written; allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass " +
-		"-- --dangerously-skip-permissions (your approval bypass)\n"
+		"so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names " +
+		"(a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)\n"
 
 	f := newFixture(t)
 	f.writeReviewSrc(t)
