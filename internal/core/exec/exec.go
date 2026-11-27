@@ -24,10 +24,6 @@ import (
 // combined-capture runner; every other verb uses [Runner].
 type Watchdog struct{}
 
-// StartsHostProcesses marks the watchdog as a host commander, whose review
-// launches the run service wraps in the host's OS sandbox.
-func (Watchdog) StartsHostProcesses() bool { return true }
-
 // Run starts cmd.Argv in its own process group with combined output
 // capture, returning the wait status. The context deadline is the watchdog
 // budget: expiry SIGKILLs the group and records itself, so TimedOut reports
@@ -79,7 +75,8 @@ func spawnWatched(ctx context.Context, cmd *core.Command,
 	expired *atomic.Bool,
 ) (*osexec.Cmd, chan error, *boundedBuffer, *terminator, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
-	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
+	proc := osexec.CommandContext(ctx, executable(cmd), cmd.Argv[1:]...)
+	proc.Args[0] = cmd.Argv[0]
 	setGroup(proc)
 	term := newTerminator(proc, cmd.GracePeriod, expired)
 	proc.Cancel = term.cancel(ctx)
@@ -236,3 +233,12 @@ func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
 const sigkillExit = 137
 
 const sigOffset = 128
+
+// executable is the program a command runs: its resolved Path when the
+// caller pinned one, else Argv[0], resolved against PATH.
+func executable(cmd *core.Command) string {
+	if cmd.Path != "" {
+		return cmd.Path
+	}
+	return cmd.Argv[0]
+}

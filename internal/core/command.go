@@ -14,7 +14,10 @@ import (
 // process environment. ExtraFiles are inherited as descriptors 3, 4, … in
 // order (POSIX only), the way a caller hands a pinned directory to a child.
 type Command struct {
-	Stdin       io.Reader
+	Stdin io.Reader
+	// Path, when set, is the executable to run in place of resolving
+	// Argv[0] against PATH again; Argv[0] stays the name the child sees.
+	Path        string
 	StdoutTap   io.Writer
 	Dir         string
 	Argv        []string
@@ -53,20 +56,24 @@ type Commander interface {
 	Run(ctx context.Context, cmd *Command) (Result, error)
 }
 
-// HostCommander is a commander whose Run starts real host processes: the
-// production runners in internal/core/exec and the commanders that forward
-// to them. Only a launch through one is wrapped in the host's OS sandbox — a
-// scripted commander starts nothing to confine, so a review launch it runs
-// carries no sandbox posture at all.
-type HostCommander interface {
-	Commander
-	StartsHostProcesses() bool
+// Simulation is implemented by a test double whose Run starts no host
+// process, answering true. Every other commander — the production runners
+// and any wrapper around them — is taken to start real host processes, so a
+// review launch through it is wrapped in the host's OS sandbox: a commander
+// that forgets to say otherwise fails closed, never silently bare. A wrapper
+// forwards its inner commander's answer.
+type Simulation interface {
+	SimulatesProcesses() bool
 }
 
-// StartsHostProcesses reports whether c runs real host processes.
+// StartsHostProcesses reports whether c runs real host processes: true for
+// every commander but a test double that says it simulates them.
 func StartsHostProcesses(c Commander) bool {
-	h, ok := c.(HostCommander)
-	return ok && h.StartsHostProcesses()
+	if c == nil {
+		return false
+	}
+	sim, ok := c.(Simulation)
+	return !ok || !sim.SimulatesProcesses()
 }
 
 // ExitFailure renders the completed process as the error its wait code

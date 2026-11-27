@@ -879,3 +879,7 @@ func TestWatchdogBudget(t *testing.T) {
 		}
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*scriptCmd) SimulatesProcesses() bool { return true }

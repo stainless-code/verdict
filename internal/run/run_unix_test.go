@@ -303,7 +303,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --permission-mode default --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -396,7 +396,7 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	argv[0] = "claude"
 	assertPrintedMatchesSpawned(t, printed, argv)
 	assertArgvPrefix(t, argv, []string{
-		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--strict-mcp-config", "--allowedTools=Edit(./.verdict/state/local-work/**)",
+		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--strict-mcp-config", "--permission-mode", "default", "--allowedTools=Edit(./.verdict/state/local-work/**)",
 		"--model", "opus",
 	})
 }

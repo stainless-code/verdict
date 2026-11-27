@@ -39,7 +39,7 @@ loop_leg() {
   case "$agent" in
     claude) state="$HOME/.claude/debug" ;;
     codex) state="$HOME/.codex" ;;
-    opencode) state="$HOME/.local/share/opencode" ;;
+    opencode) state="$HOME/.local/share/opencode/log" ;;
     mine) state="$HOME/.mine" ;;
   esac
   mkdir -p "$state"

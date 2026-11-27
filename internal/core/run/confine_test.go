@@ -750,8 +750,9 @@ func TestOptedOutFinderCanForgeItsSibling(t *testing.T) {
 // takes its review-sandbox decision for them.
 type hostPhases struct{ *phaseCommander }
 
-// StartsHostProcesses marks the commander as a host one.
-func (hostPhases) StartsHostProcesses() bool { return true }
+// SimulatesProcesses overrides the embedded double's answer: the run takes
+// its review-sandbox decision for this commander as for a host one.
+func (hostPhases) SimulatesProcesses() bool { return false }
 
 // forgedClaim marks the review finder 1 forges in finder 2's copy.
 const forgedClaim = "Forged by finder 1."
@@ -895,3 +896,11 @@ func assertWarned(t *testing.T, warnings []string, want string) {
 		t.Errorf("warnings = %q, want one carrying %q", warnings, want)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*viewAgent) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*crashingAgent) SimulatesProcesses() bool { return true }

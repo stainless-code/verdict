@@ -50,7 +50,12 @@ BASE=84b31730499aa237889660981350fda2b3edc91d
 # The agent stub lives inside .verdict, which the store's own .gitignore
 # already excludes, so it never shows up in the bundle's untracked warning.
 mkdir -p "$EVAL_SANDBOX/.verdict/agentbin"
-export EVAL_AGENT_LOG="$EVAL_SANDBOX/agent.log"
+# A replayed review runs in the OS review sandbox, which lets the agent write
+# only its snapshot, TMPDIR, and its own data: the stub's log lives in
+# claude's debug directory, relocated into the case by CLAUDE_CONFIG_DIR.
+export CLAUDE_CONFIG_DIR="$EVAL_SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+export EVAL_AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent.log"
 cat >"$EVAL_SANDBOX/.verdict/agentbin/claude" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail

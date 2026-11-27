@@ -106,7 +106,7 @@ func (lp *loop) reviewSandbox(ctx context.Context) *core.RunSandbox {
 	b := lp.bundle(1)
 	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent}, nil)
 	req.PassThrough = lp.req.AgentArgs
-	req.AllowUnsandboxedReview = lp.req.AllowUnsandboxedReview
+	req.AllowUnsandboxedReview, req.UnsandboxedOptOut = lp.req.AllowUnsandboxedReview, true
 	return runcore.ReviewSandbox(ctx, req, lp.req.Flow.Agents)
 }
 

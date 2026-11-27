@@ -116,45 +116,60 @@ In scope (highest priority first):
   bundle directory, is a vulnerability. The shared snapshot every copy is
   made from is symlink-free, read-only, and fingerprinted, so a change to it
   refuses every later copy.
-- The review sandbox around every `run --agent` and `loop` review launch
-  (finders, cross-checks, repair rounds, drain; not the loop's fix spawn,
-  which edits the checkout by design). On macOS the launch runs under
-  `sandbox-exec` with a generated profile, on Linux under `bwrap`; the
-  network stays open so the agent reaches its model API. A review agent can
-  write only its launch's snapshot directory (its working copy and private
-  `TMPDIR`), its own cited data paths (sessions, logs, caches, its login's
-  token refresh — such as `~/.claude/projects`, `~/.pi/agent/sessions`,
-  `~/.local/share/opencode`), and the devices a process needs; it cannot
-  write its own config or code (`~/.claude.json`, `~/.claude/settings.json`,
-  hooks, plugins, `~/.config/opencode`, pi's extensions and settings), any
-  other dotfile in `HOME`, the rest of `~/.config`, the operator's checkout,
-  the execution's shared snapshot, or another launch's snapshot directory
-  (which macOS also hides from its reads). It cannot read the credential table `verify --sandbox`
-  hides (`~/.ssh`, `~/.aws`, gh and glab tokens, `.netrc`,
-  `.git-credentials`, the rest of that list and the variables that relocate
-  them), except a path that is the agent's own state (claude's macOS login
-  keychain). On Linux, other processes' environments are hidden too (a private
-  PID namespace). A review launch that writes or reads past that policy is a
-  vulnerability. Not boundaries, and so not findings: everything else stays
-  readable (the agent reads the tree and its own config; on Linux a sibling
-  launch's snapshot too); an agent's own data paths stay writable, so it can
-  alter its own sessions or token store, though nothing a later run loads as
-  config or code; on macOS the Mach services stay reachable (claude's login goes through
-  the keychain), which a process with a shell could use, and the review shell
-  is denied by flags, not by the sandbox. `codex` runs in its own
-  `--sandbox workspace-write` sandbox instead of verdict's — a nested
-  Seatbelt profile fails on macOS — so codex confines its writes to the
-  snapshot but nothing hides the credential table from its reads. With no
-  sandbox (Windows, Linux without `bwrap`, a failed probe), `claude` (shell
-  denied, write grant scoped to the bundle) and `codex` (its own sandbox) run
-  with a warning that their reads are not confined, and every other agent
-  refuses `review-sandbox-unavailable`; `--allow-unsandboxed-review` runs every
-  launch without the sandbox, warned, which is the operator's choice. Without
-  the sandbox only `claude` and `codex` stay in their copy through their own
-  tools; the opt-out accepts that any other agent can climb out with `..` or
-  an absolute path — to a sibling launch's live copy (forging the artifact it
-  hands back) or anything the operator's user can write — and read the
-  credential table, so what an opted-out review does there is not a finding.
+- The review sandbox around every review launch (`run --agent` finders,
+  cross-checks, repair rounds and drain, `loop`'s review, `demo` and
+  `backtest` reviews; not the loop's fix spawn, which edits the checkout by
+  design), applied to every launch through verdict's own process runners and
+  any wrapper around them — only a test double that declares it simulates
+  its processes skips it. On macOS the launch runs under `sandbox-exec` with
+  a generated profile, on Linux under `bwrap`; the network stays open so the
+  agent reaches its model API. A review agent can write only its launch's
+  snapshot directory (its working copy and private `TMPDIR`), its own cited
+  data paths (sessions, logs, caches, its login's token refresh — such as
+  `~/.claude/projects`, `~/.pi/agent/sessions`, opencode's database), and
+  the devices a process needs; it cannot write its own config or code
+  (`~/.claude.json`, claude's settings, hooks, plugins, shell snapshots,
+  `~/.config/opencode`, opencode's managed tools and packages, pi's
+  extensions and settings), any other dotfile in `HOME`, the rest of
+  `~/.config`, the operator's checkout, the execution's shared snapshot, or
+  another launch's snapshot directory, and it cannot replace a data
+  directory with a link (its own entry is pinned, a linked state path
+  refuses, and the state is re-checked before every launch). It cannot read
+  the credential table `verify --sandbox` hides (`~/.ssh`, `~/.aws`, gh and
+  glab tokens, `.netrc`, `.git-credentials`, the agent logins of codex,
+  opencode, pi, claude, copilot and gemini, the rest of that list and the
+  variables that relocate them), except its own login, nor the host temp
+  roots (and on Linux `/run`). It cannot connect to a unix socket (an ssh
+  agent, docker, systemd, tmux) beyond the resolver's and syslog's on macOS,
+  and inherits no socket variable. On macOS it cannot write preferences
+  through cfprefsd, use the pasteboard, or reach the keychain brokers unless
+  the keychain is its own login (claude); on Linux other processes'
+  environments are hidden (a private PID namespace). A sandbox policy that
+  cannot be built refuses the launch. A review launch that writes, reads,
+  connects, or reaches a service past that policy is a vulnerability. Not
+  boundaries, and so not findings: everything else stays readable (the agent
+  reads the tree and its own config; on Linux a sibling launch's snapshot
+  outside a hidden temp root too); an agent's own data paths stay writable,
+  so it can alter its own sessions or token store, though nothing a later
+  run loads as config or code; the review shell is denied by flags only for
+  `claude`, `bob`, and `pi` — every other row's agent has a live shell
+  inside the sandbox. `codex` runs in its own `--sandbox workspace-write`
+  sandbox instead of verdict's — a nested Seatbelt profile fails on macOS —
+  so codex confines its writes to the snapshot but nothing hides the
+  credential table from its reads. With no sandbox (Windows, Linux without
+  `bwrap`, a failed probe), `claude` (shell denied, write grant scoped to the
+  bundle, `--permission-mode default` pinned, and no write allow rule with no
+  path or a wildcard in the operator's own settings) and `codex` (its own
+  sandbox, no operator flag deciding it) run with a warning that their reads
+  are not confined, and every other agent refuses
+  `review-sandbox-unavailable`; `--allow-unsandboxed-review` (on `run` and
+  `loop`) runs every launch without the sandbox, warned, which is the
+  operator's choice. Without the sandbox only `claude` and `codex` stay in
+  their copy through their own tools; the opt-out accepts that any other
+  agent can climb out with `..` or an absolute path — to a sibling launch's
+  live copy (forging the artifact it hands back) or anything the operator's
+  user can write — and read the credential table, so what an opted-out
+  review does there is not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

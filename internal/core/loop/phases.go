@@ -93,7 +93,7 @@ func (p *flowPhases) review(
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
 	req.PassThrough = p.req.AgentArgs
-	req.AllowUnsandboxedReview = p.req.AllowUnsandboxedReview
+	req.AllowUnsandboxedReview, req.UnsandboxedOptOut = p.req.AllowUnsandboxedReview, true
 	p.measuring(req)
 	model := runcore.SpawnModel(req, p.req.Flow.Agents)
 	var attempts []*attemptCost

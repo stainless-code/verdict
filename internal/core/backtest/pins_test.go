@@ -253,3 +253,7 @@ func checkUserEnv(t *testing.T, name string, env map[string]string, home, global
 		}
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*pinRecorder) SimulatesProcesses() bool { return true }

@@ -855,3 +855,7 @@ func assertRowReadsBack(t *testing.T, r *repo, ledger string) {
 		t.Error("the scan's own row did not read back unchanged")
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (failingNumstat) SimulatesProcesses() bool { return true }

@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
@@ -751,7 +752,9 @@ var droppedEnvPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
 
 // configHomes are the agent configuration directories a relative value of
 // which would resolve inside the view instead of where the operator meant.
-var configHomes = []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME"}
+var configHomes = []string{
+	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR", "XDG_DATA_HOME", "XDG_STATE_HOME",
+}
 
 // env is the launch environment for the view: PWD names the view and
 // TMPDIR, TMP and TEMP its private temp directory; the variables naming the
@@ -1104,14 +1107,14 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 // bare launch.
 func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string, tap *agentusage.Tap, v *view,
 ) (*core.Result, error) {
-	env := v.env(st.childEnv())
+	env := hostsandbox.OverrideEnv(stripSocketEnv(v.env(st.childEnv())), tempEnv(&args.def, v.tmp))
 	if st.box == nil && core.StartsHostProcesses(st.commander()) {
 		return nil, &core.StartError{Err: errNoBox}
 	}
 	if !st.box.sandboxed() {
-		return st.spawn(ctx, argv, args.timeout, tap, v.cwd, env)
+		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env)
 	}
-	wrapped, err := st.box.wrap(v.wrapper, resolvedArgv(args, argv))
+	wrapped, err := st.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}

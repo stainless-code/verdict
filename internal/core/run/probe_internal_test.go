@@ -289,3 +289,11 @@ func TestProbeRefusesBothFindersAsAgentMismatch(t *testing.T) {
 		t.Errorf("launches = %d, want zero", n)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*probeCdr) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*failingProbe) SimulatesProcesses() bool { return true }

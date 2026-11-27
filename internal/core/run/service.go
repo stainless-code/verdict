@@ -995,6 +995,9 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 		look = exec.LookPath
 	}
 	bin, err := look(def.Binary)
+	if err == nil {
+		bin, err = filepath.Abs(bin)
+	}
 	if err != nil {
 		message := fmt.Sprintf("agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary)
 		if def.Install != "" {
@@ -1016,6 +1019,15 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap, dir string,
 	env []string,
 ) (*core.Result, error) {
+	return st.spawnAt(ctx, "", argv, timeout, tap, dir, env)
+}
+
+// spawnAt is spawn with the executable pinned to path (empty for argv[0]
+// resolved against PATH), so a review launch runs exactly the binary its
+// resolution found.
+func (st *state) spawnAt(ctx context.Context, path string, argv []string, timeout int, tap *agentusage.Tap,
+	dir string, env []string,
+) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, errNoCommander
@@ -1023,6 +1035,7 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *age
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	cmd := &core.Command{
+		Path:        path,
 		Argv:        argv,
 		Env:         env,
 		Dir:         dir,

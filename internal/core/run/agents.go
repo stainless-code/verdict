@@ -172,8 +172,18 @@ const (
 func operatorSpells(passthrough, flags []string) bool {
 	return slices.ContainsFunc(passthrough, func(arg string) bool {
 		name, _, _ := strings.Cut(arg, inlineValue)
-		return slices.Contains(flags, name)
+		return slices.Contains(flags, name) || slices.ContainsFunc(flags, func(flag string) bool {
+			return attachedShort(arg, flag)
+		})
 	})
+}
+
+// attachedShort reports a short flag spelled with its operand attached
+// (`-sdanger-full-access` for `-s danger-full-access`), which getopt-style
+// parsers read as the flag.
+func attachedShort(arg, flag string) bool {
+	return len(flag) == shortFlagLen && !strings.HasPrefix(flag, "--") &&
+		len(arg) > shortFlagLen && strings.HasPrefix(arg, flag)
 }
 
 // reviewGrant is the row's scoped review-write grant for one launch whose

@@ -57,7 +57,8 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 		return core.Result{}, err
 	}
 	//nolint:gosec // G204: argv is the operator's own gh/git plumbing, not external input.
-	proc := osexec.CommandContext(ctx, argv[0], argv[1:]...)
+	proc := osexec.CommandContext(ctx, pinned(cmd, argv[0]), argv[1:]...)
+	proc.Args[0] = argv[0]
 	limit := r.captureCap(cmd)
 	stdout := newBoundedBuffer(limit, captureHead)
 	stderr := newBoundedBuffer(limit, captureTail)
@@ -224,3 +225,12 @@ const (
 	ghBin   = "gh"
 	glabBin = "glab"
 )
+
+// pinned is the program to run for argv0: the command's resolved Path when
+// argv0 is still its own Argv[0], else argv0 itself.
+func pinned(cmd *core.Command, argv0 string) string {
+	if cmd.Path != "" && argv0 == cmd.Argv[0] {
+		return cmd.Path
+	}
+	return argv0
+}

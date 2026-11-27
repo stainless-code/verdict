@@ -531,3 +531,7 @@ func siblingTmp(t *testing.T, root string) string {
 	}
 	return dir
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*drainHostStub) SimulatesProcesses() bool { return true }

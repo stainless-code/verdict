@@ -100,3 +100,7 @@ const (
 type scriptError string
 
 func (e scriptError) Error() string { return string(e) }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*Script) SimulatesProcesses() bool { return true }

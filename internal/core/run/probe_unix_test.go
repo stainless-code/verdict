@@ -292,3 +292,7 @@ func assertProbeCaptureRefusal(t *testing.T, ref *core.RefusalError, err error) 
 		t.Errorf("review file exists after refusal (err = %v); want no launch", err)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (stubCommander) SimulatesProcesses() bool { return true }

@@ -145,6 +145,10 @@ type Launch struct {
 	// there unless the operator opts out. ConfinementCitation names the doc.
 	Confinement         string
 	ConfinementCitation string
+	// TempEnv are the variables that move the CLI's own scratch directory
+	// off a hardcoded host temp root; every review launch points them at its
+	// private TMPDIR, since the sandbox closes the host temp roots.
+	TempEnv []string
 	// StateEnv are the variables that relocate the state: an absolute value
 	// replaces its Root, so every StateWritable entry at or below Root moves
 	// under the value instead.
@@ -263,6 +267,10 @@ const (
 // replaces it.
 const flagDisableToolGroups = "--disable-tool-groups"
 
+// flagPermissionMode is claude's permission-mode flag, spelled once for its
+// edit grant, its permission flags, and the mode a review pins.
+const flagPermissionMode = "--permission-mode"
+
 // flagSandbox and valueWorkspaceWrite are codex's sandbox flag and the mode
 // that writes its working directory.
 const (
@@ -366,10 +374,10 @@ var catalog = []Agent{
 			PermissionCitation: docClaudeCLI,
 			// acceptEdits also auto-approves filesystem shell commands (mkdir,
 			// rm, mv, sed), so the fix keeps the review's shell denial.
-			EditArgs:     []string{"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
+			EditArgs:     []string{flagPermissionMode, "acceptEdits", "--disallowedTools=Bash,PowerShell"},
 			EditCitation: docClaudePermissions,
 			PermissionFlags: []string{
-				"--permission-mode", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+				flagPermissionMode, "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
 				"--allowedTools", "--allowed-tools", "--add-dir",
 			},
 			// The joined `=` form, like the discovery restriction: the
@@ -395,7 +403,10 @@ var catalog = []Agent{
 			// `--strict-mcp-config` loads no MCP server but --mcp-config's, so
 			// the tree's .mcp.json starts none. The flags that would undo them
 			// or load other configuration are verdict's on a review launch.
-			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config"},
+			// `--permission-mode default` outranks a settings defaultMode
+			// (acceptEdits, bypassPermissions) that would widen its writes;
+			// claude 2.1.331 accepts it — observed 2026-11-27.
+			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config", flagPermissionMode, "default"},
 			ReviewArgsCitation: docClaudeCLI,
 			ReviewOwnedFlags: []string{
 				"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config",
@@ -419,17 +430,23 @@ var catalog = []Agent{
 			// from claude 2.1.331 on macOS, which also reached its API with
 			// ~/.claude.json and every config path read-only — read and
 			// observed 2026-11-27.
+			// shell-snapshots and session-env hold scripts a later session
+			// sources, so they are code; .credentials.json is the Linux login.
 			StateWritable: []string{
-				".claude/projects", ".claude/sessions", ".claude/session-env", ".claude/shell-snapshots",
-				".claude/debug", ".claude/todos", ".claude/backups", ".claude/cache", ".claude/statsig",
-				".claude/file-history", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
+				".claude/projects", ".claude/sessions", ".claude/debug", ".claude/todos", ".claude/backups",
+				".claude/cache", ".claude/statsig", ".claude/file-history", ".claude/.credentials.json*",
+				"Library/Caches/claude-cli-nodejs", "Library/Keychains",
 			},
 			StateReadOnly: []string{
 				".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 				".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
-				".claude/CLAUDE.md",
+				".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env",
 			},
-			StateEnv:      []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
+			StateEnv: []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
+			// claude makes /tmp/claude-<uid> whatever TMPDIR says;
+			// CLAUDE_CODE_TMPDIR moves it (named in its own disk-quota
+			// message) — observed from claude 2.1.331, 2026-11-27.
+			TempEnv:       []string{"CLAUDE_CODE_TMPDIR"},
 			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
 			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
 			// under the bundle (ReviewWriteArgs): Write/Edit outside an allow
@@ -517,6 +534,8 @@ var catalog = []Agent{
 			PermissionFlags: []string{
 				flagSandbox, "-s", "--ask-for-approval", "-a", "--full-auto",
 				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
+				// A config override or profile can set sandbox_mode itself.
+				"-c", "--config", "-p", "--profile",
 			},
 			KeyEnv:         "OPENAI_API_KEY",
 			KeyEnvCitation: docCodexReadme,
@@ -918,8 +937,19 @@ var catalog = []Agent{
 			// ~/.local/state/opencode (model, kv, locks, prompt history) was
 			// observed from opencode 2.4.2 on macOS — read and observed
 			// 2026-11-27.
-			StateWritable: []string{".local/share/opencode", ".local/state/opencode"},
-			StateReadOnly: []string{".config/opencode", ".cache/opencode"},
+			// Its data directory also holds code — managed tools and LSP
+			// binaries (bin), packages (node_modules), sourced shell state
+			// (shell) — so only its data files and directories are writable.
+			StateWritable: []string{
+				".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
+				".local/share/opencode/opencode.db*", ".local/share/opencode/log",
+				".local/share/opencode/storage", ".local/share/opencode/snapshot",
+				".local/share/opencode/tool-output", ".local/state/opencode",
+			},
+			StateReadOnly: []string{
+				".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
+				".local/share/opencode/node_modules", ".local/share/opencode/shell",
+			},
 			StateEnv: []StateVar{
 				{Name: "XDG_DATA_HOME", Root: ".local/share"},
 				{Name: "XDG_STATE_HOME", Root: ".local/state"},
@@ -1109,6 +1139,7 @@ func All() []Agent {
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
 			v.StateWritable = slices.Clone(v.StateWritable)
 			v.StateReadOnly = slices.Clone(v.StateReadOnly)
+			v.TempEnv = slices.Clone(v.TempEnv)
 			v.StateEnv = slices.Clone(v.StateEnv)
 			v.ReviewArgs = slices.Clone(v.ReviewArgs)
 			v.ReviewOwnedFlags = slices.Clone(v.ReviewOwnedFlags)

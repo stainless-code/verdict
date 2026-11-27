@@ -14,9 +14,9 @@ import (
 func TestStatePathsAreCitedAndShaped(t *testing.T) {
 	writable := map[string][]string{
 		"claude": {
-			".claude/projects", ".claude/sessions", ".claude/session-env", ".claude/shell-snapshots",
-			".claude/debug", ".claude/todos", ".claude/backups", ".claude/cache", ".claude/statsig",
-			".claude/file-history", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
+			".claude/projects", ".claude/sessions", ".claude/debug", ".claude/todos", ".claude/backups",
+			".claude/cache", ".claude/statsig", ".claude/file-history", ".claude/.credentials.json*",
+			"Library/Caches/claude-cli-nodejs", "Library/Keychains",
 		},
 		"codex": {
 			".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
@@ -24,20 +24,28 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 			".codex/history.jsonl*", ".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*",
 			".codex/models_cache.json*",
 		},
-		"opencode": {".local/share/opencode", ".local/state/opencode"},
-		"pi":       {".pi/agent/sessions", ".pi/agent/auth.json*"},
+		"opencode": {
+			".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
+			".local/share/opencode/opencode.db*", ".local/share/opencode/log",
+			".local/share/opencode/storage", ".local/share/opencode/snapshot",
+			".local/share/opencode/tool-output", ".local/state/opencode",
+		},
+		"pi": {".pi/agent/sessions", ".pi/agent/auth.json*"},
 	}
 	readOnly := map[string][]string{
 		"claude": {
 			".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 			".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
-			".claude/CLAUDE.md",
+			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env",
 		},
 		"codex": {
 			".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
 			".codex/plugins", ".codex/packages",
 		},
-		"opencode": {".config/opencode", ".cache/opencode"},
+		"opencode": {
+			".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
+			".local/share/opencode/node_modules", ".local/share/opencode/shell",
+		},
 		"pi": {
 			".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
 			".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",

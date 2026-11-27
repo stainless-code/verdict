@@ -14,6 +14,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -102,6 +103,13 @@ var CredentialPaths = []string{
 	".vault-token",
 	filepath.Join("Library", "Keychains"),
 	filepath.Join(".config", "glab-cli"),
+	filepath.Join(".codex", "auth.json"),
+	filepath.Join(".local", "share", "opencode", "auth.json"),
+	filepath.Join(".pi", "agent", "auth.json"),
+	filepath.Join(".claude", ".credentials.json"),
+	filepath.Join(".config", "github-copilot"),
+	filepath.Join(".gemini", "oauth_creds.json"),
+	filepath.FromSlash(".config/git/credentials"),
 }
 
 // credentialVar is one environment variable that relocates a credential
@@ -113,21 +121,30 @@ type credentialVar struct {
 	list   bool
 }
 
+// xdgConfigHome relocates the XDG config directory several stores live in.
+const xdgConfigHome = "XDG_CONFIG_HOME"
+
 // credentialEnv is the relocation half of the table, read from both the
 // child environment and the verdict process environment, so a store moved by
 // the operator's shell is hidden even when the child never sees the
 // variable. Relative values are skipped: they resolve against the reviewed
 // root the command may already read.
 var credentialEnv = []credentialVar{
-	{name: "XDG_CONFIG_HOME", suffix: "gh"},
+	{name: xdgConfigHome, suffix: "gh"},
 	{name: "GH_CONFIG_DIR"},
 	{name: "AWS_SHARED_CREDENTIALS_FILE"},
 	{name: "AWS_CONFIG_FILE"},
 	{name: "DOCKER_CONFIG"},
 	{name: "KUBECONFIG", list: true},
 	{name: "CLOUDSDK_CONFIG"},
-	{name: "XDG_CONFIG_HOME", suffix: "glab-cli"},
+	{name: xdgConfigHome, suffix: "glab-cli"},
 	{name: "GLAB_CONFIG_DIR"},
+	{name: "CODEX_HOME", suffix: "auth.json"},
+	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "auth.json")},
+	{name: "PI_CODING_AGENT_DIR", suffix: "auth.json"},
+	{name: "CLAUDE_CONFIG_DIR", suffix: ".credentials.json"},
+	{name: xdgConfigHome, suffix: "github-copilot"},
+	{name: xdgConfigHome, suffix: filepath.FromSlash("git/credentials")},
 }
 
 // Inputs is what a policy resolves the credential table against: the
@@ -385,9 +402,13 @@ func Realpath(path string) (string, bool) {
 }
 
 // SeatbeltLiteral quotes one path for a Seatbelt profile. Backslashes and
-// quotes are escaped; a control character (including a newline) refuses,
-// because the profile must never be built from a path it cannot represent.
+// quotes are escaped; a control character (including a newline) or invalid
+// UTF-8 refuses, because the profile must never be built from a path it
+// cannot represent.
 func SeatbeltLiteral(path string) (string, error) {
+	if !utf8.ValidString(path) {
+		return "", jq.NewErrf("the sandbox path %q is not valid UTF-8, which the Seatbelt profile cannot represent", path)
+	}
 	if strings.ContainsFunc(path, func(r rune) bool {
 		return r < seatbeltFirstPrintable || r == seatbeltDelete
 	}) {
@@ -415,6 +436,12 @@ func SeatbeltRegexQuote(path string) string {
 // before it still covers the path.
 func ReadRules(b *strings.Builder, paths []string) error {
 	return subpathRules(b, "(allow file-read* (subpath %s))", paths)
+}
+
+// ReadDenials renders one read denial per path, leaving writes to the rules
+// before it.
+func ReadDenials(b *strings.Builder, paths []string) error {
+	return subpathRules(b, "(deny file-read* (subpath %s))", paths)
 }
 
 // WriteDenials renders one write denial per path, leaving reads to the rules

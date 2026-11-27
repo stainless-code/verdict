@@ -168,7 +168,8 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		".aws", ".ssh", ".config/gh", ".docker", ".kube", ".config/gcloud", ".azure", ".gnupg",
 		".netrc", ".git-credentials", ".npmrc", ".pypirc", ".terraform.d",
 		".cargo/credentials.toml", ".cargo/credentials", ".vault-token", "Library/Keychains",
-		".config/glab-cli",
+		".config/glab-cli", ".codex/auth.json", ".local/share/opencode/auth.json", ".pi/agent/auth.json",
+		".claude/.credentials.json", ".config/github-copilot", ".gemini/oauth_creds.json", ".config/git/credentials",
 	}
 	var want []string
 	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {
@@ -177,7 +178,8 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		}
 	}
 	want = append(want,
-		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2", "/x/cfg/glab-cli",
+		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2", "/x/cfg/glab-cli", "/x/cfg/github-copilot",
+		"/x/cfg/git/credentials",
 		"/x/gh", "/x/aws/config", "/x/docker", "/x/gcloud", "/x/glab",
 	)
 	if !slices.Equal(got, want) {

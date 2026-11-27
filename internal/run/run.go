@@ -179,6 +179,7 @@ func runRequest(r *cli.Runner, req *readcommon.Request, flags *flags) *core.RunR
 		Resume:                 flags.resume,
 		AllowShell:             flags.allowShell,
 		AllowUnsandboxedReview: flags.unsandboxed,
+		UnsandboxedOptOut:      true,
 		RequireCoverage:        flags.requireCoverage,
 		ConsentOverBudget:      flags.consent,
 		JSONMode:               r.JSONMode,

@@ -4,6 +4,7 @@ package run
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,13 +20,11 @@ import (
 	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
-// hostStub is the real watchdog as a host commander, so the launch goes
-// through the real review sandbox. The sandboxed launch runs the binary the
+// hostStub is the real watchdog behind a plain wrapper, which carries no
+// simulation marker, so the launch goes through the real review sandbox as
+// any production wrapper's would. The sandboxed launch runs the binary the
 // resolution found, so the planted stand-in needs no PATH entry.
 type hostStub struct{}
-
-// StartsHostProcesses marks the stub as a host commander.
-func (hostStub) StartsHostProcesses() bool { return true }
 
 // Run runs the command for real.
 func (hostStub) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
@@ -65,6 +64,7 @@ const escapeScript = "#!/bin/sh\n" +
 	"  /bin/mkdir -p \"$HOME/.config/evil\" && echo config=written || echo config=denied\n" +
 	"  /bin/cat \"$HOME/.ssh/id_rsa\" && echo ssh=read || echo ssh=denied\n" +
 	"  printf ok > \"$DATA_DIR/own-state\" && echo state=written || echo state=denied\n" +
+	"  /bin/cat \"$OTHER_CRED\" && echo othercred=read || echo othercred=denied\n" +
 	"  IFS=:; for p in $CONFIG_PATHS; do /bin/mkdir -p \"${p%/*}\" 2>/dev/null; " +
 	"printf evil > \"$p\" && echo \"own-config $p written\" || echo \"own-config $p denied\"; done\n" +
 	"} > \"$log\" 2>&1\n" +
@@ -78,32 +78,35 @@ const privateKeyCanary = "-----BEGIN CANARY PRIVATE KEY----- verdict-review-sand
 // the config and code paths a later run would load, which it may not —
 // existing ones planted first, so a denied write leaves them unchanged.
 type escapeRow struct {
-	agent   string
-	data    string
-	config  []string
-	planted []string
+	agent     string
+	data      string
+	otherCred string
+	config    []string
+	planted   []string
 }
 
 // escapeRows are the rows with state paths, each with config and plugin
 // paths from its read-only list.
 var escapeRows = []escapeRow{
 	{
-		agent: "pi", data: ".pi/agent/sessions",
+		agent: "pi", data: ".pi/agent/sessions", otherCred: ".codex/auth.json",
 		config:  []string{".pi/agent/extensions/x.ts", ".pi/agent/settings.json", ".pi/agent/AGENTS.md"},
 		planted: []string{".pi/agent/settings.json"},
 	},
 	{
-		agent: "opencode", data: ".local/share/opencode",
+		agent: "opencode", data: ".local/share/opencode/log", otherCred: ".pi/agent/auth.json",
 		config: []string{
 			".config/opencode/plugin/x.js", ".config/opencode/opencode.json",
-			".cache/opencode/node_modules/x/index.js",
+			".cache/opencode/node_modules/x/index.js", ".local/share/opencode/bin/x",
+			".local/share/opencode/plugin.js",
 		},
 		planted: []string{".config/opencode/opencode.json"},
 	},
 	{
-		agent: "claude", data: ".claude/projects",
+		agent: "claude", data: ".claude/projects", otherCred: ".local/share/opencode/auth.json",
 		config: []string{
 			".claude/settings.json", ".claude.json", ".claude/hooks/x.sh", ".claude/plugins/x/plugin.json",
+			".claude/shell-snapshots/snapshot-zsh.sh", ".claude/session-env/x",
 		},
 		planted: []string{".claude/settings.json", ".claude.json"},
 	},
@@ -139,7 +142,8 @@ func assertEscapeDenied(t *testing.T, row *escapeRow) {
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	req.Environ = append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH"),
 		"CHECKOUT_FILE="+filepath.Join(root, "src", "main.go"), "DATA_DIR="+filepath.Join(home, row.data),
-		"CONFIG_PATHS="+strings.Join(homePaths(home, row.config), ":"))
+		"CONFIG_PATHS="+strings.Join(homePaths(home, row.config), ":"),
+		"OTHER_CRED="+filepath.Join(home, filepath.FromSlash(row.otherCred)))
 	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
@@ -178,6 +182,7 @@ func escapeHome(t *testing.T, row *escapeRow) string {
 	home := t.TempDir()
 	writeUnder(t, home, ".zshrc", operatorProfile)
 	writeUnder(t, home, filepath.Join(".ssh", "id_rsa"), privateKeyCanary+"\n")
+	writeUnder(t, home, filepath.FromSlash(row.otherCred), privateKeyCanary+"\n")
 	for _, rel := range row.planted {
 		writeUnder(t, home, filepath.FromSlash(rel), operatorConfig)
 	}
@@ -193,7 +198,9 @@ func escapeHome(t *testing.T, row *escapeRow) string {
 func assertEscapeLog(t *testing.T, home string, row *escapeRow) {
 	t.Helper()
 	log := string(readFile(t, filepath.Join(home, filepath.FromSlash(row.data), "escape.log")))
-	want := []string{"zshrc=denied", "checkout=denied", "config=denied", "ssh=denied", "state=written"}
+	want := []string{
+		"zshrc=denied", "checkout=denied", "config=denied", "ssh=denied", "state=written", "othercred=denied",
+	}
 	for _, p := range homePaths(home, row.config) {
 		want = append(want, "own-config "+p+" denied")
 	}
@@ -282,9 +289,6 @@ type siblingPhases struct {
 	once    sync.Once
 	readyMu sync.Once
 }
-
-// StartsHostProcesses marks the commander as a host one.
-func (*siblingPhases) StartsHostProcesses() bool { return true }
 
 // Run routes one command: git and the probe for real, a finder's attack
 // through its own wrapper, then the phase's artifacts.
@@ -399,5 +403,159 @@ func assertSiblingReads(t *testing.T, log string) {
 	}
 	if runtime.GOOS == "linux" && !strings.Contains(log, "/.verdict/state/42/x-finder-2\n") {
 		t.Errorf("finder 1 never reached finder 2's bundle copy, so the forgery was not tried:\n%s", log)
+	}
+}
+
+// sandboxedRun launches script as pi through the real review sandbox, with
+// HOME and the extra variables in env, and returns the response and the
+// refusal.
+func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string) (*core.RunResponse, *core.RefusalError) {
+	t.Helper()
+	bin := plantStub(t, "pi", script)
+	req := request(root, hostStub{})
+	req.Agent, req.RoundsRaw = "pi", rounds
+	req.LookPath = func(string) (string, error) { return bin, nil }
+	req.Environ = append(append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH")), env...)
+	return Run(t.Context(), req)
+}
+
+// swapScript is a prompt-injected pi across two rounds. Round 1 tries to
+// swap its own data directory for a link to HOME and owes an invalid review,
+// so a repair round follows; round 2 (the repair directive) writes through
+// the link it hoped for and straight into HOME, then the review.
+const swapScript = "#!/bin/sh\n" +
+	"data=\"$HOME/.pi/agent/sessions\"\n" +
+	"case \"$*\" in\n" +
+	"*'Round 2/2:'*)\n" +
+	"  printf evil >> \"$data/.zshrc\" 2>/dev/null; printf evil >> \"$HOME/.zshrc\" 2>/dev/null\n" +
+	"  printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json ;;\n" +
+	"*)\n" +
+	"  /bin/rm -rf \"$data\" 2>/dev/null; /bin/ln -s \"$HOME\" \"$data\" 2>/dev/null\n" +
+	"  printf '{}' > .verdict/state/42/review.json ;;\n" +
+	"esac\n"
+
+// TestReviewSandboxSurvivesAStateDirSwap proves a round-1 agent cannot turn
+// its own data directory into a link to HOME for round 2: the swap is
+// refused where it happens (the directory's own entry is pinned on macOS,
+// a mount point on Linux), and a link that got there anyway is refused
+// before the next launch. Either way HOME's profile is unchanged.
+func TestReviewSandboxSurvivesAStateDirSwap(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	root := confinedRoot(t)
+	home := t.TempDir()
+	writeUnder(t, home, ".zshrc", operatorProfile)
+	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := sandboxedRun(t, root, home, swapScript, "2")
+	if got := string(readFile(t, filepath.Join(home, ".zshrc"))); got != operatorProfile {
+		t.Errorf("~/.zshrc = %q (refusal %v), want it unchanged", got, ref)
+	}
+}
+
+// TestReviewSandboxStateLinkRefusesTheNextLaunch proves the per-launch check
+// on its own: a data directory replaced by a link to HOME after the box was
+// settled refuses the next wrap.
+func TestReviewSandboxStateLinkRefusesTheNextLaunch(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	sessions := filepath.Join(home, ".pi", "agent", "sessions")
+	if err := os.MkdirAll(sessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := lookupAgent("pi")
+	box, err := newReviewBox(&def, []string{"HOME=" + home}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box.mechanism, box.runner = "bwrap", "bwrap"
+	if err := os.Remove(sessions); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(home, sessions); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := box.wrap(t.TempDir(), "", []string{"pi"}); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("wrap = %v, want the swapped-in link refused", err)
+	}
+}
+
+// TestReviewSandboxRefusesALinkedStatePath proves a state path that is
+// already a link — a dotfile manager's — refuses when the box is settled,
+// since the sandbox would otherwise open whatever it points at.
+func TestReviewSandboxRefusesALinkedStatePath(t *testing.T) {
+	t.Parallel()
+	home, elsewhere := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".pi"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(home, ".pi", "agent")); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := lookupAgent("pi")
+	if _, err := newReviewBox(&def, []string{"HOME=" + home}, nil); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("newReviewBox = %v, want the linked state path refused", err)
+	}
+}
+
+// socketScript tries to talk to the unix socket SOCK names from inside the
+// sandbox and logs the outcome in the agent's data directory.
+const socketScript = "#!/bin/sh\n" +
+	"{ printf ping | nc -U -w 2 \"$SOCK\" && echo socket=connected || echo socket=denied; } " +
+	"> \"$HOME/.pi/agent/sessions/socket.log\" 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// listenUnix listens on a fresh unix socket outside any wrapper and reports
+// each connection it accepts.
+func listenUnix(t *testing.T) (string, <-chan struct{}) {
+	t.Helper()
+	// A short path: unix socket names are capped near 100 bytes, which a
+	// t.TempDir path can pass.
+	dir, err := os.MkdirTemp("", "vs") //nolint:usetesting // see above
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "s")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := make(chan struct{}, 1)
+	go func() {
+		if conn, err := listener.Accept(); err == nil {
+			accepted <- struct{}{}
+			_ = conn.Close()
+		}
+	}()
+	t.Cleanup(func() { _ = listener.Close() })
+	return sock, accepted
+}
+
+// TestReviewSandboxDeniesUnixSockets proves a review agent cannot connect to
+// a unix socket outside its wrapper — an ssh agent, docker, or a systemd bus
+// stand-in the test listens on — and the listener sees no connection.
+func TestReviewSandboxDeniesUnixSockets(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	if _, err := exec.LookPath("nc"); err != nil {
+		t.Skipf("nc is not installed: %v", err)
+	}
+	sock, accepted := listenUnix(t)
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".pi", "agent", "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, ref := sandboxedRun(t, confinedRoot(t), home, socketScript, "1", "SOCK="+sock); ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	select {
+	case <-accepted:
+		t.Error("the agent connected to a unix socket outside its sandbox")
+	default:
+	}
+	if log := string(readFile(t, filepath.Join(home, ".pi", "agent", "sessions", "socket.log"))); !strings.Contains(log, "socket=denied") {
+		t.Errorf("socket log = %q, want the connect denied", log)
 	}
 }

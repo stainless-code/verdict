@@ -322,7 +322,9 @@ func TestReviewArgsAreScopedAndCited(t *testing.T) {
 		collectGrant(t, args, agent.Name, "ReviewArgs", l.ReviewArgs, l.ReviewArgsCitation)
 		collectGrant(t, owned, agent.Name, "ReviewOwnedFlags", l.ReviewOwnedFlags, l.ReviewArgsCitation)
 	}
-	wantArgs := map[string][]string{"claude": {"--setting-sources=user", "--strict-mcp-config"}}
+	wantArgs := map[string][]string{
+		"claude": {"--setting-sources=user", "--strict-mcp-config", "--permission-mode", "default"},
+	}
 	wantOwned := map[string][]string{
 		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
 		"codex":  {"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust"},

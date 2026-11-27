@@ -184,3 +184,7 @@ func TestGitFailureReportsCancel(t *testing.T) {
 		})
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*cancelAfter) SimulatesProcesses() bool { return true }

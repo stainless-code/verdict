@@ -1093,3 +1093,7 @@ func checkAllFailed(t *testing.T, tc *allFailedCase) {
 		t.Fatalf("refusal = %v, want %s", ref, tc.want)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*phaseCommander) SimulatesProcesses() bool { return true }

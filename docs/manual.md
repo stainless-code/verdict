@@ -4356,113 +4356,147 @@ your checkout.
 
 ### Review sandbox
 
-Every review launch also runs in the host's OS sandbox, because most agents'
-file tools take absolute paths: without it, a prompt-injected diff could steer
-one into `~/.zshrc`, `~/.config`, or your checkout, or into reading `~/.ssh`
-and leaking it through review text verdict may post. On macOS the launch runs
-under `/usr/bin/sandbox-exec` with a generated profile; on Linux under `bwrap`
-(bubblewrap) with a read-only `/`, a fresh `/dev`, and a private PID namespace
-whose `/proc` hides other processes' environments. The network stays open:
-the agent has to reach its model API.
+Every review launch — `run`'s finders, cross-checks, repair rounds and drain,
+`loop`'s review step, `demo`'s and `backtest`'s reviews — also runs in the
+host's OS sandbox, because most agents' file tools take absolute paths, and
+most rows (opencode, cline, gemini, cursor, copilot, every agent you define in
+prefs) keep a live shell too: only `claude`, `bob`, and `pi` deny it by flag.
+Without the sandbox, a prompt-injected diff could steer one into `~/.zshrc`,
+`~/.config`, or your checkout, or into reading `~/.ssh` and leaking it through
+review text verdict may post. On macOS the launch runs under
+`/usr/bin/sandbox-exec` with a generated profile; on Linux under `bwrap`
+(bubblewrap, run by the path verdict resolved) with a read-only `/`, a fresh
+`/dev`, and a private PID namespace whose `/proc` hides other processes'
+environments. The network stays open: the agent has to reach its model API.
 
 - **Writes** reach only the launch's snapshot directory — its working copy
-  and the private `TMPDIR` beside it, both removed after the launch — the agent's own state
-  paths (the table below), and `/dev/null`, `/dev/tty`, and `/dev/fd/*`.
-  Every other path is denied: every dotfile in `HOME`, the rest of
-  `~/.config`, and your checkout.
+  and the private `TMPDIR` beside it, both removed after the launch — the
+  agent's own data paths (the table below), and `/dev/null`, `/dev/tty`, and
+  `/dev/fd/*`. Every other path is denied: every dotfile in `HOME`, the rest
+  of `~/.config`, the agent's own config and code, your checkout, the
+  execution's shared snapshot, and every other launch's snapshot directory.
 - **Reads** of the credential table `verify --sandbox` hides are denied —
   `~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.config/glab-cli`, `~/.docker`,
   `~/.kube`, `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `.netrc`,
-  `.git-credentials`, `.npmrc`, `.pypirc`, `~/.terraform.d`, cargo
-  credentials, `.vault-token`, `~/Library/Keychains`, under your child,
-  process, and account homes, plus the stores `XDG_CONFIG_HOME`,
-  `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`, `AWS_SHARED_CREDENTIALS_FILE`,
-  `AWS_CONFIG_FILE`, `DOCKER_CONFIG`, `KUBECONFIG`, and `CLOUDSDK_CONFIG`
-  move — except a path that is the agent's own state, such as `claude`'s
-  macOS login keychain. Everything else stays readable: the agent reads the
-  tree and its own config.
-- **Processes** are not restricted beyond verify's macOS service rules
-  (no `open`, AppleEvents, launchd jobs, or signals to processes outside the
-  sandbox): the review shell is already denied by the row's flags, and Mach
-  services stay reachable because macOS logins go through them.
+  `.git-credentials`, `~/.config/git/credentials`, `.npmrc`, `.pypirc`,
+  `~/.terraform.d`, cargo credentials, `.vault-token`, `~/Library/Keychains`,
+  and the agent logins `~/.codex/auth.json`,
+  `~/.local/share/opencode/auth.json`, `~/.pi/agent/auth.json`,
+  `~/.claude/.credentials.json`, `~/.config/github-copilot`, and
+  `~/.gemini/oauth_creds.json`, under your child, process, and account
+  homes, plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`,
+  `GLAB_CONFIG_DIR`, `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`,
+  `DOCKER_CONFIG`, `KUBECONFIG`, `CLOUDSDK_CONFIG`, `CODEX_HOME`,
+  `XDG_DATA_HOME`, `PI_CODING_AGENT_DIR`, and `CLAUDE_CONFIG_DIR` move —
+  except the agent's own login, which is its state: pi reads its own
+  `auth.json`, never codex's. The host temp roots (`/tmp`, `/var/tmp`; on
+  Linux `/run` and a real `/var/run` too) are hidden. On macOS every other
+  snapshot directory beside the launch's own is unreadable; on Linux one in
+  a hidden temp root is too. Everything else stays readable: the agent reads
+  the tree and its own config.
+- **Sockets and services.** Every unix socket is closed — an ssh agent,
+  gpg-agent, Docker Desktop or the docker and podman sockets, tmux, the
+  systemd user manager and its bus — on macOS by the profile (only the
+  resolver's and syslog's stay open), on Linux by the hidden `/tmp` and
+  `/run` (the resolver file behind `/etc/resolv.conf` is bound back
+  read-only when it lives there, so DNS keeps working). The launch inherits
+  none of `SSH_AUTH_SOCK`, `DBUS_SESSION_BUS_ADDRESS`, `GPG_AGENT_INFO`,
+  `TMUX`, `NVIM`, or `XDG_RUNTIME_DIR`. On macOS preference writes through
+  cfprefsd (a `defaults write` into another app's plist), the pasteboard,
+  LaunchServices, AppleEvents, launchd jobs, and signals to processes
+  outside the sandbox are denied, and so are the keychain brokers unless the
+  keychain is the agent's own login (`claude`).
 
-A row's state paths come in two lists, each read from the CLI's docs or
+A row's state paths come in two cited lists, each read from the CLI's docs or
 observed from the real CLI. **Writable** paths are its data alone — sessions,
 logs, caches, its login's token refresh — and are the only paths beside its
 snapshot it may write. **Read-only** paths are its own config and code —
-settings, plugins, extensions, hooks, agent definitions, MCP config — which
-a later run outside verdict loads: the agent reads them, but a
-prompt-injected review cannot change them to persist past the sandbox.
-Everything else under `HOME` is read-only too; the read-only column names
-what matters. A relocation variable moves the writable paths under its root;
-an entry ending in `*` names a file and its atomic-write siblings. A state
-path that would re-open more than the agent's own data — `HOME` itself, or a
-path holding a credential location — makes the sandbox unavailable for that
-launch. On Linux `bwrap` can bind only a path that exists, so a missing
-writable directory is created before the launch and a missing writable file
-stays read-only. `claude` reaches its API with `~/.claude.json` and every
-config path read-only (observed on claude 2.1.331); a review that needs to
-change its own settings or install a plugin is not something a review does.
+settings, plugins, extensions, hooks, agent definitions, MCP config, managed
+tools, sourced shell state — which a later run outside verdict loads: the
+agent reads them, and every one is denied writes explicitly (a Seatbelt
+denial, a read-only bind), so a prompt-injected review cannot change them to
+persist past the sandbox. A relocation variable moves the paths under its
+root (a relative value resolves where verdict runs); an entry ending in `*`
+names files of its directory that start with the rest. Each writable
+directory is created before the launch and pinned: the agent may write
+anything below it but cannot remove or rename the directory itself, so it
+cannot swap one for a link between launches. A state path that is a link, or
+reaches its target through one below `HOME` or its relocation root (a
+dotfile manager's), refuses, as does a relocation root that is `/`, `HOME`,
+or an ancestor of `HOME`, or a state path holding a credential location; the
+check runs again before every launch. On Linux `bwrap` binds a writable file
+as itself, so a CLI that saves it by writing a sibling and renaming it over
+the original cannot save it there; one that writes in place can. `claude`
+reaches its API with `~/.claude.json` and every config path read-only
+(observed on claude 2.1.331), and its own scratch directory
+(`CLAUDE_CODE_TMPDIR`, otherwise `/tmp/claude-<uid>`) follows the launch's
+`TMPDIR`.
 
-| Name       | Writable (data, relative to `HOME`)                                                                                                                                                                             | Read-only (config and code)                                                                                                                                        | Relocated by                            | Source                                                                                                  |
-| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `claude`   | `.claude/` `projects`, `sessions`, `session-env`, `shell-snapshots`, `debug`, `todos`, `backups`, `cache`, `statsig`, `file-history`; `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md` | `CLAUDE_CONFIG_DIR` (for `.claude`)     | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
-| `codex`    | `.codex/` `sessions`, `archived_sessions`, `log`, `sqlite`, `cache`, `shell_snapshots`, `tmp`, `.tmp`, `auth.json*`, `history.jsonl*`, `session_index.jsonl*`, `state_*`, `logs_*`, `models_cache.json*`        | `.codex/` `config.toml`, `AGENTS.md`, `rules`, `prompts`, `skills`, `plugins`, `packages`                                                                          | `CODEX_HOME`                            | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
-| `opencode` | `.local/share/opencode`, `.local/state/opencode`                                                                                                                                                                | `.config/opencode`, `.cache/opencode` (installed provider and plugin packages)                                                                                     | `XDG_DATA_HOME`, `XDG_STATE_HOME`       | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
-| `pi`       | `.pi/agent/sessions`, `.pi/agent/auth.json*`                                                                                                                                                                    | `.pi/agent/` `settings.json`, `models.json`, `extensions`, `skills`, `prompts`, `themes`, `AGENTS.md`, `mcp.json`, `bin`, `install`, `npm`                         | `PI_CODING_AGENT_DIR` (for `.pi/agent`) | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
+| Name       | Writable (data, relative to `HOME`)                                                                                                                                                                                   | Read-only (config and code)                                                                                                                                                                          | Relocated by                            | Source                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `claude`   | `.claude/` `projects`, `sessions`, `debug`, `todos`, `backups`, `cache`, `statsig`, `file-history`, `.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env` | `CLAUDE_CONFIG_DIR` (for `.claude`)     | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
+| `codex`    | `.codex/` `sessions`, `archived_sessions`, `log`, `sqlite`, `cache`, `shell_snapshots`, `tmp`, `.tmp`, `auth.json*`, `history.jsonl*`, `session_index.jsonl*`, `state_*`, `logs_*`, `models_cache.json*`              | `.codex/` `config.toml`, `AGENTS.md`, `rules`, `prompts`, `skills`, `plugins`, `packages`                                                                                                            | `CODEX_HOME`                            | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
+| `opencode` | `.local/share/opencode/` `auth.json*`, `mcp-auth.json*`, `opencode.db*`, `log`, `storage`, `snapshot`, `tool-output`; `.local/state/opencode`                                                                         | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode/` `bin` (managed tools), `node_modules`, `shell`                                                                  | `XDG_DATA_HOME`, `XDG_STATE_HOME`       | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
+| `pi`       | `.pi/agent/sessions`, `.pi/agent/auth.json*`                                                                                                                                                                          | `.pi/agent/` `settings.json`, `models.json`, `extensions`, `skills`, `prompts`, `themes`, `AGENTS.md`, `mcp.json`, `bin`, `install`, `npm`                                                           | `PI_CODING_AGENT_DIR` (for `.pi/agent`) | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
 
 `codex`'s lists apply only when your `--` decides its permissions; otherwise it
 runs in its own sandbox (below). An extension's own data outside these lists —
 a pi extension writing beside `~/.pi/agent`, an opencode provider it has not
 installed yet — is read-only in the sandbox; run the agent once outside verdict
-to install it, or pass `--allow-unsandboxed-review`.
-
-A launch's snapshot directory sits beside the execution's shared snapshot and
-the other launches' snapshot directories, which it can name through `../..`.
-None of them is writable to it; on macOS it cannot read or list them either.
-On Linux they stay readable (`bwrap` binds the host read-only), so a finder
-could read its sibling's in-progress review, but never change it.
+to install it, or pass `--allow-unsandboxed-review` on `run` or `loop`.
 
 Every other row declares none: in the sandbox it writes only its snapshot
-(with its private `TMPDIR`), so it cannot save its own login or sessions, and `run` says so in a
-warning. If that breaks it, pass `--allow-unsandboxed-review`; an agent you
-define in prefs declares its own writable data paths as
-`agents.<name>.state_locations` (see
+(with its private `TMPDIR`), so it cannot save its own login or sessions, and
+`run` says so in a warning, naming `--allow-unsandboxed-review` on the verbs
+that offer it; an agent you define in prefs declares its own writable data
+paths as `agents.<name>.state_locations` (see
 [Operator-defined agents](#operator-defined-agents)).
 
 `codex` keeps its own sandbox instead: its review launch already runs
 `--sandbox workspace-write`, whose Seatbelt profile cannot nest inside
 verdict's on macOS, so verdict does not wrap it. codex confines its writes —
 its shell included — to the snapshot, but nothing hides the credential table
-from its reads, and `run` warns so. Your own permission flags after `--`
-(`--sandbox`, `--full-auto`, and the rest) drop codex's sandbox, and the launch
-takes verdict's instead.
+from its reads, and `run` warns so. Your own flags after `--` that decide its
+sandbox — `-s`/`--sandbox` in any spelling (`-sdanger-full-access`
+included), `-c`/`--config`, `-p`/`--profile`, `--full-auto`, and the rest —
+drop codex's sandbox, and the launch takes verdict's instead.
 
-With no sandbox — Windows, Linux without `bwrap`, a probe that fails (Ubuntu
+`claude`'s review launches pin `--permission-mode default`, so no
+`defaultMode` in your settings widens what its tools may write.
+
+A sandbox policy that cannot be built refuses the launch
+(`review-sandbox-unavailable`), whatever the agent: a state path or root that
+fails the checks above, an unset or relative `HOME`, a credential location
+that holds the reviewed tree, a path the profile cannot spell. With no
+sandbox at all — Windows, Linux without `bwrap`, a probe that fails (Ubuntu
 24.04 restricts the unprivileged user namespaces `bwrap` needs unless
 `kernel.apparmor_restrict_unprivileged_userns=0`) — `claude` (shell denied,
 write grant scoped to the bundle) and `codex` (its own sandbox) still run, warned
 that their reads are not confined; every other agent refuses
 `review-sandbox-unavailable` before it starts, as does `claude` with
-`--allow-shell` or your own permission flags. `--allow-unsandboxed-review` (on
-`run` and `loop`) runs every review launch without the sandbox, warned — the
-operator's choice for a pull request they trust. Without the sandbox only
-`claude` (its scoped `Edit` grant, its shell denied) and `codex` (its own
-workspace sandbox) are kept in their copy by their own tools; the opt-out
-accepts that any other agent can climb out with `..` or an absolute path and
-write outside its copy — a sibling launch's live copy (forging the artifact it
-hands back), your checkout, anything your user can write — and read your
-credential files. `loop --no-sandbox` is verify's
-alone and never touches the review. The sandbox is probed once per execution,
-before any agent starts; `--print` probes nothing and reports the posture a
-launch would take in `data.sandbox` (`mechanism`: `sandbox-exec`, `bwrap`, or
-`none`; `posture`: `sandboxed`, `self-sandboxed`, `unsandboxed`, or
-`unavailable`; and the `wrapper` argv with `{snapshot}` standing
-for the per-launch directory), as `loop --print` does for each review step in
-`plan[].sandbox`. A sandboxed launch runs the agent binary `run` resolved, by
-its absolute path, so the wrapper never resolves the name again against a
-`PATH` that may reach into the snapshot. The loop's fix spawn is never
-sandboxed: editing your checkout is its job.
+`--allow-shell`, your own permission flags, or a write allow rule in your own
+Claude settings with no path or a wildcard (`Write`, `Edit(//**)`; settings
+that cannot be parsed count too). `--allow-unsandboxed-review` (on `run` and
+`loop`) runs every review launch without the sandbox, warned — the operator's
+choice for a pull request they trust. Without the sandbox only `claude` (its
+scoped `Edit` grant, its shell denied) and `codex` (its own workspace
+sandbox) are kept in their copy by their own tools; the opt-out accepts that
+any other agent can climb out with `..` or an absolute path and write outside
+its copy — a sibling launch's live copy (forging the artifact it hands back),
+your checkout, anything your user can write — and read your credential files.
+`demo`, `drain`, and `backtest` have no opt-out. `loop --no-sandbox` is
+verify's alone and never touches the review. Every launch through verdict's
+own process runners is sandboxed; only a test double that says it simulates
+its processes is not. The sandbox is probed once per execution, before any
+agent starts; `--print` probes nothing and reports the posture a launch would
+take in `data.sandbox` (`mechanism`: `sandbox-exec`, `bwrap`, or `none`;
+`posture`: `sandboxed`, `self-sandboxed`, `unsandboxed`, or `unavailable`;
+and the `wrapper` argv with `{snapshot}` standing for the per-launch
+directory), as `loop --print` does for each review step in `plan[].sandbox`.
+Every review launch runs the agent binary `run` resolved, by its absolute
+path, so neither the wrapper nor a bare launch resolves the name again
+against a `PATH` that may reach into the snapshot. The loop's fix spawn is
+never sandboxed: editing your checkout is its job.
 
 ### Review write grant
 

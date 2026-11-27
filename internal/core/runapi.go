@@ -79,6 +79,10 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	// credential table unreadable), warned. Without it a launch the host
 	// cannot sandbox runs only for a row that confines its own writes.
 	AllowUnsandboxedReview bool
+	// UnsandboxedOptOut says the calling verb offers --allow-unsandboxed-review
+	// (run and loop), so a refusal or warning names it; every other verb's
+	// says nothing of a flag it would reject.
+	UnsandboxedOptOut bool
 	// RequireCoverage is record --require-coverage carried into the launch:
 	// a review whose diff-coverage attestation record would refuse gets the
 	// gap in its repair round, and a run that ends with it refuses
