@@ -625,7 +625,15 @@ func (v *view) replaced() string {
 func (v *view) closeRoot() {
 	if v.root != nil {
 		_ = v.root.Close()
+		v.root = nil
 	}
+}
+
+// discard removes the view, its pinned bundle copy closed first: Windows
+// refuses to delete a directory a process holds open.
+func (v *view) discard() error {
+	v.closeRoot()
+	return contenttree.RemoveTree(v.wrapper) //nolint:wrapcheck // the caller names the view around the reason
 }
 
 // unchanged refuses a snapshot whose fingerprint moved since it was taken: a
@@ -1265,7 +1273,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 		s := v.settle(bundle, expect)
 		st.warnSettled(args.def.Name, &s)
 	}
-	if rerr := contenttree.RemoveTree(v.wrapper); rerr != nil {
+	if rerr := v.discard(); rerr != nil {
 		st.warn(fmt.Sprintf("review snapshot cleanup: %s was not fully removed (%v); remove it by hand", v.wrapper, rerr))
 	}
 	return res, err
