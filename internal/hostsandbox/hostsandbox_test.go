@@ -88,27 +88,33 @@ func TestFilesystemRootSeesThroughALink(t *testing.T) {
 // agent login store a review sandbox and verify hide, under HOME and under
 // the variables that relocate them.
 func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
+	// Every root is absolute in the platform's own form, as Inputs requires.
+	base := t.TempDir()
+	h, x := filepath.Join(base, "h"), filepath.Join(base, "x")
 	got, err := Inputs{
 		ChildEnv: []string{
-			"HOME=/h", "CODEX_HOME=/x/codex", "XDG_DATA_HOME=/x/data", "PI_CODING_AGENT_DIR=/x/pi",
-			"CLAUDE_CONFIG_DIR=/x/claude", "XDG_CONFIG_HOME=/x/cfg", "XAUTHORITY=/x/xauth",
+			"HOME=" + h, "CODEX_HOME=" + filepath.Join(x, "codex"), "XDG_DATA_HOME=" + filepath.Join(x, "data"),
+			"PI_CODING_AGENT_DIR=" + filepath.Join(x, "pi"), "CLAUDE_CONFIG_DIR=" + filepath.Join(x, "claude"),
+			"XDG_CONFIG_HOME=" + filepath.Join(x, "cfg"), "XAUTHORITY=" + filepath.Join(x, "xauth"),
 		},
-	}.CredentialLocations("/r", false)
+	}.CredentialLocations(filepath.Join(base, "r"), false)
 	if err != nil {
 		t.Fatal(err)
 	}
+	roots := map[string]string{"h": h, "x": x}
 	for _, want := range []string{
-		"/h/.codex/auth.json", "/h/.local/share/opencode/auth.json", "/h/.pi/agent/auth.json",
-		"/h/.claude/.credentials.json", "/h/.config/github-copilot", "/h/.gemini/oauth_creds.json",
-		"/h/.config/git/credentials", "/x/codex/auth.json", "/x/data/opencode/auth.json", "/x/pi/auth.json",
-		"/x/claude/.credentials.json", "/x/cfg/github-copilot", "/x/cfg/git/credentials",
-		"/h/.local/share/opencode/mcp-auth.json", "/x/data/opencode/mcp-auth.json",
-		"/h/.Xauthority", "/x/xauth", "/h/.1password", "/h/.bitwarden-ssh-agent.sock",
-		"/h/Library/Group Containers/2BUA8C4S2C.com.1password",
-		"/h/Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
+		"h/.codex/auth.json", "h/.local/share/opencode/auth.json", "h/.pi/agent/auth.json",
+		"h/.claude/.credentials.json", "h/.config/github-copilot", "h/.gemini/oauth_creds.json",
+		"h/.config/git/credentials", "x/codex/auth.json", "x/data/opencode/auth.json", "x/pi/auth.json",
+		"x/claude/.credentials.json", "x/cfg/github-copilot", "x/cfg/git/credentials",
+		"h/.local/share/opencode/mcp-auth.json", "x/data/opencode/mcp-auth.json",
+		"h/.Xauthority", "x/xauth", "h/.1password", "h/.bitwarden-ssh-agent.sock",
+		"h/Library/Group Containers/2BUA8C4S2C.com.1password",
+		"h/Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
 	} {
-		if !slices.Contains(got, filepath.FromSlash(want)) {
-			t.Errorf("credential locations lack %s:\n%s", want, strings.Join(got, "\n"))
+		root, rest, _ := strings.Cut(want, "/")
+		if path := filepath.Join(roots[root], filepath.FromSlash(rest)); !slices.Contains(got, path) {
+			t.Errorf("credential locations lack %s:\n%s", path, strings.Join(got, "\n"))
 		}
 	}
 }

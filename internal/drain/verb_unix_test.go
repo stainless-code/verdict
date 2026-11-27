@@ -162,16 +162,17 @@ func literalDrainProcedure(t *testing.T) []byte {
 
 func procedureProbe(t *testing.T, expected []byte) string {
 	t.Helper()
-	expectedPath := filepath.Join(t.TempDir(), "expected.procedure")
-	if err := os.WriteFile(expectedPath, expected, 0o600); err != nil {
-		t.Fatal(err)
-	}
 	// The draft launch runs in the OS review sandbox, which lets claude
-	// write only its snapshot, TMPDIR, and its own data: the probe lands in
-	// its debug directory, relocated into the test by CLAUDE_CONFIG_DIR.
+	// write only its snapshot, TMPDIR, and its own data, and on Linux hides
+	// the rest of /tmp: the expected bytes and the probe both live in its
+	// debug directory, relocated into the test by CLAUDE_CONFIG_DIR.
 	state := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", state)
 	if err := os.Mkdir(filepath.Join(state, "debug"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	expectedPath := filepath.Join(state, "debug", "expected.procedure")
+	if err := os.WriteFile(expectedPath, expected, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	probe := filepath.Join(state, "debug", "probe")
