@@ -110,15 +110,49 @@ func discoveryRestriction(def *agentcatalog.Launch, allowShell bool) []string {
 // would silently drop it, so the launch refuses instead; over-matching only
 // refuses. --allow-shell drops the denial, so the operator owns the flag.
 func ownedFlagArg(def *agentcatalog.Launch, passthrough []string, allowShell bool) string {
+	return spelledFlag(def.DiscoveryOwnedFlags, passthrough, allowShell)
+}
+
+// reviewOwnedArg is the first pass-through argument that spells one of the
+// row's ReviewOwnedFlags — a flag that would undo its ReviewArgs or load
+// configuration or directories from outside the review snapshot — "" when
+// none does or --allow-shell hands the operator the agent's configuration.
+func reviewOwnedArg(def *agentcatalog.Launch, passthrough []string, allowShell bool) string {
+	return spelledFlag(def.ReviewOwnedFlags, passthrough, allowShell)
+}
+
+// spelledFlag is the first argument that spells one of flags, "" for none or
+// under --allow-shell. A long flag matches anywhere in an argument; a
+// two-character short flag (codex's -C) only where an argument starts with
+// it, alone or with its value attached, since as a substring it would match
+// ordinary values (a model named gpt-5-Codex).
+func spelledFlag(flags, passthrough []string, allowShell bool) string {
 	if allowShell {
 		return ""
 	}
 	for _, arg := range passthrough {
-		if slices.ContainsFunc(def.DiscoveryOwnedFlags, func(flag string) bool { return strings.Contains(arg, flag) }) {
+		if slices.ContainsFunc(flags, func(flag string) bool { return spells(arg, flag) }) {
 			return arg
 		}
 	}
 	return ""
+}
+
+// shortFlagLen is the length of a single-dash, single-letter flag.
+const shortFlagLen = 2
+
+// spells reports whether arg spells flag (see spelledFlag).
+func spells(arg, flag string) bool {
+	if len(flag) == shortFlagLen && !strings.HasPrefix(flag, "--") {
+		return strings.HasPrefix(arg, flag)
+	}
+	return strings.Contains(arg, flag)
+}
+
+// reviewArgs is the row's ReviewArgs: every review launch and every render
+// carries them, whatever --allow-shell says.
+func reviewArgs(def *agentcatalog.Launch) []string {
+	return slices.Clone(def.ReviewArgs)
 }
 
 // optionPrefix starts every option spelling; inlineValue joins an option to

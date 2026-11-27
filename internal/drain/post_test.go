@@ -138,7 +138,9 @@ func runDrainTest(t *testing.T, root string, cmdr core.Commander, args []string)
 		Cmd: "drain", JSONMode: true, Effective: cli.Defaults(),
 	}
 	req := Request{
-		Runtime:  &core.Runtime{Env: map[string]string{}, Commander: cmdr},
+		// The fixture checkout sits in the temp directory, so a draft's review
+		// snapshot goes to a cache directory beside it.
+		Runtime:  &core.Runtime{Env: map[string]string{"XDG_CACHE_HOME": filepath.Join(filepath.Dir(root), "cache")}, Commander: cmdr},
 		Repo:     "acme/app",
 		Pr:       "7",
 		RepoRoot: root,

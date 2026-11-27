@@ -112,7 +112,7 @@ func TestRepairRoundsCarryTheScopedReviewGrant(t *testing.T) {
 	requireRun(t, ref)
 	assertSpawns(t, cmdr, 2)
 	for _, argv := range cmdr.argv {
-		if want := []string{"claude", "-p", discoveryFlag, settingsFlag, reviewGrantFlag}; !slices.Equal(argv[:5], want) {
+		if want := []string{"claude", "-p", discoveryFlag, settingsFlag, mcpFlag, reviewGrantFlag}; !slices.Equal(argv[:6], want) {
 			t.Errorf("round argv = %q, want the prefix %q", argv[:len(argv)-1], want)
 		}
 	}

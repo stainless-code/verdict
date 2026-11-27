@@ -4250,29 +4250,47 @@ Discovery is not the write boundary — the review snapshot is (below).
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                                            | Flag verdict owns on review launches | Source                                                                                     |
-| -------- | ---------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp`                        | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell --setting-sources=user` | `--setting-sources`                  | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`                          | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                     | Flag verdict owns on review launches | Source                                                                                     |
+| -------- | ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | none (a deny rule beats any allow)   | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
 name. PowerShell is denied beside Bash because Windows Claude Code can reach the
-shell through either tool. Its deny rule beats any allow, so verdict owns no
-tool flag; it owns `--setting-sources`, which it sets to `user`: the reviewed
-tree's own `.claude/settings.json` and `.claude/settings.local.json` never load
-on a review launch, because a hook there runs a shell command and an allow rule
-there can name paths outside the review snapshot. Your own
-`~/.claude/settings.json` still loads; a project setting your review needs
-(a model, an environment value) belongs there.
+shell through either tool.
+
+### Review configuration
+
+The reviewed tree is untrusted content, and some agents load configuration
+from the directory they start in: a hook runs a shell command, an allow rule
+names paths outside the review snapshot, an MCP server is a program. So every
+`claude` review launch — `--allow-shell` or not, and every `--print` render —
+carries `--setting-sources=user`, which loads your own
+`~/.claude/settings.json` and never the tree's `.claude/settings.json` or
+`.claude/settings.local.json`, and `--strict-mcp-config`, which starts no MCP
+server the tree's `.mcp.json` declares. A project setting your review needs (a
+model, an environment value) belongs in your user settings. The flags that
+would undo that or point the agent outside its snapshot are verdict's on a
+review launch: `claude`'s `--settings`, `--setting-sources`, `--plugin-dir`,
+`--mcp-config`, and `--strict-mcp-config`, and `codex`'s `-C`/`--cd`,
+`--worktree`, `--approve-for-me`, and `--dangerously-bypass-hook-trust` refuse
+`bad-flags` after `--` unless `--allow-shell` hands you the agent's tool set
+and configuration.
+([Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md),
+[Codex CLI reference](https://learn.chatgpt.com/docs/developer-commands?surface=cli))
 
 ### Review snapshot
 
 No review launch runs in your checkout. Every launch `run` makes — the
 one-shot review, finders, opposite-finder cross-checks, repair rounds, drain,
 and `loop`'s review step — starts in its own disposable copy of the reviewed
-tree under the host temp directory. The tree is the content-bound snapshot
+tree under the host temp directory — or, for a checkout that itself lies in
+the temp directory (a clone in `/tmp`), under `verdict/snapshots` in your user
+cache directory (`XDG_CACHE_HOME`, else the platform's own), so no snapshot
+sits beside the checkout; without one the review refuses. The tree is the
+content-bound snapshot
 `verify` takes (the index paths with their working-tree bytes, no filter,
 hook, or Git LFS program run), taken once per execution and copied afresh for
 each launch, with a copy of the bundle at its usual
@@ -4284,9 +4302,14 @@ launch is expected to write — `review.json` and, beside a bundle-level review,
 `cost.json`, `chunks/chunk-*.cost.json`, `validation.json`, and
 `verification.json`; a finder's `x-finder-N/review.json`; a cross-check's
 `x-cross-N/verdicts.json`; a drain's `drain.replies.json` — each a lone regular
-file (no symlink, no hard link) of at most 32 MiB, written atomically with the
-agent's own modification time, so the freshness check still reads the agent's
-write. Anything else the agent wrote — `src/main.go`, `../outside.txt`, a
+file of at most 32 MiB (a chunk's cost record, only for a chunk the bundle's
+manifest lists, at most 1 MiB). Copy-back pins the bundle copy and the bundle
+before it reads or writes either, and reads each file as the very file its walk
+saw — never through a link, never waiting on a FIFO, refusing a second hard
+link or a file swapped in after the walk — so an agent's lingering background
+process cannot redirect it; the copy is written atomically with the agent's
+own modification time set before it lands, so the freshness check still reads
+the agent's write. Anything else the agent wrote — `src/main.go`, `../outside.txt`, a
 `findings.json` only verdict writes — stays in the copy, is deleted with it,
 and is named in one warning, which is worth reading as evidence of an
 injection attempt. A crashed or timed-out agent's valid artifacts are copied
@@ -4294,30 +4317,37 @@ back the same way, so salvage, repair rounds, and `--resume` read the bundle
 exactly as before. The loop's fix phase is the one launch that runs in your
 checkout: editing it is its job.
 
-The copy holds nothing that leads back to your repository. Its `.git` is an
-empty repository of its own — no history, no hooks — never the snapshot's
-worktree pointer, whose admin directory sits in your repository's `.git`,
-where a planted hook would run on your next commit; agent CLIs that look for
-a git checkout (codex, opencode) find the copy itself. A committed symlink is
-kept only when it resolves inside the copy: an absolute target, or one that
-climbs out with `..` (directly or through another link), is left out and
-named in one warning, so no write through it can leave the copy. The agent's
-environment names the copy as `PWD`, drops `OLDPWD`, and carries none of
-git's location variables (`GIT_DIR`, `GIT_WORK_TREE`, and the like).
+The copy holds nothing that leads back to your repository. The execution's
+snapshot drops its worktree pointer and registration as soon as it is named,
+and each copy's `.git` is an empty repository of its own — no history, no
+hooks — so no `.git` an agent could follow leads to your repository's hooks
+or config, where a planted file would run on your next commit; agent CLIs that
+look for a git checkout (codex, opencode) find the copy itself. A copy holds
+no symlink at all — a review reads files, and a link can lead out of the copy,
+directly or through another — and no `.git` or `.verdict/state` of the tree's,
+at any depth and in any case (`.Verdict/State` is the bundle's own path on
+APFS and NTFS); the dropped links are named in one warning. The agent's
+environment names the copy as `PWD` and its own private temp directory as
+`TMPDIR`, `TMP`, and `TEMP` (codex's workspace sandbox writes there and never
+`/tmp`), and drops `OLDPWD`, `INIT_CWD`, `PROJECT_CWD`,
+`npm_config_local_prefix`, `CLAUDE_PROJECT_DIR`, git's location variables
+(`GIT_DIR`, `GIT_WORK_TREE`, and the like), `GIT_CEILING_DIRECTORIES`, and
+git's command-scope `GIT_CONFIG_*`, whatever their case; a relative
+`CLAUDE_CONFIG_DIR` or `CODEX_HOME` is resolved where you ran verdict.
 
 What a review agent can still do: read the reviewed tree and the bundle, and
 use the network. What it can no longer do: write your checkout through a path
 relative to its working directory, which is where every agent's edit tools
 aim, and which `claude`'s and `codex`'s own workspace rules confine it to.
-verdict does not OS-sandbox a review launch (agents need the network), so a
-tool that accepts an absolute path outside its working directory still
-reaches what your user account can write; review an untrusted pull request in
-a disposable checkout if your agent's tools allow that. A tree outside any git checkout — the
-temp directory `demo` reviews a pull request URL in — has no index to name
-content by, so it is copied as it stands, verdict's state left out. A
-snapshot that cannot be made (a git failure, `TMPDIR` inside the repository)
-refuses `agent-spawn-failed` before any agent starts — a review never falls
-back to your checkout.
+verdict does not OS-sandbox a review launch here (agents need the network),
+so a tool that accepts an absolute path, or climbs far enough with `..`,
+still reaches what your user account can write. A review of a directory
+outside any git checkout — the temp directory `demo` reviews a pull request
+URL in, or a plain directory — copies none of it: its copy holds the bundle
+alone, from which a remote review reads its diff. A snapshot that cannot be
+made (a git failure, `TMPDIR` inside the repository) refuses
+`agent-spawn-failed` before any agent starts — a review never falls back to
+your checkout.
 
 ### Review write grant
 
@@ -4359,7 +4389,9 @@ default and documents no writable option narrower than `--sandbox
 workspace-write` (its whole working directory), so a `codex` review launch
 carries `--sandbox workspace-write` instead: its working directory is the
 disposable review snapshot, whose writes come back only as the expected
-artifacts. A `--print` render never carries it — the printed command runs
+artifacts, and `-c sandbox_workspace_write.exclude_slash_tmp=true`, so `/tmp`
+is not one of its writable roots
+([Codex config](https://github.com/openai/codex/blob/main/docs/config.md)). A `--print` render never carries it — the printed command runs
 wherever you run it — and your own `--sandbox`, `--ask-for-approval`,
 `--full-auto`, or `--add-dir` after `--` drops it.
 ([Claude Code permission rules](https://code.claude.com/docs/en/permissions),

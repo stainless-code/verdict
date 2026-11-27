@@ -101,9 +101,22 @@ func WriteFileIn(root *os.Root, name string, data []byte) error {
 // mode. The staged temp file and the rename both stay in root, so a parent
 // that escapes through a symlink fails the write instead of following it.
 func WriteFileModeIn(root *os.Root, name string, data []byte, mode os.FileMode) error {
+	return writeFileIn(root, name, data, mode, time.Time{})
+}
+
+// WriteFileModeInAt is [WriteFileModeIn] with the file's modification time set
+// to mtime on the staged file before the rename, so the file never exists at
+// name with any other time.
+func WriteFileModeInAt(root *os.Root, name string, data []byte, mode os.FileMode, mtime time.Time) error {
+	return writeFileIn(root, name, data, mode, mtime)
+}
+
+// writeFileIn stages data beside name inside root, stamps it with mtime
+// unless that is zero, and renames it into place.
+func writeFileIn(root *os.Root, name string, data []byte, mode os.FileMode, mtime time.Time) error {
 	dir := filepath.Dir(name)
 	path := filepath.Join(root.Name(), name)
-	staged, err := stageIn(root, path, dir, data, mode)
+	staged, err := stageIn(root, path, dir, data, mode, mtime)
 	if err != nil {
 		return err
 	}
@@ -192,12 +205,12 @@ func writeStaged(path string, tmp *os.File, data []byte) error {
 // stageIn writes data into a fresh temp file under dir inside root, returning
 // its root-relative name. A failure removes the partial file and comes back
 // sealed, so no caller inherits cleanup or wrapping.
-func stageIn(root *os.Root, path, dir string, data []byte, mode os.FileMode) (string, error) {
+func stageIn(root *os.Root, path, dir string, data []byte, mode os.FileMode, mtime time.Time) (string, error) {
 	name, tmp, err := createStaged(root, path, dir)
 	if err != nil {
 		return "", err
 	}
-	if err := sealRootStaged(root, path, tmp, name, data, mode); err != nil {
+	if err := sealRootStaged(root, path, tmp, name, data, mode, mtime); err != nil {
 		root.Remove(name) //nolint:errcheck // the staged bytes are dead; cleanup rules
 		return "", err
 	}
@@ -223,11 +236,19 @@ func createStaged(root *os.Root, path, dir string) (string, *os.File, error) {
 	return "", nil, jq.Sealed(opWrite+path, errors.New("cannot allocate a temp file"))
 }
 
-func sealRootStaged(root *os.Root, path string, tmp *os.File, name string, data []byte, mode os.FileMode) error {
+func sealRootStaged(root *os.Root, path string, tmp *os.File, name string, data []byte, mode os.FileMode,
+	mtime time.Time,
+) error {
 	if err := writeStaged(path, tmp, data); err != nil {
 		return err
 	}
 	if err := root.Chmod(name, mode); err != nil {
+		return jq.Sealed(opWrite+path, err)
+	}
+	if mtime.IsZero() {
+		return nil
+	}
+	if err := root.Chtimes(name, mtime, mtime); err != nil {
 		return jq.Sealed(opWrite+path, err)
 	}
 	return nil
@@ -312,7 +333,7 @@ func replaceable(path string) (target string, perm os.FileMode, ok bool) {
 // The result is false when another file already owns the name.
 func CreateFileModeIn(root *os.Root, name string, data []byte, mode os.FileMode) (bool, error) {
 	path := filepath.Join(root.Name(), name)
-	staged, err := stageIn(root, path, filepath.Dir(name), data, mode)
+	staged, err := stageIn(root, path, filepath.Dir(name), data, mode, time.Time{})
 	if err != nil {
 		return false, err
 	}

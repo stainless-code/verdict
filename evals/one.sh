@@ -41,6 +41,9 @@ chmod +x "$STUBBIN/gh"
 export EVAL_ROOT="$ROOT" EVAL_SANDBOX="$SANDBOX/work"
 export EVAL_STUBBIN="$STUBBIN" EVAL_STUBLOG="$STUBLOG"
 export XDG_STATE_HOME="$SANDBOX/state"
+# A review of a checkout inside the temp directory keeps its snapshots in
+# the user cache directory: give it one beside the case repo.
+export XDG_CACHE_HOME="$SANDBOX/cache"
 EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
 if [ ! -x "$EVAL_CLI" ]; then
   echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2

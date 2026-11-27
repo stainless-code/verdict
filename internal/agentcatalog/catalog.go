@@ -51,8 +51,11 @@ type Launch struct {
 	ReviewWriteCitation string
 	// SnapshotWriteCitation is the doc that states SnapshotWriteArgs.
 	SnapshotWriteCitation string
-	ProbeArgs             []string
-	DiscoveryArgs         []string
+	// ReviewArgsCitation is the doc that states ReviewArgs and
+	// ReviewOwnedFlags.
+	ReviewArgsCitation string
+	ProbeArgs          []string
+	DiscoveryArgs      []string
 	// DiscoveryOwnedFlags are the spellings of the flag the restriction
 	// itself uses (DiscoveryArgs is that flag and its value). A later
 	// spelling may replace verdict's, and one the agent does not parse drops
@@ -100,6 +103,17 @@ type Launch struct {
 	// like ReviewWriteArgs when the operator's `--` arguments decide
 	// permissions.
 	SnapshotWriteArgs []string
+	// ReviewArgs are the documented flags every review launch carries,
+	// --allow-shell or not, and every render prints: they keep the reviewed
+	// tree's own agent configuration (settings, hooks, MCP servers) from
+	// loading, since that tree is untrusted content.
+	ReviewArgs []string
+	// ReviewOwnedFlags are the flags that would undo ReviewArgs or point the
+	// agent at configuration or directories outside its review snapshot. An
+	// operator spelling of one after `--` refuses on a review launch, as a
+	// DiscoveryOwnedFlags spelling does, unless --allow-shell is set: then the
+	// operator owns the agent's tool set and its configuration.
+	ReviewOwnedFlags []string
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -157,6 +171,9 @@ const (
 	// 2026-11-25.
 	docOpenCodeRun = "https://opencode.ai/docs/cli/commands"
 	docCodexReadme = "https://github.com/openai/codex/blob/main/README.md"
+	// docCodexConfig documents the sandbox_workspace_write table
+	// (writable_roots, exclude_tmpdir_env_var, exclude_slash_tmp).
+	docCodexConfig = "https://github.com/openai/codex/blob/main/docs/config.md"
 	// docCodexCLIRef lists codex's and codex exec's flags, `--model, -m`
 	// among them — read 2026-11-27.
 	docCodexCLIRef  = "https://learn.chatgpt.com/docs/developer-commands?surface=cli"
@@ -303,14 +320,20 @@ var catalog = []Agent{
 			// the one that cannot swallow the directive as a tool name. Bash and
 			// PowerShell are both denied — a Windows Claude Code reaches the
 			// shell through either — which leaves Read/Glob/Grep/Write for
-			// review.json. `--setting-sources=user` loads the operator's own
-			// settings only: the reviewed tree's .claude/settings*.json can
-			// carry hooks (shell commands) and allow rules for paths outside
-			// the review snapshot, and the tree is untrusted content. A later
-			// spelling would replace it, so verdict owns that flag.
-			DiscoveryArgs:       []string{"--disallowedTools=Bash,PowerShell", "--setting-sources=user"},
-			DiscoveryCitation:   docClaudeCLI,
-			DiscoveryOwnedFlags: []string{"--setting-sources"},
+			// review.json.
+			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
+			DiscoveryCitation: docClaudeCLI,
+			// `--setting-sources=user` loads the operator's own settings only:
+			// the reviewed tree's .claude/settings*.json can carry hooks (shell
+			// commands) and allow rules for paths outside the review snapshot.
+			// `--strict-mcp-config` loads no MCP server but --mcp-config's, so
+			// the tree's .mcp.json starts none. The flags that would undo them
+			// or load other configuration are verdict's on a review launch.
+			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config"},
+			ReviewArgsCitation: docClaudeCLI,
+			ReviewOwnedFlags: []string{
+				"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config",
+			},
 			// The shell denial is never dropped for an operator flag; a deny rule
 			// beats any allow. --tools decides the tool set, so it drops the
 			// review write grant.
@@ -380,9 +403,19 @@ var catalog = []Agent{
 			// `codex exec` defaults to the read-only sandbox, so a review could
 			// only hand its review.json back through stdout salvage; inside the
 			// review snapshot the workspace sandbox writes the copy, and only
-			// the expected artifacts come back.
-			SnapshotWriteArgs:     []string{flagSandbox, valueWorkspaceWrite},
-			SnapshotWriteCitation: docCodexReadme,
+			// the expected artifacts come back. Its writable roots also hold
+			// /tmp unless excluded; TMPDIR is the review's private one.
+			SnapshotWriteArgs: []string{
+				flagSandbox, valueWorkspaceWrite, "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+			},
+			SnapshotWriteCitation: docCodexConfig,
+			// A working directory, a managed worktree, an approval reviewer,
+			// or trusted repository hooks would each take the review out of
+			// its snapshot or run the tree's own code.
+			ReviewOwnedFlags: []string{
+				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust",
+			},
+			ReviewArgsCitation: docCodexCLIRef,
 			// `--model, -m` per the codex CLI reference.
 			ModelFlagAliases:   []string{"-m"},
 			ModelAliasCitation: docCodexCLIRef,
@@ -931,6 +964,8 @@ func All() []Agent {
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
+			v.ReviewArgs = slices.Clone(v.ReviewArgs)
+			v.ReviewOwnedFlags = slices.Clone(v.ReviewOwnedFlags)
 			a.Launch = &v
 		}
 		if a.Skills != nil {

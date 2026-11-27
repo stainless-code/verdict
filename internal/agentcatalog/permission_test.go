@@ -131,9 +131,8 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 			owned:    []string{"--disable-tool-groups"},
 		},
 		"claude": {
-			args:      []string{"--disallowedTools=Bash,PowerShell", "--setting-sources=user"},
+			args:      []string{"--disallowedTools=Bash,PowerShell"},
 			citation:  docClaudeCLI,
-			owned:     []string{"--setting-sources"},
 			overrides: []string{"--tools"},
 		},
 		"pi": {
@@ -220,7 +219,9 @@ func TestGrantsAreScopedAndCited(t *testing.T) {
 		collectGrant(t, review, agent.Name, "ReviewWriteArgs", l.ReviewWriteArgs, l.ReviewWriteCitation)
 		collectGrant(t, snapshot, agent.Name, "SnapshotWriteArgs", l.SnapshotWriteArgs, l.SnapshotWriteCitation)
 	}
-	if want := map[string][]string{"codex": {"--sandbox", "workspace-write"}}; !maps.EqualFunc(snapshot, want, slices.Equal) {
+	if want := map[string][]string{
+		"codex": {"--sandbox", "workspace-write", "-c", "sandbox_workspace_write.exclude_slash_tmp=true"},
+	}; !maps.EqualFunc(snapshot, want, slices.Equal) {
 		t.Errorf("SnapshotWriteArgs rows = %v, want %v", snapshot, want)
 	}
 	wantEdit := map[string][]string{
@@ -304,5 +305,32 @@ func TestModelFlagAliasesAreCited(t *testing.T) {
 	}
 	if want := map[string][]string{"codex": {"-m"}}; !maps.EqualFunc(got, want, slices.Equal) {
 		t.Errorf("model aliases = %v, want %v", got, want)
+	}
+}
+
+// TestReviewArgsAreScopedAndCited pins the flags every review launch carries
+// whatever --allow-shell says, and the flags a review launch owns: exactly
+// the rows whose docs name them, each citing its doc.
+func TestReviewArgsAreScopedAndCited(t *testing.T) {
+	t.Parallel()
+	args, owned := map[string][]string{}, map[string][]string{}
+	for _, agent := range All() {
+		l := agent.Launch
+		if l == nil {
+			continue
+		}
+		collectGrant(t, args, agent.Name, "ReviewArgs", l.ReviewArgs, l.ReviewArgsCitation)
+		collectGrant(t, owned, agent.Name, "ReviewOwnedFlags", l.ReviewOwnedFlags, l.ReviewArgsCitation)
+	}
+	wantArgs := map[string][]string{"claude": {"--setting-sources=user", "--strict-mcp-config"}}
+	wantOwned := map[string][]string{
+		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
+		"codex":  {"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust"},
+	}
+	if !maps.EqualFunc(args, wantArgs, slices.Equal) {
+		t.Errorf("ReviewArgs rows = %v, want %v", args, wantArgs)
+	}
+	if !maps.EqualFunc(owned, wantOwned, slices.Equal) {
+		t.Errorf("ReviewOwnedFlags rows = %v, want %v", owned, wantOwned)
 	}
 }

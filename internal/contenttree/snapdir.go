@@ -68,18 +68,26 @@ func NewSnapshotDir(root, tmp string, deadline time.Time) (string, error) {
 // outside the checkout, is ever a candidate. Best effort: a sweep failure
 // costs disk, never this run.
 func SweepSnapshots(ctx context.Context, g Git, tmp string, now time.Time) {
+	if SweepStranded(g.Root, tmp, now) {
+		// Best effort: a failed prune is retried by the next sweep.
+		_ = g.Prune(context.WithoutCancel(ctx)) //nolint:errcheck // see above
+	}
+}
+
+// SweepStranded removes the snapshot and staging directories under tmp whose
+// run's deadline has passed, as [SweepSnapshots] does, without touching any
+// repository: it is the sweep of a run that reviews no git checkout. It
+// reports whether it removed any.
+func SweepStranded(root, tmp string, now time.Time) bool {
 	// A glob error is a malformed pattern, and this one is constant.
 	candidates, _ := filepath.Glob(filepath.Join(tmp, SnapshotPrefix+"*")) //nolint:errcheck // see above
 	swept := false
 	for _, dir := range candidates {
-		if strandedSnapshot(g.Root, dir, now) && RemoveTree(dir) == nil {
+		if strandedSnapshot(root, dir, now) && RemoveTree(dir) == nil {
 			swept = true
 		}
 	}
-	if swept {
-		// Best effort: a failed prune is retried by the next sweep.
-		_ = g.Prune(context.WithoutCancel(ctx)) //nolint:errcheck // see above
-	}
+	return swept
 }
 
 // strandedSnapshot reports whether dir may be swept: a real directory (not

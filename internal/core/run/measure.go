@@ -115,10 +115,10 @@ func usageFlag(args []string) string {
 }
 
 // fixed is the argv group between the row's own flags and the operator's
-// pass-through: the structured-output request, then the discovery
-// restriction.
+// pass-through: the structured-output request, the discovery restriction,
+// the review flags, then the write grants.
 func (a *launchArgs) fixed() []string {
-	return append(append(slices.Clone(a.usage), a.restriction...), a.grant...)
+	return slices.Concat(a.usage, a.restriction, a.review, a.grant)
 }
 
 // spawnAgent runs one agent process for prompt, tapping its stdout when the
