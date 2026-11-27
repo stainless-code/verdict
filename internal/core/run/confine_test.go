@@ -960,3 +960,30 @@ func TestSnapshotBaseAcceptsACacheHoldingTheTempDirectory(t *testing.T) {
 		t.Errorf("base = %q (%v), want %q", got, err, want)
 	}
 }
+
+// TestDiscardClosesThePinnedBundleBeforeRemoving proves a view's removal
+// releases the bundle copy it pinned before the agent started, and only then
+// removes the view: Windows refuses to delete a directory still held open,
+// which TestReviewSnapshotLeavesNothingBehind sees there as a left-behind
+// snapshot.
+func TestDiscardClosesThePinnedBundleBeforeRemoving(t *testing.T) {
+	t.Parallel()
+	ws, root := fakeCanonical(t, map[string]string{"src/main.go": originalMain})
+	v, err := ws.open(t.Context(), bundleDir(root), here, expectedArtifacts(here, reviewFile, nil), 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pinned := v.root
+	if err := v.discard(); err != nil {
+		t.Fatalf("discard: %v", err)
+	}
+	if v.root != nil {
+		t.Error("the view still holds its pinned bundle copy")
+	}
+	if _, err := pinned.Stat(here); err == nil {
+		t.Error("the pinned bundle copy is still open after the view was discarded")
+	}
+	if _, err := os.Stat(v.wrapper); !os.IsNotExist(err) {
+		t.Errorf("the view was left behind (err = %v)", err)
+	}
+}
