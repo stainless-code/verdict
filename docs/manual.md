@@ -4311,10 +4311,13 @@ saw — never through a link, never waiting on a FIFO, refusing a second hard
 link or a file swapped in after the walk — so an agent's lingering background
 process cannot redirect it; the copy is written atomically with the agent's
 own modification time set before it lands, so the freshness check still reads
-the agent's write. Anything else the agent wrote — `src/main.go`, `../outside.txt`, a
-`findings.json` only verdict writes — stays in the copy, is deleted with it,
-and is named in one warning, which is worth reading as evidence of an
-injection attempt. A crashed or timed-out agent's valid artifacts are copied
+the agent's write. Anything else the agent wrote inside the copy's wrapper —
+`src/main.go`, `../outside.txt`, a `findings.json` only verdict writes, a
+deleted bundle file — stays there, is deleted with it, and is named in one
+warning, which is worth reading as evidence of an injection attempt. A write
+beyond the wrapper (further up with `..`, or to an absolute path) is neither
+discarded nor seen: only the OS sandbox stops it, or `claude`'s and `codex`'s
+own tools (below). A crashed or timed-out agent's valid artifacts are copied
 back the same way, so salvage, repair rounds, and `--resume` read the bundle
 exactly as before. The loop's fix phase is the one launch that runs in your
 checkout: editing it is its job.
@@ -4350,8 +4353,8 @@ same-size rewrite that restores the modification time is not caught.
 
 What holds, and for whom. The agent starts in its copy, so its writes to
 paths relative to its working directory, which is where every agent's edit
-tools aim, land there, and nothing comes back from it but the expected
-artifacts. `claude` (without `--allow-shell`, through its scoped `Edit`
+tools aim, land there; nothing comes back from the copy but the expected
+artifacts, and writes beyond its wrapper are not discarded. `claude` (without `--allow-shell`, through its scoped `Edit`
 grant) and `codex` (its workspace sandbox, rooted at the copy) stay in their
 copy through their own tools. Any other agent can still write outside it
 unless the OS sandbox around review launches is active: it runs as your user,

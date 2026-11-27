@@ -931,21 +931,28 @@ func (v *view) settleBundle(bundle string, expect expectation, out *settled) {
 		return
 	}
 	defer func() { _ = to.Close() }()
-	seen := map[string]bool{}
+	seen, complete := map[string]bool{}, true
 	//nolint:errcheck // best effort: an entry the walk cannot read is never copied back
 	_ = fs.WalkDir(from.FS(), here, func(rel string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
+		if err != nil {
+			complete = false
 			return nil //nolint:nilerr // an unreadable entry is never copied back
 		}
-		seen[rel] = true
-		v.settleOne(from, to, rel, d, expect(rel), out)
+		if !d.IsDir() {
+			seen[rel] = true
+			v.settleOne(from, to, rel, d, expect(rel), out)
+		}
 		return nil
 	})
-	v.deletedSeeds(seen, out)
+	if complete {
+		v.deletedSeeds(seen, out)
+	}
 }
 
 // deletedSeeds names every file verdict seeded in the bundle copy that the
 // agent removed: a deletion is a write too, and it never reaches the bundle.
+// It runs only after a walk that read every directory: a seed in a subtree
+// the walk could not read is unseen, not deleted.
 func (v *view) deletedSeeds(seen map[string]bool, out *settled) {
 	for rel := range v.seed {
 		if !seen[rel] {

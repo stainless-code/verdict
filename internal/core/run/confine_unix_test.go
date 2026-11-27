@@ -299,3 +299,36 @@ func TestSnapshotBaseResolvesALinkAboveAMissingCache(t *testing.T) {
 		t.Errorf("the refusal left %d entries in the checkout (%v)", len(entries), err)
 	}
 }
+
+// TestUnreadableSeedsAreNotReportedDeleted proves a bundle subtree the
+// settlement walk cannot read — the agent made it unreadable — never reads as
+// deleted seeds: only a walk that read every directory compares them.
+func TestUnreadableSeedsAreNotReportedDeleted(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	writeUnder(t, bundleDir(root), filepath.Join("chunks", "manifest.json"), `{"chunks":[]}`)
+	resp, ref, _ := confinedRun(t, root, nameClaude, func(cmd *core.Command) {
+		inView(t, cmd, viewReview, reviewDoc)
+		if err := os.Chmod(filepath.Join(cmd.Dir, ".verdict", "state", "42", "chunks"), 0); err != nil {
+			t.Error(err)
+		}
+	})
+	warnings := settledWarnings(t, resp, ref)
+	if slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "chunks/manifest.json") }) {
+		t.Errorf("an unreadable seed was reported deleted: %q", warnings)
+	}
+}
+
+// settledWarnings is a run's warnings, whether it recorded or refused the
+// review its fixture writes (a chunked bundle's review owes a chunks[]
+// attestation this fixture does not write).
+func settledWarnings(t *testing.T, resp *core.RunResponse, ref *core.RefusalError) []string {
+	t.Helper()
+	switch {
+	case ref == nil:
+		return resp.Warnings
+	case ref.Code != "bad-review-input":
+		t.Fatalf("review refused: %v", ref)
+	}
+	return ref.Warnings
+}

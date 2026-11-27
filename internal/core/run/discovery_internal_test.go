@@ -99,8 +99,9 @@ func spawnedArgvs(t *testing.T, passthrough string, allowShell bool) [][]string 
 }
 
 // TestAllowShellOmitsTheRestriction proves --allow-shell restores the row's own
-// tool set: no launch carries the flag, and the argv is the one the launcher
-// composed before the restriction existed.
+// tool set — no launch carries the shell denial — while every launch keeps
+// the review flags, which keep the reviewed tree's configuration out whatever
+// the tool set.
 func TestAllowShellOmitsTheRestriction(t *testing.T) {
 	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "", true) {
@@ -110,6 +111,15 @@ func TestAllowShellOmitsTheRestriction(t *testing.T) {
 		if slices.Contains(argv, discoveryFlag) {
 			t.Errorf("--allow-shell argv still carries %q: %q", discoveryFlag, argv)
 		}
+		assertReviewFlags(t, argv)
+	}
+}
+
+// assertReviewFlags fails unless argv carries both of claude's review flags.
+func assertReviewFlags(t *testing.T, argv []string) {
+	t.Helper()
+	if !slices.Contains(argv, settingsFlag) || !slices.Contains(argv, mcpFlag) {
+		t.Errorf("argv %q dropped the review flags %q and %q", argv, settingsFlag, mcpFlag)
 	}
 }
 

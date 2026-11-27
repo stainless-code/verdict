@@ -788,9 +788,11 @@ func (c *coordinator) checkResumeCapture(record *launcherResume, captured *confi
 // restriction changed, or an attempt that flipped --allow-shell: the two would
 // spend the interruption's phases under a tool set the record never sealed.
 // The review write grant is sealed too: an attempt whose agent could write
-// somewhere else is a different launch. Only the digest is recorded: the
+// somewhere else is a different launch. So are the review flags (the row's
+// ReviewArgs and those the attempt carried): an attempt that loaded other
+// configuration from the reviewed tree is too. Only the digest is recorded: the
 // record has no reason to repeat the argv.
-func launchDefDigest(def *agentcatalog.Launch, restriction, grant []string) string {
+func launchDefDigest(def *agentcatalog.Launch, restriction, review, grant []string) string {
 	var sb strings.Builder
 	sb.WriteString("binary=")
 	sb.WriteString(def.Binary)
@@ -812,6 +814,16 @@ func launchDefDigest(def *agentcatalog.Launch, restriction, grant []string) stri
 	}
 	for _, arg := range restriction {
 		sb.WriteString("restrict=")
+		sb.WriteString(arg)
+		sb.WriteByte('\n')
+	}
+	for _, arg := range def.ReviewArgs {
+		sb.WriteString("row-review=")
+		sb.WriteString(arg)
+		sb.WriteByte('\n')
+	}
+	for _, arg := range review {
+		sb.WriteString("review=")
 		sb.WriteString(arg)
 		sb.WriteByte('\n')
 	}
@@ -880,7 +892,7 @@ func (c *coordinator) fingerprintNow(captured *config.RunState, source string) (
 		AgentSource:       c.base.def.Source,
 		ContextTXTSHA256:  contextTXT,
 		ThreadsJSONSHA256: threadsJSON,
-		LaunchDefSHA256:   launchDefDigest(&c.base.def, c.base.restriction, c.base.grant),
+		LaunchDefSHA256:   launchDefDigest(&c.base.def, c.base.restriction, c.base.review, c.base.grant),
 		PassThroughSHA256: passThroughDigest(c.st.req.PassThrough),
 		Finders:           finderCount,
 		FinderSource:      source,
