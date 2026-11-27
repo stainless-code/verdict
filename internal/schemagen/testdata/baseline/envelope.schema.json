@@ -414,6 +414,7 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
+            "coverage-incomplete",
             "diagram-invalid",
             "empty-findings-needs-summary",
             "enum-synonym",
@@ -1220,6 +1221,7 @@
         },
         "agent": { "type": "string" },
         "max_rounds": { "type": "integer", "minimum": 1 },
+        "max_severity": { "enum": ["critical", "important", "informational"] },
         "timeout_s": { "type": "integer", "minimum": 1 },
         "max_cost_usd": { "type": ["number", "null"], "minimum": 0 },
         "cost_usd": {
@@ -1247,6 +1249,7 @@
         "stop",
         "agent",
         "max_rounds",
+        "max_severity",
         "timeout_s",
         "max_cost_usd",
         "cost_usd",

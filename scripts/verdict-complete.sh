@@ -9,7 +9,7 @@ _verdict_verbs() {
 _verdict_flags() { # $1 = verb
   case "$1" in
     demo) printf '%s\n' --agent --keep --timeout --json;;
-    loop) printf '%s\n' --agent --max-rounds --max-cost-usd --timeout --output --fix-prompt --sandbox --sandbox-network-only --print --json;;
+    loop) printf '%s\n' --agent --max-rounds --max-severity --max-cost-usd --timeout --output --fix-prompt --sandbox --sandbox-network-only --no-sandbox --print --json --;;
     fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --summary --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
@@ -32,7 +32,7 @@ _verdict_flags() { # $1 = verb
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     drain) printf '%s\n' --provider --max-threads --agent --timeout --post --dry-run --json --;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --scan --context --spec --ignore --no-default-excludes --allow-head-controls --preview --index --consent-over-budget --show-prompts --chunk --json;;
-    run) printf '%s\n' --agent --recipe --stage --timeout --finders --budget --rounds --print --resume --allow-shell --json --;;
+    run) printf '%s\n' --agent --recipe --stage --timeout --finders --budget --rounds --print --resume --allow-shell --require-coverage --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add sync test check --dir --json;;
     adopt) printf '%s\n' --from --json;;

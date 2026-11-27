@@ -1,11 +1,13 @@
 package recordcore
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
@@ -17,6 +19,7 @@ const (
 	msgCoverageLine   = "> ⚠️ coverage: %d%% of changed lines attested (unattested: %s)"
 	msgCoverageAbsent = "coverage-incomplete: no coverage[] attestation in review.json on a non-chunked bundle"
 	msgCoverageGap    = "coverage-incomplete: %d%% of " + msgCoverageBasis + " attested (%d/%d); unattested: %s"
+	msgChunksAbsent   = "coverage-incomplete: no chunks[] attestation in review.json on a chunked bundle (%d chunk(s))"
 	msgCoverageBasis  = coverage.Basis
 	msgCoverageMore   = " +%d more"
 	// lineGapCap is how many files the body line names before it summarizes.
@@ -42,10 +45,62 @@ func (st *state) evaluateCoverage() error {
 		return ref //nolint:wrapcheck // typed refusal passes through unchanged
 	}
 	st.coverage = &sum
-	if sum.Chunked || !st.requireCoverage {
+	if !st.requireCoverage {
 		return nil
 	}
-	return st.coverageGate(&sum)
+	return st.requiredCoverage(&sum)
+}
+
+// requiredCoverage is the opt-in gate on one evaluated summary: chunks[] on
+// a chunked bundle, the line attestation everywhere else.
+func (st *state) requiredCoverage(sum *coverage.Summary) error {
+	if !sum.Chunked {
+		return st.coverageGate(sum)
+	}
+	if gate := chunkGate(sum); gate != nil {
+		return gate
+	}
+	return nil
+}
+
+// CoverageGate is record --require-coverage's refusal for one bundle and its
+// raw review bytes, nil when record would accept the attestation: the same
+// normalization, evaluator, and gate record runs, so `run --require-coverage`
+// can repair what record would refuse. On a chunked bundle it also requires
+// the chunks[] attestation the default gate grades, which record itself only
+// warns about. A document that does not decode to an object is the shape
+// check's to report, so it passes here.
+func CoverageGate(dir string, review []byte) *core.RefusalError {
+	normalized, _ := NormalizeReview(review)
+	obj, ok := normalizedObject(normalized).(*jq.Obj)
+	if !ok {
+		return nil
+	}
+	sum, _, ref := coverage.Evaluate(dir, obj, readcommon.Generated)
+	if ref != nil {
+		return ref
+	}
+	if sum.Chunked {
+		return chunkGate(&sum)
+	}
+	if err := (&state{}).coverageGate(&sum); err != nil {
+		if gate, ok := errors.AsType[*core.RefusalError](err); ok {
+			return gate
+		}
+	}
+	return nil
+}
+
+// chunkGate is the chunked bundle's half of the coverage requirement:
+// chunks[] is its attestation, and the default gate fails a bundle whose
+// review attests no chunk — the key absent, false, empty, or no array at all.
+// A partial chunks[] is already a shape error (checkChunks), so only an
+// attestation that names nothing is raised here.
+func chunkGate(sum *coverage.Summary) *core.RefusalError {
+	if sum.Chunks == 0 || sum.ChunksAttested > 0 {
+		return nil
+	}
+	return &core.RefusalError{Code: coverage.CodeIncomplete, Message: core.Msgf(msgChunksAbsent, sum.Chunks)}
 }
 
 // coverageGate is the opt-in requirement itself, kept apart from the evaluator

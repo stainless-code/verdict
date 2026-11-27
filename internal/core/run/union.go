@@ -30,7 +30,9 @@ const (
 func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, *jq.Obj, error) {
 	candidates := make(map[string]*unionCandidate)
 	idx := evidence.IndexDiff(diff)
-	attestations := &unionAttestations{rows: make(map[string][]any), seen: make(map[string]bool)}
+	attestations := &unionAttestations{
+		rows: make(map[string][]any), seen: make(map[string]bool), present: make(map[string]bool),
+	}
 	for i, review := range reviews {
 		if review == nil {
 			continue
@@ -67,6 +69,10 @@ func mergeReview(candidates map[string]*unionCandidate, idx *evidence.DiffIndex,
 type unionAttestations struct {
 	rows map[string][]any
 	seen map[string]bool
+	// present records the keys some finder wrote, even empty: `"coverage": []`
+	// is the attestation of a diff with nothing to read, which the gate passes
+	// and an absent key does not.
+	present map[string]bool
 }
 
 // attestationKeys are the review fields a finder attests and the aggregate
@@ -78,7 +84,10 @@ var attestationKeys = []string{unionReceipts, unionSpecChecks, "coverage", "chun
 // already carries: two finders attesting one hunk, one claim, or one chunk is
 // one attestation.
 func (a *unionAttestations) merge(review *jq.Obj, key string) {
-	rows, _ := review.Get(key)
+	rows, ok := review.Get(key)
+	if ok {
+		a.present[key] = true
+	}
 	for _, row := range jq.Elements(rows) {
 		encoded := key + "\x00" + unionRowKey(row, key)
 		if a.seen[encoded] {
@@ -133,13 +142,13 @@ func renderUnion(execution string, candidates map[string]*unionCandidate, attest
 	return review, jq.NewObj("checks", checks, "sources", sources), nil
 }
 
-// attach writes the read attestations some finder supplied. A bundle no finder
-// attested keeps the fields absent, which is how an unattested aggregate
-// reaches the coverage gate.
+// attach writes the read attestations some finder supplied, an empty one
+// included. A bundle no finder attested keeps the fields absent, which is how
+// an unattested aggregate reaches the coverage gate.
 func (a *unionAttestations) attach(review *jq.Obj) {
 	for _, key := range []string{"coverage", "chunks"} {
-		if rows := a.rows[key]; len(rows) > 0 {
-			review.Set(key, rows)
+		if a.present[key] {
+			review.Set(key, append([]any{}, a.rows[key]...))
 		}
 	}
 }

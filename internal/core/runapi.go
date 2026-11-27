@@ -73,8 +73,13 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	Print        bool
 	Resume       bool
 	AllowShell   bool
-	JSONMode     bool
-	Warnings     []string
+	// RequireCoverage is record --require-coverage carried into the launch:
+	// a review whose diff-coverage attestation record would refuse gets the
+	// gap in its repair round, and a run that ends with it refuses
+	// coverage-incomplete, the code record would raise.
+	RequireCoverage bool
+	JSONMode        bool
+	Warnings        []string
 	// Admit, when set, is called before every agent process the launch
 	// spawns — the one-shot and each repair round, attempt counting from 1 —
 	// and a refusal stops the launch before that spawn. The self-review loop

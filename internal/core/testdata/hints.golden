@@ -13,6 +13,7 @@ already-reviewed-patch	try: re-run with --force to post the same change again, o
 ambiguous-patch-match	try: pass the exact --from <local-slug> named above
 ambiguous-sig	try: copy the full sig prefix from report output
 approve-blocked	try: triage the findings or re-run with --force
+artifact-path-unsafe	try: remove the named symlink from the bundle (verdict owns that path as a plain file), then re-run
 auth-missing	try: export the credential named above, then re-run
 backtest-failed	try: confirm git works in this checkout, then re-run
 backtest-row-stale	try: delete the named prs/<NNN>/ directory, then replay the run so it records a fresh row

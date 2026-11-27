@@ -31,6 +31,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
+	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -54,6 +55,8 @@ const (
 	codeBudgetUnknown = "budget-unknown"
 	// codeSpendCapped is run's code for a spawn the monthly ceiling refuses.
 	codeSpendCapped = "spend-capped"
+	// codeSandboxUnavailable is verify's code for a sandbox this host lacks.
+	codeSandboxUnavailable = "sandbox-unavailable"
 	// maxRounds bounds --max-rounds: every round is a fresh bundle and up to
 	// three agent spawns, and the plan renders each one.
 	maxRounds = 20
@@ -62,10 +65,7 @@ const (
 	reviewAttempts = 2
 	// findersOne is the review topology: one finder per round, the same fast
 	// pass demo launches.
-	findersOne = "1"
-	// gateSeverity gates every open finding: the loop's pass means nothing
-	// open, at any severity.
-	gateSeverity = "informational"
+	findersOne   = "1"
 	gateCoverage = "require"
 	// gateLive keeps the gate offline: a local bundle has no host threads.
 	gateLive = "skip"
@@ -130,14 +130,23 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Output string
 	// FixPrompt replaces the built-in fix instructions when non-empty.
 	FixPrompt string
+	// AgentArgs is the operator's `--` tail, passed to every spawn after the
+	// fix's edit grant. It takes only the agent's model flag (validate
+	// refuses anything else): the review it also reaches reads untrusted
+	// content.
+	AgentArgs []string
+	// MaxSeverity is the gate's --max-severity: an open finding at or above
+	// it fails the round. critical, important, or informational.
+	MaxSeverity string
 	// Print renders the plan and spawns nothing.
 	Print bool
-	// VerifySandbox and VerifySandboxNetworkOnly pass `verify --sandbox` and
-	// `verify --sandbox-network-only` to the fix phase's verify step: the
-	// command is the agent's own proposal from patch.json. Both off matches
-	// `verdict verify`; they are mutually exclusive.
-	VerifySandbox            bool
+	// The fix phase's verify step runs the fix agent's own command from
+	// patch.json, so it runs under `verify --sandbox` unless the operator
+	// opts out: VerifySandboxNetworkOnly passes `verify --sandbox-network-only`
+	// instead, and VerifyNoSandbox runs it unsandboxed (with a warning).
+	// They are mutually exclusive.
 	VerifySandboxNetworkOnly bool
+	VerifyNoSandbox          bool
 }
 
 // Response carries the loop outcome for the adapter.
@@ -175,6 +184,9 @@ func run(ctx context.Context, req *Request, ph phases) (*Response, *core.Refusal
 	}
 	lp := newLoop(req)
 	lp.ph = ph
+	if req.VerifyNoSandbox {
+		lp.warn("--no-sandbox: verify runs the fix agent's own command unsandboxed, as you")
+	}
 	// The plan resolves the agent before anything is written, so an unknown
 	// name refuses here rather than after a receipts directory exists.
 	plan, ref := lp.plan(ctx)
@@ -212,12 +224,31 @@ func validate(req *Request) *core.RefusalError {
 			"--max-rounds must be a whole number from 1 to %d", maxRounds)}
 	case req.Timeout <= 0:
 		return &core.RefusalError{Code: codeBadFlags, Message: "--timeout must be a positive duration"}
-	case req.VerifySandbox && req.VerifySandboxNetworkOnly:
-		return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are " +
-			"mutually exclusive (pick one sandbox for the verify step)"}
+	case req.VerifyNoSandbox && req.VerifySandboxNetworkOnly:
+		return &core.RefusalError{Code: codeBadFlags, Message: "--no-sandbox and --sandbox-network-only are " +
+			"mutually exclusive (pick one posture for the verify step)"}
 	case req.MaxCostUSD != "" && !positiveDecimal(req.MaxCostUSD):
 		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
 			"--max-cost-usd must be a positive dollar amount, got '%s'", req.MaxCostUSD)}
+	}
+	return validateGate(req)
+}
+
+// validateGate refuses a gate tier gate would not take and an agent argument
+// that decides the agent's permissions.
+func validateGate(req *Request) *core.RefusalError {
+	if !slices.Contains(maxSeverities, req.MaxSeverity) {
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf(
+			"--max-severity must be critical, important, or informational, got '%s'", req.MaxSeverity)}
+	}
+	if bad, ok, allowed := runcore.LoopArgs(req.Agent, req.Flow.Agents, req.AgentArgs); !ok {
+		want := "no agent arguments for " + req.Agent
+		if len(allowed) > 0 {
+			want = "only " + strings.Join(allowed, ", ") + " <value>"
+		}
+		return &core.RefusalError{Code: codeBadFlags, Message: core.Msgf("loop's agent arguments take %s, "+
+			"got '%s': they also reach the review of untrusted content, so anything that could decide the "+
+			"agent's tools or permissions is refused", want, bad)}
 	}
 	return nil
 }
@@ -241,12 +272,13 @@ func newLoop(req *Request) *loop {
 		output = filepath.Join(req.RepoRoot, ".verdict", "loop", started.UTC().Format(stampLayout))
 	}
 	data := &Data{
-		Agent:      req.Agent,
-		MaxRounds:  req.MaxRounds,
-		TimeoutS:   int(math.Ceil(req.Timeout.Seconds())),
-		MaxCostUSD: decimalNumber(req.MaxCostUSD),
-		Rounds:     []Round{},
-		Plan:       []PlanStep{},
+		Agent:       req.Agent,
+		MaxRounds:   req.MaxRounds,
+		MaxSeverity: req.MaxSeverity,
+		TimeoutS:    int(math.Ceil(req.Timeout.Seconds())),
+		MaxCostUSD:  decimalNumber(req.MaxCostUSD),
+		Rounds:      []Round{},
+		Plan:        []PlanStep{},
 	}
 	return &loop{
 		req:      req,
@@ -465,8 +497,9 @@ func (lp *loop) review(
 	}
 	launch := reviewflow.Launch{
 		Agent: lp.req.Agent, FindersRaw: findersOne,
-		TimeoutRaw: strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
-		RoundsRaw:  strconv.Itoa(reviewAttempts),
+		TimeoutRaw:      strconv.Itoa(max(1, int(math.Ceil(left/reviewAttempts)))),
+		RoundsRaw:       strconv.Itoa(reviewAttempts),
+		RequireCoverage: true,
 	}
 	warnings, ref := lp.ph.review(dctx, b, launch, dir, lp.name(n)+"-review")
 	lp.warnAll(warnings)
@@ -515,6 +548,16 @@ func (lp *loop) fix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle, 
 	return lp.verifyFix(ctx, dctx, rd, b)
 }
 
+// fixArgs is the fix spawn's agent arguments: the row's documented edit
+// grant — the fix edits the working tree, which a default-mode agent CLI
+// refuses non-interactively — then the operator's `--` tail.
+func (r *Request) fixArgs() []string {
+	return slices.Concat(runcore.EditArgs(r.Agent, r.Flow.Agents), r.AgentArgs)
+}
+
+// maxSeverities are the tiers --max-severity takes, as gate spells them.
+var maxSeverities = []string{"critical", "important", "informational"}
+
 // verifyFix runs verify on the command the fix declared and keeps its
 // receipt. A cancel that lands in verify is the round's stop.
 func (lp *loop) verifyFix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bundle) (string, *Refusal) {
@@ -526,6 +569,13 @@ func (lp *loop) verifyFix(ctx, dctx context.Context, rd *Round, b *reviewflow.Bu
 	verify, warnings := lp.ph.verify(dctx, b, timeout)
 	lp.warnAll(warnings)
 	rd.Fix.Verify = verify
+	if verify.Refusal != nil && verify.Refusal.Code == codeSandboxUnavailable {
+		// Every later round would refuse the same way: stop, naming the
+		// opt-outs, rather than spend fixes nothing can verify.
+		return StopRefused, &Refusal{Code: codeSandboxUnavailable, Message: core.Msgf("%s; loop runs verify "+
+			"sandboxed by default — pass --sandbox-network-only or --no-sandbox to opt out",
+			core.Trusted(verify.Refusal.Message))}
+	}
 	if (verify.Refusal != nil && verify.Refusal.Code == codeCanceled) || dctx.Err() != nil {
 		return lp.refused(ctx, &core.RefusalError{Code: codeCanceled, Message: core.Msgf("%s", core.Trusted(verifyCanceled(verify)))})
 	}

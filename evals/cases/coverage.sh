@@ -258,13 +258,22 @@ assert_json_field "post.json stores the same percentage" 54 '.coverage.percent' 
   "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
 restore_stub
 
-# --- 6. a chunked bundle: warn and proceed; next names the chunks ----------
+# --- 6. a chunked bundle: chunks[] is the attestation; next names the chunks
+# --require-coverage grades chunks[]: a review that names no chunk refuses the
+# way an absent coverage[] does (the shortfall gate grades as unknown), and a
+# review attesting every chunk proceeds with the one chunk warning.
 PR=6103
 mkchunked "$PR"
 review_with "$PR" absent
 run_review post acme/app "$PR" --dry-run --require-coverage --json
-assert_exit "a chunked bundle is never refused by the coverage gate" 0
-assert_json_field "the chunked gate warns instead of refusing" "true" \
+assert_exit "a chunked review naming no chunk is refused by the coverage gate" 1
+assert_json_field "the refusal is coverage-incomplete" "coverage-incomplete" '.error.code'
+assert_json_field "the refusal names the missing chunk attestation" "true" \
+  '.error.message | contains("no chunks[] attestation")'
+review_with "$PR" '[],"chunks":["chunk-01","chunk-02"]'
+run_review post acme/app "$PR" --dry-run --require-coverage --json
+assert_exit "a chunked review attesting every chunk passes the coverage gate" 0
+assert_json_field "the chunked gate warns about coverage[] instead of refusing" "true" \
   'any(.warnings[]; startswith("coverage: chunked bundle"))'
 assert_json_field "the chunked dry run stores no coverage receipt" "false" \
   '.data | has("coverage")'

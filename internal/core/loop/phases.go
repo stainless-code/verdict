@@ -43,6 +43,9 @@ type phases interface {
 // flowPhases runs every phase through the shipped services.
 type flowPhases struct {
 	req *Request
+	// runVerify is the verify service; nil is verifycore.Run. A test records
+	// the posture the service receives through it.
+	runVerify func(context.Context, *verifycore.Request) (*verifycore.Response, *core.RefusalError)
 	// noUsage records that the agent rejected the structured-output flag, so
 	// later spawns in this loop stop asking for it.
 	noUsage bool
@@ -64,6 +67,9 @@ func (p *flowPhases) authorize(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	// The loop admits its fix spawn here, so the model is read from the fix's
+	// own arguments.
+	req.PassThrough = p.req.fixArgs()
 	return runcore.AuthorizeSpawn(ctx, req, dir, launchID, runcore.SpawnModel(req, p.req.Flow.Agents))
 }
 
@@ -86,6 +92,7 @@ func (p *flowPhases) review(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	req.PassThrough = p.req.AgentArgs
 	p.measuring(req)
 	model := runcore.SpawnModel(req, p.req.Flow.Agents)
 	var attempts []*attemptCost
@@ -247,7 +254,7 @@ func (p *flowPhases) record(
 func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []string, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: p.req.Flow.Read(b),
-		Flags:       reportcore.Flags{Check: gateSeverity, Coverage: gateCoverage, Live: gateLive},
+		Flags:       reportcore.Flags{Check: p.req.MaxSeverity, Coverage: gateCoverage, Live: gateLive},
 		Effective:   p.req.Flow.Effective,
 	})
 	if ref != nil {
@@ -264,7 +271,11 @@ func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []st
 func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
+	if ref := readcommon.RefuseUnsafeArtifacts(p.req.RepoRoot, dir, patchFile, fixCostFile); ref != nil {
+		return ref
+	}
 	req := p.req.Flow.RunRequest(b, launch, nil)
+	req.PassThrough = p.req.fixArgs()
 	p.measuring(req)
 	out, ref := runcore.Dispatch(ctx, req, p.req.Flow.Agents, directive)
 	if price, ok := p.fixPrice(out, dir, runcore.SpawnModel(req, p.req.Flow.Agents)); ok {
@@ -334,7 +345,7 @@ func knownAmount(obj *jq.Obj) (string, bool) {
 
 // declared reports whether the fix agent declared a verify command.
 func (p *flowPhases) declared(dir string) bool {
-	return readcommon.IsFile(filepath.Join(dir, patchFile))
+	return readcommon.IsRegularNoFollow(filepath.Join(dir, patchFile))
 }
 
 // verify runs `verdict verify` on the bundle the fix agent declared a command
@@ -345,19 +356,30 @@ func (p *flowPhases) verify(ctx context.Context, b *reviewflow.Bundle, timeout s
 	read.Runtime = &core.Runtime{
 		Env: read.Env, Now: read.Now, Progress: read.Progress, Commander: p.req.Flow.AgentCommander,
 	}
-	resp, ref := verifycore.Run(ctx, &verifycore.Request{
+	sandbox, networkOnly := verifyPosture(p.req)
+	run := p.runVerify
+	if run == nil {
+		run = verifycore.Run
+	}
+	resp, ref := run(ctx, &verifycore.Request{
 		ReadRequest:        read,
 		TimeoutRaw:         timeout,
 		Environ:            p.req.Flow.Environ,
 		JSONMode:           p.req.Flow.JSONMode,
-		Sandbox:            p.req.VerifySandbox,
-		SandboxNetworkOnly: p.req.VerifySandboxNetworkOnly,
+		Sandbox:            sandbox,
+		SandboxNetworkOnly: networkOnly,
 	})
 	if ref != nil {
 		return &Verify{Refusal: asRefusal(ref)}, ref.Warnings
 	}
 	exit := resp.Exit
 	return &Verify{Exit: &exit, TimedOut: resp.TimedOut}, resp.Warnings
+}
+
+// verifyPosture is the verify step's sandbox: the full one by default, the
+// network-only one or none only when the operator opted out.
+func verifyPosture(req *Request) (sandbox, networkOnly bool) {
+	return !req.VerifyNoSandbox && !req.VerifySandboxNetworkOnly, req.VerifySandboxNetworkOnly
 }
 
 // cost reads one round bundle's own receipts, whatever their month: the

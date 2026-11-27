@@ -1,6 +1,7 @@
 package agentcatalog
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -108,6 +109,8 @@ type discoveryRow struct {
 	args      []string
 	citation  string
 	overrides []string
+	// owned are the spellings of the denial's own flag verdict owns.
+	owned []string
 }
 
 // TestDiscoveryRestrictionsCiteAgentDocs pins the discovery-phase tool
@@ -123,22 +126,21 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 	}
 	want := map[string]discoveryRow{
 		"bob": {
-			args:      []string{"--disable-tool-groups", "execute,mcp"},
-			citation:  docBobShell,
-			overrides: []string{"--disable-tool-groups"},
+			args:     []string{"--disable-tool-groups", "execute,mcp"},
+			citation: docBobShell,
+			owned:    []string{"--disable-tool-groups"},
 		},
 		"claude": {
-			args:     []string{"--disallowedTools=Bash,PowerShell"},
-			citation: docClaudeCLI,
-			overrides: []string{
-				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
-			},
+			args:      []string{"--disallowedTools=Bash,PowerShell"},
+			citation:  docClaudeCLI,
+			overrides: []string{"--tools"},
 		},
 		"pi": {
 			args:     []string{"--exclude-tools", "bash,powershell"},
 			citation: docPiCLI,
+			owned:    []string{"--exclude-tools", "-xt"},
 			overrides: []string{
-				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 		},
 	}
@@ -148,7 +150,8 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 			continue
 		}
 		declared++
-		checkDiscoveryRow(t, string(raw), agent, want[agent.Name])
+		row := want[agent.Name]
+		checkDiscoveryRow(t, string(raw), agent, &row)
 	}
 	if declared != len(want) {
 		t.Fatalf("rows declaring a discovery restriction = %d; want the %d documented ones", declared, len(want))
@@ -157,7 +160,7 @@ func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
 
 // checkDiscoveryRow pins one row's discovery restriction to its citation and to
 // the manual table that documents it.
-func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want discoveryRow) {
+func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want *discoveryRow) {
 	t.Helper()
 	launch := agent.Launch
 	if !slices.Equal(launch.DiscoveryArgs, want.args) {
@@ -168,6 +171,9 @@ func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want discoveryR
 	}
 	if !slices.Equal(launch.DiscoveryOverrideFlags, want.overrides) {
 		t.Errorf("%s discovery override flags = %q, want %q", agent.Name, launch.DiscoveryOverrideFlags, want.overrides)
+	}
+	if !slices.Equal(launch.DiscoveryOwnedFlags, want.owned) {
+		t.Errorf("%s discovery owned flags = %q, want %q", agent.Name, launch.DiscoveryOwnedFlags, want.owned)
 	}
 	checkDiscoveryManualRow(t, manual, agent)
 }
@@ -191,5 +197,106 @@ func checkDiscoveryManualRow(t *testing.T, manual string, agent Agent) {
 	}
 	if !strings.Contains(row, agent.Launch.DiscoveryCitation) {
 		t.Fatalf("%s discovery row cites no source: %s", agent.Name, row)
+	}
+}
+
+// TestGrantsAreScopedAndCited pins the two grants verdict adds on its own: the
+// loop's fix-phase edit grant and run's review-write grant. Exactly the rows
+// whose docs name an equally scoped flag carry one, each cites its doc, and
+// no grant is an approval or sandbox bypass — agy's documented hint is one,
+// so it must never be reused as a grant.
+func TestGrantsAreScopedAndCited(t *testing.T) {
+	t.Parallel()
+	edit, review := map[string][]string{}, map[string][]string{}
+	for _, agent := range All() {
+		l := agent.Launch
+		if l == nil {
+			continue
+		}
+		assertNoBypass(t, agent.Name, slices.Concat(l.EditArgs, l.ReviewWriteArgs))
+		collectGrant(t, edit, agent.Name, "EditArgs", l.EditArgs, l.EditCitation)
+		collectGrant(t, review, agent.Name, "ReviewWriteArgs", l.ReviewWriteArgs, l.ReviewWriteCitation)
+	}
+	wantEdit := map[string][]string{
+		"claude": {"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
+		"codex":  {"--sandbox", "workspace-write"},
+	}
+	wantReview := map[string][]string{"claude": {"--allowedTools=Edit({review-dir}/**)"}}
+	if !maps.EqualFunc(edit, wantEdit, slices.Equal) {
+		t.Errorf("EditArgs rows = %v, want %v", edit, wantEdit)
+	}
+	if !maps.EqualFunc(review, wantReview, slices.Equal) {
+		t.Errorf("ReviewWriteArgs rows = %v, want %v", review, wantReview)
+	}
+}
+
+// bypassWords are the spellings of an approval or sandbox bypass; no grant may
+// carry one.
+var bypassWords = []string{"dangerous", "skip-permissions", "yolo", "bypass", "danger-full-access", "full-auto", "allow-all"}
+
+// bypassModes are permission-mode values that approve without asking; a
+// grant may name a mode, never one of these.
+var bypassModes = []string{"auto", "dontask", "bypasspermissions"}
+
+// assertNoBypass fails on a grant argument that spells a bypass, as a flag
+// or as the mode a --permission-mode grant selects.
+func assertNoBypass(t *testing.T, name string, args []string) {
+	t.Helper()
+	if mode := permissionMode(args); slices.Contains(bypassModes, strings.ToLower(mode)) {
+		t.Errorf("%s grants --permission-mode %s, a bypass", name, mode)
+	}
+	for _, arg := range args {
+		for _, word := range bypassWords {
+			if strings.Contains(strings.ToLower(arg), word) {
+				t.Errorf("%s grants %q, a bypass (%s)", name, arg, word)
+			}
+		}
+	}
+}
+
+// permissionMode is the mode a --permission-mode argument selects, in either
+// spelling, "" when none does.
+func permissionMode(args []string) string {
+	for i, arg := range args {
+		flag, value, inline := strings.Cut(arg, "=")
+		switch {
+		case flag != "--permission-mode":
+		case inline:
+			return value
+		case i+1 < len(args):
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// collectGrant records one row's grant and fails when it cites no doc.
+func collectGrant(t *testing.T, into map[string][]string, name, field string, args []string, citation string) {
+	t.Helper()
+	if len(args) == 0 {
+		return
+	}
+	into[name] = args
+	if citation == "" {
+		t.Errorf("%s declares %s without a citation", name, field)
+	}
+}
+
+// TestModelFlagAliasesAreCited pins the model aliases the loop's `--`
+// allowlist accepts: exactly the documented ones, each row citing its doc.
+func TestModelFlagAliasesAreCited(t *testing.T) {
+	t.Parallel()
+	got := map[string][]string{}
+	for _, agent := range All() {
+		if agent.Launch == nil || len(agent.Launch.ModelFlagAliases) == 0 {
+			continue
+		}
+		got[agent.Name] = agent.Launch.ModelFlagAliases
+		if agent.Launch.ModelAliasCitation == "" {
+			t.Errorf("%s declares ModelFlagAliases without a citation", agent.Name)
+		}
+	}
+	if want := map[string][]string{"codex": {"-m"}}; !maps.EqualFunc(got, want, slices.Equal) {
+		t.Errorf("model aliases = %v, want %v", got, want)
 	}
 }

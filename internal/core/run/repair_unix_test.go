@@ -60,7 +60,7 @@ func TestCrashReviewBytesNeverBlocksOnAFIFO(t *testing.T) {
 	}
 	done := make(chan read, 1)
 	go func() {
-		raw, ok := crashReviewBytes(path)
+		raw, ok := crashReviewBytes(filepath.Dir(path), path)
 		done <- read{raw: raw, ok: ok}
 	}()
 	select {

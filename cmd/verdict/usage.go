@@ -96,7 +96,7 @@ func usageText() string {
 		"        vibe|zcode>\n" +
 		"      [--finders <1|2, default 2>] [--budget <auto|light|standard|deep>] [--recipe <slug>]\n" +
 		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
-		"      [--print] [--resume] [--allow-shell] [-- <agent args>...] [--json]\n" +
+		"      [--print] [--resume] [--allow-shell] [--require-coverage] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
 		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
 		"    --resume continues the two-finder execution launcher.json records instead of\n" +
@@ -104,12 +104,20 @@ func usageText() string {
 		"    controls it seals, prompts_hash, agent, finder count) and the bound artifacts, reuses\n" +
 		"    every finder and cross-check that still passes, re-runs only the incomplete phases,\n" +
 		"    and fails closed with resume-drift or cannot-resume before launching anything.\n" +
-		"    Discovery is read-only: every launch -- finders, cross-checks, repair rounds, drain --\n" +
+		"    Discovery denies the shell: every launch -- finders, cross-checks, repair rounds, drain --\n" +
 		"    carries the row's documented tool restrictions (claude: --disallowedTools=Bash,PowerShell, bob:\n" +
 		"    --disable-tool-groups execute,mcp, pi: --exclude-tools bash,powershell), which block shell\n" +
 		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
-		"    row's own tools; your own tool flag after '--' replaces the restriction rather than\n" +
-		"    duplicating it. verify --sandbox is untouched.\n" +
+		"    row's own tools; no flag after '--' drops the restriction, and the flag it uses (pi's\n" +
+		"    --exclude-tools, bob's --disable-tool-groups) is verdict's on review launches: passing it is\n" +
+		"    bad-flags. This is a shell denial, not a write boundary: review untrusted PRs in a\n" +
+		"    disposable checkout, whatever the agent. verify --sandbox is untouched.\n" +
+		"    claude launches also carry a write grant to the launch's own bundle directory\n" +
+		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +
+		"    flag; it adds an allow rule and removes none from your Claude settings. Your own permission\n" +
+		"    flag after '--' drops it, and a symlinked or hard-linked bundle entry is refused.\n" +
+		"    --require-coverage repairs, then refuses coverage-incomplete, a review whose coverage\n" +
+		"    attestation record --require-coverage would refuse.\n" +
 		"    --budget auto classifies the diff before launching: light runs one finder, standard and\n" +
 		"    deep run two with cross-checks, and a sensitive path escalates to deep. --finders N always\n" +
 		"    wins; the tier and its reasons land in launcher.json and --json data.budget.\n" +
@@ -368,17 +376,23 @@ func usageText() string {
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts; report never gates.\n" +
 		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
+		"        [--max-severity <critical|important|informational, default important>]\n" +
 		"        [--timeout <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
-		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
+		"        [--sandbox | --sandbox-network-only | --no-sandbox] [--print] [-- <model flag> <m>] [--json]\n" +
 		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
-		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
-		"    (every open finding, coverage required, live checks skipped). A failed gate starts the fix\n" +
+		"    fresh local bundle, run (review only, one finder, --require-coverage), record\n" +
+		"    --require-coverage, and gate (open findings at or above --max-severity; informational ones\n" +
+		"    still show; coverage required, live checks skipped). A failed gate starts the fix\n" +
 		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
 		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
-		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
-		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
-		"    settings.json agent. Stops: pass, max-rounds, timeout (--timeout bounds every phase and\n" +
-		"    spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
+		"    (sandboxed by default, --sandbox confirming it; --sandbox-network-only or --no-sandbox, which\n" +
+		"    warns, opt out; no sandbox on the host refuses sandbox-unavailable).\n" +
+		"    The fix spawn carries the row's documented edit grant (claude --permission-mode acceptEdits\n" +
+		"    with the shell still denied, codex --sandbox workspace-write, none elsewhere); arguments after\n" +
+		"    '--' reach every spawn and take only the agent's model flag (anything else: bad-flags). The next\n" +
+		"    round re-fetches and re-reviews the fixes. --agent takes any\n" +
+		"    agent table row or settings.json agent. Stops: pass, max-rounds, timeout (--timeout bounds\n" +
+		"    every phase and spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
 		"    whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling\n" +
 		"    refusing a spawn — every review attempt and fix leaves a budget.json receipt), no-progress (no\n" +
 		"    finding open after the previous round was resolved), agent-failed, refused. Receipts:\n" +

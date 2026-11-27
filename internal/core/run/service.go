@@ -142,6 +142,9 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
+	if ref := st.refuseOwnedFlag(&def); ref != nil {
+		return nil, ref
+	}
 	timeout, ref := st.timeout()
 	if ref != nil {
 		return nil, ref
@@ -193,7 +196,12 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 		return nil, ref
 	}
 	args.bin = bin
-	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	args.restriction = discoveryRestriction(def, st.req.AllowShell)
+	if ref := st.refuseLinkedPaths(&target); ref != nil {
+		return nil, ref
+	}
+	args.grant = st.grantFor(def, target.output)
+	args.coverage = st.req.RequireCoverage && target.artifact == reviewFile
 	args.usage = st.usageArgs(def)
 	artifact := st.promptPath(args.abs, args.artifact)
 	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
@@ -203,6 +211,50 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.argv = argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, args.prompt)
 	return args, nil
+}
+
+// refuseOwnedFlag refuses a review launch whose `--` tail spells the flag the
+// row's shell denial uses: verdict owns that flag on review launches.
+func (st *state) refuseOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
+	arg := ownedFlagArg(def, st.req.PassThrough, st.req.AllowShell)
+	if arg == "" {
+		return nil
+	}
+	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s is verdict's shell denial on a review launch; got '%s' "+
+		"after -- (drop it, or pass --allow-shell to own the agent's tool set)", def.Name,
+		strings.Join(def.DiscoveryOwnedFlags, "/"), arg))
+}
+
+// refuseLinkedPaths refuses a launch whose bundle holds a symlink, a
+// non-regular entry, or a hard-linked file anywhere: the agent's write grant
+// covers the whole bundle, so its write, or verdict's read back, would follow
+// that entry out of it. A render writes nothing and is spared.
+func (st *state) refuseLinkedPaths(target *launchTarget) *core.RefusalError {
+	if st.req.Print {
+		return nil
+	}
+	dir := target.evidence
+	if dir == "" {
+		dir = target.output
+	}
+	return readcommon.RefuseUnsafeBundle(st.req.RepoRootPath(), dir)
+}
+
+// grantFor is the row's review-write grant for a launch writing into dir. A
+// grant the row documents but dir cannot carry is named in one warning, since
+// the agent may then be unable to write its artifact.
+func (st *state) grantFor(def *agentcatalog.Launch, dir string) []string {
+	grant, why := reviewGrant(def, st.req.PassThrough, st.workDir(), readcommon.StateDir(st.req.RepoRootPath()), dir)
+	if why == "" {
+		return grant
+	}
+	msg := core.Msgf("%s launches without its review write grant: %s (%s); "+
+		"if it cannot write its artifact, pass your own grant after --", def.Name, why,
+		readcommon.DisplayPath(st.req.RepoRootPath(), dir))
+	if !slices.Contains(st.warnings, msg) {
+		st.warn(msg)
+	}
+	return grant
 }
 
 // compose builds the prompt and argv one invocation works from: the
@@ -221,6 +273,9 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan)
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
+	}
+	if a.coverage && st.drainDigest == "" {
+		a.prompt += "\n" + coverageParagraph + "\n"
 	}
 	a.argv = argvFor(&a.def, a.model(), a.fixed(), req.PassThrough, a.prompt)
 }
@@ -557,10 +612,22 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
+	// grant is the row's review-write grant scoped to this launch's output
+	// directory, nil when none applies (see reviewGrant).
+	grant []string
 	// usage is the structured-output request this launch carries, nil when
 	// it measures nothing.
 	usage   []string
 	timeout int
+	// coverage adds record --require-coverage's gate to this launch's check:
+	// set on the review artifacts (the one-finder review and each finder's,
+	// all named review.json) when the request asks for it, never on a
+	// cross-check or a drain.
+	coverage bool
+	// coverageSoft marks a finder: its coverage gap still earns a repair
+	// round, but a review whose only gap is coverage stands, because the
+	// union's attestation is what the run requires.
+	coverageSoft bool
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a
@@ -668,7 +735,12 @@ func (st *state) now() time.Time {
 // bundle resolves the existing bundle directory. The launcher never fetches: an
 // absent bundle is a typed refusal naming the command that writes one.
 func (st *state) bundle() (string, *core.RefusalError) {
-	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
+	resolve := readcommon.ResolveWritableBundleDir
+	if st.req.Print {
+		// A render writes nothing, so it reads the bundle where it stands.
+		resolve = readcommon.ResolveBundleDir
+	}
+	dir, ref := resolve(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
@@ -986,6 +1058,13 @@ func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.Re
 	if checkRef != nil {
 		return checkRef
 	}
+	if ref := coverageRefusal(check, ""); ref != nil {
+		if args.coverageSoft {
+			return nil
+		}
+		return ref
+	}
+	check = withoutCoverage(check)
 	if ref := recordcore.ReviewRefusal(check, false); ref != nil {
 		return ref
 	}
@@ -1199,7 +1278,9 @@ type artifactState struct {
 // not "written by this agent".
 func inspectArtifact(path string, launched time.Time) artifactState {
 	art := artifactState{launched: launched}
-	info, err := os.Stat(path)
+	// No-follow: a link the agent left reads as not regular, never as the
+	// file it names.
+	info, err := os.Lstat(path)
 	if err != nil {
 		return art
 	}
@@ -1212,14 +1293,21 @@ func inspectArtifact(path string, launched time.Time) artifactState {
 }
 
 func (a *launchArgs) checkReview(review []byte) (recordcore.CheckResult, *core.RefusalError) {
-	if a.target.checker != nil {
-		return a.target.checker(a.target.evidence, review)
-	}
 	dir := a.target.evidence
 	if dir == "" {
 		dir = a.dir
 	}
-	return repair.Check(dir, review)
+	var check recordcore.CheckResult
+	var ref *core.RefusalError
+	if a.target.checker != nil {
+		check, ref = a.target.checker(a.target.evidence, review)
+	} else {
+		check, ref = repair.Check(dir, review)
+	}
+	if ref != nil || !a.coverage {
+		return check, ref
+	}
+	return withCoverage(dir, review, check), nil
 }
 
 func (st *state) phaseSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {

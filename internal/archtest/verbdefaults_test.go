@@ -83,6 +83,7 @@ func defaultsRows() [][]string {
 		[]string{"run", "--timeout", run.DefaultTimeoutS},
 		[]string{"run", "--rounds", run.DefaultRounds},
 		[]string{"loop", "--max-rounds", loop.DefaultMaxRounds},
+		[]string{"loop", "--max-severity", loop.DefaultMaxSeverity},
 		[]string{"loop", "--timeout", loop.DefaultTimeout},
 	)
 	sort.SliceStable(rows, func(i, j int) bool {

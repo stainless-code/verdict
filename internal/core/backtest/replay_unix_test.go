@@ -1041,8 +1041,11 @@ func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 	f.plant(t, "write", "0.6")
 	runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.PassThrough = []string{"--model", "fast"} }))
 	lines := f.launchLines(t)
-	if !strings.Contains(lines[0][2], "claude -p --disallowedTools=Bash,PowerShell --model fast") {
-		t.Errorf("agent argv = %q; want the pass-through after the discovery restriction", lines[0][2])
+	// The replay checkout is not the repository root, so the review grant
+	// names the bundle absolutely (`//`).
+	if !strings.HasPrefix(lines[0][2], "claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(//") ||
+		!strings.Contains(lines[0][2], "/.verdict/state/local-bt-1-ra/**) --model fast") {
+		t.Errorf("agent argv = %q; want the restriction, the bundle grant, then the pass-through", lines[0][2])
 	}
 }
 

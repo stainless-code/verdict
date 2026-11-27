@@ -53,18 +53,21 @@ const (
 	findersFlag    = "--finders"
 	budgetFlag     = "--budget"
 	allowShellFlag = "--allow-shell"
+	coverageFlag   = "--require-coverage"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
 	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
-	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --print, -- <agent args>, --json"
+	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --require-coverage, --print, " +
+	"-- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--allow-shell]
-// [--print] [-- <agent args>...] [--json]`, returning the process exit code. A
-// non-zero agent exit is preserved as this process's exit code after the typed
-// refusal is rendered, so CI surfaces the real failure.
+// [--require-coverage] [--print] [-- <agent args>...] [--json]`, returning
+// the process exit code. A non-zero agent exit is preserved as this process's
+// exit code after the typed refusal is rendered, so CI surfaces the real
+// failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -172,6 +175,7 @@ func runRequest(r *cli.Runner, req *readcommon.Request, flags *flags) *core.RunR
 		Print:             flags.print,
 		Resume:            flags.resume,
 		AllowShell:        flags.allowShell,
+		RequireCoverage:   flags.requireCoverage,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
 		Warnings:          append([]string{}, r.Warnings...),
@@ -207,6 +211,8 @@ type flags struct {
 	resume     bool
 	allowShell bool
 	roundsSet  bool
+	// requireCoverage is record --require-coverage carried into the launch.
+	requireCoverage bool
 }
 
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
@@ -251,6 +257,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return i, 0, false
 	case allowShellFlag:
 		f.allowShell = true
+		return i, 0, false
+	case coverageFlag:
+		f.requireCoverage = true
 		return i, 0, false
 	case "--print":
 		f.print = true
@@ -400,6 +409,7 @@ func flagArgv(f *flags, resume bool) []string {
 	add(f.budget != "", budgetFlag, f.budget)
 	add(resume, "--resume")
 	add(f.allowShell, allowShellFlag)
+	add(f.requireCoverage, coverageFlag)
 	add(f.agent != "", "--agent", f.agent)
 	add(f.recipe != "", recipeFlag, f.recipe)
 	add(f.timeout != DefaultTimeoutS, "--timeout", f.timeout)
@@ -437,12 +447,18 @@ func quoteArg(arg string) string {
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
 }
 
+// addPermissionHint names the row's documented permission flag when the agent
+// wrote no review. A row that carries a scoped review-write grant already
+// had it on this launch, so its broader flag would grant edits the review
+// never needed: no hint. (A checkout path the rule syntax cannot spell
+// launches without it and says so in a warning; the operator's own
+// `-- --allowedTools=...` covers that case.)
 func addPermissionHint(ref *core.RefusalError, req *readcommon.Request, f *flags) {
 	if ref.Code != "no-review-artifact" || len(f.pass) != 0 {
 		return
 	}
 	row, ok := agentcatalog.Lookup(f.agent)
-	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" {
+	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" || len(row.Launch.ReviewWriteArgs) != 0 {
 		return
 	}
 	command := RenderCommand([]string{"verdict", verbRun, req.Repo, req.Pr, "--agent", f.agent})

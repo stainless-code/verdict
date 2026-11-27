@@ -70,7 +70,7 @@ func builtinRows() []builtinRow {
 			name: "claude", binary: "claude", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://claude.ai/install.sh | bash",
 			wantArgv:      []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "PROMPT"},
+			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "M", "PROMPT"},
 		},
 		{
 			name: "cline", binary: "cline", args: []string{}, promptFlag: "",

@@ -27,28 +27,73 @@ type MCP struct {
 
 // Launch describes one non-interactive invocation.
 type Launch struct {
-	Usage                  *Usage
-	KeyEnvCitation         string
-	Citation               string
-	Name                   string
-	Binary                 string
-	Install                string
-	ModelFlag              string
-	PromptFlag             string
-	Source                 string
-	PermissionHint         string
-	KeyEnv                 string
-	PermissionCitation     string
-	LaunchWarning          string
-	ProbeMatch             string
-	DiscoveryCitation      string
-	ResumeCitation         string
-	ProbeArgs              []string
-	DiscoveryArgs          []string
-	ResumeArgs             []string
+	Usage          *Usage
+	KeyEnvCitation string
+	Citation       string
+	Name           string
+	Binary         string
+	Install        string
+	ModelFlag      string
+	// ModelAliasCitation is the doc that names ModelFlagAliases.
+	ModelAliasCitation string
+	PromptFlag         string
+	Source             string
+	PermissionHint     string
+	KeyEnv             string
+	PermissionCitation string
+	LaunchWarning      string
+	ProbeMatch         string
+	DiscoveryCitation  string
+	ResumeCitation     string
+	// EditCitation is the doc that states EditArgs.
+	EditCitation string
+	// ReviewWriteCitation is the doc that states ReviewWriteArgs' rule syntax.
+	ReviewWriteCitation string
+	ProbeArgs           []string
+	DiscoveryArgs       []string
+	// DiscoveryOwnedFlags are the spellings of the flag the restriction
+	// itself uses (DiscoveryArgs is that flag and its value). A later
+	// spelling may replace verdict's, and one the agent does not parse drops
+	// it, so on a review launch verdict owns the flag: an operator spelling
+	// after `--`, in any form, refuses unless --allow-shell is set.
+	DiscoveryOwnedFlags []string
+	ResumeArgs          []string
+	// DiscoveryOverrideFlags are the flags that decide the agent's whole tool
+	// set. They never drop the shell denial — only --allow-shell does — but
+	// they decide the review write grant's question, so they drop the grant.
 	DiscoveryOverrideFlags []string
-	Args                   []string
+	// ModelFlagAliases are other documented spellings of ModelFlag (codex's
+	// -m); the self-review loop's `--` allowlist accepts them beside it.
+	ModelFlagAliases []string
+	Args             []string
+	// EditArgs is the documented flag set that lets the CLI edit files in its
+	// working directory non-interactively, with the narrowest shell scope its
+	// docs allow and no permission checks skipped. Only `verdict loop` applies
+	// it, to its fix spawn — whose contract is editing the working tree; the
+	// loop's verify step runs the tests, so the fix needs no shell where the
+	// row can deny it. A row with no equally scoped flag leaves it and
+	// EditCitation empty: an approval bypass is never an edit grant.
+	EditArgs []string
+	// PermissionFlags are the row's documented flags that decide what the
+	// agent may write or run (permission modes, sandboxes, allow lists, extra
+	// writable directories, approval bypasses). An operator spelling of one
+	// after `--` owns the review grant's question, so run drops the grant;
+	// loop refuses them outright, since its `--` reaches the review of
+	// untrusted content. PermissionCitation names the doc.
+	PermissionFlags []string
+	// ReviewWriteArgs is the documented grant that lets a review launch write
+	// its artifacts without a prompt, scoped to the launch's own output
+	// directory: [ReviewDir] in each argument is replaced by that directory as
+	// the CLI's rule path. verdict run adds it to every review launch unless
+	// the operator's `--` arguments already decide tool permissions (a
+	// PermissionFlags or DiscoveryOverrideFlags spelling). A row without an
+	// equally scoped option leaves both it and ReviewWriteCitation empty.
+	ReviewWriteArgs []string
 }
+
+// ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
+// output directory.
+const ReviewDir = "{review-dir}"
 
 // Usage describes one CLI's structured output that carries its run's cost or
 // token usage. Args request it (the first one is the flag an operator's own
@@ -83,6 +128,11 @@ const modelFlag = "--model"
 const (
 	docBobShell  = "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive"
 	docClaudeCLI = "https://code.claude.com/docs/en/cli-reference.md"
+	// docClaudePermissions states the Edit rule syntax: Edit rules cover every
+	// built-in file-editing tool, `./path` is relative to the working
+	// directory, `//path` is absolute (a Windows path in its /c/... form),
+	// and `**` crosses directories — read 2026-11-26.
+	docClaudePermissions = "https://code.claude.com/docs/en/permissions"
 	// docClaudeHeadless states the json output's result object, including
 	// total_cost_usd and the final text in result — read 2026-11-25.
 	docClaudeHeadless = "https://code.claude.com/docs/en/headless"
@@ -94,8 +144,11 @@ const (
 	// (step_finish's part.cost and tokens, text deltas) is in
 	// anomalyco/opencode packages/cli/src/run/noninteractive.ts — read
 	// 2026-11-25.
-	docOpenCodeRun  = "https://opencode.ai/docs/cli/commands"
-	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
+	docOpenCodeRun = "https://opencode.ai/docs/cli/commands"
+	docCodexReadme = "https://github.com/openai/codex/blob/main/README.md"
+	// docCodexCLIRef lists codex's and codex exec's flags, `--model, -m`
+	// among them — read 2026-11-27.
+	docCodexCLIRef  = "https://learn.chatgpt.com/docs/developer-commands?surface=cli"
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
 	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
 	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
@@ -197,10 +250,10 @@ var catalog = []Agent{
 			Args:      []string{argsRun},
 			ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: flagDisableToolGroups,
 			// The execute group is the shell; the write path stays open.
-			DiscoveryArgs:          []string{flagDisableToolGroups, "execute,mcp"},
-			DiscoveryCitation:      docBobShell,
-			DiscoveryOverrideFlags: []string{flagDisableToolGroups},
-			Install:                "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
+			DiscoveryArgs:       []string{flagDisableToolGroups, "execute,mcp"},
+			DiscoveryCitation:   docBobShell,
+			DiscoveryOwnedFlags: []string{flagDisableToolGroups},
+			Install:             "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 		},
 	},
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
@@ -210,9 +263,21 @@ var catalog = []Agent{
 			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
 			PermissionCitation: docClaudeCLI,
-			KeyEnv:             "ANTHROPIC_API_KEY",
-			KeyEnvCitation:     docClaudeCLI,
-			Binary:             nameClaude, ModelFlag: modelFlag,
+			// acceptEdits also auto-approves filesystem shell commands (mkdir,
+			// rm, mv, sed), so the fix keeps the review's shell denial.
+			EditArgs:     []string{"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
+			EditCitation: docClaudePermissions,
+			PermissionFlags: []string{
+				"--permission-mode", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+				"--allowedTools", "--allowed-tools", "--add-dir",
+			},
+			// The joined `=` form, like the discovery restriction: the
+			// separated form would swallow the directive as a rule.
+			ReviewWriteArgs:     []string{"--allowedTools=Edit(" + ReviewDir + "/**)"},
+			ReviewWriteCitation: docClaudePermissions,
+			KeyEnv:              "ANTHROPIC_API_KEY",
+			KeyEnvCitation:      docClaudeCLI,
+			Binary:              nameClaude, ModelFlag: modelFlag,
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c"},
 			ResumeCitation: docClaudeCLI,
@@ -223,9 +288,10 @@ var catalog = []Agent{
 			// review.json.
 			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
 			DiscoveryCitation: docClaudeCLI,
-			DiscoveryOverrideFlags: []string{
-				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
-			},
+			// The shell denial is never dropped for an operator flag; a deny rule
+			// beats any allow. --tools decides the tool set, so it drops the
+			// review write grant.
+			DiscoveryOverrideFlags: []string{"--tools"},
 			Usage: &Usage{
 				Format: UsageClaudeJSON, Citation: docClaudeHeadless,
 				Args: []string{"--output-format", "json"},
@@ -286,9 +352,20 @@ var catalog = []Agent{
 			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
 			PermissionCitation: docCodexReadme,
-			KeyEnv:             "OPENAI_API_KEY",
-			KeyEnvCitation:     docCodexReadme,
-			Binary:             nameCodex, ModelFlag: modelFlag,
+			EditArgs:           []string{"--sandbox", "workspace-write"},
+			EditCitation:       docCodexReadme,
+			// `--model, -m` per the codex CLI reference.
+			ModelFlagAliases:   []string{"-m"},
+			ModelAliasCitation: docCodexCLIRef,
+			// workspace-write also runs shell commands, sandboxed to the
+			// workspace; codex documents no edit-only mode.
+			PermissionFlags: []string{
+				"--sandbox", "-s", "--ask-for-approval", "-a", "--full-auto",
+				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
+			},
+			KeyEnv:         "OPENAI_API_KEY",
+			KeyEnvCitation: docCodexReadme,
+			Binary:         nameCodex, ModelFlag: modelFlag,
 			Args:           []string{argsExec},
 			ResumeArgs:     []string{"resume"},
 			ResumeCitation: docCodexReadme,
@@ -692,10 +769,11 @@ var catalog = []Agent{
 			ResumeCitation: docPiQuickstart,
 			// A denylist, so read/edit/write stay and only the two shell tools
 			// go: `bash` on Unix, `powershell` on Windows.
-			DiscoveryArgs:     []string{"--exclude-tools", "bash,powershell"},
-			DiscoveryCitation: docPiCLI,
+			DiscoveryArgs:       []string{"--exclude-tools", "bash,powershell"},
+			DiscoveryCitation:   docPiCLI,
+			DiscoveryOwnedFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
-				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 			Install: "curl -fsSL https://pi.dev/install.sh | sh",
 		},
@@ -818,6 +896,11 @@ func All() []Agent {
 			v.ProbeArgs = slices.Clone(v.ProbeArgs)
 			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
 			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
+			v.DiscoveryOwnedFlags = slices.Clone(v.DiscoveryOwnedFlags)
+			v.ModelFlagAliases = slices.Clone(v.ModelFlagAliases)
+			v.EditArgs = slices.Clone(v.EditArgs)
+			v.PermissionFlags = slices.Clone(v.PermissionFlags)
+			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			a.Launch = &v
 		}
 		if a.Skills != nil {

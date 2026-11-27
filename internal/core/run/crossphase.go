@@ -183,13 +183,13 @@ func (c *coordinator) bindCrossOutcome(out *crossOutcome, plan *crossPlan) {
 // repromptCross renders the next round's directive: the prior artifact, the
 // problems the check named in it, and the same requested signatures.
 func (c *coordinator) repromptCross(plan *crossPlan, attempt int, problems []core.Problem) {
-	prior, _ := crashReviewBytes(plan.args.abs)
+	prior, _ := crashReviewBytes(plan.args.bundleRoot(), plan.args.abs)
 	plan.args.prompt = repair.RoundPrompt(crossDirective(c.dir, plan.output, plan.args.abs), repair.Nonce(), prior,
 		attempt+2, min(c.rounds, finderCount), problems, plan.args.artifact)
 }
 
 func (st *state) keepCrossAttempt(args *launchArgs, round int) {
-	raw, ok := crashReviewBytes(args.abs)
+	raw, ok := crashReviewBytes(args.bundleRoot(), args.abs)
 	if !ok {
 		return
 	}

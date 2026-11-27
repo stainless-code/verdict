@@ -153,8 +153,10 @@ func TestRenderWorkflowCarriesTheAgentKeyWiring(t *testing.T) {
 				"          VERDICT_MODEL: ${{ vars.VERDICT_MODEL }}",
 				"          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
 				`          if [ -n "${VERDICT_MODEL:-}" ]; then agent_args=(-- --model "$VERDICT_MODEL"); fi`,
-				"          # verdict never bakes a permission flag: this agent's documented one is " +
-					"--permission-mode acceptEdits,",
+				"          # verdict adds only a write scoped to the review bundle " +
+					"(--allowedTools=Edit(./.verdict/state/<pr>/**));",
+				"          # this agent's broader documented flag, --permission-mode acceptEdits, " +
+					"stays yours to append inside agent_args.",
 				"          # Install claude on the runner before this step: verdict installs",
 				"          # itself and never downloads an agent CLI.",
 				"          #   curl -fsSL https://claude.ai/install.sh | bash",
@@ -617,8 +619,8 @@ func TestGitLabWorkflowCarriesTheAgentKeyWiring(t *testing.T) {
 			agent: "claude",
 			lines: []string{
 				"    VERDICT_AGENT: claude",
-				"      # verdict never bakes a permission flag: this agent's documented one is " +
-					"--permission-mode acceptEdits,",
+				"      # verdict adds only a write scoped to the review bundle " +
+					"(--allowedTools=Edit(./.verdict/state/<pr>/**));",
 				"      #   curl -fsSL https://claude.ai/install.sh | bash",
 			},
 			absent: []string{"ANTHROPIC_API_KEY", "VERDICT_SKILL_AGENT"},

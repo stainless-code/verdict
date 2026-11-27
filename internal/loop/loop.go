@@ -38,14 +38,21 @@ const (
 	DefaultMaxRounds = "3"
 	// DefaultTimeout is the wall-clock limit a bare loop runs with.
 	DefaultTimeout = "600s"
+	// DefaultMaxSeverity is the tier a bare loop's gate fails at: an
+	// informational finding still shows in the round's output, but a
+	// from-scratch review always finds one more, so it never blocks a pass.
+	DefaultMaxSeverity = "important"
 
 	flagAgent     = "--agent"
 	flagMaxRounds = "--max-rounds"
 	flagMaxCost   = "--max-cost-usd"
+	flagSeverity  = "--max-severity"
 	flagTimeout   = "--timeout"
 	flagOutput    = "--output"
 	flagFixPrompt = "--fix-prompt"
 	flagPrint     = "--print"
+	// flagNoSandbox opts the verify step out of its default sandbox.
+	flagNoSandbox = "--no-sandbox"
 	// flagSandbox and flagSandboxNet pass verify's own sandbox flags to the
 	// fix phase's verify step.
 	flagSandbox    = "--sandbox"
@@ -59,28 +66,35 @@ const (
 	maxFixPromptBytes = 64 << 10
 
 	msgUnknownFlag = "unknown flag '%s' for loop (want --agent <name>, --max-rounds <n>, " +
+		"--max-severity <critical|important|informational>, " +
 		"--max-cost-usd <usd>, --timeout <duration>, --output <dir>, --fix-prompt <file>, --sandbox, " +
-		"--sandbox-network-only, --print, --json)"
+		"--sandbox-network-only, --no-sandbox, --print, -- <agent args>, --json)"
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
 // flags is the parsed loop surface.
 type flags struct {
-	agent      string
-	maxRounds  string
-	maxCost    string
-	timeout    string
-	output     string
-	fixPrompt  string
+	agent     string
+	maxRounds string
+	maxCost   string
+	severity  string
+	timeout   string
+	output    string
+	fixPrompt string
+	// pass is everything after `--`, verbatim: the agent arguments every
+	// spawn carries.
+	pass       []string
 	print      bool
 	sandbox    bool
 	sandboxNet bool
+	noSandbox  bool
 }
 
 // Run executes `loop <owner/repo> --agent <name> [--max-rounds <n>]
+// [--max-severity <tier>]
 // [--max-cost-usd <usd>] [--timeout <duration>] [--output <dir>]
 // [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
-// [--json]`.
+// [-- <agent args>...] [--json]`.
 func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, ""
 	// The summary owns stdout; every composed verb's progress goes to the
@@ -128,6 +142,10 @@ func exitFor(d *loopcore.Data) int {
 // loopRequest resolves the parsed flags into the service request: the limits,
 // the fix prompt's text, the receipts directory, and the prefs-defined agents.
 func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Request, *core.RefusalError) {
+	if postures := countTrue(f.sandbox, f.sandboxNet, f.noSandbox); postures > 1 {
+		return nil, &core.RefusalError{Code: codeBadFlags, Message: "--sandbox, --sandbox-network-only, and " +
+			"--no-sandbox are mutually exclusive (verify runs sandboxed unless you pick one opt-out)"}
+	}
 	rounds, ref := parseRounds(f.maxRounds)
 	if ref != nil {
 		return nil, ref
@@ -158,10 +176,13 @@ func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Re
 		MaxCostUSD: f.maxCost,
 		Output:     output,
 		FixPrompt:  prompt,
-		Print:      f.print,
+		AgentArgs:  f.pass,
 
-		VerifySandbox:            f.sandbox,
+		MaxSeverity: f.severity,
+		Print:       f.print,
+
 		VerifySandboxNetworkOnly: f.sandboxNet,
+		VerifyNoSandbox:          f.noSandbox,
 	}, nil
 }
 
@@ -211,6 +232,17 @@ func parseTimeout(raw string) (time.Duration, *core.RefusalError) {
 	return d, nil
 }
 
+// countTrue counts the set flags.
+func countTrue(flags ...bool) int {
+	n := 0
+	for _, f := range flags {
+		if f {
+			n++
+		}
+	}
+	return n
+}
+
 func digitsOnly(s string) bool {
 	return s != "" && strings.Trim(s, "0123456789") == ""
 }
@@ -254,10 +286,15 @@ func outputDir(raw string) (string, *core.RefusalError) {
 }
 
 // parseFlags strips loop's flags, refusing unknown ones and any positional
-// past the repo (exit 2).
+// past the repo (exit 2). Every argument after a bare `--` is the agent's,
+// passed through unchanged, as for run.
 func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
-	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout}
+	f := flags{maxRounds: DefaultMaxRounds, timeout: DefaultTimeout, severity: DefaultMaxSeverity}
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			f.pass = append([]string{}, args[i+1:]...)
+			break
+		}
 		next, uerr := parseToken(&f, args, i)
 		if uerr != nil {
 			return f, r.ReportUsage(uerr), true
@@ -318,6 +355,8 @@ func boolFlag(f *flags, arg string) *bool {
 		return &f.sandbox
 	case flagSandboxNet:
 		return &f.sandboxNet
+	case flagNoSandbox:
+		return &f.noSandbox
 	}
 	return nil
 }
@@ -333,6 +372,8 @@ func valueFlag(f *flags, arg string) *string {
 		return &f.maxRounds
 	case flagMaxCost:
 		return &f.maxCost
+	case flagSeverity:
+		return &f.severity
 	case flagTimeout:
 		return &f.timeout
 	case flagOutput:
@@ -352,6 +393,8 @@ func operand(name string) string {
 		return "<n>"
 	case flagMaxCost:
 		return "<usd>"
+	case flagSeverity:
+		return "<critical|important|informational>"
 	case flagTimeout:
 		return "<duration>"
 	case flagOutput:
@@ -378,7 +421,10 @@ func render(w io.Writer, d *loopcore.Data) {
 	}
 	fmt.Fprintln(w, untrusted.Line(outcomeLine(d)))
 	if d.Refusal != nil {
-		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, d.Refusal.Message))
+		// A composed verb's message may already lead with its code (record's
+		// coverage-incomplete does); the line names the code once.
+		msg := strings.TrimPrefix(d.Refusal.Message, d.Refusal.Code+": ")
+		fmt.Fprint(w, core.Msgf("loop: %s: %s\n", d.Refusal.Code, msg))
 	}
 }
 

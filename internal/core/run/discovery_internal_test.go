@@ -105,14 +105,15 @@ func TestAllowShellOmitsTheRestriction(t *testing.T) {
 	}
 }
 
-// TestPassThroughToolFlagSuppressesTheRestriction proves the operator's own
-// tool selection wins without duplication: one argv never carries both the
-// row's restriction and the flag the operator spelled after `--`.
-func TestPassThroughToolFlagSuppressesTheRestriction(t *testing.T) {
+// TestPassThroughAllowListKeepsTheRestriction proves an operator's additive
+// allow list sits beside the shell denial instead of dropping it: Claude Code
+// merges allow and deny lists, so dropping the denial would hand the shell to
+// any Bash(...) allow rule the operator's settings carry.
+func TestPassThroughAllowListKeepsTheRestriction(t *testing.T) {
 	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "Read,Write", false) {
-		if slices.Contains(argv, discoveryFlag) {
-			t.Errorf("pass-through tool flag still produced %q: %q", discoveryFlag, argv)
+		if n := countArg(argv, discoveryFlag); n != 1 {
+			t.Errorf("argv = %q carries the restriction %d times, want once", argv, n)
 		}
 		if n := countArg(argv, "--allowedTools"); n != 1 {
 			t.Errorf("argv = %q carries --allowedTools %d times, want once", argv, n)
@@ -148,41 +149,102 @@ func TestDiscoveryRestrictionResolution(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			checkRestriction(t, launchRow(t, tc.row), nil, false, tc.want)
+			checkRestriction(t, launchRow(t, tc.row), false, tc.want)
 		})
 	}
-	checkRestriction(t, launchRow(t, "claude"), nil, true, nil)
+	checkRestriction(t, launchRow(t, "claude"), true, nil)
 }
 
-// TestDiscoveryPassThroughSuppressesTheRestriction pins the operator's own tool
-// selection: a pass-through spelling of the row's override flags replaces the
-// row's restriction instead of duplicating it, in the inline `=` form and the
-// short alias alike.
-func TestDiscoveryPassThroughSuppressesTheRestriction(t *testing.T) {
+// TestOwnedFlagRefusesEverySpelling pins the decision: on a review launch the
+// operator may not pass the flag the row's shell denial uses, in any
+// spelling, position, or operand — exact, `=`-joined, short, after `--`, or
+// inside another option's value. --allow-shell hands the flag back, and a
+// row whose denial uses its own argument (claude) owns no operator flag.
+func TestOwnedFlagRefusesEverySpelling(t *testing.T) {
 	t.Parallel()
-	claude, pi, bob := launchRow(t, "claude"), launchRow(t, "pi"), launchRow(t, "bob")
-	kept := []string{"--disallowedTools=Bash,PowerShell"}
-	t.Run("operator deny list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--disallowedTools", "WebFetch"}, false, nil)
-	})
-	t.Run("operator inline deny list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--disallowedTools=Edit"}, false, nil)
-	})
-	t.Run("operator allow list", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--allowedTools=Read"}, false, nil)
-	})
-	t.Run("operator claude tools flag", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--tools", ""}, false, nil)
-	})
-	t.Run("operator pi short flag", func(t *testing.T) {
-		checkRestriction(t, pi, []string{"-t", "read,bash"}, false, nil)
-	})
-	t.Run("operator bob groups", func(t *testing.T) {
-		checkRestriction(t, bob, []string{"--disable-tool-groups", "mcp"}, false, nil)
-	})
-	t.Run("unrelated pass-through keeps it", func(t *testing.T) {
-		checkRestriction(t, claude, []string{"--model", "opus"}, false, kept)
-	})
+	pi, bob, claude := launchRow(t, "pi"), launchRow(t, "bob"), launchRow(t, "claude")
+	for _, tc := range []struct {
+		def        *agentcatalog.Launch
+		want       string
+		pass       []string
+		allowShell bool
+	}{
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--exclude-tools=markdown"}, want: "--exclude-tools=markdown"},
+		{def: pi, pass: []string{"--model", "m", "-xt=grep"}, want: "-xt=grep"},
+		{def: pi, pass: []string{"--", "--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--append-system-prompt", "--exclude-tools", "markdown"}, want: "--exclude-tools"},
+		{def: pi, pass: []string{"--append-system-prompt=use --exclude-tools x"}, want: "--append-system-prompt=use --exclude-tools x"},
+		{def: bob, pass: []string{"--disable-tool-groups", "mcp"}, want: "--disable-tool-groups"},
+		{def: pi, pass: []string{"--exclude-tools", "markdown"}, allowShell: true},
+		{def: pi, pass: []string{"--model", "m", "--tools", "+codemode"}},
+		{def: claude, pass: []string{"--disallowedTools", "WebFetch", "--tools", "Bash"}},
+	} {
+		if got := ownedFlagArg(tc.def, tc.pass, tc.allowShell); got != tc.want {
+			t.Errorf("%s %q (allow-shell %v) = %q, want %q", tc.def.Name, tc.pass, tc.allowShell, got, tc.want)
+		}
+	}
+}
+
+// TestRunRefusesAnOwnedDenialFlag proves the review-round repros end to end:
+// each spelling pi would drop or misread refuses bad-flags before any agent
+// starts.
+func TestRunRefusesAnOwnedDenialFlag(t *testing.T) {
+	t.Parallel()
+	for _, pass := range [][]string{
+		{"--exclude-tools=markdown"},
+		{"--", "--exclude-tools", "markdown"},
+		{"--append-system-prompt", "--exclude-tools", "markdown"},
+	} {
+		root := fixtureRoot(t)
+		cmdr := &scripted{}
+		req := request(root, cmdr)
+		req.Agent, req.PassThrough = "pi", pass
+		if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codeBadFlags {
+			t.Errorf("pi %q: ref = %v, want bad-flags", pass, ref)
+		}
+		if cmdr.calls != 0 {
+			t.Errorf("pi %q: spawns = %d, want none", pass, cmdr.calls)
+		}
+	}
+}
+
+// TestToolSetLaunchesKeepTheShellDenial proves the denial end to end on the
+// operator spellings that used to drop it: claude's --tools and pi's additive
+// --tools forms launch with the row's restriction still in argv.
+func TestToolSetLaunchesKeepTheShellDenial(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		agent string
+		pass  []string
+		deny  []string
+	}{
+		{agent: "claude", pass: []string{"--tools", "Bash,Edit"}, deny: []string{discoveryFlag}},
+		{agent: "pi", pass: []string{"--tools", "+codemode"}, deny: []string{"--exclude-tools", "bash,powershell"}},
+		{agent: "pi", pass: []string{"--tools", "-write"}, deny: []string{"--exclude-tools", "bash,powershell"}},
+	} {
+		root := fixtureRoot(t)
+		dir := bundleDir(root)
+		cmdr := &scripted{write: func() { writeReview(t, dir) }}
+		req := request(root, cmdr)
+		req.Agent, req.PassThrough = tc.agent, tc.pass
+		if _, ref := Run(t.Context(), req); ref != nil {
+			t.Fatalf("%s %q refused: %v", tc.agent, tc.pass, ref)
+		}
+		if argv := cmdr.cmd.Argv; !containsRun(argv, tc.deny) {
+			t.Errorf("%s %q argv = %q, want the denial %q", tc.agent, tc.pass, argv[:len(argv)-1], tc.deny)
+		}
+	}
+}
+
+// containsRun reports whether want appears in argv as consecutive elements.
+func containsRun(argv, want []string) bool {
+	for i := 0; i+len(want) <= len(argv); i++ {
+		if slices.Equal(argv[i:i+len(want)], want) {
+			return true
+		}
+	}
+	return false
 }
 
 // launchRow resolves one shipped launch definition, failing on a name the
@@ -197,9 +259,9 @@ func launchRow(t *testing.T, name string) *agentcatalog.Launch {
 }
 
 // checkRestriction compares one resolver call with its literal expectation.
-func checkRestriction(t *testing.T, def *agentcatalog.Launch, passthrough []string, allowShell bool, want []string) {
+func checkRestriction(t *testing.T, def *agentcatalog.Launch, allowShell bool, want []string) {
 	t.Helper()
-	if got := discoveryRestriction(def, passthrough, allowShell); !slices.Equal(got, want) {
+	if got := discoveryRestriction(def, allowShell); !slices.Equal(got, want) {
 		t.Fatalf("restriction = %q, want %q", got, want)
 	}
 }
@@ -240,7 +302,7 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 		t.Fatalf("run refused: %v", ref)
 	}
 	want := []string{
-		"claude", "-p", "--output-format", "json", discoveryFlag,
+		"claude", "-p", "--output-format", "json", discoveryFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
 		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
 	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {

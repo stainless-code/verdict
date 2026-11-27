@@ -21,7 +21,9 @@ verdict fetch owner/repo 123
 #    of refs/ files to pull on demand; an installed skill may be older):
 #    Point the agent at .verdict/state/123/. It writes review.json FIRST with
 #    {"schema_version":"1","findings":[]}, reads full.diff fully via toc.txt,
-#    then updates that same file with every suspected finding and its confidence.
+#    then updates that same file with every suspected finding and its confidence,
+#    plus the coverage[] attestation of what it read (chunks[] when chunked) that
+#    the default gate requires.
 #    refs/ holds the operator workflow and body-format rules for on-demand reads.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
@@ -557,6 +559,7 @@ used `[ev-N]` reference definitions so links stay self-contained.
 | `spec-na-unjustified`          | warning | An `n/a` spec check carries no `note` saying why the item does not apply; `--strict` and `strict_input` promote it to an error.                   |
 | `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
 | `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff`, or an `unmet`/`n/a` check carries evidence it may not.            |
+| `coverage-incomplete`          | error   | With `run --require-coverage` only: the coverage attestation `record --require-coverage` would refuse, carrying record's message.                 |
 
 ### Evidence checks
 
@@ -1379,6 +1382,7 @@ the behavior stays off until a layer above turns it on.
 | gate                  | --coverage                     | require          |
 | gate                  | --live                         | auto             |
 | loop                  | --max-rounds                   | 3                |
+| loop                  | --max-severity                 | important        |
 | loop                  | --timeout                      | 600s             |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
@@ -1764,7 +1768,9 @@ merge gate (`--coverage warn` reports the same shortfall without failing). That 
 by default — `post` and `record` keep the warning posture below.
 
 `--require-coverage` on `post` and `record` turns absence or a gap into a
-`coverage-incomplete` refusal that names the unattested ranges. `--force` does
+`coverage-incomplete` refusal that names the unattested ranges; on a chunked
+bundle a `chunks[]` that names no chunk (absent, `false`, or empty) refuses the
+same way, the shortfall `gate` grades as unknown. `--force` does
 not bypass it: this is a read receipt, not a security boundary, but a require
 flag a force flag can ignore is not a contract. The refusal is raised before
 any store write, so a refused run leaves the prior `findings.json` untouched —
@@ -4053,6 +4059,23 @@ a shape-only repeat stays `repair-exhausted`. `--json` carries the loop in
 round's evidence summary); each round's bytes, check, and evidence receipt stay
 in the bundle's `.run.rounds/` files.
 
+`--require-coverage` carries `record --require-coverage` into the launch, with
+the same meaning: an absent or partial diff-coverage attestation on a
+non-chunked bundle — or, on a chunked bundle, a `chunks[]` that names no chunk
+(absent, `false`, or empty), which the
+default `gate` fails on — is a `coverage-incomplete` problem in the round's fix
+list, so the agent gets a repair round for it, and the directive states the
+requirement up front so a first attempt usually carries it. A run that ends
+with the coverage gap as its only error refuses `coverage-incomplete` with
+record's own message; any other error left keeps its own refusal
+(`bad-review-input`, `repair-exhausted`, `review-insufficient`). It applies to
+the review artifacts, never to cross-checks or drain. With two finders each
+finder gets the repair round, but a finder whose only gap is coverage still
+counts (the union's attestation is what the run requires): the union is
+checked before any cross-check spends, and an unattested union refuses
+`coverage-incomplete`. `--resume` seals the flag, so continuing an execution
+with it flipped refuses `resume-drift`.
+
 ### Resuming an interrupted execution (`--resume`)
 
 A two-finder run is four barriers: both finders, the union and plan, both cross
@@ -4197,35 +4220,97 @@ spend** under Cost control); a plain launch does not.
 | `zcode`       | `zcode`                          | `-p <directive>`       | `build @zcode/cli from https://github.com/zai-org/ZCode`                                                                               | none: `--mode` defaults to `yolo` with `--prompt`                                                | [ZCode reference](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/02-cli-reference.md)                        |
 
 Permission and approval flags are yours to pass after `--`, never baked into a
-row. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
+row; the one grant `run` adds itself is the scoped review write below. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
 and Ultra subscriptions use `agy`. Qwen Code's positional prompt is the
 supported one-shot form (`-p` is deprecated). `cursor` keeps `cursor-agent`
 because that is the binary its installer still puts on `PATH`.
 
 ### Discovery restrictions
 
-Discovery is read-only. An external harness handed an unconstrained shell spends
-its budget on builds, tests, and cross-compiles, so `run` adds the row's own
-documented tool flags to every launch it makes — finders, opposite-finder
+Discovery denies the shell. An external harness handed an unconstrained shell
+spends its budget on builds, tests, and cross-compiles, so `run` adds the row's
+own documented tool flags to every launch it makes — finders, opposite-finder
 cross-checks, repair rounds, and drain — while leaving file reads and the
 artifact write (`review.json`, `verdicts.json`, `drain.replies.json`) intact.
 Only rows whose CLI documents the exact spelling carry one; a row without one is
-launched unchanged. `--allow-shell` restores the row's own tool set, and a
-pass-through spelling of a flag below suppresses the restriction instead of
-sitting beside it, so one argv never carries two answers to the same question.
+launched unchanged. The denial is unconditional: only `--allow-shell`
+restores the row's own tool set, and no flag you pass after `--` drops it —
+not an allow or deny list, not a whole tool set (`claude --tools`, pi
+`--tools`/`--no-tools`), not pi's additive `--tools +name`. verdict's denial
+is its own argument, placed ahead of your `--` arguments, so none of them can
+turn it into a message. `claude`'s deny rule beats any allow. For pi and bob
+the denial uses a flag you might also pass (the third column): a later
+`--exclude-tools` replaces an earlier one, and a spelling pi does not parse
+would silently drop it, so on a review launch verdict owns that flag — any
+spelling of it after `--`, `=`-joined, short, after a further `--`, or inside
+another option's value, refuses `bad-flags` (pass `--allow-shell` to own the
+tool set yourself).
+
+**The denial is not a write boundary, for any agent.** verdict denies the
+shell and, for `claude`, grants a write to the launch's own bundle directory
+(below), but it removes nothing the agent is otherwise allowed: `claude`'s
+grant is an added allow rule, so an allow rule in your own Claude settings
+(`Edit(**)` in `~/.claude/settings.json`, or a project's
+`.claude/settings.json`) still applies, and every other agent keeps its own
+edit and write tools during review. A prompt-injected review can therefore
+edit files in the checkout without a shell. Until review launches run against
+a read-only snapshot, review an untrusted pull request in a disposable
+checkout, whatever the agent, or render the command with `run --print` and run
+the agent yourself somewhere it can do no harm.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                     | Flags that decide the same question                              | Source                                                                                     |
-| -------- | ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`                                          | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | `--disallowedTools`, `--allowedTools`, `--tools`                 | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `--tools`, `--no-builtin-tools`, `--no-tools` | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                     | Flag verdict owns on review launches | Source                                                                                     |
+| -------- | ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | none (a deny rule beats any allow)   | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
 name. PowerShell is denied beside Bash because Windows Claude Code can reach the
 shell through either tool.
+
+### Review write grant
+
+`claude -p` in its default permission mode denies the `review.json` write, so
+the review would refuse `no-review-artifact`. `run` therefore adds one grant to
+every `claude` launch it makes — finders, cross-checks, repair rounds, and
+drain — scoped to that launch's own output directory and nothing else:
+`--allowedTools=Edit(./.verdict/state/<bundle>/**)` from the repository root
+(a finder or cross-check names its own phase directory under the bundle; a
+launch from another checkout names the directory absolutely, `//<path>`, with
+a Windows drive as `//c/...`). Claude Code's `Edit` rules cover every built-in
+file-editing tool, so the grant lets the agent write its artifacts there.
+It is an added allow rule, not a confinement: verdict never removes allow
+rules you configured in Claude's own settings, so review an untrusted change
+in a disposable checkout (see above).
+
+The grant never widens past that directory. `run` refuses a bundle whose
+`.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,
+as `record` and `post` do), and since the grant covers the whole bundle, `run`
+walks it before any agent starts: a symlink, a non-regular entry (a FIFO, a
+socket, a device), or a regular file with a second hard link anywhere in it
+refuses `artifact-path-unsafe` (a checked-in `review.json -> ../../../src/main.go`
+or a `cost.json` link would aim the agent's write at that source file). The
+link count is read from the file itself on every platform — `Stat_t.Nlink` on
+unix, `NumberOfLinks` from `GetFileInformationByHandle` on Windows. After the
+agent exits the artifact is
+read without following a link at any component below the bundle, and the
+rule path is built from the resolved
+directory, which must lie strictly under the resolved `.verdict/state` and
+must not hold the agent's working directory. A directory that fails that, or
+whose path holds a character the rule syntax reads as syntax (a space, a
+comma, a parenthesis, a glob character — a local bundle named `feat(api)`),
+launches without the grant and with a warning that says why. The operator's
+own permission flags after `--` own the question and drop the grant: the
+row's `--permission-mode`, `--dangerously-skip-permissions`,
+`--allowedTools`, `--add-dir`, and `--tools`. `--print` renders the grant like
+every other argument. No other row carries one: `codex exec` runs read-only by
+default and documents no writable option narrower than `--sandbox
+workspace-write` (the whole working tree), so a `codex` review still needs
+that flag after `--`, and `no-review-artifact` names it.
+([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
 
 `cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
 
@@ -7734,7 +7819,7 @@ still report `corrupt-store`.
 Before opening a PR, run the loop from the repository being reviewed:
 
 ```sh
-verdict loop owner/repo --agent codex --max-rounds 3 --timeout 600s
+verdict loop owner/repo --agent claude --max-rounds 3 --timeout 600s
 ```
 
 `--agent` takes any row of `run`'s agent table or an operator-defined agent from
@@ -7746,7 +7831,17 @@ Each round runs four phases in-process, with the same services and options as
 the CLI verbs: `fetch-local` into a fresh local bundle (`local-loop-<id>-<n>`),
 `run --finders 1` (the review only — the agent writes `review.json` and leaves
 the working tree alone), `record --require-coverage`, and `gate --max-severity
-informational --coverage require --live skip`. A passing gate ends the loop.
+<tier> --coverage require --live skip`. A passing gate ends the loop.
+`--max-severity critical|important|informational` (default `important`) has
+`gate`'s meaning: an open finding at or above the tier fails the round. An
+informational finding still shows in the round's `open` count and its
+findings, but a from-scratch review always finds one more, so by default it
+does not hold the loop; `--max-severity informational` restores the strict
+gate.
+The review step is `run --finders 1 --rounds 2 --require-coverage`: a review
+`record --require-coverage` would refuse for missing or partial coverage gets a
+repair round instead of stopping the loop at record (see `--require-coverage`
+under the run verb).
 A failed gate starts the fix phase: the agent is spawned again with the fix
 directive — the built-in instructions, or the text of `--fix-prompt <file>`
 followed by the round's context (the findings file, the bundle, and its
@@ -7755,15 +7850,50 @@ working tree. When the fix declares a command in the bundle's `patch.json`
 (`{"verifyCmd": "..."}`), the loop runs `verdict verify` on it, so the fix
 carries the tool's receipt rather than the agent's word; the receipt is
 recorded, never a stop, except a cancel, which stops the loop in that round.
-The command is the agent's own proposal: `--sandbox` or
-`--sandbox-network-only` runs that verify step under `verify`'s enforced
-sandbox (off by default, as for `verify` itself; the two are mutually
-exclusive). Every phase runs under the `--timeout` deadline, and the review's
+The command is the agent's own proposal, and the tests it runs execute code
+the agent just edited, so the loop runs that verify step under `verify
+--sandbox` by default (sandbox-exec on macOS, bwrap on Linux; `--sandbox`
+confirms it). A host without the sandbox stops the loop at that verify with
+`sandbox-unavailable`, naming the opt-outs — it never runs the command
+unwrapped on its own. `--sandbox-network-only` cuts the network only — it gives
+no filesystem or PID isolation, so the command can still read and write as
+you — and `--no-sandbox` runs the command unsandboxed, as you, with a warning;
+the three are mutually exclusive. Every phase runs under the `--timeout` deadline, and the review's
 two launch-to-check attempts each get half the time that remains. The next
 round fetches the working tree again and reviews the fixes from scratch, so a
 review never grades a tree that changed under it. The last round has no fix
 phase: nothing would review it. The loop never commits, stages, pushes, posts,
 or opens a PR.
+
+The fix edits the working tree, which an agent CLI's default non-interactive
+mode refuses, so the fix spawn carries the row's documented edit grant, the
+narrowest its docs name: `claude` `--permission-mode acceptEdits
+--disallowedTools=Bash,PowerShell` (acceptEdits also auto-approves filesystem
+shell commands such as `rm` and `mv`, so the fix keeps the review's shell
+denial; the loop's verify step runs the tests), `codex` `--sandbox
+workspace-write` (codex documents no edit-only mode: workspace-write also runs
+shell commands, sandboxed to the working tree). Every other row carries none
+(an approval bypass such as `--yolo` or `--dangerously-skip-permissions` is
+never used as one). The review spawn needs no edit grant, but it must still
+write `review.json`: it carries `run`'s scoped review-write grant only for a
+row that defines one, which today is `claude` alone. Any other agent's review
+writes with whatever its own default mode allows. `codex exec` runs read-only
+by default, and `loop --` takes only a model flag, so a `codex` loop review
+cannot write `review.json` itself: it relies on `run`'s salvage of a fenced
+findings block from its stdout, and a round whose review leaves none stops the
+loop with `no-review-artifact`. Arguments after `--` (`verdict loop owner/repo
+--agent claude -- --model opus`) go to every spawn, after the fix's edit
+grant. They also reach the review of untrusted content, so they are an
+allowlist, not a denylist: only the agent row's model flag with one value
+(`--model opus`, or a documented alias such as codex's `-m opus`), in the
+spaced form only — no row's docs cite `--model=opus`, and pi ignores it — is
+accepted, and any other argument — an empty one included, or a
+tool set, a permission mode, a sandbox, an approval bypass, a config override
+— refuses `bad-flags` before anything runs, naming what is allowed. (`verdict
+run --` keeps passing your arguments as they are: there you own them.) A
+symlink at `patch.json` or `fix-cost.json` in the round bundle refuses
+`artifact-path-unsafe` before the fix spawns. `--print` renders each grant in
+the exact argv.
 
 The loop stops on the first of:
 

@@ -97,8 +97,8 @@ jobs:
           # Install claude on the runner before this step: verdict installs
           # itself and never downloads an agent CLI.
           #   curl -fsSL https://claude.ai/install.sh | bash
-          # verdict never bakes a permission flag: this agent's documented one is --permission-mode acceptEdits,
-          # appended by you inside agent_args when the run needs it.
+          # verdict adds only a write scoped to the review bundle (--allowedTools=Edit(./.verdict/state/<pr>/**));
+          # this agent's broader documented flag, --permission-mode acceptEdits, stays yours to append inside agent_args.
           agent_args=()
           if [ -n "${VERDICT_MODEL:-}" ]; then agent_args=(-- --model "$VERDICT_MODEL"); fi
           verdict run "$VERDICT_REPOSITORY" "$VERDICT_PR" --agent "$VERDICT_AGENT" "${agent_args[@]}"

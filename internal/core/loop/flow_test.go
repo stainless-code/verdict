@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
 	"github.com/stainless-code/verdict/internal/testenv"
@@ -32,8 +33,10 @@ const agentBinary = "claude"
 // agent for the review and fix spawns and hands every other process (the
 // verify command, git) to the production watchdog.
 type agentCommander struct {
-	t              *testing.T
-	costAt         string
+	t      *testing.T
+	costAt string
+	// severity is the finding's severity; "" is important.
+	severity       string
 	spawns         []string
 	argvs          [][]string
 	fixExit        int
@@ -50,6 +53,12 @@ type agentCommander struct {
 	fixCapped bool
 	// rejectUsage makes the agent refuse the structured-output flag.
 	rejectUsage bool
+	// coverageLate omits coverage[] from the first review attempt, as the
+	// live opencode probe did.
+	coverageLate bool
+	// followsProcedure attests coverage only when the bundle's procedure.md
+	// asks for it, the way an agent following its handoff does.
+	followsProcedure bool
 }
 
 // measuredResult is the json result a measured spawn prints.
@@ -123,15 +132,46 @@ func (a *agentCommander) review(checkout, artifact string) {
 	dir := filepath.Dir(artifact)
 	a.reviews++
 	findings, receipts := a.findings(checkout), hunkReceipts(a.t, dir)
-	if findings != "[]" {
+	// A review whose findings are all below the approval tier still owes its
+	// reading receipts.
+	if findings != "[]" && a.severity != "informational" {
 		receipts = "[]"
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
-		`,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":`+receipts+`}`)
+		a.coverage(dir)+`,"receipts":`+receipts+`}`)
 	if (a.measured && !a.selfReportToo) || (a.repairNoCost && a.reviews == 2) {
 		return
 	}
 	write(a.t, filepath.Join(dir, "cost.json"), a.costRecord())
+}
+
+// coverage is the review's attestation field, absent from a first attempt
+// the leg makes late.
+func (a *agentCommander) coverage(dir string) string {
+	if a.followsProcedure {
+		return a.askedCoverage(dir)
+	}
+	if a.coverageLate && a.reviews == 1 {
+		return ""
+	}
+	return `,"coverage":[{"file":"notes.txt","ranges":"1-3"}]`
+}
+
+// askedCoverage is the attestation the bundle's procedure.md asks for —
+// every changed file whole, [] when nothing changed — or none when it asks
+// for none.
+func (a *agentCommander) askedCoverage(dir string) string {
+	procedure, err := os.ReadFile(filepath.Join(dir, "procedure.md"))
+	if err != nil {
+		a.t.Errorf("read procedure.md: %v", err)
+	}
+	if !strings.Contains(string(procedure), "top-level `coverage[]` holds `{\"file\":\"<path>\",\"ranges\":\"all\"}` per changed file, `[]` if none") {
+		return ""
+	}
+	if diff, err := os.ReadFile(filepath.Join(dir, "full.diff")); err != nil || len(diff) == 0 {
+		return `,"coverage":[]`
+	}
+	return `,"coverage":[{"file":"notes.txt","ranges":"all"}]`
 }
 
 // findings is the review's finding list: the changed line until it is
@@ -148,8 +188,12 @@ func (a *agentCommander) findings(checkout string) string {
 	if a.repairFirst && a.reviews == 1 {
 		quote = "a line the diff never had"
 	}
+	severity := a.severity
+	if severity == "" {
+		severity = "important"
+	}
 	return `[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Incorrect line.","quote":"` + quote + `",` +
-		`"confidence":"high","severity":"important","rigor":"walked"}]`
+		`"confidence":"high","severity":"` + severity + `","rigor":"walked"}]`
 }
 
 // costRecord is the review's cost.json: the prompt's undated schema-2
@@ -331,12 +375,16 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 			},
 			Environ: testenv.Base(nil),
 		},
-		RepoRoot:  repo,
-		Repo:      "acme/app",
-		Agent:     agentBinary,
-		MaxRounds: 3,
-		Timeout:   5 * time.Minute,
-		Output:    filepath.Join(t.TempDir(), "receipts"),
+		RepoRoot:    repo,
+		Repo:        "acme/app",
+		Agent:       agentBinary,
+		MaxRounds:   3,
+		MaxSeverity: "informational",
+		// The integration agent's verify command is the test's own; a CI
+		// host without the platform sandbox would otherwise refuse it.
+		VerifyNoSandbox: true,
+		Timeout:         5 * time.Minute,
+		Output:          filepath.Join(t.TempDir(), "receipts"),
 	}
 }
 
@@ -346,13 +394,16 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 // month-to-date scan priced: the review from its prompt-shaped (undated,
 // schema-2) cost.json, the fix from its fix-cost.json report — so a loop
 // with --max-cost-usd proceeds past round 1 with the review counted.
+// The agent attests coverage only because the bundle's procedure.md asks for
+// it, so the pass also proves the handoff asks for what the default gate
+// requires.
 //
 // fetch-local reads the process working directory, so the test chdirs and
 // cannot run in parallel.
 func TestLoopThroughTheShippedServices(t *testing.T) {
 	repo := flowRepo(t)
 	t.Chdir(repo)
-	agent := &agentCommander{t: t, reportFixCost: true}
+	agent := &agentCommander{t: t, reportFixCost: true, followsProcedure: true}
 	req := flowRequest(t, repo, agent)
 	req.MaxCostUSD = "5"
 	resp, ref := Run(t.Context(), req)
@@ -424,6 +475,108 @@ func flowLoop(t *testing.T, agent *agentCommander, maxCost string) (*Response, s
 		t.Fatalf("loop refused: %v", ref)
 	}
 	return resp, repo
+}
+
+// TestLoopRepairsAReviewThatOmitsCoverage proves the loop's review repairs
+// what its own record step would refuse: the first attempt carries no
+// coverage[], run sends it back with the coverage gap, and the round reaches
+// record and gate instead of stopping refused coverage-incomplete. Every
+// review spawn carries claude's scoped bundle grant and no edit grant, the fix
+// spawn carries the edit grant, and the operator's `--` tail reaches all.
+func TestLoopRepairsAReviewThatOmitsCoverage(t *testing.T) {
+	agent := &agentCommander{t: t, coverageLate: true, reportFixCost: true}
+	repo := flowRepo(t)
+	t.Chdir(repo)
+	req := flowRequest(t, repo, agent)
+	req.AgentArgs = []string{"--model", "opus"}
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
+		t.Fatalf("stop=%s refusal=%+v, want a pass in round 2", resp.Data.Stop, resp.Data.Refusal)
+	}
+	if rd := resp.Data.Rounds[0]; rd.Open == nil || *rd.Open != 1 || rd.Gate == nil || *rd.Gate {
+		t.Errorf("round 1 = open %v gate %v, want record and a failed gate after the repair", rd.Open, rd.Gate)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review,review,fix,review" {
+		t.Errorf("spawns = %s, want the repaired review, the fix, and the re-review", got)
+	}
+	// The operator's `--` tail reaches every spawn, and the edit grant the
+	// fix alone: the review of untrusted content is never armed to edit.
+	assertSpawnGrants(t, agent)
+	assertEverySpawnCarries(t, agent, "opus")
+}
+
+// assertEverySpawnCarries proves an operator argument reached every spawn.
+func assertEverySpawnCarries(t *testing.T, agent *agentCommander, arg string) {
+	t.Helper()
+	for i, argv := range agent.argvs {
+		if !slices.Contains(argv, arg) {
+			t.Errorf("%s argv = %q lacks the operator's %q", agent.spawns[i], argv[:len(argv)-1], arg)
+		}
+	}
+}
+
+// assertSpawnGrants proves the edit grant rides the fix spawn alone, the
+// scoped bundle grant every review spawn alone, and every spawn keeps the
+// shell denial.
+func assertSpawnGrants(t *testing.T, agent *agentCommander) {
+	t.Helper()
+	for i, argv := range agent.argvs {
+		edits := slices.Contains(argv, "--permission-mode")
+		grant := slices.ContainsFunc(argv, func(a string) bool { return strings.HasPrefix(a, "--allowedTools=Edit(") })
+		if fix := agent.spawns[i] == "fix"; edits != fix || grant == fix || !slices.Contains(argv, shellDenial) {
+			t.Errorf("%s argv = %q, want the edit grant only on the fix, the bundle grant only on reviews, "+
+				"and the shell denial on every spawn", agent.spawns[i], argv[:len(argv)-1])
+		}
+	}
+}
+
+// shellDenial is claude's restriction every loop spawn carries.
+const shellDenial = "--disallowedTools=Bash,PowerShell"
+
+// TestLoopPassesAtImportantWithAnInformationalFinding proves --max-severity
+// reaches the gate: an informational finding stays open and shown, and the
+// default tier passes the round instead of spending a fix on it.
+func TestLoopPassesAtImportantWithAnInformationalFinding(t *testing.T) {
+	repo := flowRepo(t)
+	t.Chdir(repo)
+	agent := &agentCommander{t: t, severity: "informational"}
+	req := flowRequest(t, repo, agent)
+	req.MaxSeverity = "important"
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	rd := resp.Data.Rounds
+	if resp.Data.Stop != StopPass || len(rd) != 1 || rd[0].Open == nil || *rd[0].Open != 1 {
+		t.Fatalf("stop=%s refusal=%+v rounds=%+v, want a pass in round 1 with the informational finding open", resp.Data.Stop, resp.Data.Refusal, rd)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review" {
+		t.Errorf("spawns = %s, want the review alone", got)
+	}
+}
+
+// TestLoopPassesACleanTree proves a tree with nothing to fix passes in round
+// 1 without a fix spawn: the agent attests the empty change as the procedure
+// asks, so the default gate grades coverage as nothing to measure.
+func TestLoopPassesACleanTree(t *testing.T) {
+	repo := flowRepo(t)
+	git(t, repo, "checkout", "--", "notes.txt")
+	t.Chdir(repo)
+	agent := &agentCommander{t: t, followsProcedure: true}
+	resp, ref := Run(t.Context(), flowRequest(t, repo, agent))
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 1 {
+		t.Fatalf("stop=%s rounds=%d refusal=%+v, want a pass in round 1",
+			resp.Data.Stop, len(resp.Data.Rounds), resp.Data.Refusal)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review" {
+		t.Errorf("spawns = %s, want the one review and no fix", got)
+	}
 }
 
 // TestLoopDatedCostIsNotCountedTwice proves the legacy dated cost record,
@@ -661,4 +814,73 @@ func TestLoopRetriesAnAgentThatRejectsTheUsageFlag(t *testing.T) {
 	if flagged != 1 {
 		t.Errorf("%d spawns carried the rejected flag, want only the first: %q", flagged, agent.argvs)
 	}
+}
+
+// TestLoopFixRefusesALinkedPatchFile proves the fix spawn never starts over a
+// symlinked patch.json or fix-cost.json in the round bundle: verdict reads
+// both back, and a link would point that read, and the agent's write, at the
+// file it names.
+func TestLoopFixRefusesALinkedPatchFile(t *testing.T) {
+	t.Parallel()
+	assertFixRefusesPlanted(t, func(dir string) error {
+		return os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(dir, patchFile))
+	})
+}
+
+// assertFixRefusesPlanted plants one entry in a fresh round bundle, then
+// proves the fix phase refuses artifact-path-unsafe without spawning.
+func assertFixRefusesPlanted(t *testing.T, plant func(dir string) error) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := plant(dir); err != nil {
+		t.Fatalf("plant: %v", err)
+	}
+	agent := &agentCommander{t: t}
+	repo := t.TempDir()
+	p := &flowPhases{req: flowRequest(t, repo, agent)}
+	b := &reviewflow.Bundle{Dir: repo, Repo: "acme/app", Pr: "local-x"}
+	ref := p.fix(t.Context(), b, reviewflow.Launch{Agent: agentBinary, TimeoutRaw: "60"}, "fix", dir, "id")
+	if ref == nil || ref.Code != "artifact-path-unsafe" {
+		t.Fatalf("ref = %v, want artifact-path-unsafe", ref)
+	}
+	if len(agent.spawns) != 0 {
+		t.Errorf("spawns = %q, want none", agent.spawns)
+	}
+}
+
+// TestLoopVerifyReceivesTheDefaultSandbox records the posture the verify
+// service itself receives under the default — no opt-out set — so a
+// regression in the default cannot hide behind the plan's rendering.
+func TestLoopVerifyReceivesTheDefaultSandbox(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	req := flowRequest(t, repo, &agentCommander{t: t})
+	req.VerifyNoSandbox = false
+	var got *verifycore.Request
+	p := &flowPhases{req: req, runVerify: func(_ context.Context, r *verifycore.Request) (*verifycore.Response, *core.RefusalError) {
+		got = r
+		return &verifycore.Response{}, nil
+	}}
+	p.verify(t.Context(), &reviewflow.Bundle{Dir: repo, Repo: "acme/app", Pr: "local-x"}, "60")
+	if got == nil || !got.Sandbox || got.SandboxNetworkOnly {
+		t.Fatalf("verify request = %+v, want the full sandbox by default", got)
+	}
+}
+
+// TestLoopFixRefusesAHardLinkedPatchFile proves the fix phase applies the
+// review walk's hard-link check to patch.json, on every platform that can
+// make the link: a patch.json hard-linked to a file outside the bundle would
+// carry verdict's read, and the agent's write, to that file.
+func TestLoopFixRefusesAHardLinkedPatchFile(t *testing.T) {
+	t.Parallel()
+	assertFixRefusesPlanted(t, func(dir string) error {
+		source := filepath.Join(t.TempDir(), "main.go")
+		if err := os.WriteFile(source, []byte("package main\n"), 0o600); err != nil {
+			return err
+		}
+		if err := os.Link(source, filepath.Join(dir, patchFile)); err != nil {
+			t.Skipf("hard links unavailable on this filesystem: %v", err)
+		}
+		return nil
+	})
 }

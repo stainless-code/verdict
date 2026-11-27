@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -58,6 +59,7 @@ const (
 	keyAgentSource    = "agent_source"
 	keyFinders        = "finders"
 	keyFinderSource   = "finder_source"
+	keyRequireCov     = "require_coverage"
 	keyFingerprint    = "fingerprint"
 	keyContextTXT     = "context_txt_sha256"
 	keyThreadsJSON    = "threads_json_sha256"
@@ -105,6 +107,10 @@ type resumeFingerprint struct { //nolint:govet // field order is the published p
 	PassThroughSHA256 string `json:"pass_through_sha256"`
 	Finders           int    `json:"finders"`
 	FinderSource      string `json:"finder_source"`
+	// RequireCoverage is "true" for an execution launched with
+	// --require-coverage and absent otherwise, so a record sealed before the
+	// flag existed reads as the flag off.
+	RequireCoverage string `json:"require_coverage,omitempty"`
 }
 
 // fingerprintRow is one sealed input: the key it is recorded under, the
@@ -149,6 +155,10 @@ func (f *resumeFingerprint) rows() []fingerprintRow {
 		},
 		{key: keyFinders, note: "the finder count differs from the interrupted run's", value: strconv.Itoa(f.Finders)},
 		{key: keyFinderSource, note: "the finder source changed since the interrupted run", value: f.FinderSource},
+		{
+			key: keyRequireCov, note: "--require-coverage differs from the interrupted run's",
+			value: f.RequireCoverage,
+		},
 	}
 }
 
@@ -230,6 +240,9 @@ func (r *launcherResume) wire() *jq.Obj {
 	if r.AgentSource != "" {
 		obj.Set(keyAgentSource, r.AgentSource)
 	}
+	if r.RequireCoverage != "" {
+		obj.Set(keyRequireCov, r.RequireCoverage)
+	}
 	if r.PriorStatus != "" {
 		obj.Set("prior_status", r.PriorStatus)
 	}
@@ -288,6 +301,7 @@ func launcherResumeOf(manifest *jq.Obj) *launcherResume {
 		PassThroughSHA256: jq.StrOf(readcommon.FieldOf(block, keyPassThrough)),
 		Finders:           int(readcommon.NumOr(readcommon.FieldOf(block, keyFinders))),
 		FinderSource:      jq.StrOf(readcommon.FieldOf(block, keyFinderSource)),
+		RequireCoverage:   jq.StrOf(readcommon.FieldOf(block, keyRequireCov)),
 	}
 	if record.ExecutionID == "" || record.Fingerprint == "" {
 		return nil
@@ -773,8 +787,10 @@ func (c *coordinator) checkResumeCapture(record *launcherResume, captured *confi
 // reviewer, so a resume refuses it. So is a row whose documented discovery
 // restriction changed, or an attempt that flipped --allow-shell: the two would
 // spend the interruption's phases under a tool set the record never sealed.
-// Only the digest is recorded: the record has no reason to repeat the argv.
-func launchDefDigest(def *agentcatalog.Launch, restriction []string) string {
+// The review write grant is sealed too: an attempt whose agent could write
+// somewhere else is a different launch. Only the digest is recorded: the
+// record has no reason to repeat the argv.
+func launchDefDigest(def *agentcatalog.Launch, restriction, grant []string) string {
 	var sb strings.Builder
 	sb.WriteString("binary=")
 	sb.WriteString(def.Binary)
@@ -796,6 +812,11 @@ func launchDefDigest(def *agentcatalog.Launch, restriction []string) string {
 	}
 	for _, arg := range restriction {
 		sb.WriteString("restrict=")
+		sb.WriteString(arg)
+		sb.WriteByte('\n')
+	}
+	for _, arg := range grant {
+		sb.WriteString("grant=")
 		sb.WriteString(arg)
 		sb.WriteByte('\n')
 	}
@@ -859,10 +880,13 @@ func (c *coordinator) fingerprintNow(captured *config.RunState, source string) (
 		AgentSource:       c.base.def.Source,
 		ContextTXTSHA256:  contextTXT,
 		ThreadsJSONSHA256: threadsJSON,
-		LaunchDefSHA256:   launchDefDigest(&c.base.def, c.base.restriction),
+		LaunchDefSHA256:   launchDefDigest(&c.base.def, c.base.restriction, c.base.grant),
 		PassThroughSHA256: passThroughDigest(c.st.req.PassThrough),
 		Finders:           finderCount,
 		FinderSource:      source,
+	}
+	if c.st.req.RequireCoverage {
+		fingerprint.RequireCoverage = "true"
 	}
 	fingerprint.Fingerprint = fingerprint.digest()
 	return fingerprint, nil
@@ -1060,8 +1084,15 @@ func (c *coordinator) readArtifact(artifact string) ([]byte, *core.RefusalError)
 		return nil, c.driftRefusal(fmt.Sprintf("%s is %d bytes, over the %d-byte resume read cap",
 			artifact, info.Size(), resumeArtifactCap))
 	}
-	raw, err := noblock.ReadFile(path)
+	// No-follow, and the same file the Lstat saw: a link swapped in after
+	// the check is refused, never read.
+	f, err := openNoFollow(c.dir, path)
 	if err != nil {
+		return nil, snapshotUnreadable(artifact)
+	}
+	defer func() { _ = f.Close() }()
+	raw, err := io.ReadAll(io.LimitReader(f, resumeArtifactCap+1))
+	if err != nil || int64(len(raw)) > resumeArtifactCap {
 		return nil, snapshotUnreadable(artifact)
 	}
 	return raw, nil

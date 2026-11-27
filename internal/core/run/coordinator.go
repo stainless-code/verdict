@@ -307,7 +307,7 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 	if out.ref != nil {
 		out.failure, out.cause, out.ref = out.ref.Code, out.ref, nil
 	}
-	out.review = readDiscovery(args.abs)
+	out.review = readDiscovery(args.bundleRoot(), args.abs)
 	if out.review == nil && out.failure == "" {
 		out.failure = codeNoArtifact
 	}
@@ -318,8 +318,8 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 	return out
 }
 
-func readDiscovery(path string) *jq.Obj {
-	raw, ok := crashReviewBytes(path)
+func readDiscovery(root, path string) *jq.Obj {
+	raw, ok := crashReviewBytes(root, path)
 	if !ok {
 		return nil
 	}
@@ -406,6 +406,9 @@ func (c *coordinator) deriveUnion() *core.RefusalError {
 // binding this execution reports through.
 func (c *coordinator) freeze() *core.RefusalError {
 	if ref := c.deriveUnion(); ref != nil {
+		return ref
+	}
+	if ref := c.unionCoverageRefusal(); ref != nil {
 		return ref
 	}
 	if _, ref := c.openPhase(verificationDir); ref != nil {
@@ -495,10 +498,18 @@ func (c *coordinator) validateAggregate() *core.RefusalError {
 		c.resumable = execution.Incomplete()
 		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
-	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
+	raw := coordinatorBytes(c.review)
+	check, ref := repair.Check(c.dir, raw)
 	if ref != nil {
 		return ref
 	}
+	if c.st.req.RequireCoverage {
+		check = withCoverage(c.dir, raw, check)
+	}
+	if ref := coverageRefusal(check, ""); ref != nil {
+		return ref
+	}
+	check = withoutCoverage(check)
 	if ref := recordcore.ReviewRefusal(check, false); ref != nil {
 		return ref
 	}
@@ -777,6 +788,7 @@ func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *cor
 	args, ref := c.st.argsForTarget(&c.base.def, c.base.timeout, target)
 	if ref == nil {
 		args.guard = c.checkpoint(output)
+		args.coverageSoft = args.coverage
 	}
 	return args, ref
 }

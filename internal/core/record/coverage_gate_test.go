@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -185,6 +186,20 @@ func TestMergeCoverageGateRefusesAbsentAttestation(t *testing.T) {
 	}
 	if got := coverageWarnings(warns); len(got) != 0 {
 		t.Errorf("refused merge warned %v; a refusal carries no summary write", got)
+	}
+}
+
+// TestMergeCoverageGateRefusesAnEmptyChunkAttestation proves the opt-in gate
+// grades a chunked bundle on chunks[]: an attestation that names no chunk —
+// the key false — refuses coverage-incomplete instead of passing the gate it
+// would fail.
+func TestMergeCoverageGateRefusesAnEmptyChunkAttestation(t *testing.T) {
+	coverageBundle(t, coverageDiff, coverageReview("notes.txt", `"chunks":false,`))
+	testkit.WriteFile(t, ".verdict/state/"+coverageSlug+"/chunks/manifest.json", `{"chunks":[{"name":"chunk-01"}]}`)
+	_, _, err := mergeCoverage(t, true)
+	ref := coverageRefusal(t, err)
+	if !strings.Contains(ref.Message, "no chunks[] attestation") {
+		t.Errorf("message = %q, want it to name the missing chunk attestation", ref.Message)
 	}
 }
 
@@ -485,5 +500,31 @@ func assertStoredCoverage(t *testing.T, stored map[string]any, wantKey bool, wan
 		if got[key] != value {
 			t.Errorf("coverage.%s = %v (%T), want %v", key, got[key], got[key], value)
 		}
+	}
+}
+
+// TestCoverageGateRequiresTheChunkAttestation proves run --require-coverage's
+// gate treats a chunked bundle's absent chunks[] as the coverage gap the
+// default gate fails on, so a repair round asks for it, and accepts a review
+// that carries it.
+func TestCoverageGateRequiresTheChunkAttestation(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "chunks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := `{"chunks":[{"name":"chunk-01"},{"name":"chunk-02"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "chunks", "manifest.json"), []byte(manifest), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	want := "coverage-incomplete: no chunks[] attestation in review.json on a chunked bundle (2 chunk(s))"
+	for _, attest := range []string{``, `,"chunks":false`, `,"chunks":[]`} {
+		ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[]`+attest+`}`))
+		if ref == nil || ref.Code != "coverage-incomplete" || ref.Message != want {
+			t.Errorf("attestation %q: ref = %v, want %q", attest, ref, want)
+		}
+	}
+	if ref := recordcore.CoverageGate(dir, []byte(`{"schema_version":"1","findings":[],"chunks":["chunk-01","chunk-02"]}`)); ref != nil {
+		t.Errorf("attested chunks refused: %v", ref)
 	}
 }

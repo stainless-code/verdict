@@ -313,6 +313,8 @@ var hintRules = []HintRule{
 		"current review, then post — record.json's decision predates the review or the bundle"},
 	{codes: []string{"repair-exhausted"}, hint: "try: fix every error named in error.problems, " +
 		"then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)"},
+	{codes: []string{"artifact-path-unsafe"}, hint: "try: remove the named symlink from the bundle " +
+		"(verdict owns that path as a plain file), then re-run"},
 	{codes: []string{"rounds-path-unsafe"}, hint: "try: remove the named path from the bundle " +
 		"(verdict owns it as a plain directory), then re-run"},
 	{codes: []string{"no-review-artifact"}, hint: "try: run the printed command yourself " +

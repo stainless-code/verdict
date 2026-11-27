@@ -529,14 +529,14 @@ func assertLauncherKeys(t *testing.T, rec map[string]any) {
 // and land in the record verbatim, with the directive reduced to a placeholder.
 func assertPassThroughArgv(t *testing.T, got []string, shape []any) {
 	t.Helper()
-	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "opus", "--max-turns", "12"})
+	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
 	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
 		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
 	}
 	if shape[len(shape)-1] != promptPlaceholder {
 		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
 	}
-	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != "--model" || shape[4] != "opus" {
+	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != reviewGrantFlag || shape[4] != "--model" || shape[5] != "opus" {
 		t.Errorf("recorded argv = %v, want the discovery restriction then the pass-through flags verbatim", shape)
 	}
 }
@@ -1255,9 +1255,9 @@ func assertPrintWroteNothing(t *testing.T, root string) {
 // stage that declares no single hint.
 func argvParts(kind string) []string {
 	if kind == recipe.StageSynthesize {
-		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", modelFlag, "opus"}
+		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, modelFlag, "opus"}
 	}
-	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell"}
+	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag}
 }
 
 // TestRunPrintRendersOneStage proves --print --stage composes one stage's
@@ -1394,7 +1394,7 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
+	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
 		t.Fatalf("argv =\n%q\nwant\n%q", resp.Data.Argv, want)
 	}
 	if _, ok := runData(t, resp)["stage"]; ok {
@@ -1420,7 +1420,7 @@ const quickPipelineDirective = "Review acme/app PR 42 and write exactly one revi
 	"Write .verdict/state/42/review.json FIRST with {\"schema_version\": \"1\", \"findings\": []}, then " +
 	"update that same file with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, " +
 	"\"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], \"spec_checks\": [], " +
-	"\"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
+	"\"receipts\": [], \"coverage\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
 	"The review pipeline is recipe quick@1.2.3 (repo): lenses logic (model sonnet, max_files 8, " +
@@ -1513,7 +1513,7 @@ func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "haiku"}
+	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "haiku"}
 	if len(resp.Data.Argv) != len(want)+1 || !slices.Equal(resp.Data.Argv[:len(want)], want) {
 		t.Fatalf("argv = %q, want %q then the lens directive", resp.Data.Argv, want)
 	}

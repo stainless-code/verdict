@@ -64,8 +64,10 @@ assert_file_grep "the agent name is baked from the catalog" "$WF" '^          VE
 assert_file_grep "the model comes from a repository variable" "$WF" '          VERDICT_MODEL: ${{ vars.VERDICT_MODEL }}' -F
 assert_file_grep "the model key arrives as one repository secret" "$WF" \
   '          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}' -F
-assert_file_grep "the agent's permission hint is a comment" "$WF" \
-  '^          # verdict never bakes a permission flag: .*--permission-mode acceptEdits,$'
+assert_file_grep "the scoped review grant is named in a comment" "$WF" \
+  '          # verdict adds only a write scoped to the review bundle (--allowedTools=Edit(./.verdict/state/<pr>/**));' -Fx
+assert_file_grep "the agent's broader permission flag stays a comment" "$WF" \
+  '^          # this agent.s broader documented flag, --permission-mode acceptEdits, stays yours'
 assert_file_grep "the gate is the composed verb" "$WF" \
   '^            --max-severity critical --require-head --live auto$'
 assert_file_nogrep "never runs on pull_request_target" "$WF" 'pull_request_target'
