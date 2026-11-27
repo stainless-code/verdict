@@ -492,6 +492,12 @@ Cause: no usable cost projection exists and the operator settings require a know
 
 Fix: re-run with `--consent-over-budget` to consent to the blind run (or relax `require_known_estimate`).
 
+## `budget-unpriceable`
+
+Cause: a cost cap is set — `loop --max-cost-usd`, or a monthly ceiling with `require_known_estimate` on `run` — and verdict cannot price the agent's launch: its CLI reports neither its cost nor token usage (pi), or it reports only tokens and its model is not named or not in the built-in price table (codex with no `model`). Its spend would be unknown, so the cap could not be enforced; verdict refuses before the first spawn instead of paying for one blind.
+
+Fix: for codex, name a priced model — `-- -m <model>`, or `model` in its `config.toml`; or review with an agent whose CLI reports its cost (claude, opencode). Otherwise drop the cap and bound the loop with `--max-rounds` and `--timeout` (on `run`, pass `--consent-over-budget` for the invocation). Declaring a price or `"free"` per model is planned (STA-527/STA-543).
+
 ## `bundle-ambiguous`
 
 Cause: a served bundle name resolves to a different directory than the discovered one — the bare name shadows an existing `local-<name>` bundle with no `PR.json`.

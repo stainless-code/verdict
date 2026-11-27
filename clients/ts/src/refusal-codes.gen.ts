@@ -83,6 +83,7 @@ export type RefusalCode =
   | "bind-required"
   | "budget-exceeded"
   | "budget-unknown"
+  | "budget-unpriceable"
   | "bundle-ambiguous"
   | "bundle-outdated"
   | "bundle-unreadable"

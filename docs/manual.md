@@ -5096,7 +5096,10 @@ projected cost. When the sum exceeds `monthly_budget_usd`, `run` refuses typed
 `require_known_estimate`, an unknown leg (either an unpriced receipt in the
 month or an unpriced phase of the pending run) refuses typed `budget-unknown`
 until consented; without it the ceiling is enforced against known spend only
-and unknown cost is warned, never summed as zero. `report --cost` shows the
+and unknown cost is warned, never summed as zero. With both a ceiling and
+`require_known_estimate`, a run whose agent launch verdict cannot price — the
+same rule as `loop --max-cost-usd` above — refuses typed `budget-unpriceable`
+before launching anything, unless the invocation consents. `report --cost` shows the
 month-to-date block (`mtd` in JSON, `mtd:` in human) with the ceiling, remaining,
 and priced/unknown counts when a cap is configured, and omits it entirely when
 no cap is set. Shipped `verdict run` carries no built-in pricing table — the
@@ -8362,7 +8365,16 @@ not understated — `null` when nothing priced it; the summary sums the known
 amounts. With `--max-cost-usd` set, a
 round whose spend could not be measured stops the loop before its next spawn
 (`cost-budget`, refusal `budget-unknown`) rather than spending blind; without
-it, the loop warns and continues.
+it, the loop warns and continues. A launch nothing could price never starts
+under the ceiling: when the agent's CLI reports neither its cost nor token
+usage (`pi`), or reports only tokens and its model is not named or not in the
+price table (`codex` with no `-m`/`--model` and no `model` in its
+`config.toml`), `--max-cost-usd` refuses typed `budget-unpriceable` before the
+first spawn and before any receipt is written, the plan (`--print`) included.
+Name a priced model (`-- -m <model>`), review with an agent that reports its
+cost (`claude`, `opencode`), or drop the ceiling and bound the loop with
+`--max-rounds` and `--timeout`; declaring a price or `"free"` per model is
+planned (STA-527/STA-543). Without `--max-cost-usd` nothing changes.
 
 Receipts go to `--output <dir>`, a new directory (an existing one refuses
 `bad-flags`; default `.verdict/loop/<stamp>` in the checkout): `round-N.json`
