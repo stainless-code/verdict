@@ -175,12 +175,14 @@ func writeGitConfig(t *testing.T, body string) string {
 // the result. A test that sets its own value keeps it: override wins.
 func userEnv(t *testing.T, override map[string]string) map[string]string {
 	t.Helper()
+	// The fixture repository sits in the host temp directory; a temp
+	// directory of its own — TMPDIR, or TMP and TEMP on Windows — keeps a
+	// replay's review snapshots apart from it.
+	tmp := t.TempDir()
 	env := map[string]string{
 		"GIT_CONFIG_SYSTEM": os.DevNull,
 		"GIT_CONFIG_GLOBAL": writeGitConfig(t, ""),
-		// The fixture repository sits in the host temp directory; a temp
-		// directory of its own keeps a replay's review snapshots apart from it.
-		"TMPDIR": t.TempDir(),
+		"TMPDIR":            tmp, "TMP": tmp, "TEMP": tmp,
 	}
 	maps.Copy(env, override)
 	return env

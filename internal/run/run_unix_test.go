@@ -660,7 +660,8 @@ func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 		"prompt-injected diff can make it write anywhere you can and read your credentials (~/.ssh, ~/.aws, " +
 		"gh tokens) into review text verdict may post\n" +
 		"warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
-		"so review.json may never be written; trust this repository in agy's settings or pass " +
+		"and a review runs in a fresh copy outside them, " +
+		"so review.json may never be written; allow write_file(.verdict/state/) under permissions.allow in agy's settings or pass " +
 		"-- --dangerously-skip-permissions (your approval bypass)\n"
 
 	f := newFixture(t)

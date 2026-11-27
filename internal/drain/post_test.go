@@ -140,7 +140,7 @@ func runDrainTest(t *testing.T, root string, cmdr core.Commander, args []string)
 	req := Request{
 		// The fixture checkout sits in the host temp directory; a temp
 		// directory beside it keeps a draft's review snapshot apart from it.
-		Runtime:  &core.Runtime{Env: map[string]string{"TMPDIR": siblingTmp(t, root)}, Commander: cmdr},
+		Runtime:  &core.Runtime{Env: siblingTmp(t, root), Commander: cmdr},
 		Repo:     "acme/app",
 		Pr:       "7",
 		RepoRoot: root,
@@ -522,14 +522,15 @@ func runConcurrentPosts(t *testing.T, root string, cmdr *drainHostStub) ([]int, 
 	return codes, outs, diags
 }
 
-// siblingTmp makes and returns a temp directory beside root.
-func siblingTmp(t *testing.T, root string) string {
+// siblingTmp makes a temp directory beside root and returns the injected
+// environment naming it: TMPDIR, and TMP and TEMP as Windows reads them.
+func siblingTmp(t *testing.T, root string) map[string]string {
 	t.Helper()
 	dir := filepath.Join(filepath.Dir(root), "tmp")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	return dir
+	return map[string]string{"TMPDIR": dir, "TMP": dir, "TEMP": dir}
 }
 
 // SimulatesProcesses marks a test double: it starts no host process,

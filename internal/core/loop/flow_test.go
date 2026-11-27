@@ -365,7 +365,7 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 	return &Request{
 		Flow: &reviewflow.Flow{
 			Runtime: &core.Runtime{
-				Env: map[string]string{"HOME": home, "TMPDIR": t.TempDir()}, Now: flowNow, Progress: &testkit.Collector{},
+				Env: flowEnv(t, home), Now: flowNow, Progress: &testkit.Collector{},
 			},
 			Root:           &root,
 			Effective:      core.Defaults(),
@@ -910,3 +910,13 @@ func TestLoopFixRefusesAHardLinkedPatchFile(t *testing.T) {
 // SimulatesProcesses marks a test double: it starts no host process,
 // so no review launch through it is OS-sandboxed.
 func (*agentCommander) SimulatesProcesses() bool { return true }
+
+// flowEnv is the injected environment of an integration loop: its HOME, and
+// a temp directory of its own — TMPDIR, and TMP and TEMP as Windows reads
+// them — so the review snapshots of the fixture checkout, itself in the
+// host temp directory, are kept apart from it.
+func flowEnv(t *testing.T, home string) map[string]string {
+	t.Helper()
+	tmp := t.TempDir()
+	return map[string]string{"HOME": home, "TMPDIR": tmp, "TMP": tmp, "TEMP": tmp}
+}

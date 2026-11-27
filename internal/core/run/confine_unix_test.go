@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -250,5 +251,27 @@ func writeInPlace(t *testing.T, path, body string) {
 	}
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestSnapshotBaseRefusesALinkedCacheComponent proves a link inside the cache
+// directory where verdict would create its snapshot directory — `verdict`
+// pointing into the checkout — refuses before anything is created through it.
+func TestSnapshotBaseRefusesALinkedCacheComponent(t *testing.T) {
+	t.Parallel()
+	tmp := contenttree.Resolved(t.TempDir())
+	root := filepath.Join(tmp, "repo")
+	cache := contenttree.Resolved(t.TempDir())
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(root, filepath.Join(cache, "verdict")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := snapshotBase(root, tmp, map[string]string{"XDG_CACHE_HOME": cache}, true); err == nil {
+		t.Error("a linked cache component was followed")
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) > 0 {
+		t.Errorf("the refusal left %d entries in the checkout (%v)", len(entries), err)
 	}
 }
