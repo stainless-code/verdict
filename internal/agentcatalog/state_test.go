@@ -2,6 +2,7 @@ package agentcatalog
 
 import (
 	"maps"
+	"path"
 	"slices"
 	"strings"
 	"testing"
@@ -20,15 +21,13 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 		},
 		"codex": {
 			".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
-			".codex/shell_snapshots", ".codex/tmp", ".codex/.tmp", ".codex/auth.json*",
-			".codex/history.jsonl*", ".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*",
-			".codex/models_cache.json*",
+			".codex/tmp", ".codex/.tmp", ".codex/.tmp*", ".codex/thread-writer-locks", ".codex/auth.json*", ".codex/history.jsonl*",
+			".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*", ".codex/models_cache.json*",
+			".codex/goals_*", ".codex/installation_id*", ".codex/.sandbox_migration*",
 		},
 		"opencode": {
-			".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
-			".local/share/opencode/opencode.db*", ".local/share/opencode/log",
-			".local/share/opencode/storage", ".local/share/opencode/snapshot",
-			".local/share/opencode/tool-output", ".local/state/opencode",
+			".local/share/opencode", ".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
+			".local/state/opencode",
 		},
 		"pi": {".pi/agent/sessions", ".pi/agent/auth.json*"},
 	}
@@ -36,11 +35,11 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 		"claude": {
 			".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 			".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
-			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env",
+			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/projects/*/memory",
 		},
 		"codex": {
 			".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-			".codex/plugins", ".codex/packages",
+			".codex/plugins", ".codex/packages", ".codex/shell_snapshots",
 		},
 		"opencode": {
 			".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
@@ -71,31 +70,85 @@ func checkStatePaths(t *testing.T, name string, l *Launch) {
 	if l.StateCitation == "" {
 		t.Errorf("%s declares state paths without a citation", name)
 	}
-	for _, rel := range slices.Concat(l.StateWritable, l.StateReadOnly) {
-		if why := StatePathShape(strings.TrimSuffix(rel, "*")); why != "" {
-			t.Errorf("%s state path %q: %s", name, rel, why)
-		}
-	}
+	checkStateShapes(t, name, l)
 	for _, w := range l.StateWritable {
 		if r, ok := overlapping(w, l.StateReadOnly); ok {
 			t.Errorf("%s writable %q reaches its read-only %q", name, w, r)
 		}
 	}
+	checkStartupDirs(t, name, l)
 }
 
-// overlapping returns the first read-only entry the writable one holds, sits
-// inside, or (as a prefix) names.
+// checkStartupDirs fails a startup directory outside every read-only entry:
+// one inside writable data needs no making.
+func checkStartupDirs(t *testing.T, name string, l *Launch) {
+	t.Helper()
+	for _, d := range l.StateDirs {
+		if !slices.ContainsFunc(l.StateReadOnly, func(r string) bool { return strings.HasPrefix(d, r+"/") }) {
+			t.Errorf("%s startup directory %q sits in no read-only entry", name, d)
+		}
+	}
+}
+
+// checkStateShapes fails a misshapen entry, and a `*` segment outside the
+// read-only list.
+func checkStateShapes(t *testing.T, name string, l *Launch) {
+	t.Helper()
+	for _, rel := range slices.Concat(l.StateWritable, l.StateReadOnly, l.StateDirs) {
+		if why := StatePathShape(strings.TrimSuffix(rel, "*")); why != "" {
+			t.Errorf("%s state path %q: %s", name, rel, why)
+		}
+	}
+	for _, rel := range slices.Concat(l.StateWritable, l.StateDirs) {
+		if slices.Contains(strings.Split(rel, "/"), "*") {
+			t.Errorf("%s writable or startup path %q has a * segment, which only a read-only entry may", name, rel)
+		}
+	}
+}
+
+// overlapping returns the first read-only entry the writable one sits
+// inside or (as a prefix) names, or that it holds as anything but a
+// directory: a writable directory may hold read-only directories, made
+// before the launch and kept read-only over it, but a read-only file it
+// holds the agent could create first.
 func overlapping(w string, readOnly []string) (string, bool) {
 	stem := strings.TrimSuffix(w, "*")
 	for _, r := range readOnly {
 		switch {
 		case stem != w && strings.HasPrefix(r, stem):
 			return r, true
-		case r == stem, strings.HasPrefix(r, stem+"/"), strings.HasPrefix(stem, r+"/"):
+		case r == stem, strings.HasPrefix(stem, r+"/"):
+			return r, true
+		case strings.HasPrefix(r, stem+"/") && strings.Contains(path.Base(r), "."):
 			return r, true
 		}
 	}
 	return "", false
+}
+
+// TestSourcedCodeIsNeverWritable proves no row's writable state names a
+// directory that holds what a later session sources or loads — shell
+// snapshots, plugins, packages, memory — whatever the row: such a directory
+// is read-only, even inside writable data.
+func TestSourcedCodeIsNeverWritable(t *testing.T) {
+	code := []string{
+		"shell_snapshots", "shell-snapshots", "session-env", "shell", "bin", "node_modules", "plugins",
+		"plugin", "extensions", "hooks", "skills", "agents", "commands", "rules", "prompts", "packages",
+		"memory", "npm", "install",
+	}
+	namesCode := func(w string) bool {
+		return slices.ContainsFunc(strings.Split(strings.TrimSuffix(w, "*"), "/"), func(seg string) bool {
+			return slices.Contains(code, seg)
+		})
+	}
+	for _, agent := range All() {
+		if agent.Launch == nil {
+			continue
+		}
+		if i := slices.IndexFunc(agent.Launch.StateWritable, namesCode); i >= 0 {
+			t.Errorf("%s writable %q names a code directory", agent.Name, agent.Launch.StateWritable[i])
+		}
+	}
 }
 
 // TestConfinementIsCitedAndNarrow pins the rows that skip verdict's review

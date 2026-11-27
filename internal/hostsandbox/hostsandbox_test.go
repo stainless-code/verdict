@@ -91,7 +91,7 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 	got, err := Inputs{
 		ChildEnv: []string{
 			"HOME=/h", "CODEX_HOME=/x/codex", "XDG_DATA_HOME=/x/data", "PI_CODING_AGENT_DIR=/x/pi",
-			"CLAUDE_CONFIG_DIR=/x/claude", "XDG_CONFIG_HOME=/x/cfg",
+			"CLAUDE_CONFIG_DIR=/x/claude", "XDG_CONFIG_HOME=/x/cfg", "XAUTHORITY=/x/xauth",
 		},
 	}.CredentialLocations("/r", false)
 	if err != nil {
@@ -102,6 +102,10 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 		"/h/.claude/.credentials.json", "/h/.config/github-copilot", "/h/.gemini/oauth_creds.json",
 		"/h/.config/git/credentials", "/x/codex/auth.json", "/x/data/opencode/auth.json", "/x/pi/auth.json",
 		"/x/claude/.credentials.json", "/x/cfg/github-copilot", "/x/cfg/git/credentials",
+		"/h/.local/share/opencode/mcp-auth.json", "/x/data/opencode/mcp-auth.json",
+		"/h/.Xauthority", "/x/xauth", "/h/.1password", "/h/.bitwarden-ssh-agent.sock",
+		"/h/Library/Group Containers/2BUA8C4S2C.com.1password",
+		"/h/Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
 	} {
 		if !slices.Contains(got, filepath.FromSlash(want)) {
 			t.Errorf("credential locations lack %s:\n%s", want, strings.Join(got, "\n"))

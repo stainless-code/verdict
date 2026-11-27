@@ -273,9 +273,11 @@ func builtinRows() []builtinRow {
 		},
 		{
 			name: "pi", binary: "pi", args: []string{"-p"}, promptFlag: "",
-			install:       "curl -fsSL https://pi.dev/install.sh | sh",
-			wantArgv:      []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "PROMPT"},
+			install:  "curl -fsSL https://pi.dev/install.sh | sh",
+			wantArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{
+				"pi", "-p", "--exclude-tools", "bash,powershell", "--no-approve", "--model", "M", "PROMPT",
+			},
 		},
 		{
 			name: "qoder", binary: "qoder", args: []string{"-p"}, promptFlag: "",

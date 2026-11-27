@@ -151,7 +151,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 	in := sandboxInputs{
 		childEnv: []string{
 			"HOME=/h/child", "XDG_CONFIG_HOME=/x/cfg", "KUBECONFIG=/x/k1:relative/k:/x/k2",
-			"AWS_SHARED_CREDENTIALS_FILE=/x/aws/credentials", "DOCKER_CONFIG=",
+			"AWS_SHARED_CREDENTIALS_FILE=/x/aws/credentials", "DOCKER_CONFIG=", "XAUTHORITY=/x/xauth",
 		},
 		hostEnv: []string{
 			"HOME=/h/host", "GH_CONFIG_DIR=/x/gh", "AWS_CONFIG_FILE=/x/aws/config",
@@ -170,6 +170,8 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		".cargo/credentials.toml", ".cargo/credentials", ".vault-token", "Library/Keychains",
 		".config/glab-cli", ".codex/auth.json", ".local/share/opencode/auth.json", ".pi/agent/auth.json",
 		".claude/.credentials.json", ".config/github-copilot", ".gemini/oauth_creds.json", ".config/git/credentials",
+		".local/share/opencode/mcp-auth.json", ".Xauthority", ".1password", ".bitwarden-ssh-agent.sock",
+		"Library/Group Containers/2BUA8C4S2C.com.1password", "Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
 	}
 	var want []string
 	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {
@@ -179,7 +181,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 	}
 	want = append(want,
 		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2", "/x/cfg/glab-cli", "/x/cfg/github-copilot",
-		"/x/cfg/git/credentials",
+		"/x/cfg/git/credentials", "/x/xauth",
 		"/x/gh", "/x/aws/config", "/x/docker", "/x/gcloud", "/x/glab",
 	)
 	if !slices.Equal(got, want) {

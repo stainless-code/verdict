@@ -94,11 +94,11 @@ var escapeRows = []escapeRow{
 		planted: []string{".pi/agent/settings.json"},
 	},
 	{
-		agent: "opencode", data: ".local/share/opencode/log", otherCred: ".pi/agent/auth.json",
+		agent: "opencode", data: ".local/share/opencode", otherCred: ".pi/agent/auth.json",
 		config: []string{
 			".config/opencode/plugin/x.js", ".config/opencode/opencode.json",
 			".cache/opencode/node_modules/x/index.js", ".local/share/opencode/bin/x",
-			".local/share/opencode/plugin.js",
+			".local/share/opencode/node_modules/x/index.js", ".local/share/opencode/shell/x",
 		},
 		planted: []string{".config/opencode/opencode.json"},
 	},
@@ -107,8 +107,9 @@ var escapeRows = []escapeRow{
 		config: []string{
 			".claude/settings.json", ".claude.json", ".claude/hooks/x.sh", ".claude/plugins/x/plugin.json",
 			".claude/shell-snapshots/snapshot-zsh.sh", ".claude/session-env/x",
+			".claude/projects/p/memory/MEMORY.md",
 		},
-		planted: []string{".claude/settings.json", ".claude.json"},
+		planted: []string{".claude/settings.json", ".claude.json", ".claude/projects/p/memory/MEMORY.md"},
 	},
 }
 
@@ -411,9 +412,16 @@ func assertSiblingReads(t *testing.T, log string) {
 // refusal.
 func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string) (*core.RunResponse, *core.RefusalError) {
 	t.Helper()
-	bin := plantStub(t, "pi", script)
+	return sandboxedRunAs(t, "pi", root, home, script, rounds, env...)
+}
+
+// sandboxedRunAs is sandboxedRun as another row.
+func sandboxedRunAs(t *testing.T, agent, root, home, script, rounds string, env ...string,
+) (*core.RunResponse, *core.RefusalError) {
+	t.Helper()
+	bin := plantStub(t, agent, script)
 	req := request(root, hostStub{})
-	req.Agent, req.RoundsRaw = "pi", rounds
+	req.Agent, req.RoundsRaw = agent, rounds
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	req.Environ = append(append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH")), env...)
 	return Run(t.Context(), req)
@@ -557,5 +565,44 @@ func TestReviewSandboxDeniesUnixSockets(t *testing.T) {
 	}
 	if log := string(readFile(t, filepath.Join(home, ".pi", "agent", "sessions", "socket.log"))); !strings.Contains(log, "socket=denied") {
 		t.Errorf("socket log = %q, want the connect denied", log)
+	}
+}
+
+// opencodeStartScript is opencode's first run on a fresh HOME: it makes its
+// repos directory and its cache's bin, and its database creates a journal,
+// a WAL and a shared-memory file beside opencode.db — while a write into
+// the code its data directory holds, or into the cache's bin, is denied.
+const opencodeStartScript = "#!/bin/sh\n" +
+	"d=\"$HOME/.local/share/opencode\"\n" +
+	"{ /bin/mkdir -p \"$d/repos\" && echo repos=made || echo repos=failed\n" +
+	"  /bin/mkdir -p \"$HOME/.cache/opencode/bin\" && echo cachebin=made || echo cachebin=failed\n" +
+	"  for f in opencode.db opencode.db-journal opencode.db-wal opencode.db-shm; do " +
+	"printf x > \"$d/$f\" && echo \"$f=written\" || echo \"$f=failed\"; done\n" +
+	"  printf evil > \"$d/bin/x\" && echo bin=written || echo bin=denied\n" +
+	"  printf evil > \"$d/node_modules/x\" && echo modules=written || echo modules=denied\n" +
+	"  printf evil > \"$HOME/.cache/opencode/bin/x\" && echo cachebinfile=written || echo cachebinfile=denied\n" +
+	"} > \"$d/start.log\" 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxStartsOpencodeFresh proves opencode starts on a HOME it
+// has never run in: its data directory and the directories it makes at
+// startup exist and are writable where they are data, its database can
+// create its journal and WAL, and the code inside its data directory and
+// its cache stays read-only.
+func TestReviewSandboxStartsOpencodeFresh(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home := t.TempDir()
+	if _, ref := sandboxedRunAs(t, "opencode", confinedRoot(t), home, opencodeStartScript, "1"); ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	log := string(readFile(t, filepath.Join(home, ".local", "share", "opencode", "start.log")))
+	for _, want := range []string{
+		"repos=made", "cachebin=made", "opencode.db=written", "opencode.db-journal=written",
+		"opencode.db-wal=written", "opencode.db-shm=written", "bin=denied", "modules=denied", "cachebinfile=denied",
+	} {
+		if !strings.Contains(log, want+"\n") {
+			t.Errorf("start log lacks %q:\n%s", want, log)
+		}
 	}
 }

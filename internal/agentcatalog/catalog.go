@@ -131,8 +131,16 @@ type Launch struct {
 	// settings, plugins, extensions, hooks, agent definitions, MCP config —
 	// which a later run outside verdict loads: readable in the sandbox, never
 	// writable, so a prompt-injected review cannot persist past it. No
-	// StateWritable entry may hold or sit inside one.
+	// StateWritable entry may sit inside one or name one as a prefix. One
+	// inside a writable directory names a directory, made before every
+	// sandboxed launch so the agent cannot make it its own, and stays
+	// read-only over it. A `*` segment matches any one directory
+	// (`.claude/projects/*/memory`).
 	StateReadOnly []string
+	// StateDirs are directories under read-only state the CLI makes at
+	// startup and fails without; each is made, empty, before every sandboxed
+	// launch, and stays read-only.
+	StateDirs     []string
 	StateCitation string
 	// Confinement is how the CLI confines its own review launch without
 	// verdict's OS sandbox, "" for not at all. [OwnSandbox]: its
@@ -404,8 +412,8 @@ var catalog = []Agent{
 			// the tree's .mcp.json starts none. The flags that would undo them
 			// or load other configuration are verdict's on a review launch.
 			// `--permission-mode default` outranks a settings defaultMode
-			// (acceptEdits, bypassPermissions) that would widen its writes;
-			// claude 2.1.331 accepts it — observed 2026-11-27.
+			// (acceptEdits, bypassPermissions) that would widen its writes —
+			// verified empirically against the agent's CLI.
 			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config", flagPermissionMode, "default"},
 			ReviewArgsCitation: docClaudeCLI,
 			ReviewOwnedFlags: []string{
@@ -426,12 +434,12 @@ var catalog = []Agent{
 			// settings doc; CLAUDE_CONFIG_DIR relocates ~/.claude. The macOS
 			// login lives in the login keychain, which the Security framework
 			// reads and writes in-process (token refresh). The data
-			// directories and ~/Library/Caches/claude-cli-nodejs were observed
-			// from claude 2.1.331 on macOS, which also reached its API with
-			// ~/.claude.json and every config path read-only — read and
-			// observed 2026-11-27.
+			// directories and ~/Library/Caches/claude-cli-nodejs, and that it
+			// reaches its API with ~/.claude.json and every config path
+			// read-only, were verified empirically against the agent's CLI.
 			// shell-snapshots and session-env hold scripts a later session
-			// sources, so they are code; .credentials.json is the Linux login.
+			// sources, and each project's memory instructions a later session
+			// loads, so they are code; .credentials.json is the Linux login.
 			StateWritable: []string{
 				".claude/projects", ".claude/sessions", ".claude/debug", ".claude/todos", ".claude/backups",
 				".claude/cache", ".claude/statsig", ".claude/file-history", ".claude/.credentials.json*",
@@ -441,11 +449,12 @@ var catalog = []Agent{
 				".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
 				".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
 				".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env",
+				".claude/projects/*/memory",
 			},
 			StateEnv: []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
 			// claude makes /tmp/claude-<uid> whatever TMPDIR says;
 			// CLAUDE_CODE_TMPDIR moves it (named in its own disk-quota
-			// message) — observed from claude 2.1.331, 2026-11-27.
+			// message) — verified empirically against the agent's CLI.
 			TempEnv:       []string{"CLAUDE_CODE_TMPDIR"},
 			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
 			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
@@ -517,6 +526,9 @@ var catalog = []Agent{
 			// /tmp unless excluded; TMPDIR is the review's private one.
 			SnapshotWriteArgs: []string{
 				flagSandbox, valueWorkspaceWrite, "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+				// A writable root in the operator's config.toml would widen the
+				// sandbox past the snapshot; the override empties the list.
+				"-c", "sandbox_workspace_write.writable_roots=[]",
 			},
 			SnapshotWriteCitation: docCodexConfig,
 			// A working directory, a managed worktree, an approval reviewer,
@@ -534,8 +546,13 @@ var catalog = []Agent{
 			PermissionFlags: []string{
 				flagSandbox, "-s", "--ask-for-approval", "-a", "--full-auto",
 				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
-				// A config override or profile can set sandbox_mode itself.
-				"-c", "--config", "-p", "--profile",
+				// A config override or profile can set sandbox_mode itself, a
+				// feature toggle is a config override, --remote runs the agent
+				// in an app server outside any sandbox verdict starts, --trust
+				// persists trust (MCP commands outside the sandbox included),
+				// and -o writes a file wherever it names.
+				"-c", "--config", "-p", "--profile", "--enable", "--disable", "--remote",
+				"--remote-auth-token-env", "--trust", "-o", "--output-last-message",
 			},
 			KeyEnv:         "OPENAI_API_KEY",
 			KeyEnvCitation: docCodexReadme,
@@ -548,19 +565,21 @@ var catalog = []Agent{
 			// CODEX_HOME, ~/.codex by default, holds config.toml, AGENTS.md,
 			// rules, prompts, skills and plugins beside auth.json, sessions,
 			// history and logs; the sqlite stores, cache, tmp and shell
-			// snapshots were observed from codex-cli 0.172.0 on macOS — read
-			// and observed 2026-11-27. Used only when the operator's `--`
+			// snapshots were verified empirically against the agent's CLI.
+			// Used only when the operator's `--`
 			// decides codex's permissions; otherwise codex runs in its own
 			// sandbox.
 			StateWritable: []string{
 				".codex/sessions", ".codex/archived_sessions", ".codex/log", ".codex/sqlite", ".codex/cache",
-				".codex/shell_snapshots", ".codex/tmp", ".codex/.tmp", ".codex/auth.json*",
-				".codex/history.jsonl*", ".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*",
-				".codex/models_cache.json*",
+				".codex/tmp", ".codex/.tmp", ".codex/.tmp*", ".codex/thread-writer-locks", ".codex/auth.json*", ".codex/history.jsonl*",
+				".codex/session_index.jsonl*", ".codex/state_*", ".codex/logs_*", ".codex/models_cache.json*",
+				".codex/goals_*", ".codex/installation_id*", ".codex/.sandbox_migration*",
 			},
+			// shell_snapshots holds scripts a later session sources, so it is
+			// code.
 			StateReadOnly: []string{
 				".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-				".codex/plugins", ".codex/packages",
+				".codex/plugins", ".codex/packages", ".codex/shell_snapshots",
 			},
 			StateEnv:      []StateVar{{Name: "CODEX_HOME", Root: ".codex"}},
 			StateCitation: docCodexReadme,
@@ -935,24 +954,28 @@ var catalog = []Agent{
 			// opencode.json, plugins, agents, commands and skills, and the
 			// cache directory the provider and plugin packages it installs.
 			// ~/.local/state/opencode (model, kv, locks, prompt history) was
-			// observed from opencode 2.4.2 on macOS — read and observed
-			// 2026-11-27.
-			// Its data directory also holds code — managed tools and LSP
-			// binaries (bin), packages (node_modules), sourced shell state
-			// (shell) — so only its data files and directories are writable.
+			// verified empirically against the agent's CLI.
+			// The data directory is writable whole — its database creates
+			// journal and WAL files beside opencode.db, and it makes repos at
+			// startup — with the code it also holds, managed tools and LSP
+			// binaries (bin), packages (node_modules) and sourced shell state
+			// (shell), read-only inside it. Its logins are named so the
+			// credential table's entries are its own. It makes the cache's bin
+			// at startup too.
 			StateWritable: []string{
-				".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
-				".local/share/opencode/opencode.db*", ".local/share/opencode/log",
-				".local/share/opencode/storage", ".local/share/opencode/snapshot",
-				".local/share/opencode/tool-output", ".local/state/opencode",
+				".local/share/opencode", ".local/share/opencode/auth.json*", ".local/share/opencode/mcp-auth.json*",
+				".local/state/opencode",
 			},
 			StateReadOnly: []string{
 				".config/opencode", ".cache/opencode", ".local/share/opencode/bin",
 				".local/share/opencode/node_modules", ".local/share/opencode/shell",
 			},
+			StateDirs: []string{".cache/opencode/bin"},
 			StateEnv: []StateVar{
 				{Name: "XDG_DATA_HOME", Root: ".local/share"},
 				{Name: "XDG_STATE_HOME", Root: ".local/state"},
+				{Name: "XDG_CACHE_HOME", Root: ".cache"},
+				{Name: "XDG_CONFIG_HOME", Root: ".config"},
 			},
 			StateCitation: docOpenCodeStorage,
 		},
@@ -992,8 +1015,15 @@ var catalog = []Agent{
 			ResumeCitation: docPiQuickstart,
 			// A denylist, so read/edit/write stay and only the two shell tools
 			// go: `bash` on Unix, `powershell` on Windows.
-			DiscoveryArgs:       []string{"--exclude-tools", "bash,powershell"},
-			DiscoveryCitation:   docPiCLI,
+			DiscoveryArgs:     []string{"--exclude-tools", "bash,powershell"},
+			DiscoveryCitation: docPiCLI,
+			// --no-approve ignores the reviewed tree's project-local files
+			// (extensions, settings, MCP servers) without asking, and so
+			// without the trust lock it would otherwise take in its agent
+			// directory.
+			ReviewArgs:          []string{"--no-approve"},
+			ReviewArgsCitation:  docPiCLI,
+			ReviewOwnedFlags:    []string{"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers"},
 			DiscoveryOwnedFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
@@ -1002,7 +1032,7 @@ var catalog = []Agent{
 			// The agent directory (~/.pi/agent) holds auth.json and sessions
 			// beside settings.json, models.json, extensions, skills, prompts,
 			// themes, AGENTS.md and the managed install (bin, install, npm)
-			// — read and observed from pi 1.6.1, 2026-11-27.
+			// — per its docs, verified empirically against the agent's CLI.
 			StateWritable: []string{".pi/agent/sessions", ".pi/agent/auth.json*"},
 			StateReadOnly: []string{
 				".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
@@ -1139,6 +1169,7 @@ func All() []Agent {
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
 			v.StateWritable = slices.Clone(v.StateWritable)
 			v.StateReadOnly = slices.Clone(v.StateReadOnly)
+			v.StateDirs = slices.Clone(v.StateDirs)
 			v.TempEnv = slices.Clone(v.TempEnv)
 			v.StateEnv = slices.Clone(v.StateEnv)
 			v.ReviewArgs = slices.Clone(v.ReviewArgs)

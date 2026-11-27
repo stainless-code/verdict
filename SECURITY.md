@@ -133,6 +133,7 @@ In scope (highest priority first):
   `~/.claude/projects`, `~/.pi/agent/sessions`, opencode's database), and
   the devices a process needs; it cannot write its own config or code
   (`~/.claude.json`, claude's settings, hooks, plugins, shell snapshots,
+  and its projects' memory on macOS, codex's shell snapshots,
   `~/.config/opencode`, opencode's managed tools and packages, pi's
   extensions and settings), any other dotfile in `HOME`, the rest of
   `~/.config`, the operator's checkout, the execution's shared snapshot, or
@@ -141,19 +142,28 @@ In scope (highest priority first):
   refuses, and the state is re-checked before every launch). It cannot read
   the credential table `verify --sandbox` hides (`~/.ssh`, `~/.aws`, gh and
   glab tokens, `.netrc`, `.git-credentials`, the agent logins of codex,
-  opencode, pi, claude, copilot and gemini, the rest of that list and the
-  variables that relocate them), except its own login, nor the host temp
-  roots (and on Linux `/run`). It cannot connect to a unix socket (an ssh
-  agent, docker, systemd, tmux) beyond the resolver's and syslog's on macOS,
-  and inherits no socket variable. On macOS it cannot write preferences
-  through cfprefsd, use the pasteboard, or reach the keychain brokers unless
-  the keychain is its own login (claude); on Linux other processes'
-  environments are hidden (a private PID namespace). A sandbox policy that
+  opencode (and its MCP logins), pi, claude, copilot and gemini, the X11
+  cookie, the 1Password, Bitwarden and Secretive ssh-agent socket
+  directories, the rest of that list and the variables that relocate them),
+  except its own login, nor the host temp roots (and on Linux `/run`). On
+  macOS it cannot connect to a unix socket beyond the resolver's and
+  syslog's, and cannot look up a Mach service beyond the allowlist
+  (directory lookups, trustd, SystemConfiguration, and for claude the
+  keychain brokers) — so no preference write, pasteboard, keychain (but
+  claude's own), LaunchServices registration, login item, window server, or
+  Shortcuts. On Linux it cannot reach a filesystem socket in `/tmp`,
+  `/var/tmp`, `/run`, `/var/run`, or the table, and other processes'
+  environments are hidden (a private PID namespace). It inherits no socket
+  or display variable. A sandbox policy that
   cannot be built refuses the launch. A review launch that writes, reads,
   connects, or reaches a service past that policy is a vulnerability. Not
   boundaries, and so not findings: everything else stays readable (the agent
   reads the tree and its own config; on Linux a sibling launch's snapshot
-  outside a hidden temp root too); an agent's own data paths stay writable,
+  outside a hidden temp root too); on Linux the network namespace is the
+  host's, so an abstract-namespace unix socket (a `dbus-launch` session bus,
+  an X11 display without its cookie) and a filesystem socket under `HOME`
+  outside the table stay reachable; on Linux a project `memory` directory
+  claude creates during the launch is writable (existing ones are not); an agent's own data paths stay writable,
   so it can alter its own sessions or token store, though nothing a later
   run loads as config or code; the review shell is denied by flags only for
   `claude`, `bob`, and `pi` — every other row's agent has a live shell
@@ -162,8 +172,8 @@ In scope (highest priority first):
   so codex confines its writes to the snapshot but nothing hides the
   credential table from its reads. With no sandbox (Windows, Linux without
   `bwrap`, a failed probe), `claude` (shell denied, write grant scoped to the
-  bundle, `--permission-mode default` pinned, and no write allow rule with no
-  path or a wildcard in the operator's own settings) and `codex` (its own
+  bundle, `--permission-mode default` pinned, and no write-tool allow rule
+  at all in the operator's own settings) and `codex` (its own
   sandbox, no operator flag deciding it) run with a warning that their reads
   are not confined, and every other agent refuses
   `review-sandbox-unavailable`; `--allow-unsandboxed-review` (on `run` and

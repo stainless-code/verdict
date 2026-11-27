@@ -5,13 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 )
 
 // hostScripted is a scripted commander that says it starts host processes,
@@ -149,7 +152,8 @@ func TestReviewWithoutSandboxSelfConfinedRowsRunAndWarn(t *testing.T) {
 		{agent: "claude", posture: "unsandboxed", warning: "claude runs unsandboxed — it confines its own writes, " +
 			"but its reads are not confined"},
 		{agent: "codex", posture: "self-sandboxed", warning: "codex runs in its own sandbox (--sandbox workspace-write -c " +
-			"sandbox_workspace_write.exclude_slash_tmp=true), not verdict's review sandbox"},
+			"sandbox_workspace_write.exclude_slash_tmp=true -c sandbox_workspace_write.writable_roots=[]), " +
+			"not verdict's review sandbox"},
 	} {
 		t.Run(tc.agent, func(t *testing.T) {
 			t.Parallel()
@@ -274,10 +278,10 @@ func TestReviewSandboxPolicyErrorRefusesOutright(t *testing.T) {
 }
 
 // TestClaudeWideSettingsVoidItsOwnWrites proves claude counts as confining
-// its own writes only while the operator's own Claude settings grant no
-// write wider than its review grant: an allow rule for a write tool with no
-// path or a wildcard, or settings that cannot be parsed, refuse it on a
-// host with no sandbox; a scoped rule does not.
+// its own writes only while the operator's own Claude settings allow no
+// write tool at all: any allow rule for one — bare, wildcard, or naming one
+// host path — or settings that cannot be parsed refuse it on a host with no
+// sandbox; a read rule does not.
 func TestClaudeWideSettingsVoidItsOwnWrites(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -287,7 +291,12 @@ func TestClaudeWideSettingsVoidItsOwnWrites(t *testing.T) {
 		{name: "bare Write", settings: `{"permissions":{"allow":["Write"]}}`, refuses: true},
 		{name: "wildcard Edit", settings: `{"permissions":{"allow":["Edit(//**)"]}}`, refuses: true},
 		{name: "unparseable", settings: `{"permissions":`, refuses: true},
-		{name: "scoped Read", settings: `{"permissions":{"allow":["Read","Edit(./docs/README.md)"]}}`},
+		{name: "one home file", settings: `{"permissions":{"allow":["Edit(~/.zshrc)"]}}`, refuses: true},
+		{name: "one host file", settings: `{"permissions":{"allow":["Write(/etc/hosts)"]}}`, refuses: true},
+		{name: "relative climb", settings: `{"permissions":{"allow":["Edit(../x)"]}}`, refuses: true},
+		{name: "empty spec", settings: `{"permissions":{"allow":["Write()"]}}`, refuses: true},
+		{name: "spaced", settings: `{"permissions":{"allow":[" MultiEdit (x)"]}}`, refuses: true},
+		{name: "reads only", settings: `{"permissions":{"allow":["Read","Bash(git status)"]}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -326,6 +335,12 @@ func TestCodexOperatorSandboxSpellingsVoidItsOwn(t *testing.T) {
 		{"--config=sandbox_mode=x"},
 		{"-p", "wide"},
 		{"--profile", "wide"},
+		{"--remote", "ws://127.0.0.1:1"},
+		{"--trust"},
+		{"-o", "/tmp/last"},
+		{"--output-last-message=/tmp/last"},
+		{"--enable", "x"},
+		{"--disable=x"},
 	} {
 		t.Run(strings.Join(pass, " "), func(t *testing.T) {
 			t.Parallel()
@@ -398,9 +413,10 @@ func TestSeatbeltReviewProfileShape(t *testing.T) {
 	}
 	sessions := filepath.Join(home, ".pi", "agent", "sessions")
 	ordered := []string{
-		`(global-name "com.apple.pasteboard.1")`,
+		`(deny user-preference-write)`,
+		`(deny mach-lookup)`,
+		`(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo")`,
 		`(deny network-outbound (remote unix-socket))`,
-		`(deny mach-lookup (global-name "com.apple.SecurityServer")`,
 		`(deny file-read* (subpath "/private/tmp"))`,
 		`(deny file-read* (regex "^/w/verdict-snapshot-"))`,
 		`(allow file-read* file-write* (subpath "/w/verdict-snapshot-1-2"))`,
@@ -411,8 +427,29 @@ func TestSeatbeltReviewProfileShape(t *testing.T) {
 		`(deny file-write* (subpath "` + filepath.Join(home, ".pi", "agent", "extensions") + `"))`,
 	}
 	assertInOrder(t, profile, ordered)
-	if !strings.Contains(profile, `(deny user-preference-write)`) || !strings.Contains(profile, `"com.apple.cfprefsd.agent"`) {
-		t.Errorf("profile does not close preference writes:\n%s", profile)
+	if strings.Count(profile, "(allow mach-lookup") != 1 || strings.Contains(profile, `"com.apple.SecurityServer"`) {
+		t.Errorf("a launch that does not own the keychain reaches more than the Mach allowlist:\n%s", profile)
+	}
+}
+
+// TestSeatbeltMachAllowlistIsMinimal pins the services every macOS review
+// launch may look up: a new one is a security decision, not a default.
+func TestSeatbeltMachAllowlistIsMinimal(t *testing.T) {
+	t.Parallel()
+	want := []string{
+		"com.apple.system.opendirectoryd.libinfo", "com.apple.trustd.agent",
+		"com.apple.SystemConfiguration.configd", "com.apple.SystemConfiguration.DNSConfiguration",
+	}
+	got := regexp.MustCompile(`global-name "([^"]+)"`).FindAllStringSubmatch(seatbeltMachAllow, -1)
+	names := make([]string, 0, len(got))
+	for _, m := range got {
+		names = append(names, m[1])
+	}
+	if !slices.Equal(names, want) {
+		t.Errorf("Mach allowlist = %q, want %q", names, want)
+	}
+	if !strings.Contains(seatbeltReviewHeader, "(deny mach-lookup)"+seatbeltMachAllow) {
+		t.Error("the review header does not deny every Mach lookup before its allowlist")
 	}
 }
 
@@ -426,7 +463,7 @@ func TestSeatbeltReviewProfileKeepsClaudesKeychain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(profile, `"com.apple.SecurityServer"`) {
+	if !strings.Contains(profile, seatbeltReviewHeader+seatbeltKeychainAllow) {
 		t.Errorf("a keychain-owning launch lost the keychain brokers:\n%s", profile)
 	}
 }
@@ -476,10 +513,12 @@ func TestBwrapReviewArgvShape(t *testing.T) {
 // mount over a link.
 func TestHiddenRootsSkipALinkedVarRun(t *testing.T) {
 	t.Parallel()
-	modes := map[string]os.FileMode{"/tmp": os.ModeDir, "/run": os.ModeDir, "/var/run": os.ModeSymlink}
+	modes := map[string]os.FileMode{
+		"/tmp": os.ModeDir, "/var/tmp": os.ModeDir, "/run": os.ModeDir, "/var/run": os.ModeSymlink,
+	}
 	got := hiddenRoots(func(p string) (os.FileMode, bool) { m, ok := modes[p]; return m, ok })
-	if !slices.Equal(got, []string{"/tmp", "/run"}) {
-		t.Errorf("hidden roots = %v, want [/tmp /run]", got)
+	if want := []string{"/tmp", "/var/tmp", "/run"}; !slices.Equal(got, want) {
+		t.Errorf("hidden roots = %v, want %v", got, want)
 	}
 }
 
@@ -489,7 +528,8 @@ func TestReviewEnvDropsSocketVariables(t *testing.T) {
 	t.Parallel()
 	got := stripSocketEnv([]string{
 		"SSH_AUTH_SOCK=/a", "dbus_session_bus_address=unix:x", "GPG_AGENT_INFO=g", "TMUX=t", "NVIM=n",
-		"XDG_RUNTIME_DIR=/run/user/1", "HOME=/h",
+		"XDG_RUNTIME_DIR=/run/user/1", "DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "XAUTHORITY=/h/.Xauthority",
+		"HOME=/h",
 	})
 	if !slices.Equal(got, []string{"HOME=/h"}) {
 		t.Errorf("env = %v, want HOME alone", got)
@@ -534,4 +574,205 @@ func hostsandboxEnv(env []string, name string) string {
 		}
 	}
 	return value
+}
+
+// TestClaudeRelativeHomeVoidsItsOwnWrites proves claude cannot count as
+// confining its own writes when HOME cannot name its settings: a relative
+// HOME refuses on a host with no sandbox.
+func TestClaudeRelativeHomeVoidsItsOwnWrites(t *testing.T) {
+	t.Parallel()
+	req, cmdr := sandboxRequest(t, "claude", lookNoSandbox)
+	req.Environ = append(req.Environ, "HOME=relative/home")
+	_, ref := Run(t.Context(), req)
+	assertUnavailable(t, ref, "HOME is unset or relative")
+	if cmdr.calls != 0 {
+		t.Errorf("the agent ran %d time(s) after the refusal", cmdr.calls)
+	}
+}
+
+// TestCodexWrappedOnMacOSIsToldToDropItsOwnSandbox proves codex, wrapped in
+// verdict's macOS sandbox because the operator's `--` decides its
+// permissions, is warned that its own sandbox fails nested — unless the
+// operator turned it off.
+func TestCodexWrappedOnMacOSIsToldToDropItsOwnSandbox(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		pass []string
+		warn bool
+	}{
+		{pass: []string{"-s", "workspace-write"}, warn: true},
+		{pass: []string{"--sandbox", "danger-full-access"}},
+	} {
+		st := &state{req: &core.RunRequest{PassThrough: tc.pass}}
+		st.box = &reviewBox{mechanism: hostsandbox.SandboxExecTool, posture: postureSandboxed}
+		codex, _ := agentcatalog.Lookup("codex")
+		st.warnNested(codex.Launch)
+		got := slices.ContainsFunc(st.warnings, func(w string) bool { return strings.Contains(w, "fails nested") })
+		if got != tc.warn {
+			t.Errorf("--%v: nested warning = %v, want %v (%q)", tc.pass, got, tc.warn, st.warnings)
+		}
+	}
+}
+
+// TestBinaryInAHiddenRootStaysAlone proves the agent binary's read allow
+// re-opens its directory only when that directory is not a hidden temp
+// root or the snapshots' own directory: there the binary alone is allowed
+// (macOS) or bound (Linux), by its path and the file it resolves to.
+func TestBinaryInAHiddenRootStaysAlone(t *testing.T) {
+	t.Parallel()
+	var b strings.Builder
+	if err := seatbeltBinaryRead(&b, "/tmp/agent", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); strings.Contains(got, "subpath") || !strings.Contains(got, `(literal "/private/tmp/agent")`) {
+		t.Errorf("a binary in /tmp re-opened its directory: %s", got)
+	}
+	b.Reset()
+	wrapper := "/w/verdict-snapshot-1-2"
+	if err := seatbeltBinaryRead(&b, "/w/agent", []string{wrapper}); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); strings.Contains(got, "subpath") {
+		t.Errorf("a binary beside the snapshots re-opened their directory: %s", got)
+	}
+	b.Reset()
+	if err := seatbeltBinaryRead(&b, "/opt/agents/bin/agent", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); !strings.Contains(got, `(subpath "/opt/agents/bin")`) {
+		t.Errorf("a binary outside the hidden roots lost its directory: %s", got)
+	}
+}
+
+// TestBwrapBindsABinaryInAHiddenRootAlone is the Linux half: bwrap binds
+// the binary alone when its directory is a hidden root, its directory when
+// it sits below one.
+func TestBwrapBindsABinaryInAHiddenRootAlone(t *testing.T) {
+	t.Parallel()
+	if got := hiddenBinary("/tmp/agent", []string{"/tmp"}, nil); !slices.Equal(got, []string{"/tmp/agent"}) {
+		t.Errorf("bwrap binds %v for a binary in /tmp, want the binary alone", got)
+	}
+	if got := hiddenBinary("/tmp/x/bin/agent", []string{"/tmp"}, nil); !slices.Equal(got, []string{"/tmp/x/bin"}) {
+		t.Errorf("bwrap binds %v for a binary below /tmp, want its directory", got)
+	}
+}
+
+// TestGlobStateIsReadOnlyEverywhere proves a read-only glob entry denies
+// writes at and below every directory it matches on macOS, binds each
+// existing match read-only on Linux, and refuses as a writable entry.
+func TestGlobStateIsReadOnlyEverywhere(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	memory := filepath.Join(home, ".claude", "projects", "p", "memory")
+	if err := os.MkdirAll(memory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	glob := statePath{path: filepath.Join(home, ".claude", "projects", "*", "memory"), base: home, glob: true}
+	var b strings.Builder
+	if err := seatbeltStateRule(&b, glob, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := b.String(); !strings.Contains(got, `/projects/[^/]+/memory(/|$)"))`) || !strings.HasPrefix(got, "(deny file-write*") {
+		t.Errorf("glob rule = %s", got)
+	}
+	box := &reviewBox{mechanism: hostsandbox.BwrapTool, runner: "/usr/bin/bwrap", home: home, readOnly: []statePath{glob}}
+	if argv := strings.Join(bwrapReviewArgv([]string{"/w"}, "", box), " "); !strings.Contains(argv,
+		"--ro-bind "+memory+" "+memory) {
+		t.Errorf("bwrap does not bind the existing memory directory read-only: %s", argv)
+	}
+	def := &agentcatalog.Launch{Name: "x", StateWritable: []string{".x/*/y"}}
+	if _, err := newReviewBox(def, []string{"HOME=" + home}, nil); err == nil {
+		t.Error("a writable glob entry passed")
+	}
+}
+
+// TestStateChecksRefuseALinkedRelocationRoot proves the state checks refuse
+// a relocation root that is a symlink.
+func TestStateChecksRefuseALinkedRelocationRoot(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	target := filepath.Join(home, "target")
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	relocated := &agentcatalog.Launch{
+		Name: "x", StateWritable: []string{".x/data"}, StateEnv: []agentcatalog.StateVar{{Name: "X_HOME", Root: ".x"}},
+	}
+	if _, err := newReviewBox(relocated, []string{"HOME=" + home, "X_HOME=" + link}, nil); err == nil ||
+		!strings.Contains(err.Error(), "is a symlink") {
+		t.Errorf("a linked relocation root = %v, want refused", err)
+	}
+}
+
+// TestStateChecksRefuseCredentialNesting proves the state checks refuse a
+// catalog state path strictly inside a credential directory, and a writable
+// directory holding a credential the row does not name as its own login,
+// while one it names stays allowed.
+func TestStateChecksRefuseCredentialNesting(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	ssh := filepath.Join(home, ".ssh")
+	inside := &agentcatalog.Launch{Name: "x", StateWritable: []string{".ssh/agent"}}
+	if _, err := newReviewBox(inside, []string{"HOME=" + home}, []string{ssh}); err == nil ||
+		!strings.Contains(err.Error(), "sits inside the credential path") {
+		t.Errorf("state inside ~/.ssh = %v, want refused", err)
+	}
+	data := filepath.Join(home, ".d")
+	own := &agentcatalog.Launch{Name: "x", StateWritable: []string{".d", ".d/auth.json*"}}
+	if _, err := newReviewBox(own, []string{"HOME=" + home}, []string{filepath.Join(data, "auth.json")}); err != nil {
+		t.Errorf("a data directory holding its own login = %v, want allowed", err)
+	}
+	other := &agentcatalog.Launch{Name: "x", StateWritable: []string{".d"}}
+	if _, err := newReviewBox(other, []string{"HOME=" + home}, []string{filepath.Join(data, "auth.json")}); err == nil {
+		t.Error("a data directory holding a login it does not name passed")
+	}
+}
+
+// TestMakeStateDirsMakesCodeDirsInsideData proves the code directories a
+// writable data directory holds, and the directories the CLI makes at
+// startup under read-only state, exist before the launch — so on Linux the
+// agent cannot create one as its own and each is bound read-only.
+func TestMakeStateDirsMakesCodeDirsInsideData(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	data := filepath.Join(home, "data")
+	box := &reviewBox{
+		home: home, state: []statePath{{path: data, base: home}},
+		readOnly: []statePath{{path: filepath.Join(data, "bin"), base: home}, {path: filepath.Join(home, "cfg"), base: home}},
+		dirs:     []statePath{{path: filepath.Join(home, "cache", "bin"), base: home}},
+	}
+	box.makeStateDirs()
+	for _, want := range []string{data, filepath.Join(data, "bin"), filepath.Join(home, "cache", "bin")} {
+		if info, err := os.Stat(want); err != nil || !info.IsDir() {
+			t.Errorf("%s was not made: %v", want, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "cfg")); err == nil {
+		t.Error("a read-only directory outside the data directory was made")
+	}
+}
+
+// TestTrustEnvPointsKeychainlessLaunchesAtTheSystemBundle proves a macOS
+// launch that cannot reach the keychain brokers gets SSL_CERT_FILE unless the
+// operator chose one, and the keychain's own agent does not.
+func TestTrustEnvPointsKeychainlessLaunchesAtTheSystemBundle(t *testing.T) {
+	t.Parallel()
+	if _, err := os.Stat(systemCABundle); err != nil {
+		t.Skipf("%s is absent", systemCABundle)
+	}
+	box := &reviewBox{mechanism: hostsandbox.SandboxExecTool}
+	if got := box.trustEnv(nil); !slices.Equal(got, []string{"SSL_CERT_FILE=" + systemCABundle}) {
+		t.Errorf("trust env = %v", got)
+	}
+	if got := box.trustEnv([]string{"SSL_CERT_FILE=/mine.pem"}); got != nil {
+		t.Errorf("the operator's bundle was overridden: %v", got)
+	}
+	box.state = []statePath{{path: filepath.Join("/h", keychainState)}}
+	if got := box.trustEnv(nil); got != nil {
+		t.Errorf("the keychain's own agent got %v", got)
+	}
 }

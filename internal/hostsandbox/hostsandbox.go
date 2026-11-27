@@ -110,6 +110,16 @@ var CredentialPaths = []string{
 	filepath.Join(".config", "github-copilot"),
 	filepath.Join(".gemini", "oauth_creds.json"),
 	filepath.FromSlash(".config/git/credentials"),
+	filepath.Join(".local", "share", "opencode", "mcp-auth.json"),
+	// The X11 cookie: without it the display's socket, which a shared
+	// network namespace leaves reachable on Linux, refuses the connection.
+	".Xauthority",
+	// Password-manager and hardware-key ssh agents keep their sockets under
+	// HOME, outside every hidden temp root.
+	".1password",
+	".bitwarden-ssh-agent.sock",
+	filepath.Join("Library", "Group Containers", "2BUA8C4S2C.com.1password"),
+	filepath.Join("Library", "Containers", "com.maxgoedjen.Secretive.SecretAgent"),
 }
 
 // credentialVar is one environment variable that relocates a credential
@@ -145,6 +155,8 @@ var credentialEnv = []credentialVar{
 	{name: "CLAUDE_CONFIG_DIR", suffix: ".credentials.json"},
 	{name: xdgConfigHome, suffix: "github-copilot"},
 	{name: xdgConfigHome, suffix: filepath.FromSlash("git/credentials")},
+	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "mcp-auth.json")},
+	{name: "XAUTHORITY"},
 }
 
 // Inputs is what a policy resolves the credential table against: the

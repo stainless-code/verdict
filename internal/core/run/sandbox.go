@@ -30,10 +30,12 @@ import (
 // allows writes only to the launch's snapshot wrapper (its copy and private
 // TMPDIR), the agent's own data paths, and the devices a process needs; it
 // denies reads of verify's credential table except a path that is the
-// agent's own login, every unix socket a process could reach past the
-// filesystem rules (an ssh agent, docker, systemd, tmux), and on macOS the
-// preference, pasteboard, and (unless it is the agent's login) keychain
-// services. The network stays open: the agent has to reach its model API.
+// agent's own login, the unix sockets a process could reach past the
+// filesystem rules (an ssh agent, docker, systemd, tmux) — on Linux an
+// abstract-namespace socket in the shared network namespace stays reachable
+// — and on macOS every Mach service but a short allowlist (the keychain's
+// only for an agent whose login it is). The network stays open: the agent
+// has to reach its model API.
 // macOS wraps the launch in sandbox-exec with a generated profile, Linux in
 // bwrap; any other host has none.
 
@@ -71,29 +73,56 @@ const (
 // still deny bash its private TMPDIR.
 const reviewProbeScript = `p=$(mktemp "$TMPDIR/verdict-probe.XXXXXX") && printf ok > "$p" && test -s "$p" && rm -f "$p"`
 
-// seatbeltReviewHeader allows everything — the network and Mach services
-// included, since agents reach their model API and macOS logins through
-// them — then closes the service channels verify closes, every write, and
-// the channels that reach outside without a file write: preference writes
-// through cfprefsd (a `defaults write` into another app's plist runs at its
-// next launch), the pasteboard, and every unix socket but the resolver's and
-// syslog's (an ssh agent, gpg-agent, Docker Desktop, tmux, a language
-// server). The rules after it re-open only what they name, Seatbelt applying
-// the last matching rule.
+// seatbeltReviewHeader allows everything — the network included, since
+// agents reach their model API — then closes the service channels verify
+// closes, every write, and the channels that reach outside without a file
+// write: every Mach service but seatbeltMachAllow, preference writes, and
+// every unix socket but the resolver's and syslog's (an ssh agent,
+// gpg-agent, Docker Desktop, tmux, a language server). Default-deny closes
+// the whole service class, including services nobody has listed: cfprefsd (a
+// `defaults write` into another app's plist runs at its next launch), the
+// pasteboard, the keychain brokers, LaunchServices' database (`lsregister`
+// of a planted app), login items, the window server (synthetic input under
+// the terminal's Accessibility grant), Shortcuts. The rules after it
+// re-open only what they name, Seatbelt applying the last matching rule.
 const seatbeltReviewHeader = `(version 1)(allow default)` + hostsandbox.SeatbeltServiceDenials +
 	`(deny file-write* (subpath "/"))` +
 	`(deny user-preference-write)` +
-	`(deny mach-lookup (global-name "com.apple.cfprefsd.daemon") (global-name "com.apple.cfprefsd.agent")` +
-	` (global-name "com.apple.pasteboard.1") (global-name "com.apple.PBS"))` +
+	`(deny mach-lookup)` + seatbeltMachAllow +
 	`(deny network-outbound (remote unix-socket))` +
 	`(allow network-outbound (remote unix-socket (path-literal "/private/var/run/mDNSResponder")))` +
 	`(allow network-outbound (remote unix-socket (path-literal "/private/var/run/syslog")))`
 
-// seatbeltKeychainDenial closes the keychain brokers to a launch whose own
-// state is not the keychain: with them, a shell could ask for any stored
-// token by name.
-const seatbeltKeychainDenial = `(deny mach-lookup (global-name "com.apple.SecurityServer")` +
-	` (global-name "com.apple.securityd") (global-name "com.apple.secd") (global-name "com.apple.securityd.xpc"))`
+// seatbeltMachAllow is the whole Mach allowlist, found by running the
+// catalog's sandboxed CLIs (claude, codex, opencode, pi) and git, curl, node
+// and a Go client under a blanket denial against a local stub server and a
+// public HTTPS host, and adding only what one needed:
+//
+//   - opendirectoryd.libinfo answers user and group lookups (verify's
+//     allowlist; lookup-only, record writes use another service);
+//   - trustd.agent evaluates certificate trust for Security.framework TLS
+//     clients (Go's, among them): without it every handshake fails;
+//   - SystemConfiguration's configd and DNSConfiguration hand out the system
+//     proxy and resolver settings HTTP clients and libresolv read, so a
+//     proxied network still reaches the model API.
+//
+// DNS itself goes through mDNSResponder's socket, allowed below.
+const seatbeltMachAllow = `(allow mach-lookup` +
+	` (global-name "com.apple.system.opendirectoryd.libinfo")` +
+	` (global-name "com.apple.trustd.agent")` +
+	` (global-name "com.apple.SystemConfiguration.configd")` +
+	` (global-name "com.apple.SystemConfiguration.DNSConfiguration"))`
+
+// seatbeltKeychainAllow opens the keychain brokers to a launch whose own
+// login is the keychain (claude's), and to no other: with them, a shell
+// could ask for any stored token by name.
+const seatbeltKeychainAllow = `(allow mach-lookup (global-name "com.apple.SecurityServer")` +
+	` (global-name "com.apple.securityd.xpc"))`
+
+// systemCABundle is macOS's PEM bundle of the system roots. A TLS client that
+// loads its roots from the keychain (codex's) fails without the keychain
+// brokers; SSL_CERT_FILE points it at the bundle instead.
+const systemCABundle = "/etc/ssl/cert.pem"
 
 // seatbeltTempRoots are the shared host temp roots a macOS launch may not
 // read: their sockets and stray files belong to the operator's other
@@ -104,7 +133,7 @@ var seatbeltTempRoots = []string{"/tmp", "/private/tmp", "/var/tmp", "/private/v
 // read-only tmpfs mounts: their unix sockets (the systemd user manager and
 // its bus, docker and podman, tmux, an ssh agent, gnome-keyring) reach a
 // process connect() lets past every filesystem rule.
-var bwrapHiddenRoots = []string{"/tmp", "/run", "/var/run"}
+var bwrapHiddenRoots = []string{"/tmp", "/var/tmp", "/run", "/var/run"}
 
 // bwrapReviewHead is the Linux shape's fixed part after the runner: a
 // read-only host, a fresh /dev, and a /proc under a private PID namespace,
@@ -117,12 +146,13 @@ var bwrapReviewHead = []string{
 // input into the operator's terminal, and kills it with verdict.
 var bwrapReviewTail = []string{"--new-session", "--die-with-parent", "--"}
 
-// socketEnv names the sockets and terminals a review launch never inherits:
-// each points the agent at a channel out of the sandbox (an ssh agent, the
-// session bus, gpg-agent, tmux and nvim servers, the runtime directory that
-// holds them).
+// socketEnv names the sockets, displays, and terminals a review launch never
+// inherits: each points the agent at a channel out of the sandbox (an ssh
+// agent, the session bus, gpg-agent, tmux and nvim servers, the runtime
+// directory that holds them, the X11 or Wayland display and its cookie).
 var socketEnv = []string{
 	"SSH_AUTH_SOCK", "DBUS_SESSION_BUS_ADDRESS", "GPG_AGENT_INFO", "TMUX", "NVIM", "XDG_RUNTIME_DIR",
+	"DISPLAY", "WAYLAND_DISPLAY", "XAUTHORITY",
 }
 
 // keychainState is the macOS login keychain as a state path.
@@ -140,17 +170,24 @@ type reviewBox struct {
 	credentials []string
 	state       []statePath
 	readOnly    []statePath
+	dirs        []statePath
 	operator    bool
 }
 
 // statePath is one resolved state path below its base (HOME or the
 // relocation root). A prefix entry names every file in its directory whose
-// name starts with the path's base name.
+// name starts with the path's base name; a glob entry (read-only only) has
+// one `*` segment matching any one directory.
 type statePath struct {
 	path   string
 	base   string
 	prefix bool
+	glob   bool
 }
+
+// globSegment is the path segment a glob state entry matches any one
+// directory with.
+const globSegment = "*"
 
 // sandboxed reports whether launches are wrapped.
 func (b *reviewBox) sandboxed() bool {
@@ -219,7 +256,24 @@ func (st *state) settleBox(ctx context.Context, def *agentcatalog.Launch) *core.
 	}
 	st.box = box
 	st.warnStateless(def)
+	st.warnNested(def)
 	return nil
+}
+
+// valueFullAccess is codex's sandbox mode that starts no sandbox of its own.
+const valueFullAccess = "danger-full-access"
+
+// warnNested warns when a row with its own OS sandbox runs inside verdict's
+// on macOS — the operator's `--` decided its permissions — without turning
+// its own off: a nested Seatbelt profile fails, so its commands would.
+func (st *state) warnNested(def *agentcatalog.Launch) {
+	if def.Confinement != agentcatalog.OwnSandbox || st.box.mechanism != hostsandbox.SandboxExecTool ||
+		slices.ContainsFunc(st.req.PassThrough, func(a string) bool { return strings.Contains(a, valueFullAccess) }) {
+		return
+	}
+	st.boxWarn(core.Msgf("%s runs inside verdict's review sandbox because your `--` arguments decide its "+
+		"permissions, and its own macOS sandbox fails nested in it: pass `--sandbox %s` after `--` so verdict's "+
+		"sandbox alone confines it", def.Name, valueFullAccess))
 }
 
 // optOutRemedy names the opt-out, on a verb that has it.
@@ -434,6 +488,24 @@ func (st *state) removePrivate(private string) {
 	}
 }
 
+// trustEnv points a macOS launch's TLS clients that load their roots from the
+// keychain at the system bundle, unless the operator chose a bundle or the
+// keychain is the agent's own: the profile closes the keychain brokers they
+// would read the roots through.
+func (b *reviewBox) trustEnv(env []string) []string {
+	if b.mechanism != hostsandbox.SandboxExecTool || b.keychain() || hostsandbox.EnvLookup(env, sslCertFile) != "" {
+		return nil
+	}
+	if _, err := os.Stat(systemCABundle); err != nil {
+		return nil
+	}
+	return []string{sslCertFile + inlineValue + systemCABundle}
+}
+
+// sslCertFile is the variable OpenSSL-style TLS clients read their root
+// bundle from.
+const sslCertFile = "SSL_CERT_FILE"
+
 // tmpEnv points a child's scratch at its private directory. Only the temp
 // variables move: an agent's caches are its state, not scratch.
 func tmpEnv(private string) []string {
@@ -500,7 +572,7 @@ func (b *reviewBox) wrap(wrapper, bin string, argv []string) ([]string, error) {
 // written.
 func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]string, error) {
 	if resolve {
-		makeStateDirs(b.state)
+		b.makeStateDirs()
 	}
 	if b.mechanism == hostsandbox.BwrapTool {
 		return slices.Concat([]string{b.runner}, bwrapReviewArgv(writable, bin, b)), nil
@@ -519,13 +591,14 @@ func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]strin
 // Seatbelt applies the last matching rule:
 //
 //  1. the header: everything allowed but the service channels, every
-//     write, preference writes, the pasteboard, and unix sockets;
-//  2. the keychain brokers closed unless the keychain is the agent's
-//     login;
+//     write, preference writes, every Mach service past the allowlist, and
+//     unix sockets;
+//  2. the keychain brokers opened when the keychain is the agent's login;
 //  3. reads denied in the shared temp roots and in every other snapshot
 //     directory beside the launch's own;
 //  4. the launch's own directories re-allowed, reads and writes, the agent
-//     binary's directory readable, and the device writes a process needs;
+//     binary (or its directory) readable, their ancestors' metadata
+//     readable, and the device writes a process needs;
 //  5. the credential table denied, reads and writes;
 //  6. the row's data paths re-allowed, reads and writes, so a login the
 //     table would hide stays the agent's, each directory's own entry pinned
@@ -534,13 +607,14 @@ func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]strin
 func seatbeltReviewProfile(writable []string, bin string, box *reviewBox) (string, error) {
 	var b strings.Builder
 	b.WriteString(seatbeltReviewHeader)
-	if !box.keychain() {
-		b.WriteString(seatbeltKeychainDenial)
+	if box.keychain() {
+		b.WriteString(seatbeltKeychainAllow)
 	}
 	steps := []func() error{
 		func() error { return seatbeltReadDenials(&b, writable) },
 		func() error { return hostsandbox.WriteRules(&b, "allow", writable) },
-		func() error { return seatbeltBinaryRead(&b, bin) },
+		func() error { return seatbeltBinaryRead(&b, bin, writable) },
+		func() error { return seatbeltAncestors(&b, writable, bin) },
 		func() error { b.WriteString(hostsandbox.SeatbeltDeviceWrites); return nil },
 		func() error { return hostsandbox.WriteRules(&b, "deny", hostsandbox.ExpandRealpaths(box.credentials)) },
 		func() error { return seatbeltStateRules(&b, box.state, true) },
@@ -562,13 +636,7 @@ func seatbeltReadDenials(b *strings.Builder, writable []string) error {
 	if err := hostsandbox.ReadDenials(b, seatbeltTempRoots); err != nil {
 		return err //nolint:wrapcheck // the shared builder's message is the refusal's reason
 	}
-	var bases []string
-	for _, w := range writable {
-		if strings.HasPrefix(filepath.Base(w), contenttree.SnapshotPrefix) {
-			bases = append(bases, filepath.Dir(w))
-		}
-	}
-	for _, dir := range hostsandbox.ExpandRealpaths(bases) {
+	for _, dir := range hostsandbox.ExpandRealpaths(snapshotBases(writable)) {
 		if err := seatbeltRegex(b, "deny file-read*", filepath.Join(dir, contenttree.SnapshotPrefix), ""); err != nil {
 			return err
 		}
@@ -577,12 +645,67 @@ func seatbeltReadDenials(b *strings.Builder, writable []string) error {
 }
 
 // seatbeltBinaryRead re-allows reading the agent binary's directory, which
-// may sit in a denied temp root.
-func seatbeltBinaryRead(b *strings.Builder, bin string) error {
+// may sit in a denied temp root — or, when that directory is a temp root
+// itself or the directory the snapshots sit in, the binary alone, under
+// each spelling, so the allow does not re-open the root.
+func seatbeltBinaryRead(b *strings.Builder, bin string, writable []string) error {
 	if bin == "" {
 		return nil
 	}
-	return hostsandbox.ReadRules(b, hostsandbox.ExpandRealpaths([]string{filepath.Dir(bin)})) //nolint:wrapcheck // as above
+	if !bareParent(filepath.Dir(bin), slices.Concat(seatbeltTempRoots, snapshotBases(writable))) {
+		return hostsandbox.ReadRules(b, hostsandbox.ExpandRealpaths([]string{filepath.Dir(bin)})) //nolint:wrapcheck // as above
+	}
+	for _, path := range binarySpellings(bin) {
+		literal, err := hostsandbox.SeatbeltLiteral(path)
+		if err != nil {
+			return err //nolint:wrapcheck // as above
+		}
+		fmt.Fprintf(b, "(allow file-read* (literal %s))", literal)
+	}
+	return nil
+}
+
+// seatbeltAncestors allows metadata reads (stat, never a listing) of every
+// ancestor of the launch's own directories and the agent binary: a path
+// resolver walks them one by one (Node's realpath does), and a denied temp
+// root — the snapshots sit in /tmp when TMPDIR is unset — would fail it.
+func seatbeltAncestors(b *strings.Builder, writable []string, bin string) error {
+	paths := slices.Clone(writable)
+	if bin != "" {
+		paths = append(paths, binarySpellings(bin)...)
+	}
+	return hostsandbox.AncestorMetadata(b, paths) //nolint:wrapcheck // the shared builder's message is the refusal's reason
+}
+
+// bareParent reports whether dir, under any spelling, is one of roots: a
+// directory whose read allow would re-open what the profile hides.
+func bareParent(dir string, roots []string) bool {
+	spelled := hostsandbox.ExpandRealpaths(roots)
+	return slices.ContainsFunc(hostsandbox.ExpandRealpaths([]string{dir}), func(d string) bool {
+		return slices.Contains(spelled, filepath.Clean(d))
+	})
+}
+
+// binarySpellings are the agent binary's path and the file it resolves to,
+// each under every spelling.
+func binarySpellings(bin string) []string {
+	paths := []string{bin}
+	if target, err := filepath.EvalSymlinks(bin); err == nil {
+		paths = append(paths, target)
+	}
+	return hostsandbox.ExpandRealpaths(paths)
+}
+
+// snapshotBases are the directories the launch's snapshot wrappers sit in,
+// beside the execution's shared tree and the sibling launches' views.
+func snapshotBases(writable []string) []string {
+	var bases []string
+	for _, w := range writable {
+		if strings.HasPrefix(filepath.Base(w), contenttree.SnapshotPrefix) {
+			bases = append(bases, filepath.Dir(w))
+		}
+	}
+	return bases
 }
 
 // seatbeltStateRules renders the row's state under every spelling Seatbelt
@@ -602,6 +725,8 @@ func seatbeltStateRules(b *strings.Builder, state []statePath, writable bool) er
 // seatbeltStateRule renders one state entry.
 func seatbeltStateRule(b *strings.Builder, s statePath, writable bool) error {
 	switch {
+	case s.glob:
+		return seatbeltGlob(b, s)
 	case s.prefix && writable:
 		return seatbeltPrefix(b, "allow file-read* file-write*", s, "[^/]*$")
 	case s.prefix:
@@ -619,6 +744,21 @@ func seatbeltStateRule(b *strings.Builder, s statePath, writable bool) error {
 			return err //nolint:wrapcheck // as above
 		}
 		fmt.Fprintf(b, "(deny file-write* (literal %s))", literal)
+	}
+	return nil
+}
+
+// seatbeltGlob denies writes at and below every directory a read-only glob
+// entry matches, under each spelling of the directory before its `*`.
+func seatbeltGlob(b *strings.Builder, s statePath) error {
+	head, tail, _ := strings.Cut(s.path, string(filepath.Separator)+globSegment+string(filepath.Separator))
+	for _, dir := range hostsandbox.ExpandRealpaths([]string{head}) {
+		pattern := hostsandbox.SeatbeltRegexQuote(dir) + "/[^/]+/" + hostsandbox.SeatbeltRegexQuote(tail)
+		literal, err := hostsandbox.SeatbeltLiteral("^" + pattern + "(/|$)")
+		if err != nil {
+			return err //nolint:wrapcheck // as above
+		}
+		fmt.Fprintf(b, "(deny file-write* (regex %s))", literal)
 	}
 	return nil
 }
@@ -664,13 +804,29 @@ func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 		argv = append(argv, mount.Argv()...)
 	}
 	argv = append(argv, binds(hostsandbox.Bind, writable)...)
-	if bin != "" && under(bin, hidden) {
-		argv = append(argv, binds(hostsandbox.ROBind, []string{filepath.Dir(bin)})...)
-	}
+	argv = append(argv, binds(hostsandbox.ROBind, hiddenBinary(bin, hidden, writable))...)
 	argv = append(argv, binds(hostsandbox.Bind, existingState(box.state))...)
 	argv = append(argv, binds(hostsandbox.ROBind, existingState(box.readOnly))...)
 	argv = append(argv, pairs("--remount-ro", hidden)...)
 	return append(argv, bwrapReviewTail...)
+}
+
+// hiddenBinary is what of the agent binary a hidden root covers, to bind
+// back read-only: its directory, or — when that directory is a hidden root
+// itself or the directory the snapshots sit in — the binary alone, by its
+// path and the file it resolves to, so the bind does not re-open the root.
+func hiddenBinary(bin string, hidden, writable []string) []string {
+	if bin == "" || !under(bin, hidden) {
+		return nil
+	}
+	if !bareParent(filepath.Dir(bin), slices.Concat(hidden, snapshotBases(writable))) {
+		return []string{filepath.Dir(bin)}
+	}
+	paths := []string{bin}
+	if target, err := filepath.EvalSymlinks(bin); err == nil && target != bin && under(target, hidden) {
+		paths = append(paths, target)
+	}
+	return paths
 }
 
 // pairs is option followed by each path.
@@ -742,26 +898,47 @@ func under(path string, roots []string) bool {
 	})
 }
 
-// makeStateDirs creates the writable state directories that do not exist
-// yet, so bwrap, which can bind only an existing path, binds them, and
-// Seatbelt pins each one's own entry: the agent would create them itself on
-// its first run. One that cannot be made stays read-only.
-func makeStateDirs(state []statePath) {
-	for _, s := range state {
-		if !s.prefix {
-			_ = os.MkdirAll(s.path, viewDirMode) //nolint:errcheck // best effort: an unmade directory stays read-only
-		}
+// makeStateDirs creates the state directories that do not exist yet: the
+// writable ones, so bwrap, which can bind only an existing path, binds them,
+// and Seatbelt pins each one's own entry — the agent would create them
+// itself on its first run; the read-only ones inside a writable directory,
+// so the agent cannot create one as its own; and the directories the CLI
+// makes at startup under read-only state (StateDirs). One that cannot be
+// made stays read-only.
+func (b *reviewBox) makeStateDirs() {
+	dirs := slices.Concat(b.dirs, slices.DeleteFunc(slices.Clone(b.state), func(s statePath) bool { return s.prefix }))
+	dirs = append(dirs, slices.DeleteFunc(slices.Clone(b.readOnly), func(r statePath) bool { return !b.insideData(r) })...)
+	for _, d := range dirs {
+		_ = os.MkdirAll(d.path, viewDirMode) //nolint:errcheck // best effort: an unmade directory stays read-only
 	}
+}
+
+// insideData reports whether a read-only directory entry sits strictly
+// inside a writable directory entry.
+func (b *reviewBox) insideData(r statePath) bool {
+	return !r.prefix && !r.glob && slices.ContainsFunc(b.state, func(s statePath) bool {
+		return !s.prefix && hostsandbox.Within(r.path, s.path) && r.path != s.path
+	})
 }
 
 // existing lists the host paths a state entry names right now.
 func (s statePath) existing() []string {
-	if !s.prefix {
-		if _, err := os.Lstat(s.path); err != nil {
-			return nil
-		}
-		return []string{s.path}
+	switch {
+	case s.glob:
+		matches, _ := filepath.Glob(s.path) //nolint:errcheck // the pattern is a clean path; a bad one matches nothing
+		return matches
+	case s.prefix:
+		return s.prefixed()
 	}
+	if _, err := os.Lstat(s.path); err != nil {
+		return nil
+	}
+	return []string{s.path}
+}
+
+// prefixed lists the files of a prefix entry's directory whose names start
+// with its stem.
+func (s statePath) prefixed() []string {
 	dir, stem := filepath.Dir(s.path), filepath.Base(s.path)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -789,14 +966,30 @@ func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewB
 			"cannot be named", def.Name)
 	}
 	box.home = filepath.Clean(home)
-	var err error
-	if box.state, err = stateEntries(def, box.home, env, def.StateWritable); err != nil {
-		return nil, err
-	}
-	if box.readOnly, err = stateEntries(def, box.home, env, def.StateReadOnly); err != nil {
+	if err := box.resolveState(def, env); err != nil {
 		return nil, err
 	}
 	return box, box.checkState()
+}
+
+// resolveState resolves the row's three state lists under HOME; only the
+// read-only list may hold a glob entry.
+func (b *reviewBox) resolveState(def *agentcatalog.Launch, env []string) error {
+	var err error
+	if b.state, err = stateEntries(def, b.home, env, def.StateWritable); err != nil {
+		return err
+	}
+	if b.readOnly, err = stateEntries(def, b.home, env, def.StateReadOnly); err != nil {
+		return err
+	}
+	if b.dirs, err = stateEntries(def, b.home, env, def.StateDirs); err != nil {
+		return err
+	}
+	if s, ok := firstGlob(b.state, b.dirs); ok {
+		return jq.NewErrf("%s's state path %s has a %q segment, which only a read-only entry may", def.Name,
+			s.path, globSegment)
+	}
+	return nil
 }
 
 // stateEntries resolves a list of the row's home-relative entries.
@@ -812,9 +1005,20 @@ func stateEntries(def *agentcatalog.Launch, home string, env, rels []string) ([]
 	return out, nil
 }
 
+// firstGlob returns the first glob entry among lists that may hold none.
+func firstGlob(lists ...[]statePath) (statePath, bool) {
+	for _, list := range lists {
+		if i := slices.IndexFunc(list, func(s statePath) bool { return s.glob }); i >= 0 {
+			return list[i], true
+		}
+	}
+	return statePath{}, false
+}
+
 // stateEntry resolves one entry: a clean path strictly below HOME, moved
 // under the first relocation variable whose root holds it and whose value is
-// absolute; a trailing `*` makes it a prefix.
+// absolute; a trailing `*` makes it a prefix, a whole `*` segment before the
+// end a glob.
 func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string) (statePath, error) {
 	trimmed := strings.TrimSuffix(rel, "*")
 	if why := agentcatalog.StatePathShape(trimmed); why != "" {
@@ -831,6 +1035,7 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 	}
 	return statePath{
 		path: filepath.Join(base, filepath.FromSlash(tail)), base: base, prefix: trimmed != rel,
+		glob: slices.Contains(strings.Split(trimmed, slash), globSegment),
 	}, nil
 }
 
@@ -842,7 +1047,7 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 // the box is settled and again before every launch.
 func (b *reviewBox) checkState() error {
 	homes := hostsandbox.ExpandRealpaths([]string{b.home})
-	credentials := hostsandbox.ExpandRealpaths(b.credentials)
+	credentials := slices.DeleteFunc(hostsandbox.ExpandRealpaths(b.credentials), b.ownLogin())
 	for _, s := range b.state {
 		if err := b.checkEntry(s, homes, credentials); err != nil {
 			return err
@@ -851,8 +1056,24 @@ func (b *reviewBox) checkState() error {
 	return nil
 }
 
+// ownLogin reports whether a credential location is the agent's own login:
+// a catalog row names it as a writable entry of its own (claude's keychain,
+// codex's auth.json), so a writable directory may hold it. An operator's
+// prefs entry never owns one.
+func (b *reviewBox) ownLogin() func(string) bool {
+	if b.operator {
+		return func(string) bool { return false }
+	}
+	var own []string
+	for _, s := range b.state {
+		own = append(own, s.path)
+	}
+	own = hostsandbox.ExpandRealpaths(own)
+	return func(credential string) bool { return slices.Contains(own, credential) }
+}
+
 // checkEntry checks one writable state entry against the spellings of HOME
-// and the credential table.
+// and the credential table less the agent's own logins.
 func (b *reviewBox) checkEntry(s statePath, homes, credentials []string) error {
 	if err := s.linkFree(); err != nil {
 		return err
@@ -876,6 +1097,10 @@ func (b *reviewBox) checkEntry(s statePath, homes, credentials []string) error {
 func (b *reviewBox) checkBase(base string, homes []string) error {
 	if base == b.home {
 		return nil
+	}
+	if info, err := os.Lstat(base); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return jq.NewErrf("the state root %s is a symlink; point the variable that relocates it at the directory "+
+			"the link names", base)
 	}
 	for _, path := range hostsandbox.ExpandRealpaths([]string{base}) {
 		_, root := hostsandbox.FilesystemRoot(path)
@@ -952,14 +1177,17 @@ func (s statePath) check(homes, credentials []string, operator bool) string {
 	return ""
 }
 
-// overlap says how the state path takes in one credential location, "" for
-// not at all.
+// overlap says how the state path takes in one credential location that is
+// not the agent's own login, "" for not at all: holding it, or sitting
+// inside it.
 func (s statePath) overlap(credential string, operator bool) string {
 	switch {
 	case operator && (s.encloses(credential) || hostsandbox.Within(s.path, credential)):
 		return "overlaps the credential path " + credential
 	case s.encloses(credential) && credential != s.path:
 		return "holds the credential path " + credential
+	case hostsandbox.Within(s.path, credential) && credential != s.path:
+		return "sits inside the credential path " + credential
 	}
 	return ""
 }
@@ -983,16 +1211,17 @@ func (s statePath) encloses(path string) bool {
 var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
 // claudeWidenedWrites says why the operator's own Claude settings void
-// claude's own-writes confinement, "" when they do not: an allow rule for a
-// write tool with no path, or with a wildcard, would let an unsandboxed
-// review write past the bundle. Settings that cannot be read or parsed void
-// it too. The settings directory is CLAUDE_CONFIG_DIR, else ~/.claude.
+// claude's own-writes confinement, "" when they do not: any allow rule for a
+// write tool, whatever path it names, would let an unsandboxed review write
+// past the bundle. Settings that cannot be read or parsed, or a HOME that
+// cannot name them, void it too. The settings directory is
+// CLAUDE_CONFIG_DIR, else ~/.claude.
 func claudeWidenedWrites(env []string) string {
 	dir := hostsandbox.EnvLookup(absConfigHomes(env), "CLAUDE_CONFIG_DIR")
 	if !filepath.IsAbs(dir) {
 		home, ok := hostsandbox.Home(env)
-		if !ok {
-			return "HOME is unset, so your Claude settings cannot be read"
+		if !ok || !filepath.IsAbs(home) {
+			return "HOME is unset or relative, so your Claude settings cannot be read"
 		}
 		dir = filepath.Join(home, ".claude")
 	}
@@ -1019,18 +1248,17 @@ func settingsWidenWrites(path string) string {
 		return fmt.Sprintf("your Claude settings %s cannot be parsed", path)
 	}
 	for _, rule := range doc.Permissions.Allow {
-		if wideWriteRule(rule) {
-			return fmt.Sprintf("your Claude settings %s allow %q, writes wider than its review grant", path, rule)
+		if writeRule(rule) {
+			return fmt.Sprintf("your Claude settings %s allow %q, writes past its review grant", path, rule)
 		}
 	}
 	return ""
 }
 
-// wideWriteRule reports an allow rule for a write tool with no path or a
-// wildcard in it.
-func wideWriteRule(rule string) bool {
-	tool, spec, scoped := strings.Cut(strings.TrimSpace(rule), "(")
-	return slices.Contains(writeTools, tool) && (!scoped || strings.Contains(spec, "*"))
+// writeRule reports an allow rule for a write tool, scoped or not.
+func writeRule(rule string) bool {
+	tool, _, _ := strings.Cut(strings.TrimSpace(rule), "(")
+	return slices.Contains(writeTools, strings.TrimSpace(tool))
 }
 
 // ReviewSandbox is the posture a review launch of req's agent takes, as a

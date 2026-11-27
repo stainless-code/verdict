@@ -762,7 +762,8 @@ var droppedEnvPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
 // configHomes are the agent configuration directories a relative value of
 // which would resolve inside the view instead of where the operator meant.
 var configHomes = []string{
-	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR", "XDG_DATA_HOME", "XDG_STATE_HOME",
+	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+	"XDG_CONFIG_HOME",
 }
 
 // env is the launch environment for the view: PWD names the view and
@@ -1123,6 +1124,7 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 	if !st.box.sandboxed() {
 		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env)
 	}
+	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
 	wrapped, err := st.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
