@@ -181,7 +181,10 @@ type reviewBox struct {
 	state       []statePath
 	readOnly    []statePath
 	dirs        []statePath
-	operator    bool
+	// hiddenDataDirs are the credential directories a Linux launch makes
+	// when missing, so bwrap, which mounts only what exists, hides them.
+	hiddenDataDirs []string
+	operator       bool
 	// shellKeychain marks a keychain login dropped for a launch's shell.
 	shellKeychain bool
 }
@@ -441,15 +444,17 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 		return nil, why, nil
 	}
 	env := absConfigHomes(st.childEnv())
-	credentials, err := hostsandbox.Inputs{
-		AccountHome: hostsandbox.AccountHome(), ChildEnv: env, HostEnv: st.req.Environ,
-	}.CredentialLocations(st.workDir(), mechanism == hostsandbox.SandboxExecTool)
+	in := hostsandbox.Inputs{AccountHome: hostsandbox.AccountHome(), ChildEnv: env, HostEnv: st.req.Environ}
+	credentials, err := in.CredentialLocations(st.workDir(), mechanism == hostsandbox.SandboxExecTool)
 	if err != nil {
 		return nil, "", err //nolint:wrapcheck // the shared resolver's message is the refusal's reason
 	}
 	box, err := newReviewBox(def, env, credentials)
 	if err != nil {
 		return nil, "", err
+	}
+	if mechanism == hostsandbox.BwrapTool {
+		box.hiddenDataDirs = openCodeDataDirs(in)
 	}
 	if st.req.AllowShell {
 		box.dropKeychain()
@@ -727,7 +732,7 @@ func (b *reviewBox) wrap(wrapper, bin string, argv []string) ([]string, error) {
 // written.
 func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]string, error) {
 	if resolve {
-		if err := b.makeStateDirs(); err != nil {
+		if err := b.makeLaunchDirs(); err != nil {
 			return nil, err
 		}
 	}
@@ -1117,6 +1122,72 @@ func (b *reviewBox) makeStateDirs() error {
 	}
 	return nil
 }
+
+// makeLaunchDirs makes, before a real launch, the state directories the
+// launch binds and the credential directories it must hide.
+func (b *reviewBox) makeLaunchDirs() error {
+	if err := b.makeStateDirs(); err != nil {
+		return err
+	}
+	return makeHiddenDirs(b.hiddenDataDirs)
+}
+
+// openCodeDataDirs is opencode's data directory under every data root the
+// child and host environments and the homes name.
+func openCodeDataDirs(in hostsandbox.Inputs) []string {
+	homes, err := in.Homes()
+	if err != nil {
+		return nil
+	}
+	return hostsandbox.CleanUnique(slices.Concat(hostsandbox.OpenCodeDataDirs(in.ChildEnv, homes),
+		hostsandbox.OpenCodeDataDirs(in.HostEnv, homes)))
+}
+
+// makeHiddenDirs makes each missing credential directory whose parent
+// exists, empty and private, before a Linux launch: bwrap mounts only what
+// exists, so a directory opencode makes on its first run during the review
+// would otherwise be readable through the host's read-only root. Each is
+// made below a root handle on its parent, never removed (opencode uses it
+// later); a parent that is a link refuses the launch, since the directory
+// would land wherever it points.
+func makeHiddenDirs(dirs []string) error {
+	for _, dir := range dirs {
+		if err := makeHiddenDir(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// makeHiddenDir makes one missing directory below its existing parent.
+func makeHiddenDir(dir string) error {
+	if _, err := os.Lstat(dir); !errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	parent := filepath.Dir(dir)
+	info, err := os.Lstat(parent)
+	switch {
+	case err != nil:
+		return nil
+	case info.Mode()&fs.ModeSymlink != 0:
+		return jq.NewErrf("%s is a symlink, so the review sandbox cannot make and hide %s below it; replace "+
+			"the link with the directory it names", parent, filepath.Base(dir))
+	case !info.IsDir():
+		return nil
+	}
+	root, err := os.OpenRoot(parent)
+	if err != nil {
+		return jq.Sealed("open "+parent, err)
+	}
+	defer func() { _ = root.Close() }()
+	if err := root.Mkdir(filepath.Base(dir), hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+		return jq.Sealed("make "+dir, err)
+	}
+	return nil
+}
+
+// hiddenDirMode is a made credential directory's mode: the operator's own.
+const hiddenDirMode = 0o700
 
 // makeOwnDir makes a directory and confirms it is one, not a link.
 func makeOwnDir(path string) error {

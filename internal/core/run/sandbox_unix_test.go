@@ -1053,3 +1053,111 @@ func denyRead(t *testing.T, path string) {
 		t.Skip("this user reads a mode-0 file (root); the denial cannot be staged")
 	}
 }
+
+// firstRunScript waits on a FIFO in pi's own read-only directory — the test
+// opens it once the sandbox is up — then reads a sentinel beside opencode's
+// data root and the database a host opencode wrote on its first run there.
+const firstRunScript = "#!/bin/sh\n" +
+	"/bin/cat \"$HOME/.pi/go.fifo\" >/dev/null\n" +
+	"{ /bin/cat \"$HOME/.local/share/sentinel\" 2>/dev/null | /usr/bin/grep -q seen && echo home=visible " +
+	"|| echo home=hidden\n" +
+	"  /usr/bin/head -c 6 \"$HOME/.local/share/opencode/opencode.db\" 2>/dev/null | /usr/bin/grep -q LEAKED " +
+	"&& echo firstrun=read || echo firstrun=hidden\n" +
+	"} 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxHidesAFirstRunOpencodeDataDir proves, under the real
+// mechanism, that opencode's data directory, absent when a launch starts,
+// stays hidden when a host opencode makes it and writes its database during
+// the launch: on Linux verdict makes the directory first so bwrap can hide
+// it. Where the home itself sits in a hidden temp root nothing in it could
+// leak, so the case needs a TMPDIR outside them.
+func TestReviewSandboxHidesAFirstRunOpencodeDataDir(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home := t.TempDir()
+	writeUnder(t, home, filepath.Join(".local", "share", "sentinel"), "seen")
+	fifo := filepath.Join(home, ".pi", "go.fifo")
+	if err := os.MkdirAll(filepath.Dir(fifo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan string, 1)
+	go func() {
+		_, ref, log := sandboxedRunAs(t, "pi", confinedRoot(t), home, firstRunScript, "1")
+		if ref != nil {
+			log += "\nrefused: " + ref.Message
+		}
+		done <- log
+	}()
+	w := openFIFOWriter(t, fifo, done)
+	writeUnder(t, home, filepath.Join(".local", "share", "opencode", "opencode.db"), "LEAKED")
+	_ = w.Close()
+	log := <-done
+	if strings.Contains(log, "home=hidden") {
+		t.Skipf("the test home sits in a hidden temp root, so no late write could leak:\n%s", log)
+	}
+	if !strings.Contains(log, "firstrun=hidden") {
+		t.Errorf("a first-run opencode database was readable, or the launch never reached it:\n%s", log)
+	}
+}
+
+// TestReviewSandboxHidesADanglingOpencodeDBTarget proves, under the real
+// mechanism, that an OPENCODE_DB link whose target does not exist when a
+// launch starts hides the directory it points into: the database a host
+// opencode creates there during the launch is unreadable to another agent.
+func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home, store := t.TempDir(), t.TempDir()
+	target := filepath.Join(store, "real", "oc.db")
+	link := danglingLink(t, store, target)
+	fifo := filepath.Join(home, ".pi", "go.fifo")
+	makeFIFO(t, fifo)
+	done := make(chan string, 1)
+	go func() {
+		_, ref, log := sandboxedRunAs(t, "pi", confinedRoot(t), home, "#!/bin/sh\n/bin/cat \"$HOME/.pi/go.fifo\" "+
+			">/dev/null\n"+linkedDBScript[len("#!/bin/sh\n"):], "1", "OPENCODE_DB="+link, "REAL_DB="+target)
+		if ref != nil {
+			log += "\nrefused: " + ref.Message
+		}
+		done <- log
+	}()
+	w := openFIFOWriter(t, fifo, done)
+	if err := os.WriteFile(target, []byte("LEAKED"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	if log := <-done; !strings.Contains(log, "target=hidden") {
+		t.Errorf("the database created at a dangling link's target was readable:\n%s", log)
+	}
+}
+
+// danglingLink makes target's directory, empty, and a link to target in a
+// directory of its own under base.
+func danglingLink(t *testing.T, base, target string) string {
+	t.Helper()
+	link := filepath.Join(base, "link", "oc.db")
+	for _, dir := range []string{filepath.Dir(target), filepath.Dir(link)} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	return link
+}
+
+// makeFIFO makes a FIFO at path, and its directory.
+func makeFIFO(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}

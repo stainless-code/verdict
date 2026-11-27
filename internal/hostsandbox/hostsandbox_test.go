@@ -160,6 +160,9 @@ func TestCredentialTableRefusesToHideAHome(t *testing.T) {
 // is a link hides the directory of the file it names as well — where SQLite
 // opens the database and keeps its journal and log.
 func TestCredentialTableHidesALinkedOpenCodeDBTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
 	base := t.TempDir()
 	target := filepath.Join(base, "target")
 	link := linkedDB(t, base, target)
@@ -193,6 +196,102 @@ func linkedDB(t *testing.T, base, target string) string {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(filepath.Join(target, "oc.db"), link); err != nil {
+		t.Fatal(err)
+	}
+	return link
+}
+
+// TestCredentialTableHidesALinkedDefaultOpenCodeDB proves the default
+// database, OPENCODE_DB unset, is resolved like an explicit one: an
+// opencode.db that is a link hides its target's directory too.
+func TestCredentialTableHidesALinkedDefaultOpenCodeDB(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := t.TempDir()
+	h, target := filepath.Join(base, "h"), filepath.Join(base, "target")
+	data := filepath.Join(h, ".local", "share", "opencode")
+	if err := os.MkdirAll(data, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := linkedDB(t, base, target)
+	if err := os.Rename(link, filepath.Join(data, "opencode.db")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Inputs{ChildEnv: []string{"HOME=" + h}}.CredentialLocations(filepath.Join(base, "r"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(got, resolved) {
+		t.Errorf("credential locations lack the default database's target %s:\n%s", resolved, strings.Join(got, "\n"))
+	}
+}
+
+// TestCredentialTableRefusesADataDirLinkedToAHome proves a credential
+// location is compared with the homes by what it resolves to: an opencode
+// data directory that is a link to HOME refuses rather than hiding HOME.
+func TestCredentialTableRefusesADataDirLinkedToAHome(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := t.TempDir()
+	h := filepath.Join(base, "h")
+	share := filepath.Join(h, ".local", "share")
+	if err := os.MkdirAll(share, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(h, filepath.Join(share, "opencode")); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Inputs{ChildEnv: []string{"HOME=" + h}}.CredentialLocations(filepath.Join(base, "r"), false)
+	if err == nil || !strings.Contains(err.Error(), "a home, or above one") {
+		t.Fatalf("a data directory linked to HOME = %v, want a refusal", err)
+	}
+}
+
+// TestCredentialTableHidesADanglingOpenCodeDBLinkTarget proves a database
+// link whose target does not exist yet still hides the directory it points
+// into, where the database would appear, and that a link into a directory
+// that does not resolve refuses rather than leaving it open.
+func TestCredentialTableHidesADanglingOpenCodeDBLinkTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	link := symlinkIn(t, filepath.Join(base, "link"), "oc.db", filepath.Join(target, "oc.db"), target)
+	in := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "h"), "OPENCODE_DB=" + link}}
+	got, err := in.CredentialLocations(filepath.Join(base, "r"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := filepath.EvalSymlinks(target); err != nil || !slices.Contains(got, resolved) {
+		t.Errorf("credential locations lack the dangling link's target %s (%v):\n%s", resolved, err,
+			strings.Join(got, "\n"))
+	}
+	in.ChildEnv[1] = "OPENCODE_DB=" + symlinkIn(t, filepath.Join(base, "link"), "nowhere.db",
+		filepath.Join(base, "missing", "oc.db"))
+	if _, err := in.CredentialLocations(filepath.Join(base, "r"), false); err == nil ||
+		!strings.Contains(err.Error(), "does not resolve") {
+		t.Fatalf("a link into a missing directory = %v, want a refusal", err)
+	}
+}
+
+// symlinkIn makes dir and every extra directory, then a link named name in
+// dir pointing at target, and returns the link.
+func symlinkIn(t *testing.T, dir, name, target string, extra ...string) string {
+	t.Helper()
+	for _, d := range append([]string{dir}, extra...) {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(dir, name)
+	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
 	return link

@@ -4418,7 +4418,13 @@ On Linux that means the network namespace is shared too (see Sockets below).
   whole data directory `~/.local/share/opencode`, whose database holds its
   logins (and the directory `OPENCODE_DB` puts the database in, resolved as
   opencode resolves it, with the directory of the file it names when it is a
-  link; one directly in a home refuses); the X11
+  link — the default `opencode.db` too, and for a link whose file does not
+  exist yet the directory it points into; a link into a directory that does
+  not resolve, or a location that is or resolves to a home, refuses). On Linux, where bwrap can hide only what exists, a missing
+  opencode data directory whose parent exists is made empty (mode 0700)
+  before the launch, and kept, so a host opencode's first run during the
+  review writes into a hidden directory; a parent that is a link refuses the
+  launch; the X11
   cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
   Bitwarden, and Secretive — under your child, process, and account homes,
   plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,

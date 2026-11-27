@@ -222,10 +222,11 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 	}
 	locations := homeCredentials(homes)
 	for _, env := range [][]string{in.ChildEnv, in.HostEnv} {
-		for _, v := range credentialEnv {
-			locations = append(locations, v.paths(env)...)
+		moved, err := envLocations(env, homes)
+		if err != nil {
+			return nil, err
 		}
-		locations = append(locations, openCodeDBDirs(env, homes)...)
+		locations = append(locations, moved...)
 	}
 	locations = CleanUnique(locations)
 	if location, ok := Enclosing(locations, root); ok {
@@ -235,60 +236,131 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 	return locations, coversAHome(locations, homes)
 }
 
+// envLocations is the credential stores one environment's relocation
+// variables move, opencode's database directories among them.
+func envLocations(env, homes []string) ([]string, error) {
+	var locations []string
+	for _, v := range credentialEnv {
+		locations = append(locations, v.paths(env)...)
+	}
+	dirs, err := openCodeDBDirs(env, homes)
+	return append(locations, dirs...), err
+}
+
 // openCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
 // with its journal and log beside it: an absolute value's own directory, a
 // relative one resolved against every opencode data directory, as opencode
 // resolves it, and for a value that is a link the target's directory too;
 // ":memory:" names no file.
-func openCodeDBDirs(env, homes []string) []string {
+func openCodeDBDirs(env, homes []string) ([]string, error) {
 	value := EnvLookup(env, envOpenCodeDB)
 	switch {
-	case value == "" || value == memoryDB:
-		return nil
+	case value == memoryDB:
+		return nil, nil
 	case filepath.IsAbs(value):
 		return dbDirs([]string{filepath.Clean(value)})
+	case value == "":
+		value = defaultOpenCodeDB
 	}
-	var bases []string
-	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
-		bases = append(bases, data)
-	}
-	for _, home := range homes {
-		bases = append(bases, filepath.Join(home, ".local", "share"))
-	}
-	paths := make([]string, 0, len(bases))
-	for _, base := range bases {
-		paths = append(paths, filepath.Join(base, "opencode", value))
+	dirs := OpenCodeDataDirs(env, homes)
+	paths := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		paths = append(paths, filepath.Join(dir, value))
 	}
 	return dbDirs(paths)
 }
 
+// defaultOpenCodeDB is the database opencode opens with OPENCODE_DB unset
+// (a release-channel build names its own beside it).
+const defaultOpenCodeDB = "opencode.db"
+
+// OpenCodeDataDirs is opencode's data directory under every data root the
+// environment and homes name: $XDG_DATA_HOME/opencode when absolute, and
+// <home>/.local/share/opencode.
+func OpenCodeDataDirs(env, homes []string) []string {
+	var dirs []string
+	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
+		dirs = append(dirs, filepath.Join(data, openCodeDir))
+	}
+	for _, home := range homes {
+		dirs = append(dirs, filepath.Join(home, ".local", "share", openCodeDir))
+	}
+	return dirs
+}
+
+// openCodeDir is opencode's directory under a data root.
+const openCodeDir = "opencode"
+
 // dbDirs is the directory of each database path and, when the path is or
 // runs through a link, of the file it resolves to: SQLite opens the target
 // and keeps its journal and log beside it, in a directory the path's own
-// does not cover. (A location that is a directory reached through a link
-// needs nothing more: bwrap mounts over its target, and the Seatbelt
-// profile matches every realpath spelling.)
-func dbDirs(paths []string) []string {
+// does not cover. A link whose target does not exist yet is read, not
+// resolved: the target's directory is where the database will appear, so
+// it is hidden too, and a link whose target directory cannot be resolved
+// refuses rather than leaving it open. (A location that is a directory
+// reached through a link needs nothing more: bwrap mounts over its target,
+// and the Seatbelt profile matches every realpath spelling.)
+func dbDirs(paths []string) ([]string, error) {
 	var dirs []string
 	for _, path := range paths {
 		dirs = append(dirs, filepath.Dir(path))
-		if resolved, err := filepath.EvalSymlinks(path); err == nil {
-			dirs = append(dirs, filepath.Dir(resolved))
+		target, err := linkTargetDir(path)
+		if err != nil {
+			return nil, err
+		}
+		if target != "" {
+			dirs = append(dirs, target)
 		}
 	}
-	return dirs
+	return dirs, nil
+}
+
+// linkTargetDir is the resolved directory a database path's file lives in
+// when the path is a link or runs through one, "" when it is neither.
+func linkTargetDir(path string) (string, error) {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return filepath.Dir(resolved), nil
+	}
+	if info, err := os.Lstat(path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return danglingTargetDir(path)
+	}
+	return "", nil
+}
+
+// danglingTargetDir is the resolved directory a link whose target does not
+// exist points into, read with Readlink against the link's own directory.
+func danglingTargetDir(path string) (string, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", jq.NewErrf("the database link %s cannot be read (%v); remove it or point it at a file", path, err)
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(target))
+	if err != nil {
+		return "", jq.NewErrf("the database link %s points into %s, which does not resolve, so the review "+
+			"sandbox cannot hide where the database would appear; point the link into an existing directory "+
+			"or remove it", path, filepath.Dir(target))
+	}
+	return dir, nil
 }
 
 // memoryDB is the OPENCODE_DB value that keeps the database in memory.
 const memoryDB = ":memory:"
 
 // coversAHome refuses a credential location that is the filesystem root, a
-// home, or an ancestor of one: hiding it would hide every home below it (an
-// OPENCODE_DB directly in HOME).
+// home, or an ancestor of one, under every spelling either resolves to:
+// hiding it would hide every home below it (an OPENCODE_DB directly in HOME,
+// an opencode data directory linked to HOME).
 func coversAHome(locations, homes []string) error {
+	resolvedHomes := ExpandRealpaths(homes)
 	for _, location := range locations {
 		_, root := FilesystemRoot(location)
-		if root || slices.ContainsFunc(homes, func(home string) bool { return Within(home, location) }) {
+		covers := slices.ContainsFunc(ExpandRealpaths([]string{location}), func(spelled string) bool {
+			return slices.ContainsFunc(resolvedHomes, func(home string) bool { return Within(home, spelled) })
+		})
+		if root || covers {
 			return jq.NewErrf("the credential path %s is the filesystem root, a home, or above one; move what "+
 				"it holds into a directory of its own (OPENCODE_DB=<dir>/opencode.db)", location)
 		}

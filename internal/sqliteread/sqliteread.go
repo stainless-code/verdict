@@ -133,6 +133,7 @@ type DB struct {
 	file     io.ReaderAt
 	wal      io.ReaderAt
 	frames   map[uint32]int64
+	salt     []byte
 	pageSize int
 	usable   int
 	reads    int
@@ -225,7 +226,7 @@ func (d *DB) indexWAL(wal io.ReaderAt, walSize, limit int64) error {
 	if err != nil || !ok {
 		return err
 	}
-	d.wal, d.frames = wal, map[uint32]int64{}
+	d.wal, d.frames, d.salt = wal, map[uint32]int64{}, slices.Clone(scan.salt)
 	frame := make([]byte, walFrameHead+d.pageSize)
 	for i := range limit {
 		if more, err := d.nextFrame(scan, frame, walHeaderSize+i*int64(len(frame)), walSize); !more {
@@ -336,13 +337,34 @@ func (d *DB) page(n uint32) ([]byte, error) {
 	}
 	buf := make([]byte, d.pageSize)
 	src, off := d.file, int64(n-1)*int64(d.pageSize)
-	if at, ok := d.frames[n]; ok {
+	at, logged := d.frames[n]
+	if logged {
+		if err := d.sameFrame(n, at); err != nil {
+			return nil, err
+		}
 		src, off = d.wal, at
 	}
 	if _, err := src.ReadAt(buf, off); err != nil {
 		return nil, jq.NewErr("page unreadable")
 	}
 	return buf, nil
+}
+
+// sameFrame checks that the log still holds, at the offset indexWAL
+// recorded, page n's frame of the same log: its header names page n and
+// carries the log's salts, and the log header's salts have not moved. A
+// writer that reset the log since would otherwise hand back another valid
+// page there, read as rows with no error.
+func (d *DB) sameFrame(n uint32, at int64) error {
+	head := make([]byte, walFrameHead)
+	salts := make([]byte, saltSize)
+	_, errFrame := d.wal.ReadAt(head, at-walFrameHead)
+	_, errLog := d.wal.ReadAt(salts, offWALSalt)
+	if errFrame != nil || errLog != nil || binary.BigEndian.Uint32(head) != n ||
+		!bytes.Equal(head[offFrameSalt:offFrameSalt+saltSize], d.salt) || !bytes.Equal(salts, d.salt) {
+		return jq.NewErr("write-ahead log changed while it was read")
+	}
+	return nil
 }
 
 // Table returns every row of the named rowid table, each a map from column
@@ -741,11 +763,55 @@ func Columns(sql string) ([]string, error) {
 }
 
 // virtualColumn reports a generated column SQLite does not store: one with
-// an AS (expression) clause that is not STORED.
+// an AS (expression) clause and no STORED storage clause after it. Quoted
+// text and parenthesized expressions are skipped, so a ' STORED' inside the
+// expression is not the clause.
 func virtualColumn(def string) bool {
-	upper := strings.Join(strings.Fields(strings.ToUpper(def)), " ")
-	generated := strings.Contains(upper, " AS (") || strings.Contains(upper, " AS(")
-	return generated && !strings.Contains(upper, " STORED")
+	words := strings.Fields(clauseSkeleton(strings.ToUpper(def)))
+	generated := false
+	for i, w := range words {
+		switch {
+		case w == "AS" && i+1 < len(words) && words[i+1] == "()":
+			generated = true
+		case generated && w == "STORED":
+			return false
+		}
+	}
+	return generated
+}
+
+// clauseSkeleton is a definition with every quoted text dropped and every
+// top-level parenthesized group reduced to "()", each group set apart by
+// spaces.
+func clauseSkeleton(def string) string {
+	var b strings.Builder
+	depth := 0
+	for i := 0; i < len(def); i++ {
+		c := def[i]
+		switch {
+		case strings.ContainsRune("'\"`[", rune(c)):
+			i = quotedEnd(def, i)
+		case c == '(':
+			if depth == 0 {
+				b.WriteString(" () ")
+			}
+			depth++
+		case c == ')':
+			depth = max(depth-1, 0)
+		case depth == 0:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
+}
+
+// quotedEnd is the index of the quote closing the one at i, or the end of
+// def for one left open.
+func quotedEnd(def string, i int) int {
+	if end := closingQuote(def, i); end >= 0 {
+		return end
+	}
+	return len(def)
 }
 
 // stripComments replaces each SQL comment — `--` to the end of its line,

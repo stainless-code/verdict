@@ -503,3 +503,44 @@ func assertColumns(t *testing.T, sql string, want []string) {
 		t.Errorf("Columns(%q) = %q, %v; want %q", sql, got, err, want)
 	}
 }
+
+// TestColumnsReadsTheStorageClauseOnly proves STORED counts only as the
+// storage clause after a generated column's expression: inside a string
+// literal or the expression it is text, and the column stays VIRTUAL.
+func TestColumnsReadsTheStorageClauseOnly(t *testing.T) {
+	t.Parallel()
+	for sql, want := range map[string][]string{
+		"CREATE TABLE t(a, b AS (length(' STORED')), c)":                         nil,
+		"CREATE TABLE t(a, b AS (a || \"STORED\") VIRTUAL, c)":                   nil,
+		"CREATE TABLE t(a, b AS (stored_fn(a)), c)":                              nil,
+		"CREATE TABLE t(a, b AS (length(' x ')) STORED, c)":                      {"a", "b", "c"},
+		"CREATE TABLE t(a, b INT GENERATED ALWAYS AS ((a + 1)) STORED NOT NULL)": {"a", "b"},
+		"CREATE TABLE t(a, b TEXT DEFAULT 'AS (x)', c)":                          {"a", "b", "c"},
+	} {
+		assertColumns(t, sql, want)
+	}
+}
+
+// TestTableRefusesALogResetUnderIt proves a log rewritten after it was
+// indexed — new salts, another page at an indexed offset, as a writer's
+// reset leaves it — is an error when a page is read from it, never another
+// page's rows.
+func TestTableRefusesALogResetUnderIt(t *testing.T) {
+	t.Parallel()
+	file, wal := readFixture(t, "wal.db"), slices.Clone(readFixture(t, "wal.db-wal"))
+	db, err := Open(bytes.NewReader(file), int64(len(file)), bytes.NewReader(wal), int64(len(wal)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range saltSize {
+		wal[offWALSalt+i] ^= 0x5a
+	}
+	frame := walFrameHead + 1024
+	for off := walHeaderSize; off+frame <= len(wal); off += frame {
+		copy(wal[off+offFrameSalt:off+offFrameSalt+saltSize], wal[offWALSalt:offWALSalt+saltSize])
+		binary.BigEndian.PutUint32(wal[off:], binary.BigEndian.Uint32(wal[off:])+1)
+	}
+	if _, err := db.Table("credential"); err == nil || !strings.Contains(err.Error(), "changed while it was read") {
+		t.Fatalf("Table over a reset log = %v, want the change refused", err)
+	}
+}

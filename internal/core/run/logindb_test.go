@@ -296,3 +296,61 @@ func assertShellKeychain(t *testing.T, shell bool) {
 		t.Errorf("shell %v: keychain() = %v; profile:\n%s", shell, box.keychain(), profile)
 	}
 }
+
+// TestMakeHiddenDirMakesAMissingDataDir proves a missing opencode data
+// directory is made, empty and private, below an existing parent, that one
+// already there is left alone, that a missing parent makes nothing, and that
+// a parent that is a link refuses.
+func TestMakeHiddenDirMakesAMissingDataDir(t *testing.T) {
+	t.Parallel()
+	share := t.TempDir()
+	dir := filepath.Join(share, "opencode")
+	if err := makeHiddenDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	assertPrivateDir(t, dir)
+	writeUnder(t, dir, "kept", "x")
+	if err := makeHiddenDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "kept")); err != nil {
+		t.Errorf("an existing directory was replaced: %v", err)
+	}
+	gone := filepath.Join(share, "missing", "opencode")
+	if err := makeHiddenDir(gone); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(filepath.Dir(gone)); !os.IsNotExist(err) {
+		t.Errorf("a missing parent was made (err = %v)", err)
+	}
+}
+
+// assertPrivateDir fails unless dir is a directory of mode 0700 (any mode
+// on Windows, which has none).
+func assertPrivateDir(t *testing.T, dir string) {
+	t.Helper()
+	info, err := os.Lstat(dir)
+	if err != nil || !info.IsDir() || runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
+		t.Fatalf("made %v (%v), want a 0700 directory", info, err)
+	}
+}
+
+// TestMakeHiddenDirRefusesALinkedParent proves a data root that is a link
+// refuses rather than making the directory wherever it points.
+func TestMakeHiddenDirRefusesALinkedParent(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base, elsewhere := t.TempDir(), t.TempDir()
+	share := filepath.Join(base, "share")
+	if err := os.Symlink(elsewhere, share); err != nil {
+		t.Fatal(err)
+	}
+	if err := makeHiddenDir(filepath.Join(share, "opencode")); err == nil || !strings.Contains(err.Error(), "is a symlink") {
+		t.Fatalf("a linked parent = %v, want a refusal", err)
+	}
+	if _, err := os.Lstat(filepath.Join(elsewhere, "opencode")); !os.IsNotExist(err) {
+		t.Errorf("the directory was made through the link (err = %v)", err)
+	}
+}
