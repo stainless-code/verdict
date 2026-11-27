@@ -146,10 +146,13 @@ func (l *loginFiles) Close() {
 // readable credential table, and nothing for a missing one.
 func readLogins(dir, rel string) (map[string]json.RawMessage, string, error) {
 	files, err := openLoginDB(dir, rel)
-	if errors.Is(err, fs.ErrNotExist) {
+	var cannot *unreadableError
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, "", nil
-	}
-	if err != nil {
+	case errors.As(err, &cannot):
+		return nil, cannot.Error(), nil
+	case err != nil:
 		return nil, "", err
 	}
 	defer files.Close()
@@ -172,7 +175,7 @@ func openLoginDB(dir, rel string) (*loginFiles, error) {
 		return nil, fs.ErrNotExist
 	}
 	if err != nil {
-		return nil, jq.Sealed("open "+dir, err)
+		return nil, &unreadableError{err: err}
 	}
 	files := &loginFiles{root: root}
 	if err := files.open(rel); err != nil {
@@ -201,13 +204,30 @@ func (l *loginFiles) open(rel string) error {
 	return err
 }
 
-// openRegular opens one file below root without following a link; an
-// error wrapping [fs.ErrNotExist] for a missing one, and an error for one that
-// is not a regular file.
+// unreadableError is a regular database, or its directory, that cannot be
+// opened (permission denied): the launch warns and keeps the copied login
+// file, where a link or a file that is not regular refuses it.
+type unreadableError struct{ err error }
+
+func (e *unreadableError) Error() string { return e.err.Error() }
+
+// openRegular opens one file below root without following a link: an error
+// wrapping [fs.ErrNotExist] for a missing one, an [unreadableError] for a
+// regular one it cannot open, and an error for a link or a file that is not
+// regular.
 func openRegular(root *os.Root, rel string) (*os.File, error) {
+	info, err := root.Lstat(rel)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, fs.ErrNotExist
+	case err != nil:
+		return nil, &unreadableError{err: err}
+	case !info.Mode().IsRegular():
+		return nil, jq.NewErrf("%s is a link or not a regular file", rel)
+	}
 	f, err := readcommon.OpenNoFollowIn(root, rel)
 	if err != nil {
-		return nil, err //nolint:wrapcheck // keeps fs.ErrNotExist; the caller names the database
+		return nil, &unreadableError{err: err}
 	}
 	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
 		_ = f.Close()

@@ -977,3 +977,79 @@ func projectBox(t *testing.T, readOnly string) (*reviewBox, string) {
 		project:  &agentcatalog.ProjectState{Root: ".claude/projects", ReadOnly: []string{readOnly}, MaxSlug: 200},
 	}, projects
 }
+
+// TestOpencodeSeedWarnsOnAPermissionDeniedDatabase proves a database the
+// operator cannot open (permission denied) warns and keeps the copied
+// auth.json, rather than refusing a launch that copy could serve.
+func TestOpencodeSeedWarnsOnAPermissionDeniedDatabase(t *testing.T) {
+	t.Parallel()
+	home, tmp := t.TempDir(), t.TempDir()
+	data := filepath.Join(home, ".local", "share")
+	plantOpencodeDB(t, data)
+	denyRead(t, filepath.Join(data, "opencode", "opencode.db"))
+	def, _ := lookupAgent("opencode")
+	_, warnings, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
+	if err != nil {
+		t.Fatalf("a permission-denied database refused the launch: %v", err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "could not be read") ||
+		!strings.Contains(warnings[0], "only the copy of auth.json") {
+		t.Errorf("warnings = %q", warnings)
+	}
+	if got := readSeeded(t, filepath.Join(tmp, "home-xdg_data_home", "opencode", "auth.json")); string(got) != staleAuth {
+		t.Errorf("auth.json = %s, want the copy", got)
+	}
+}
+
+// linkedDBScript reads the database an OPENCODE_DB link names, from another
+// agent's launch.
+const linkedDBScript = "#!/bin/sh\n" +
+	"{ /usr/bin/head -c 6 \"$REAL_DB\" 2>/dev/null | /usr/bin/grep -q LEAKED && echo target=read " +
+	"|| echo target=hidden\n" +
+	"} 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxHidesALinkedOpencodeDBTarget proves, under the real
+// mechanism, that an OPENCODE_DB which is a link leaves the file it names —
+// in a directory of its own, where SQLite also keeps its log — unreadable to
+// another agent, not only the link's directory.
+func TestReviewSandboxHidesALinkedOpencodeDBTarget(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home, store := t.TempDir(), t.TempDir()
+	target := filepath.Join(store, "real", "oc.db")
+	writeUnder(t, store, filepath.Join("real", "oc.db"), "LEAKED")
+	link := filepath.Join(store, "link", "oc.db")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	_, ref, log := sandboxedRunAs(t, "pi", confinedRoot(t), home, linkedDBScript, "1",
+		"OPENCODE_DB="+link, "REAL_DB="+target)
+	if ref != nil {
+		t.Fatalf("review refused: %v", ref)
+	}
+	if !strings.Contains(log, "target=hidden") {
+		t.Errorf("the linked database's target was readable, or the check never ran:\n%s", log)
+	}
+}
+
+// denyRead makes path unreadable for the test, skipping where the user reads
+// a mode-0 file anyway (root).
+func denyRead(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chmod(path, 0o600); err != nil {
+			t.Error(err)
+		}
+	})
+	if f, err := os.Open(path); err == nil {
+		_ = f.Close()
+		t.Skip("this user reads a mode-0 file (root); the denial cannot be staged")
+	}
+}

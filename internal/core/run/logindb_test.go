@@ -159,13 +159,15 @@ func readSeeded(t *testing.T, path string) []byte {
 // when nothing but its keychain sign-in could log it in.
 const agyKeychainWarning = "agy's saved macOS sign-in is in your login keychain, which verdict's review sandbox " +
 	"keeps closed to it: agy keeps a shell in every review, and with the keychain open a prompt-injected diff " +
-	"could read every token stored there (gh's among them) into review text; set GEMINI_API_KEY for its review " +
-	"launches; pass --allow-unsandboxed-review to review without the sandbox"
+	"could read every token stored there (gh's among them) into review text; set GEMINI_API_KEY and configure " +
+	"agy to sign in with it rather than your saved account; pass --allow-unsandboxed-review to review without " +
+	"the sandbox"
 
 // TestAgyKeychainLoginWarnsUnderSeatbelt proves a macOS sandbox launch of
 // agy, whose saved sign-in is the keychain its profile keeps closed, names
-// the variable that signs it in instead — and that nothing warns once that
-// variable is set, under bwrap, or for a row whose login is a file.
+// the variable that signs it in instead and the setting it needs — still
+// warning once the variable is set, since agy reads it only when configured
+// to — and that nothing warns under bwrap or for a row whose login is a file.
 func TestAgyKeychainLoginWarnsUnderSeatbelt(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -174,7 +176,10 @@ func TestAgyKeychainLoginWarnsUnderSeatbelt(t *testing.T) {
 		want                   []string
 	}{
 		{name: "seatbelt", agent: "agy", mechanism: hostsandbox.SandboxExecTool, want: []string{agyKeychainWarning}},
-		{name: "api key set", agent: "agy", mechanism: hostsandbox.SandboxExecTool, env: []string{"GEMINI_API_KEY=k"}},
+		{
+			name: "api key set", agent: "agy", mechanism: hostsandbox.SandboxExecTool, env: []string{"GEMINI_API_KEY=k"},
+			want: []string{agyKeychainWarning},
+		},
 		{name: "bwrap", agent: "agy", mechanism: hostsandbox.BwrapTool},
 		{name: "file login", agent: "pi", mechanism: hostsandbox.SandboxExecTool},
 	} {
@@ -260,6 +265,11 @@ func TestAllowShellClosesClaudesKeychain(t *testing.T) {
 		"launches; pass --allow-unsandboxed-review to review without the sandbox"
 	if !slices.Equal(st.warnings, []string{want}) {
 		t.Errorf("warnings = %q, want %q", st.warnings, want)
+	}
+	keyed := &state{req: &core.RunRequest{Environ: []string{"ANTHROPIC_API_KEY=k"}}, box: st.box}
+	keyed.warnKeychainLogin(&def)
+	if len(keyed.warnings) != 0 {
+		t.Errorf("claude with its documented ANTHROPIC_API_KEY set warned: %q", keyed.warnings)
 	}
 }
 

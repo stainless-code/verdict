@@ -270,21 +270,28 @@ func (st *state) settleBox(ctx context.Context, def *agentcatalog.Launch) *core.
 }
 
 // warnKeychainLogin warns a macOS launch of a row whose saved sign-in is the
-// login keychain, which the profile keeps closed to it, unless the variable
-// that signs it in instead is set.
+// login keychain, which the profile keeps closed to it. Only a row's
+// documented API-key variable (KeyEnv: claude's ANTHROPIC_API_KEY) silences
+// it once set: a variable the CLI reads only when its own settings select
+// API-key sign-in (agy's GEMINI_API_KEY) proves nothing set alone.
 func (st *state) warnKeychainLogin(def *agentcatalog.Launch) {
-	if def.KeychainLoginEnv == "" || st.box.mechanism != hostsandbox.SandboxExecTool || st.box.keychain() ||
-		hostsandbox.EnvLookup(st.childEnv(), def.KeychainLoginEnv) != "" {
+	env := def.KeychainLoginEnv
+	if env == "" || st.box.mechanism != hostsandbox.SandboxExecTool || st.box.keychain() ||
+		env == def.KeyEnv && hostsandbox.EnvLookup(st.childEnv(), env) != "" {
 		return
 	}
 	shell := def.Name + " keeps a shell in every review"
 	if st.box.shellKeychain {
 		shell = flagAllowShell + " gives " + def.Name + " a shell"
 	}
+	fix := "set " + env + " for its review launches"
+	if env != def.KeyEnv {
+		fix = "set " + env + " and configure " + def.Name + " to sign in with it rather than your saved account"
+	}
 	st.boxWarn(core.Msgf("%s's saved macOS sign-in is in your login keychain, which verdict's review sandbox keeps "+
 		"closed to it: %s, and with the keychain open a prompt-injected diff could read every token stored "+
-		"there (gh's among them) into review text; set %s for its review launches%s",
-		def.Name, shell, def.KeychainLoginEnv, st.optOutRemedy()))
+		"there (gh's among them) into review text; %s%s",
+		def.Name, shell, core.Trusted(fix), st.optOutRemedy()))
 }
 
 // flagAllowShell is the flag that restores a row's shell in its review.

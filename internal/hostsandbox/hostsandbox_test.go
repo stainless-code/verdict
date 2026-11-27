@@ -155,3 +155,45 @@ func TestCredentialTableRefusesToHideAHome(t *testing.T) {
 		t.Fatalf("OPENCODE_DB in HOME = %v, want a refusal", err)
 	}
 }
+
+// TestCredentialTableHidesALinkedOpenCodeDBTarget proves an OPENCODE_DB that
+// is a link hides the directory of the file it names as well — where SQLite
+// opens the database and keeps its journal and log.
+func TestCredentialTableHidesALinkedOpenCodeDBTarget(t *testing.T) {
+	base := t.TempDir()
+	target := filepath.Join(base, "target")
+	link := linkedDB(t, base, target)
+	got, err := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "h"), "OPENCODE_DB=" + link}}.
+		CredentialLocations(filepath.Join(base, "r"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{filepath.Dir(link), resolved} {
+		if !slices.Contains(got, want) {
+			t.Errorf("credential locations lack %s:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+}
+
+// linkedDB writes a database in target and returns a link to it in a
+// directory of its own under base.
+func linkedDB(t *testing.T, base, target string) string {
+	t.Helper()
+	link := filepath.Join(base, "link", "oc.db")
+	for _, dir := range []string{target, filepath.Dir(link)} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(target, "oc.db"), []byte("db"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(target, "oc.db"), link); err != nil {
+		t.Fatal(err)
+	}
+	return link
+}

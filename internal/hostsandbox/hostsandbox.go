@@ -238,14 +238,15 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 // openCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
 // with its journal and log beside it: an absolute value's own directory, a
 // relative one resolved against every opencode data directory, as opencode
-// resolves it; ":memory:" names no file.
+// resolves it, and for a value that is a link the target's directory too;
+// ":memory:" names no file.
 func openCodeDBDirs(env, homes []string) []string {
 	value := EnvLookup(env, envOpenCodeDB)
 	switch {
 	case value == "" || value == memoryDB:
 		return nil
 	case filepath.IsAbs(value):
-		return []string{filepath.Dir(filepath.Clean(value))}
+		return dbDirs([]string{filepath.Clean(value)})
 	}
 	var bases []string
 	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
@@ -254,9 +255,26 @@ func openCodeDBDirs(env, homes []string) []string {
 	for _, home := range homes {
 		bases = append(bases, filepath.Join(home, ".local", "share"))
 	}
-	dirs := make([]string, 0, len(bases))
+	paths := make([]string, 0, len(bases))
 	for _, base := range bases {
-		dirs = append(dirs, filepath.Dir(filepath.Join(base, "opencode", value)))
+		paths = append(paths, filepath.Join(base, "opencode", value))
+	}
+	return dbDirs(paths)
+}
+
+// dbDirs is the directory of each database path and, when the path is or
+// runs through a link, of the file it resolves to: SQLite opens the target
+// and keeps its journal and log beside it, in a directory the path's own
+// does not cover. (A location that is a directory reached through a link
+// needs nothing more: bwrap mounts over its target, and the Seatbelt
+// profile matches every realpath spelling.)
+func dbDirs(paths []string) []string {
+	var dirs []string
+	for _, path := range paths {
+		dirs = append(dirs, filepath.Dir(path))
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			dirs = append(dirs, filepath.Dir(resolved))
+		}
 	}
 	return dirs
 }

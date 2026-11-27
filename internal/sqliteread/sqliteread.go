@@ -153,10 +153,27 @@ func Open(file io.ReaderAt, size int64, wal io.ReaderAt, walSize int64) (*DB, er
 		return nil, err
 	}
 	d.file = file
-	if wal == nil || walSize <= 0 {
-		return d, nil
+	if wal != nil && walSize > 0 {
+		if err := d.indexWAL(wal, walSize, maxWALFrames); err != nil {
+			return nil, err
+		}
 	}
-	return d, d.indexWAL(wal, walSize)
+	return d, d.checkEncoding()
+}
+
+// checkEncoding requires a UTF-8 database, read from page 1 as the log's
+// last commit leaves it: a database in write-ahead-log mode keeps the
+// encoding unset in its main file until a checkpoint copies page 1 back.
+func (d *DB) checkEncoding() error {
+	p, err := d.page(firstPage)
+	d.reads = 0
+	if err != nil {
+		return err
+	}
+	if binary.BigEndian.Uint32(p[offTextEncoding:]) != textUTF8 {
+		return jq.NewErr("not a UTF-8 database")
+	}
+	return nil
 }
 
 // parseHeader checks the database header and reads its geometry.
@@ -167,9 +184,6 @@ func parseHeader(head []byte, size int64) (*DB, error) {
 	d, err := geometry(head)
 	if err != nil {
 		return nil, err
-	}
-	if binary.BigEndian.Uint32(head[offTextEncoding:]) != textUTF8 {
-		return nil, jq.NewErr("not a UTF-8 database")
 	}
 	d.pages = uint32(min(max(size, 0)/int64(d.pageSize), math.MaxUint32)) //nolint:gosec // clamped to uint32 above
 	if n := binary.BigEndian.Uint32(head[offPageCount:]); n != 0 &&
@@ -206,19 +220,24 @@ type walScan struct {
 // frame counts only while its salts match the header and its running
 // checksum holds, and only up to the last commit frame; a log with no valid
 // header is ignored, as SQLite ignores it.
-func (d *DB) indexWAL(wal io.ReaderAt, walSize int64) error {
+func (d *DB) indexWAL(wal io.ReaderAt, walSize, limit int64) error {
 	scan, ok, err := d.walHeader(wal, walSize)
 	if err != nil || !ok {
 		return err
 	}
 	d.wal, d.frames = wal, map[uint32]int64{}
 	frame := make([]byte, walFrameHead+d.pageSize)
-	for i := range int64(maxWALFrames) {
+	for i := range limit {
 		if more, err := d.nextFrame(scan, frame, walHeaderSize+i*int64(len(frame)), walSize); !more {
 			return err
 		}
 	}
-	return nil
+	// A log longer than the cap may commit past it: its last commit is
+	// unknown, and an older one would read stale rows.
+	if walHeaderSize+(limit+1)*int64(len(frame)) > walSize {
+		return nil
+	}
+	return jq.NewErr("write-ahead log longer than the frame cap")
 }
 
 // nextFrame reads the frame at off and records it; false once the log's
@@ -698,7 +717,7 @@ var tableConstraints = []string{"CONSTRAINT", "PRIMARY", "UNIQUE", "CHECK", "FOR
 // Columns names a CREATE TABLE statement's columns in order, unquoting
 // "x", `x`, [x], and 'x' names.
 func Columns(sql string) ([]string, error) {
-	_, list, ok := strings.Cut(sql, "(")
+	_, list, ok := strings.Cut(stripComments(sql), "(")
 	if !ok {
 		return nil, jq.NewErr("CREATE TABLE has no column list")
 	}
@@ -727,6 +746,42 @@ func virtualColumn(def string) bool {
 	upper := strings.Join(strings.Fields(strings.ToUpper(def)), " ")
 	generated := strings.Contains(upper, " AS (") || strings.Contains(upper, " AS(")
 	return generated && !strings.Contains(upper, " STORED")
+}
+
+// stripComments replaces each SQL comment — `--` to the end of its line,
+// `/* … */` — with a space, leaving quoted text as it is; SQLite keeps a
+// CREATE statement's comments in its schema.
+func stripComments(sql string) string {
+	var b strings.Builder
+	for i := 0; i < len(sql); i++ {
+		switch {
+		case strings.ContainsRune("'\"`[", rune(sql[i])):
+			end := closingQuote(sql, i)
+			if end < 0 {
+				end = len(sql) - 1
+			}
+			b.WriteString(sql[i : end+1])
+			i = end
+		case strings.HasPrefix(sql[i:], "--"):
+			i = commentEnd(sql, i, "\n", 0)
+			b.WriteByte(' ')
+		case strings.HasPrefix(sql[i:], "/*"):
+			i = commentEnd(sql, i, "*/", len("*/")-1)
+			b.WriteByte(' ')
+		default:
+			b.WriteByte(sql[i])
+		}
+	}
+	return b.String()
+}
+
+// commentEnd is the index of a comment's last character: the closer after
+// it (and tail more), or the end of sql for an unclosed one.
+func commentEnd(sql string, i int, closer string, tail int) int {
+	if end := strings.Index(sql[i+2:], closer); end >= 0 {
+		return i + 2 + end + tail
+	}
+	return len(sql) - 1
 }
 
 // splitter walks a column list for its top-level commas.

@@ -432,3 +432,74 @@ func TestColumnsRefusesAVirtualColumn(t *testing.T) {
 		t.Errorf("STORED = %q, %v", got, err)
 	}
 }
+
+// TestTableReadsAFreshWALDatabase proves a database never checkpointed —
+// its main-file header still leaves the encoding unset, page 1 living only in
+// the log, as a fresh opencode database is — reads from its log, and the same
+// main file without the log refuses.
+func TestTableReadsAFreshWALDatabase(t *testing.T) {
+	t.Parallel()
+	file := readFixture(t, "fresh.db")
+	if binary.BigEndian.Uint32(file[offTextEncoding:]) != 0 {
+		t.Fatal("the fixture's main header names an encoding; it no longer covers the case")
+	}
+	rows, err := open(t, "fresh.db", true).Table("credential")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertValues(t, rows, map[string]string{"a": `{"type":"key","key":"fresh"}`})
+	if _, err := Open(bytes.NewReader(file), int64(len(file)), nil, 0); err == nil {
+		t.Error("the main file alone, encoding unset, opened")
+	}
+}
+
+// TestOpenRefusesALogPastTheFrameCap proves a log whose frames run past the
+// cap is an error, not its last commit before the cap, while a log that ends
+// at the cap reads.
+func TestOpenRefusesALogPastTheFrameCap(t *testing.T) {
+	t.Parallel()
+	file, wal := readFixture(t, "wal.db"), readFixture(t, "wal.db-wal")
+	frames := int64((len(wal) - walHeaderSize) / (walFrameHead + 1024))
+	for _, tc := range []struct {
+		limit int64
+		ok    bool
+	}{{limit: frames, ok: true}, {limit: frames - 1}} {
+		d, err := parseHeader(file, int64(len(file)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.file = bytes.NewReader(file)
+		err = d.indexWAL(bytes.NewReader(wal), int64(len(wal)), tc.limit)
+		if (err == nil) != tc.ok {
+			t.Errorf("a %d-frame log under a cap of %d = %v", frames, tc.limit, err)
+		}
+	}
+}
+
+// TestColumnsSkipsSQLComments proves a comment, which SQLite keeps in the
+// schema's CREATE statement, is no column name, while the same text quoted
+// is part of a name.
+func TestColumnsSkipsSQLComments(t *testing.T) {
+	t.Parallel()
+	for sql, want := range map[string][]string{
+		"CREATE TABLE credential (id TEXT, /* provider */ integration_id TEXT)":       {"id", "integration_id"},
+		"CREATE TABLE t ( -- the key\n a TEXT, -- trailing, (with a paren\n b INT\n)": {"a", "b"},
+		"CREATE TABLE t (\"a /* x */\" TEXT, `b--c` INT /* unclosed":                  nil,
+		"CREATE TABLE t (\"a /* x */\" TEXT, `b--c` INT)":                             {"a /* x */", "b--c"},
+		"CREATE TABLE t (a TEXT /* ) , evil */, b TEXT)":                              {"a", "b"},
+	} {
+		assertColumns(t, sql, want)
+	}
+}
+
+// assertColumns checks one statement's columns, nil wanting an error.
+func assertColumns(t *testing.T, sql string, want []string) {
+	t.Helper()
+	got, err := Columns(sql)
+	switch {
+	case want == nil && err == nil:
+		t.Errorf("Columns(%q) = %q, want an error", sql, got)
+	case want != nil && (err != nil || !slices.Equal(got, want)):
+		t.Errorf("Columns(%q) = %q, %v; want %q", sql, got, err, want)
+	}
+}
