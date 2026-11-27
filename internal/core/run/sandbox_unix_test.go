@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -779,6 +780,73 @@ func assertLogHas(t *testing.T, agent, log string, want []string) {
 			t.Errorf("%s log lacks %q:\n%s", agent, w, log)
 		}
 	}
+}
+
+// lateDBScript waits on a FIFO in opencode's real config directory — the
+// test opens it once the sandbox is up — then reads a database the test
+// created in the real data directory after the launch started.
+const lateDBScript = "#!/bin/sh\n" +
+	"/bin/cat \"$HOME/.config/opencode/go.fifo\" >/dev/null\n" +
+	"{ /usr/bin/head -c 6 \"$HOME/.local/share/opencode/opencode-beta.db\" 2>/dev/null | /usr/bin/grep -q LEAKED " +
+	"&& echo late=read || echo late=hidden\n" +
+	"} 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxHidesALateOpencodeDatabase proves, under the real
+// mechanism, that a database opencode creates in its real data directory
+// after a launch started — a channel build's, or the write-ahead log SQLite
+// recreates — is unreadable to the launch: the whole directory is hidden,
+// not the files that existed when the sandbox was built.
+func TestReviewSandboxHidesALateOpencodeDatabase(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home := t.TempDir()
+	plantOpencodeDB(t, filepath.Join(home, ".local", "share"))
+	fifo := filepath.Join(home, ".config", "opencode", "go.fifo")
+	if err := os.MkdirAll(filepath.Dir(fifo), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan string, 1)
+	go func() {
+		_, ref, log := sandboxedRunAs(t, "opencode", confinedRoot(t), home, lateDBScript, "1")
+		if ref != nil {
+			log += "\nrefused: " + ref.Message
+		}
+		done <- log
+	}()
+	w := openFIFOWriter(t, fifo, done)
+	late := filepath.Join(home, ".local", "share", "opencode", "opencode-beta.db")
+	if err := os.WriteFile(late, []byte("LEAKED"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	if log := <-done; !strings.Contains(log, "late=hidden") {
+		t.Errorf("the late database was readable, or the launch never reached it:\n%s", log)
+	}
+}
+
+// openFIFOWriter opens the FIFO for writing once the sandboxed reader has
+// opened it, failing if the launch ends first or the wait runs past a
+// minute.
+func openFIFOWriter(t *testing.T, fifo string, done <-chan string) *os.File {
+	t.Helper()
+	deadline := time.Now().Add(time.Minute)
+	for time.Now().Before(deadline) {
+		f, err := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			return f
+		}
+		select {
+		case log := <-done:
+			t.Fatalf("the launch ended before it opened the FIFO:\n%s", log)
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	t.Fatal("the launch never opened the FIFO")
+	return nil
 }
 
 // claudeProjectScript is a prompt-injected claude reaching for project

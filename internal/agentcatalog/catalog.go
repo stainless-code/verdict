@@ -45,12 +45,14 @@ type Launch struct {
 	PermissionHint     string
 	KeyEnv             string
 	// KeychainLoginEnv is, for a CLI whose saved macOS sign-in lives in the
-	// login keychain verdict's review sandbox keeps closed to it, the
-	// variable that signs it in instead: a sandboxed macOS review launch
-	// whose environment lacks it warns that the sign-in cannot be reached.
-	// The keychain opens only to a row whose own login it is and whose shell
-	// is denied (claude's): with the brokers open, a shell could read every
-	// item `security` stored, gh's token among them.
+	// login keychain, the variable that signs it in instead when verdict's
+	// review sandbox keeps the keychain closed to it: a sandboxed macOS
+	// review launch with the keychain closed and the variable unset warns
+	// that the sign-in cannot be reached. The keychain opens only to a row
+	// whose own login it is (a Library/Keychains state entry, claude's) and
+	// only while its shell is denied: with the brokers open, a shell could
+	// read every item `security` stored, gh's token among them, so under
+	// --allow-shell it stays closed to claude too.
 	KeychainLoginEnv   string
 	PermissionCitation string
 	LaunchWarning      string
@@ -533,6 +535,9 @@ var catalog = []Agent{
 			// message) — verified empirically against the agent's CLI.
 			TempEnv:       []string{"CLAUDE_CODE_TMPDIR"},
 			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
+			// Its keychain sign-in is closed under --allow-shell, which gives
+			// it a shell; the API key signs it in instead.
+			KeychainLoginEnv: "ANTHROPIC_API_KEY",
 			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
 			// under the bundle (ReviewWriteArgs): Write/Edit outside an allow
 			// rule are denied in print mode.

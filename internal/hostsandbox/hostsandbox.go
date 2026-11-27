@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -120,28 +121,22 @@ var CredentialPaths = []string{
 	".bitwarden-ssh-agent.sock",
 	filepath.Join("Library", "Group Containers", "2BUA8C4S2C.com.1password"),
 	filepath.Join("Library", "Containers", "com.maxgoedjen.Secretive.SecretAgent"),
-	// opencode's database keeps its logins in a credential table, the same
-	// tokens auth.json held, beside its write-ahead log and shared memory.
-	filepath.Join(".local", "share", "opencode", "opencode.db"),
-	filepath.Join(".local", "share", "opencode", "opencode.db-wal"),
-	filepath.Join(".local", "share", "opencode", "opencode.db-shm"),
+	// opencode's whole data directory: its database keeps the logins in a
+	// credential table, the same tokens auth.json held, and SQLite makes and
+	// removes the database's journal and write-ahead log as connections come
+	// and go — a file that does not exist when bwrap starts gets no mount of
+	// its own — under a name a release channel may change.
+	filepath.Join(".local", "share", "opencode"),
 }
 
 // credentialVar is one environment variable that relocates a credential
 // store away from its home-relative default: the path it names (joined with
-// suffix, then ext appended to its name), or every entry of a path list.
+// suffix), or every entry of a path list.
 type credentialVar struct {
 	name   string
 	suffix string
-	ext    string
 	list   bool
 }
-
-// The files SQLite keeps beside a database in write-ahead-log mode.
-const (
-	extWAL = "-wal"
-	extSHM = "-shm"
-)
 
 // xdgConfigHome relocates the XDG config directory several stores live in.
 const xdgConfigHome = "XDG_CONFIG_HOME"
@@ -176,12 +171,7 @@ var credentialEnv = []credentialVar{
 	{name: xdgConfigHome, suffix: filepath.FromSlash("git/credentials")},
 	{name: xdgDataHome, suffix: filepath.Join("opencode", "mcp-auth.json")},
 	{name: "XAUTHORITY"},
-	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db")},
-	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db"), ext: extWAL},
-	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db"), ext: extSHM},
-	{name: envOpenCodeDB},
-	{name: envOpenCodeDB, ext: extWAL},
-	{name: envOpenCodeDB, ext: extSHM},
+	{name: xdgDataHome, suffix: "opencode"},
 }
 
 // Inputs is what a policy resolves the credential table against: the
@@ -235,13 +225,57 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 		for _, v := range credentialEnv {
 			locations = append(locations, v.paths(env)...)
 		}
+		locations = append(locations, openCodeDBDirs(env, homes)...)
 	}
 	locations = CleanUnique(locations)
 	if location, ok := Enclosing(locations, root); ok {
 		return nil, jq.NewErrf(
 			"the reviewed root %s is inside the credential path %s; refusing to expose or hide it", root, location)
 	}
-	return locations, nil
+	return locations, coversAHome(locations, homes)
+}
+
+// openCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
+// with its journal and log beside it: an absolute value's own directory, a
+// relative one resolved against every opencode data directory, as opencode
+// resolves it; ":memory:" names no file.
+func openCodeDBDirs(env, homes []string) []string {
+	value := EnvLookup(env, envOpenCodeDB)
+	switch {
+	case value == "" || value == memoryDB:
+		return nil
+	case filepath.IsAbs(value):
+		return []string{filepath.Dir(filepath.Clean(value))}
+	}
+	var bases []string
+	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
+		bases = append(bases, data)
+	}
+	for _, home := range homes {
+		bases = append(bases, filepath.Join(home, ".local", "share"))
+	}
+	dirs := make([]string, 0, len(bases))
+	for _, base := range bases {
+		dirs = append(dirs, filepath.Dir(filepath.Join(base, "opencode", value)))
+	}
+	return dirs
+}
+
+// memoryDB is the OPENCODE_DB value that keeps the database in memory.
+const memoryDB = ":memory:"
+
+// coversAHome refuses a credential location that is the filesystem root, a
+// home, or an ancestor of one: hiding it would hide every home below it (an
+// OPENCODE_DB directly in HOME).
+func coversAHome(locations, homes []string) error {
+	for _, location := range locations {
+		_, root := FilesystemRoot(location)
+		if root || slices.ContainsFunc(homes, func(home string) bool { return Within(home, location) }) {
+			return jq.NewErrf("the credential path %s is the filesystem root, a home, or above one; move what "+
+				"it holds into a directory of its own (OPENCODE_DB=<dir>/opencode.db)", location)
+		}
+	}
+	return nil
 }
 
 // homeCredentials joins the home-relative table under every home.
@@ -282,7 +316,7 @@ func (v credentialVar) paths(env []string) []string {
 	var paths []string
 	for _, path := range values {
 		if filepath.IsAbs(path) {
-			paths = append(paths, filepath.Join(path, v.suffix)+v.ext)
+			paths = append(paths, filepath.Join(path, v.suffix))
 		}
 	}
 	return paths

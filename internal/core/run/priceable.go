@@ -1,11 +1,14 @@
 package run
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/agentusage"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/mcpconfig"
 )
 
 // codeBudgetUnpriceable refuses a cost-capped launch verdict could not price,
@@ -41,11 +44,10 @@ func unpriceable(env map[string]string, def *agentcatalog.Launch, passthrough []
 	case def.Usage.Format != agentcatalog.UsageCodexJSONL:
 		return ""
 	}
-	model, ok := spawnModel(env, def, "", passthrough)
+	model, why := agentusage.CodexModelWhy(mcpconfig.CodexHome(env), slices.Concat(def.Args, passthrough))
 	switch {
-	case !ok || model == "":
-		return def.Name + " reports only token usage and its model is not named (no -m/--model, no model in " +
-			"its config.toml), so verdict cannot price it"
+	case why != "":
+		return def.Name + " reports only token usage and verdict cannot price it: " + why
 	case !priced(model):
 		return def.Name + "'s model " + model + " is not in verdict's built-in price table"
 	}

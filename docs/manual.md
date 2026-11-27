@@ -4415,8 +4415,9 @@ On Linux that means the network namespace is shared too (see Sockets below).
   `~/.local/share/opencode/auth.json`, `~/.pi/agent/auth.json`,
   `~/.local/share/opencode/mcp-auth.json`, `~/.claude/.credentials.json`,
   `~/.config/github-copilot`, `~/.gemini/oauth_creds.json`, and opencode's
-  database `~/.local/share/opencode/opencode.db` (with its `-wal` and `-shm`
-  files), which holds its logins; the X11
+  whole data directory `~/.local/share/opencode`, whose database holds its
+  logins (and the directory `OPENCODE_DB` puts the database in, resolved as
+  opencode resolves it; one directly in a home refuses); the X11
   cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
   Bitwarden, and Secretive — under your child, process, and account homes,
   plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,
@@ -4452,7 +4453,7 @@ On Linux that means the network namespace is shared too (see Sockets below).
   trust (`trustd.agent`), and the system proxy and resolver settings
   (`SystemConfiguration` `configd` and `DNSConfiguration`); `claude`, whose
   login is the keychain, also gets the keychain brokers (`SecurityServer`,
-  `securityd.xpc`). That closes preference writes through cfprefsd (a
+  `securityd.xpc`) while its shell is denied — never under `--allow-shell`. That closes preference writes through cfprefsd (a
   `defaults write` into another app's plist), the pasteboard, the keychain
   for every other agent, LaunchServices' database (`lsregister` of a planted
   app), login items, the window server (synthetic input), and Shortcuts;
@@ -4490,11 +4491,17 @@ goes with the launch, including a token it refreshes:
   (`opencode/auth.json`, `opencode/mcp-auth.json`). Current opencode keeps its
   logins in its database's credential table instead, so verdict reads that
   table read-only — from `opencode/opencode.db` and its write-ahead log, or
-  wherever `OPENCODE_DB` points, never following a link — and writes each
+  where `OPENCODE_DB` points (a relative value below `opencode/`, as opencode
+  resolves it; `:memory:` seeds nothing), opening the file and the
+  directories below the data directory without following a link (the
+  directories above an absolute `OPENCODE_DB` are your path, followed as
+  written) — and writes each
   provider's chosen login over the `auth.json` copy, which the launch's fresh
   database imports when it starts; an MCP server's login, which `auth.json`
   never held, is left out. A database it cannot read as one leaves the copy as
-  it is, with a warning. `OPENCODE_DB` points at the copy's database, so its
+  it is, with a warning, and an `opencode-<channel>.db` beside it, which a
+  build on another release channel opens instead, is named in a warning and
+  not read. `OPENCODE_DB` points at the copy's database, so its
   database, snapshot and repos shadow repositories (a planted git config there
   would run on your next opencode session), and logs land there. Its config
   stays where it is.
@@ -4576,10 +4583,12 @@ sandbox; run opencode once outside verdict to install it, or pass
 sandbox keeps the keychain closed to it: agy keeps a shell in every review,
 and with the keychain brokers open that shell could read every item stored
 through `security` — your `gh` token among them — into review text verdict may
-post. The keychain opens only to `claude`, whose login it is and whose shell
-a review denies unless `--allow-shell` restores it. So a sandboxed macOS `agy` review signs in only through
-`GEMINI_API_KEY` in its environment, and `run` warns before launch when that
-is unset, naming `--allow-unsandboxed-review` on the verbs that offer it.
+post. The keychain opens only to `claude`, whose login it is, and only while
+its shell is denied: under `--allow-shell` it stays closed to claude too. So a
+sandboxed macOS `agy` review signs in only through `GEMINI_API_KEY` in its
+environment, and a `claude` review under `--allow-shell` only through
+`ANTHROPIC_API_KEY`; `run` warns before launch when that variable is unset,
+naming `--allow-unsandboxed-review` on the verbs that offer it.
 
 Every other row declares none: in the sandbox it writes only its snapshot
 (with its private `TMPDIR`), so it cannot save its own login or sessions, and

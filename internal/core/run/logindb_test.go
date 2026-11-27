@@ -3,6 +3,7 @@ package run
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -184,5 +185,104 @@ func TestAgyKeychainLoginWarnsUnderSeatbelt(t *testing.T) {
 		if !slices.Equal(st.warnings, tc.want) {
 			t.Errorf("%s: warnings = %q, want %q", tc.name, st.warnings, tc.want)
 		}
+	}
+}
+
+// TestOpencodeSeedResolvesOpencodeDBAsOpencodeDoes proves a relative
+// OPENCODE_DB is read below opencode's data directory, where opencode opens
+// it, and ":memory:" seeds nothing.
+func TestOpencodeSeedResolvesOpencodeDBAsOpencodeDoes(t *testing.T) {
+	t.Parallel()
+	def, _ := lookupAgent("opencode")
+	home, tmp := t.TempDir(), t.TempDir()
+	data := filepath.Join(home, ".local", "share")
+	plantOpencodeDB(t, filepath.Join(data, "moved"))
+	if err := os.Rename(filepath.Join(data, "moved", "opencode"), filepath.Join(data, "opencode")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(data, "opencode", "opencode.db"), filepath.Join(data, "opencode", "rel.db")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home, "OPENCODE_DB=rel.db"}, tmp); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSeeded(t, filepath.Join(tmp, "home-xdg_data_home", "opencode", "auth.json")); string(got) != seededLogins {
+		t.Errorf("seeded auth.json =\n%s\nwant\n%s", got, seededLogins)
+	}
+	memory := t.TempDir()
+	if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home, "OPENCODE_DB=:memory:"}, memory); err != nil {
+		t.Fatal(err)
+	}
+	if got := readSeeded(t, filepath.Join(memory, "home-xdg_data_home", "opencode", "auth.json")); string(got) != staleAuth {
+		t.Errorf(":memory: seeded %s, want the copy alone", got)
+	}
+}
+
+// TestOpencodeSeedWarnsOnAChannelDatabase proves a database a channel build
+// names (opencode-<channel>.db) beside opencode.db is named in a warning,
+// never read silently in its place.
+func TestOpencodeSeedWarnsOnAChannelDatabase(t *testing.T) {
+	t.Parallel()
+	def, _ := lookupAgent("opencode")
+	home := t.TempDir()
+	data := filepath.Join(home, ".local", "share")
+	plantOpencodeDB(t, data)
+	writeUnder(t, data, filepath.Join("opencode", "opencode-canary.db"), "x")
+	_, warnings, err := ephemeralEnv(&def, []string{"HOME=" + home}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "opencode keeps opencode-canary.db beside opencode.db") {
+		t.Errorf("warnings = %q, want the channel database named", warnings)
+	}
+}
+
+// TestAllowShellClosesClaudesKeychain proves --allow-shell, which gives
+// claude a shell, closes its keychain login like agy's: the box keeps no
+// keychain state, the macOS profile opens no keychain broker and no longer
+// re-allows the keychain files the credential table denies, and a macOS
+// launch warns to sign in with ANTHROPIC_API_KEY. Without the shell the
+// keychain stays claude's.
+func TestAllowShellClosesClaudesKeychain(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skipf("%s has no review sandbox policy to build", runtime.GOOS)
+	}
+	assertShellKeychain(t, false)
+	assertShellKeychain(t, true)
+	def, _ := lookupAgent("claude")
+	st := &state{req: &core.RunRequest{UnsandboxedOptOut: true}}
+	st.box = &reviewBox{mechanism: hostsandbox.SandboxExecTool, posture: postureSandboxed, shellKeychain: true}
+	st.warnKeychainLogin(&def)
+	want := "claude's saved macOS sign-in is in your login keychain, which verdict's review sandbox keeps closed " +
+		"to it: --allow-shell gives claude a shell, and with the keychain open a prompt-injected diff could read " +
+		"every token stored there (gh's among them) into review text; set ANTHROPIC_API_KEY for its review " +
+		"launches; pass --allow-unsandboxed-review to review without the sandbox"
+	if !slices.Equal(st.warnings, []string{want}) {
+		t.Errorf("warnings = %q, want %q", st.warnings, want)
+	}
+}
+
+// assertShellKeychain builds claude's box with or without a shell and checks
+// the keychain is its own exactly when the shell is denied.
+func assertShellKeychain(t *testing.T, shell bool) {
+	t.Helper()
+	req, _ := sandboxRequest(t, "claude", lookEverything)
+	req.Print, req.AllowShell = true, shell
+	st := &state{req: req}
+	def, _ := st.lookupAgent("claude")
+	box, why, err := st.buildBox(t.Context(), &def)
+	if err != nil || why != "" {
+		t.Fatalf("shell %v: buildBox = %v, %q", shell, err, why)
+	}
+	profile, err := seatbeltReviewProfile([]string{"/w"}, "", box)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keychain := `(subpath "` + filepath.Join(box.home, "Library", "Keychains") + `")`
+	own := !shell
+	if box.keychain() != own || strings.Contains(profile, `"com.apple.SecurityServer"`) != own ||
+		strings.Contains(profile, "(allow file-read* file-write* "+keychain) != own {
+		t.Errorf("shell %v: keychain() = %v; profile:\n%s", shell, box.keychain(), profile)
 	}
 }

@@ -172,8 +172,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		".claude/.credentials.json", ".config/github-copilot", ".gemini/oauth_creds.json", ".config/git/credentials",
 		".local/share/opencode/mcp-auth.json", ".Xauthority", ".1password", ".bitwarden-ssh-agent.sock",
 		"Library/Group Containers/2BUA8C4S2C.com.1password", "Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
-		".local/share/opencode/opencode.db", ".local/share/opencode/opencode.db-wal",
-		".local/share/opencode/opencode.db-shm",
+		".local/share/opencode",
 	}
 	var want []string
 	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {

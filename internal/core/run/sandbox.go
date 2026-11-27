@@ -182,6 +182,8 @@ type reviewBox struct {
 	readOnly    []statePath
 	dirs        []statePath
 	operator    bool
+	// shellKeychain marks a keychain login dropped for a launch's shell.
+	shellKeychain bool
 }
 
 // statePath is one resolved state path below its base (HOME or the
@@ -275,10 +277,29 @@ func (st *state) warnKeychainLogin(def *agentcatalog.Launch) {
 		hostsandbox.EnvLookup(st.childEnv(), def.KeychainLoginEnv) != "" {
 		return
 	}
+	shell := def.Name + " keeps a shell in every review"
+	if st.box.shellKeychain {
+		shell = flagAllowShell + " gives " + def.Name + " a shell"
+	}
 	st.boxWarn(core.Msgf("%s's saved macOS sign-in is in your login keychain, which verdict's review sandbox keeps "+
-		"closed to it: %s keeps a shell in every review, and with the keychain open a prompt-injected diff could "+
-		"read every token stored there (gh's among them) into review text; set %s for its review launches%s",
-		def.Name, def.Name, def.KeychainLoginEnv, st.optOutRemedy()))
+		"closed to it: %s, and with the keychain open a prompt-injected diff could read every token stored "+
+		"there (gh's among them) into review text; set %s for its review launches%s",
+		def.Name, shell, def.KeychainLoginEnv, st.optOutRemedy()))
+}
+
+// flagAllowShell is the flag that restores a row's shell in its review.
+const flagAllowShell = "--allow-shell"
+
+// dropKeychain removes the keychain from the box's own state for a launch
+// with a shell, so the profile opens no keychain broker and the credential
+// table hides the keychain files again.
+func (b *reviewBox) dropKeychain() {
+	if !b.keychain() {
+		return
+	}
+	keychain := filepath.Join(b.home, keychainState)
+	b.state = slices.DeleteFunc(b.state, func(s statePath) bool { return !s.prefix && s.path == keychain })
+	b.shellKeychain = true
 }
 
 // valueFullAccess is codex's sandbox mode that starts no sandbox of its own.
@@ -422,6 +443,9 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	box, err := newReviewBox(def, env, credentials)
 	if err != nil {
 		return nil, "", err
+	}
+	if st.req.AllowShell {
+		box.dropKeychain()
 	}
 	box.mechanism, box.runner, box.posture = mechanism, runner, postureSandboxed
 	if _, err := box.prefix([]string{os.TempDir()}, "", false); err != nil {
@@ -935,9 +959,10 @@ func seatbeltRegex(b *strings.Builder, rule, path, tail string) error {
 // directories bound writable and the agent binary read-only; the row's data
 // paths bound writable and its config and code read-only; then the
 // credential table hidden over all of them (empty tmpfs over a directory,
-// /dev/null over a file), but the agent's own login; then the hidden roots
-// remounted read-only. bwrap can bind only what exists: a missing writable
-// directory was created first, and a missing file stays read-only.
+// remounted read-only, /dev/null over a file), but the agent's own login;
+// then the hidden roots remounted read-only. bwrap can bind only what
+// exists: a missing writable directory was created first, and a missing file
+// stays read-only.
 func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 	hidden := hiddenRoots(lstatMode)
 	argv := slices.Concat(bwrapReviewHead, pairs(hostsandbox.Tmpfs, hidden))
@@ -953,9 +978,16 @@ func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 	// (~/.pi, ~/.codex) would otherwise expose the real file again — less the
 	// agent's own login, which its writable state binds.
 	others := slices.DeleteFunc(slices.Clone(box.credentials), box.ownLogin())
+	var hiddenDirs []string
 	for _, mount := range hostsandbox.CredentialMounts(others) {
 		argv = append(argv, mount.Argv()...)
+		if mount.Dir {
+			hiddenDirs = append(hiddenDirs, mount.Dest)
+		}
 	}
+	// A hidden directory stays empty and read-only: a directory an agent's
+	// own data binds read-only (opencode's) must not turn writable under it.
+	argv = append(argv, pairs("--remount-ro", hiddenDirs)...)
 	argv = append(argv, pairs("--remount-ro", hidden)...)
 	return append(argv, bwrapReviewTail...)
 }

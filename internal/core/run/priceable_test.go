@@ -17,6 +17,8 @@ func TestUnpriceableNamesWhatNoMeasurementCanPrice(t *testing.T) {
 	home := t.TempDir()
 	configured := t.TempDir()
 	writeUnder(t, configured, filepath.Join(".codex", "config.toml"), "model = \"gpt-5\"\n")
+	other := t.TempDir()
+	writeUnder(t, other, filepath.Join(".codex", "config.toml"), "model = \"gpt-5\"\nmodel_provider = \"ollama\"\n")
 	for _, tc := range []struct {
 		agent, home, want string
 		pass              []string
@@ -26,7 +28,13 @@ func TestUnpriceableNamesWhatNoMeasurementCanPrice(t *testing.T) {
 		{agent: "codex", home: home, pass: []string{"-m", "gpt-5"}},
 		{agent: "codex", home: home, pass: []string{"--model=gpt-5-mini"}},
 		{agent: "codex", home: configured},
-		{agent: "codex", home: home, want: "codex reports only token usage and its model is not named"},
+		{agent: "codex", home: home, want: "codex reports only token usage and verdict cannot price it: no model is named"},
+		{agent: "codex", home: home, pass: []string{"--oss", "-m", "gpt-5"}, want: "codex reports only token usage " +
+			"and verdict cannot price it: --oss or --local-provider runs a local model"},
+		{agent: "codex", home: other, want: "codex reports only token usage and verdict cannot price it: its " +
+			"model_provider is not openai"},
+		{agent: "codex", home: home, pass: []string{"-c", "profiles.x.model=gpt-5"}, want: "codex reports only " +
+			"token usage and verdict cannot price it: a `-c` override names a model, provider, or profile key"},
 		{
 			agent: "codex", home: home, pass: []string{"-m", "not-a-priced-model"},
 			want: "codex's model not-a-priced-model is not in verdict's built-in price table",

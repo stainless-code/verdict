@@ -312,3 +312,123 @@ func fuzzSeed(f *testing.F, name string) []byte {
 	}
 	return raw
 }
+
+// craftPage is the page size of the crafted files: 64 KiB, the largest, whose
+// header spells it 1.
+const craftPage = 1 << 16
+
+// craftHeader writes a database header for a file of pages pages.
+func craftHeader(file []byte, pages int) {
+	copy(file, headerMagic)
+	binary.BigEndian.PutUint16(file[offPageSize:], pageSizeAsMax)
+	binary.BigEndian.PutUint32(file[offPageCount:], uint32(pages))
+	binary.BigEndian.PutUint32(file[offChangeCount:], 1)
+	binary.BigEndian.PutUint32(file[offValidFor:], 1)
+	binary.BigEndian.PutUint32(file[offTextEncoding:], textUTF8)
+}
+
+// putVarint writes SQLite's varint for v (under 2^56) at b and returns its
+// length.
+func putVarint(b []byte, v uint64) int {
+	var groups []byte
+	for {
+		groups = append([]byte{byte(v & 0x7f)}, groups...)
+		if v >>= 7; v == 0 {
+			break
+		}
+	}
+	for i := range len(groups) - 1 {
+		groups[i] |= 0x80
+	}
+	return copy(b, groups)
+}
+
+// craftCell writes at off one leaf cell holding a one-text-column record of
+// size payload bytes whose overflow continues on page overflow, and returns
+// its end.
+func craftCell(page []byte, off, size int, overflow uint32) {
+	at := off + putVarint(page[off:], uint64(size))
+	at += putVarint(page[at:], 1)
+	record := make([]byte, 0, 8)
+	head := make([]byte, 8)
+	n := putVarint(head, uint64(serialText+serialPerByte*(size-4)))
+	record = append(append(record, byte(1+n)), head[:n]...)
+	copy(page[at:], record)
+	local := (&DB{usable: craftPage}).localSize(size)
+	binary.BigEndian.PutUint32(page[at+local:], overflow)
+}
+
+// craftLeaf writes a leaf b-tree header at hdr pointing at cells.
+func craftLeaf(page []byte, hdr int, cells []int) {
+	page[hdr] = pageLeafTable
+	binary.BigEndian.PutUint16(page[hdr+offCellCount:], uint16(len(cells)))
+	for i, off := range cells {
+		binary.BigEndian.PutUint16(page[hdr+leafHeaderSize+cellPointerSize*i:], uint16(off))
+	}
+}
+
+// TestTableRefusesCellsSharingOnePayload proves a schema page whose 100
+// pointers all name one 512 KiB cell, its overflow looping on one page, is
+// refused before its payload is decoded a hundred times.
+func TestTableRefusesCellsSharingOnePayload(t *testing.T) {
+	t.Parallel()
+	file := make([]byte, 2*craftPage)
+	craftHeader(file, 2)
+	const cell = 4096
+	craftCell(file, cell, 512<<10, 2)
+	craftLeaf(file, headerSize, slices.Repeat([]int{cell}, 100))
+	binary.BigEndian.PutUint32(file[craftPage:], 2)
+	db, err := Open(bytes.NewReader(file), int64(len(file)), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Table("credential"); err == nil || errors.Is(err, ErrNoTable) {
+		t.Fatalf("Table = %v, want the shared cell refused", err)
+	}
+}
+
+// TestTableCapsTheBytesItDecodes proves distinct cells on many leaves, each
+// a 1000000-byte record sharing one looping overflow page, stop at the
+// decode cap instead of decoding every one.
+func TestTableCapsTheBytesItDecodes(t *testing.T) {
+	t.Parallel()
+	const leaves = 20
+	file := make([]byte, (leaves+2)*craftPage)
+	craftHeader(file, leaves+2)
+	file[headerSize] = pageInteriorTable
+	binary.BigEndian.PutUint16(file[headerSize+offCellCount:], leaves-1)
+	binary.BigEndian.PutUint32(file[headerSize+offRightChild:], leaves+2)
+	for i := range leaves - 1 {
+		off := 4096 + 8*i
+		binary.BigEndian.PutUint16(file[headerSize+interiorHeadSize+cellPointerSize*i:], uint16(off))
+		binary.BigEndian.PutUint32(file[off:], uint32(3+i))
+		putVarint(file[off+childPointerSize:], uint64(i))
+	}
+	binary.BigEndian.PutUint32(file[craftPage:], 2)
+	for leaf := range leaves {
+		page := file[(2+leaf)*craftPage : (3+leaf)*craftPage]
+		craftCell(page, 4096, 1000000, 2)
+		craftLeaf(page, 0, []int{4096})
+	}
+	db, err := Open(bytes.NewReader(file), int64(len(file)), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Table("credential"); err == nil || !strings.Contains(err.Error(), "decode cap") {
+		t.Fatalf("Table = %v, want the decode cap", err)
+	}
+}
+
+// TestColumnsRefusesAVirtualColumn proves a generated VIRTUAL column, which
+// no record stores, refuses rather than shifting the columns after it; a
+// STORED one is read.
+func TestColumnsRefusesAVirtualColumn(t *testing.T) {
+	t.Parallel()
+	if _, err := Columns("CREATE TABLE t (a, b AS (a + 1), c)"); err == nil {
+		t.Error("a VIRTUAL column was read")
+	}
+	if got, err := Columns("CREATE TABLE t (a, b INT GENERATED ALWAYS AS (a + 1) STORED, c)"); err != nil ||
+		!slices.Equal(got, []string{"a", "b", "c"}) {
+		t.Errorf("STORED = %q, %v", got, err)
+	}
+}

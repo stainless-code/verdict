@@ -96,7 +96,7 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 			"HOME=" + h, "CODEX_HOME=" + filepath.Join(x, "codex"), "XDG_DATA_HOME=" + filepath.Join(x, "data"),
 			"PI_CODING_AGENT_DIR=" + filepath.Join(x, "pi"), "CLAUDE_CONFIG_DIR=" + filepath.Join(x, "claude"),
 			"XDG_CONFIG_HOME=" + filepath.Join(x, "cfg"), "XAUTHORITY=" + filepath.Join(x, "xauth"),
-			"OPENCODE_DB=" + filepath.Join(x, "oc.db"),
+			"OPENCODE_DB=" + filepath.Join(x, "db", "oc.db"),
 		},
 	}.CredentialLocations(filepath.Join(base, "r"), false)
 	if err != nil {
@@ -112,13 +112,46 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 		"h/.Xauthority", "x/xauth", "h/.1password", "h/.bitwarden-ssh-agent.sock",
 		"h/Library/Group Containers/2BUA8C4S2C.com.1password",
 		"h/Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
-		"h/.local/share/opencode/opencode.db", "h/.local/share/opencode/opencode.db-wal",
-		"h/.local/share/opencode/opencode.db-shm", "x/data/opencode/opencode.db", "x/data/opencode/opencode.db-wal",
-		"x/data/opencode/opencode.db-shm", "x/oc.db", "x/oc.db-wal", "x/oc.db-shm",
+		"h/.local/share/opencode", "x/data/opencode", "x/db",
 	} {
 		root, rest, _ := strings.Cut(want, "/")
 		if path := filepath.Join(roots[root], filepath.FromSlash(rest)); !slices.Contains(got, path) {
 			t.Errorf("credential locations lack %s:\n%s", path, strings.Join(got, "\n"))
 		}
+	}
+}
+
+// TestCredentialTableHidesARelativeOpenCodeDB proves a relative OPENCODE_DB
+// is hidden where opencode resolves it — below each opencode data
+// directory — and ":memory:" names nothing.
+func TestCredentialTableHidesARelativeOpenCodeDB(t *testing.T) {
+	base := t.TempDir()
+	h, x := filepath.Join(base, "h"), filepath.Join(base, "x")
+	got, err := Inputs{ChildEnv: []string{"HOME=" + h, "XDG_DATA_HOME=" + x, "OPENCODE_DB=../moved/oc.db"}}.
+		CredentialLocations(filepath.Join(base, "r"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{filepath.Join(x, "moved"), filepath.Join(h, ".local", "share", "moved")} {
+		if !slices.Contains(got, want) {
+			t.Errorf("credential locations lack %s:\n%s", want, strings.Join(got, "\n"))
+		}
+	}
+	memory, err := Inputs{ChildEnv: []string{"HOME=" + h, "OPENCODE_DB=:memory:"}}.
+		CredentialLocations(filepath.Join(base, "r"), false)
+	if err != nil || slices.Contains(memory, filepath.Join(h, ".local", "share", "opencode", ":memory:")) {
+		t.Errorf(":memory: = %v, %v; want no path", memory, err)
+	}
+}
+
+// TestCredentialTableRefusesToHideAHome proves an OPENCODE_DB directly in
+// HOME refuses, since hiding its directory would hide the home.
+func TestCredentialTableRefusesToHideAHome(t *testing.T) {
+	base := t.TempDir()
+	h := filepath.Join(base, "h")
+	_, err := Inputs{ChildEnv: []string{"HOME=" + h, "OPENCODE_DB=" + filepath.Join(h, "oc.db")}}.
+		CredentialLocations(filepath.Join(base, "r"), false)
+	if err == nil || !strings.Contains(err.Error(), "a home, or above one") {
+		t.Fatalf("OPENCODE_DB in HOME = %v, want a refusal", err)
 	}
 }

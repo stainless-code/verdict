@@ -10,15 +10,19 @@
 // come back as nil, int64, float64, string, or []byte; a column a row's
 // record lacks (added by a later ALTER TABLE) reads as nil, and an INTEGER
 // PRIMARY KEY column, which SQLite stores as the rowid, reads as nil too.
+// It reads rowid tables only: a WITHOUT ROWID table is an error, and so is
+// a table with a generated VIRTUAL column, which SQLite stores in no record.
 package sqliteread
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/binary"
 	"errors"
 	"io"
 	"maps"
 	"math"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
@@ -115,8 +119,11 @@ const (
 	maxDepth = 32
 	// maxPages bounds the pages one Table call reads, overflow included.
 	maxPages = 1 << 16
-	// maxPayload bounds one record.
-	maxPayload = 4 << 20
+	// maxPayload bounds one record: a login row is small.
+	maxPayload = 1 << 20
+	// maxDecoded bounds the record bytes one Table call decodes, the schema
+	// included, so pages whose cells share an overflow chain cannot grow it.
+	maxDecoded = 16 << 20
 	// maxWALFrames bounds the log scanned.
 	maxWALFrames = 1 << 20
 )
@@ -129,6 +136,7 @@ type DB struct {
 	pageSize int
 	usable   int
 	reads    int
+	decoded  int
 	pages    uint32
 }
 
@@ -321,7 +329,7 @@ func (d *DB) page(n uint32) ([]byte, error) {
 // Table returns every row of the named rowid table, each a map from column
 // name to value.
 func (d *DB) Table(name string) ([]map[string]any, error) {
-	d.reads = 0
+	d.reads, d.decoded = 0, 0
 	schema, err := d.records(firstPage)
 	if err != nil {
 		return nil, err
@@ -415,8 +423,13 @@ func headerOffset(n uint32) int {
 	return 0
 }
 
-// leaves decodes one leaf page's cells.
+// leaves decodes one leaf page's cells, once their extents on the page are
+// proved disjoint: two pointers to one cell, or into each other's, would
+// decode its payload again for every pointer.
 func (w *walk) leaves(p []byte, cells []int) error {
+	if err := w.d.disjoint(p, cells); err != nil {
+		return err
+	}
 	for _, off := range cells {
 		rec, err := w.d.leafCell(p, off)
 		if err != nil {
@@ -425,6 +438,47 @@ func (w *walk) leaves(p []byte, cells []int) error {
 		w.out = append(w.out, rec)
 	}
 	return nil
+}
+
+// disjoint refuses leaf cells whose bytes on the page overlap.
+func (d *DB) disjoint(p []byte, cells []int) error {
+	extents := make([][2]int, 0, len(cells))
+	for _, off := range cells {
+		end, err := d.cellEnd(p, off)
+		if err != nil {
+			return err
+		}
+		extents = append(extents, [2]int{off, end})
+	}
+	slices.SortFunc(extents, func(a, b [2]int) int { return cmp.Compare(a[0], b[0]) })
+	for i := 1; i < len(extents); i++ {
+		if extents[i][0] < extents[i-1][1] {
+			return jq.NewErr("leaf cells overlap on their page")
+		}
+	}
+	return nil
+}
+
+// cellEnd is where one leaf cell's bytes on the page end: its two varints,
+// its local payload, and its overflow pointer when it has one.
+func (d *DB) cellEnd(p []byte, off int) (int, error) {
+	size, n := varint(p[off:d.usable])
+	if n == 0 || size > maxPayload {
+		return 0, jq.NewErr("cell payload size malformed")
+	}
+	end := off + n
+	if _, n = varint(p[end:d.usable]); n == 0 {
+		return 0, jq.NewErr("cell rowid malformed")
+	}
+	local := d.localSize(int(size))
+	end += n + local
+	if local < int(size) {
+		end += overflowNextSize
+	}
+	if end > d.usable {
+		return 0, jq.NewErr("cell past the page")
+	}
+	return end, nil
 }
 
 // cells reads one table page's header: an interior page's children in key
@@ -483,6 +537,9 @@ func (d *DB) leafCell(p []byte, off int) ([]any, error) {
 	off += n
 	if _, n = varint(p[off:d.usable]); n == 0 {
 		return nil, jq.NewErr("cell rowid malformed")
+	}
+	if d.decoded += int(size); d.decoded > maxDecoded {
+		return nil, jq.NewErr("table larger than the decode cap")
 	}
 	payload, err := d.payload(p, off+n, int(size))
 	if err != nil {
@@ -655,11 +712,21 @@ func Columns(sql string) ([]string, error) {
 		switch {
 		case name == "":
 			return nil, jq.NewErr("column definition malformed")
+		case virtualColumn(def):
+			return nil, jq.NewErr("a generated VIRTUAL column is not stored in the record")
 		case quoted || !containsFold(tableConstraints, name):
 			cols = append(cols, name)
 		}
 	}
 	return cols, nil
+}
+
+// virtualColumn reports a generated column SQLite does not store: one with
+// an AS (expression) clause that is not STORED.
+func virtualColumn(def string) bool {
+	upper := strings.Join(strings.Fields(strings.ToUpper(def)), " ")
+	generated := strings.Contains(upper, " AS (") || strings.Contains(upper, " AS(")
+	return generated && !strings.Contains(upper, " STORED")
 }
 
 // splitter walks a column list for its top-level commas.

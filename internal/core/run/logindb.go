@@ -51,17 +51,22 @@ const loginDBAttempts = 3
 // seedLoginDB writes the provider logins of the row name's database (c)
 // into the throwaway home dir, over the seeded copy of c.Into, and returns the
 // environment entry that points c.Env at the copy's database. The real
-// database is read below source (or at c.Env's absolute value in env)
-// without following a link; one that is a link or not a regular file
-// refuses the launch, while one that is missing is left out and one that
-// cannot be read as a credential table is left out with a warning, so the
-// copied login file is all the launch gets.
+// database is the one the CLI opens: c.Env's value — absolute, or relative to
+// c.Path's directory below source, as opencode resolves it — else c.Path.
+// The file and the directories below its root handle are opened without
+// following a link (the directories above an absolute c.Env value are the
+// operator's own path, followed as written); one that is a link or not a
+// regular file refuses the launch, while one that is missing is left out and
+// one that cannot be read as a credential table is left out with a warning,
+// so the copied login file is all the launch gets. A database beside it the
+// CLI names by its release channel is one the seeder cannot predict: it
+// warns rather than seed from a stale file silently.
 func seedLoginDB(name string, c *agentcatalog.LoginDB, source, dir string, env []string,
 ) (entry, warning string, err error) {
 	entry = c.Env + inlineValue + filepath.Join(dir, filepath.FromSlash(c.Path))
-	dbDir, rel := source, filepath.FromSlash(c.Path)
-	if value := hostsandbox.EnvLookup(env, c.Env); filepath.IsAbs(value) {
-		dbDir, rel = filepath.Split(filepath.Clean(value))
+	dbDir, rel, ok := loginDBPath(c, source, hostsandbox.EnvLookup(env, c.Env))
+	if !ok {
+		return entry, "", nil
 	}
 	logins, why, err := readLogins(dbDir, rel)
 	switch {
@@ -70,10 +75,52 @@ func seedLoginDB(name string, c *agentcatalog.LoginDB, source, dir string, env [
 	case why != "":
 		return entry, name + "'s logins in " + filepath.Join(dbDir, rel) + " could not be read (" + why +
 			"), so its review launch has only the copy of " + filepath.Base(c.Into), nil
-	case len(logins) == 0:
-		return entry, "", nil
 	}
-	return entry, "", writeLogins(filepath.Join(dir, filepath.FromSlash(c.Into)), logins)
+	warning = channelWarning(name, dbDir, rel)
+	if len(logins) == 0 {
+		return entry, warning, nil
+	}
+	return entry, warning, writeLogins(filepath.Join(dir, filepath.FromSlash(c.Into)), logins)
+}
+
+// loginDBPath is the directory the real database sits in and its name
+// there; false when value keeps it in memory.
+func loginDBPath(c *agentcatalog.LoginDB, source, value string) (dir, name string, ok bool) {
+	def := filepath.Join(source, filepath.FromSlash(c.Path))
+	switch {
+	case value == memoryDB:
+		return "", "", false
+	case filepath.IsAbs(value):
+		def = filepath.Clean(value)
+	case value != "":
+		def = filepath.Join(filepath.Dir(def), value)
+	}
+	return filepath.Dir(def), filepath.Base(def), true
+}
+
+// memoryDB is the database name that keeps it in memory, no file.
+const memoryDB = ":memory:"
+
+// channelWarning names the databases beside the default one that a build on
+// another release channel opens instead (<stem>-<channel>.db), "" for none.
+func channelWarning(name, dir, file string) string {
+	stem, ext, ok := strings.Cut(file, ".")
+	entries, err := os.ReadDir(dir)
+	if !ok || err != nil {
+		return ""
+	}
+	var others []string
+	for _, e := range entries {
+		if n := e.Name(); strings.HasPrefix(n, stem+"-") && strings.HasSuffix(n, "."+ext) {
+			others = append(others, n)
+		}
+	}
+	if len(others) == 0 {
+		return ""
+	}
+	return name + " keeps " + strings.Join(others, ", ") + " beside " + file + " in " + dir + ": a build on " +
+		"another release channel signs in from that database, which verdict does not read, so its review " +
+		"launch has " + file + "'s logins"
 }
 
 // loginFiles is one open login database: the root handle on its directory,
