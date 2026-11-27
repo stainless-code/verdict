@@ -4351,9 +4351,10 @@ On unix that catches any write, even one that restores a file's size, mode,
 and modification time, since the change time moves with it; on Windows a
 same-size rewrite that restores the modification time is not caught.
 
-What holds, and for whom. The agent starts in its copy, so its writes to
-paths relative to its working directory, which is where every agent's edit
-tools aim, land there; nothing comes back from the copy but the expected
+What holds, and for whom. The agent starts in its copy, where every agent's
+edit tools aim, so its writes to paths that resolve inside the copy land
+there (`../outside.txt` resolves to the copy's wrapper, and further `..`
+leaves it); nothing comes back from the copy but the expected
 artifacts, and writes beyond its wrapper are not discarded. `claude` (without `--allow-shell`, through its scoped `Edit`
 grant) and `codex` (its workspace sandbox, rooted at the copy) stay in their
 copy through their own tools. Any other agent can still write outside it
