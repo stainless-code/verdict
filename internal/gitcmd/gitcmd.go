@@ -82,8 +82,11 @@ var inherited = []string{
 // them with [TransportHelper].
 var transportHelpers = []string{"GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND"}
 
-// Inherited reports a variable [Env] drops from every call.
-func Inherited(name string) bool { return slices.Contains(inherited, name) }
+// Inherited reports a variable [Env] drops from every call. Names match
+// whatever their case: Windows reads them that way.
+func Inherited(name string) bool {
+	return slices.ContainsFunc(inherited, func(v string) bool { return strings.EqualFold(v, name) })
+}
 
 // TransportHelper reports a variable that names a transport helper program,
 // for a call that must not reach the network with the operator's own.

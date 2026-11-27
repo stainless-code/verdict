@@ -321,6 +321,12 @@ func appendChunkGlob(chunksDir string, files []string) []string {
 	return files
 }
 
+// ManifestChunks names the chunks the bundle at dir's chunk manifest lists,
+// nil when it lists none or cannot be read.
+func ManifestChunks(dir string) []string {
+	return manifestChunkNames(dir + "/chunks/manifest.json")
+}
+
 // manifestChunkNames reads the manifest's chunk names ("" when the manifest
 // is absent or unreadable, mirroring `|| true`).
 func manifestChunkNames(path string) []string {

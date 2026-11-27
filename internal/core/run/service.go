@@ -153,6 +153,8 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
+	st.ws = st.newWorkspace(timeout, rounds)
+	defer st.closeWorkspace(ctx)
 	args, ref := st.argsFor(&def, dir, timeout)
 	if ref != nil {
 		return nil, ref
@@ -197,6 +199,7 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.AllowShell)
+	args.review = reviewArgs(def)
 	if ref := st.refuseLinkedPaths(&target); ref != nil {
 		return nil, ref
 	}
@@ -218,11 +221,26 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 func (st *state) refuseOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
 	arg := ownedFlagArg(def, st.req.PassThrough, st.req.AllowShell)
 	if arg == "" {
-		return nil
+		return st.refuseReviewOwnedFlag(def)
 	}
 	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s is verdict's shell denial on a review launch; got '%s' "+
 		"after -- (drop it, or pass --allow-shell to own the agent's tool set)", def.Name,
 		strings.Join(def.DiscoveryOwnedFlags, "/"), arg))
+}
+
+// refuseReviewOwnedFlag refuses a review launch whose `--` tail spells one of
+// the row's ReviewOwnedFlags: each would undo the flags that keep the
+// reviewed tree's own configuration from loading, or point the agent at
+// configuration or directories outside its review snapshot.
+func (st *state) refuseReviewOwnedFlag(def *agentcatalog.Launch) *core.RefusalError {
+	arg := reviewOwnedArg(def, st.req.PassThrough, st.req.AllowShell)
+	if arg == "" {
+		return nil
+	}
+	return st.refuse(codeBadFlags, fmt.Sprintf("%s's %s are verdict's on a review launch, which loads no "+
+		"configuration from the reviewed tree and stays in its snapshot; got '%s' after -- (drop it, or pass "+
+		"--allow-shell to own the agent's tool set and configuration)", def.Name,
+		strings.Join(def.ReviewOwnedFlags, "/"), arg))
 }
 
 // refuseLinkedPaths refuses a launch whose bundle holds a symlink, a
@@ -240,11 +258,20 @@ func (st *state) refuseLinkedPaths(target *launchTarget) *core.RefusalError {
 	return readcommon.RefuseUnsafeBundle(st.req.RepoRootPath(), dir)
 }
 
-// grantFor is the row's review-write grant for a launch writing into dir. A
-// grant the row documents but dir cannot carry is named in one warning, since
-// the agent may then be unable to write its artifact.
+// grantFor is the row's review-write grant for a launch writing into dir,
+// then its snapshot write grant. A launch starts in its review snapshot,
+// whose bundle copy sits where the bundle sits under the repository root, so
+// the grant is spelled from that root; a render spells it from the directory
+// the printed command runs in. A grant the row documents but dir cannot
+// carry is named in one warning, since the agent may then be unable to write
+// its artifact.
 func (st *state) grantFor(def *agentcatalog.Launch, dir string) []string {
-	grant, why := reviewGrant(def, st.req.PassThrough, st.workDir(), readcommon.StateDir(st.req.RepoRootPath()), dir)
+	cwd := st.req.RepoRootPath()
+	if st.req.Print {
+		cwd = st.workDir()
+	}
+	grant, why := reviewGrant(def, st.req.PassThrough, cwd, readcommon.StateDir(st.req.RepoRootPath()), dir)
+	grant = append(grant, st.snapshotGrant(def)...)
 	if why == "" {
 		return grant
 	}
@@ -255,6 +282,19 @@ func (st *state) grantFor(def *agentcatalog.Launch, dir string) []string {
 		st.warn(msg)
 	}
 	return grant
+}
+
+// snapshotGrant is the row's working-directory write grant
+// (SnapshotWriteArgs), which a review launch carries only because that
+// directory is its disposable snapshot: nil for a render, whose printed
+// command runs wherever the operator runs it, and when the operator's `--`
+// tail decides the agent's permissions or tool set itself.
+func (st *state) snapshotGrant(def *agentcatalog.Launch) []string {
+	if st.req.Print || len(def.SnapshotWriteArgs) == 0 ||
+		operatorSpells(st.req.PassThrough, slices.Concat(def.PermissionFlags, def.DiscoveryOverrideFlags)) {
+		return nil
+	}
+	return slices.Clone(def.SnapshotWriteArgs)
 }
 
 // compose builds the prompt and argv one invocation works from: the
@@ -357,16 +397,18 @@ func passThroughModel(args []string) bool {
 }
 
 // promptBundle is the bundle path the directive names: the repository-relative
-// display path, or the absolute one when the agent starts in another checkout.
+// display path, or, in a render for another checkout, the absolute one.
 func (st *state) promptBundle(dir string) string {
 	return st.promptPath(dir, readcommon.DisplayPath(st.req.RepoRootPath(), dir))
 }
 
-// promptPath keeps the display path for a launch in the repository root. A
-// launch from another checkout names the path absolutely, because the bundle
-// lives under the repository root, outside that checkout.
+// promptPath names a bundle path by its repository-relative display path. A
+// launch starts in its review snapshot, which carries the bundle copy at that
+// same relative path whichever checkout the snapshot copies. Only a render
+// for another checkout names it absolutely: the printed command runs in that
+// checkout, outside which the bundle lives.
 func (st *state) promptPath(abs, display string) string {
-	if st.req.Checkout != "" {
+	if st.req.Checkout != "" && st.req.Print {
 		return abs
 	}
 	return display
@@ -555,7 +597,10 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	meter       *meter
 	usage       *usageGate
 	receiptID   string
-	twoFinders  bool
+	// ws is the execution's reviewed tree every review launch copies its
+	// view from; nil for a render and for a dispatch, which run no review.
+	ws         *workspace
+	twoFinders bool
 }
 
 // syncProgress is the one lock the parallel phases share: it serializes their
@@ -612,6 +657,8 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
+	// review is the row's ReviewArgs, carried by every review launch.
+	review []string
 	// grant is the row's review-write grant scoped to this launch's output
 	// directory, nil when none applies (see reviewGrant).
 	grant []string
@@ -951,7 +998,9 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 // the run is machine-only. The commander records the watchdog's kill in
 // Result.TimedOut; this call never infers one from its own clock, so an agent
 // that exits non-zero just before the budget stays a failure.
-func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap) (*core.Result, error) {
+func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap, dir string,
+	env []string,
+) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, errNoCommander
@@ -960,8 +1009,8 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *age
 	defer cancel()
 	cmd := &core.Command{
 		Argv:        argv,
-		Env:         st.childEnv(),
-		Dir:         st.workDir(),
+		Env:         env,
+		Dir:         dir,
 		OutputCap:   coreexec.VerifyOutputCap,
 		GracePeriod: agentGracePeriod,
 	}

@@ -36,7 +36,7 @@ func builtinRows() []builtinRow {
 		{
 			name: "agy", binary: "agy", args: []string{}, promptFlag: "-p",
 			install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
-			launchWarning: "agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)",
+			launchWarning: "agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names (a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)",
 			wantArgv:      []string{"agy", "--model", "M", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"agy", "--model", "M", "-p", "PROMPT"},
 		},
@@ -70,7 +70,7 @@ func builtinRows() []builtinRow {
 			name: "claude", binary: "claude", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://claude.ai/install.sh | bash",
 			wantArgv:      []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "M", "PROMPT"},
+			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "M", "PROMPT"},
 		},
 		{
 			name: "cline", binary: "cline", args: []string{}, promptFlag: "",

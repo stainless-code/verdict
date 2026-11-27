@@ -335,7 +335,8 @@ assert_json_field "the step's launcher recorded the configured agent" "$VERDICT_
   '.agent' "$PR_DIR/x-finder-1/launcher.json"
 assert_file_grep "the directive named the artifact the agent wrote" "$STUB_AGENT_LOG" \
   "^arg\\[[0-9]+\\]=.*Write .*x-finder-1/review.json FIRST with " "-E"
-assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
+assert_file_nogrep "the agent never ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
+assert_file_grep "the agent ran in a review snapshot" "$STUB_AGENT_LOG" '^cwd=.*/verdict-snapshot-[^/]*/[^/]*$'
 
 # An earlier run's artifact is not a fresh review: the step must fail.
 touch -t 202001010000 "$PR_DIR/review.json"

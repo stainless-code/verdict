@@ -22,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/core/recipe"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -37,8 +38,12 @@ type scripted struct {
 	calls int
 }
 
-// Run implements core.Commander.
-func (s *scripted) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+// Run implements core.Commander. A git call — a fixture in a real checkout,
+// whose review snapshot git takes — runs for real and is not a launch.
+func (s *scripted) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if _, _, git := gitcmd.Split(cmd.Argv); git {
+		return coreexec.Runner{}.Run(ctx, cmd)
+	}
 	s.calls++
 	s.cmd = cmd
 	if s.write != nil {
@@ -174,11 +179,21 @@ func missingLookPath(string) (string, error) {
 	return "", errors.New("executable file not found in $PATH")
 }
 
+// fixtureEnv is the injected environment a fixture over root runs under: its
+// temp directory sits beside root, so root is not inside it and its review
+// snapshots go there. The directory is made here, as a host's temp
+// directory always exists.
+func fixtureEnv(root string) map[string]string {
+	tmp := filepath.Join(filepath.Dir(root), "tmp")
+	_ = os.MkdirAll(tmp, 0o700) //nolint:errcheck // a failure surfaces as the run's own refusal
+	return map[string]string{"TMPDIR": tmp, "TMP": tmp, "TEMP": tmp}
+}
+
 // request builds a service request whose PATH probe resolves the agent, with
 // the round loop opted out: these fixtures' agents write one review and never
 // rewrite it, which is the one-shot contract. The loop has its own fixtures.
 func request(root string, cmdr core.Commander) *core.RunRequest {
-	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
+	rt := &core.Runtime{Env: fixtureEnv(root), Now: time.Now, Commander: cmdr}
 	return &core.RunRequest{
 		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,
 		LookPath: func(string) (string, error) {
@@ -529,14 +544,15 @@ func assertLauncherKeys(t *testing.T, rec map[string]any) {
 // and land in the record verbatim, with the directive reduced to a placeholder.
 func assertPassThroughArgv(t *testing.T, got []string, shape []any) {
 	t.Helper()
-	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
+	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
 	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
 		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
 	}
 	if shape[len(shape)-1] != promptPlaceholder {
 		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
 	}
-	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != reviewGrantFlag || shape[4] != "--model" || shape[5] != "opus" {
+	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != settingsFlag || shape[4] != mcpFlag || shape[5] != reviewGrantFlag ||
+		shape[6] != "--model" || shape[7] != "opus" {
 		t.Errorf("recorded argv = %v, want the discovery restriction then the pass-through flags verbatim", shape)
 	}
 }
@@ -1255,9 +1271,9 @@ func assertPrintWroteNothing(t *testing.T, root string) {
 // stage that declares no single hint.
 func argvParts(kind string) []string {
 	if kind == recipe.StageSynthesize {
-		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, modelFlag, "opus"}
+		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, modelFlag, "opus"}
 	}
-	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag}
+	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag}
 }
 
 // TestRunPrintRendersOneStage proves --print --stage composes one stage's
@@ -1394,7 +1410,7 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
+	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
 		t.Fatalf("argv =\n%q\nwant\n%q", resp.Data.Argv, want)
 	}
 	if _, ok := runData(t, resp)["stage"]; ok {
@@ -1513,7 +1529,7 @@ func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", reviewGrantFlag, "--model", "haiku"}
+	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "haiku"}
 	if len(resp.Data.Argv) != len(want)+1 || !slices.Equal(resp.Data.Argv[:len(want)], want) {
 		t.Fatalf("argv = %q, want %q then the lens directive", resp.Data.Argv, want)
 	}
@@ -1561,9 +1577,9 @@ func (*warnSpy) Diag(string)       {}
 // the first child starts, proceeds without refusing, emits nothing on --print,
 // and leaves other agents silent.
 func TestRunAgyEmitsLaunchWarningBeforeSpawn(t *testing.T) {
-	const wantWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
-		"so review.json may never be written; trust this repository in agy's settings or pass " +
-		"-- --dangerously-skip-permissions (your approval bypass)"
+	const wantWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, and a review runs in a fresh copy outside them, " +
+		"so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names " +
+		"(a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)"
 
 	t.Run("one-shot warns before spawn and succeeds", func(t *testing.T) {
 		assertAgyOneShotWarning(t, wantWarning)

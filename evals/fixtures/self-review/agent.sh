@@ -11,7 +11,9 @@
 #          it and declares a verify command in patch.json
 #   never  review keeps reporting the line; the fix changes nothing
 #   empty  review attests no coverage (record --require-coverage refuses)
-#   stale  review edits the working tree after the fetch (coverage-stale)
+#   stale  the working tree changes during the review (coverage-stale): the
+#          review runs in its disposable snapshot, so the edit comes from
+#          outside it, as an editor saving would, at $LOOP_REPO
 #   fail   the review spawn exits 7
 #   slow   the review spawn sleeps past a short --timeout
 #   cost   like never, plus a priced cost.json beside the review, in the
@@ -84,5 +86,5 @@ if [ "$mode" = cost ]; then
     >"$(dirname "$artifact")/cost.json"
 fi
 if [ "$mode" = stale ]; then
-  printf 'top\nedited during review\nbottom\n' >notes.txt
+  printf 'top\nedited during review\nbottom\n' >"$LOOP_REPO/notes.txt"
 fi

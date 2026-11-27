@@ -200,22 +200,29 @@ func checkDiscoveryManualRow(t *testing.T, manual string, agent Agent) {
 	}
 }
 
-// TestGrantsAreScopedAndCited pins the two grants verdict adds on its own: the
-// loop's fix-phase edit grant and run's review-write grant. Exactly the rows
-// whose docs name an equally scoped flag carry one, each cites its doc, and
-// no grant is an approval or sandbox bypass — agy's documented hint is one,
-// so it must never be reused as a grant.
+// TestGrantsAreScopedAndCited pins the grants verdict adds on its own: the
+// loop's fix-phase edit grant, run's review-write grant, and the
+// working-directory grant a review launch carries inside its snapshot.
+// Exactly the rows whose docs name such a flag carry one, each cites its doc,
+// and no grant is an approval or sandbox bypass — agy's documented hint is
+// one, so it must never be reused as a grant.
 func TestGrantsAreScopedAndCited(t *testing.T) {
 	t.Parallel()
-	edit, review := map[string][]string{}, map[string][]string{}
+	edit, review, snapshot := map[string][]string{}, map[string][]string{}, map[string][]string{}
 	for _, agent := range All() {
 		l := agent.Launch
 		if l == nil {
 			continue
 		}
-		assertNoBypass(t, agent.Name, slices.Concat(l.EditArgs, l.ReviewWriteArgs))
+		assertNoBypass(t, agent.Name, slices.Concat(l.EditArgs, l.ReviewWriteArgs, l.SnapshotWriteArgs))
 		collectGrant(t, edit, agent.Name, "EditArgs", l.EditArgs, l.EditCitation)
 		collectGrant(t, review, agent.Name, "ReviewWriteArgs", l.ReviewWriteArgs, l.ReviewWriteCitation)
+		collectGrant(t, snapshot, agent.Name, "SnapshotWriteArgs", l.SnapshotWriteArgs, l.SnapshotWriteCitation)
+	}
+	if want := map[string][]string{
+		"codex": {"--sandbox", "workspace-write", "-c", "sandbox_workspace_write.exclude_slash_tmp=true"},
+	}; !maps.EqualFunc(snapshot, want, slices.Equal) {
+		t.Errorf("SnapshotWriteArgs rows = %v, want %v", snapshot, want)
 	}
 	wantEdit := map[string][]string{
 		"claude": {"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
@@ -298,5 +305,32 @@ func TestModelFlagAliasesAreCited(t *testing.T) {
 	}
 	if want := map[string][]string{"codex": {"-m"}}; !maps.EqualFunc(got, want, slices.Equal) {
 		t.Errorf("model aliases = %v, want %v", got, want)
+	}
+}
+
+// TestReviewArgsAreScopedAndCited pins the flags every review launch carries
+// whatever --allow-shell says, and the flags a review launch owns: exactly
+// the rows whose docs name them, each citing its doc.
+func TestReviewArgsAreScopedAndCited(t *testing.T) {
+	t.Parallel()
+	args, owned := map[string][]string{}, map[string][]string{}
+	for _, agent := range All() {
+		l := agent.Launch
+		if l == nil {
+			continue
+		}
+		collectGrant(t, args, agent.Name, "ReviewArgs", l.ReviewArgs, l.ReviewArgsCitation)
+		collectGrant(t, owned, agent.Name, "ReviewOwnedFlags", l.ReviewOwnedFlags, l.ReviewArgsCitation)
+	}
+	wantArgs := map[string][]string{"claude": {"--setting-sources=user", "--strict-mcp-config"}}
+	wantOwned := map[string][]string{
+		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
+		"codex":  {"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust"},
+	}
+	if !maps.EqualFunc(args, wantArgs, slices.Equal) {
+		t.Errorf("ReviewArgs rows = %v, want %v", args, wantArgs)
+	}
+	if !maps.EqualFunc(owned, wantOwned, slices.Equal) {
+		t.Errorf("ReviewOwnedFlags rows = %v, want %v", owned, wantOwned)
 	}
 }

@@ -20,6 +20,9 @@ import (
 // log is guarded: the coordinator runs each pair of phases at once, so two
 // launches append to it from two goroutines.
 type phaseCommander struct {
+	// act, when set, runs after a phase wrote its artifact, inside the
+	// phase's view: the bundle copy's phase directory and the launch.
+	act         func(phase, view string, cmd *core.Command)
 	t           *testing.T
 	dir         string
 	cancel      context.CancelFunc
@@ -129,23 +132,40 @@ func (p *phaseCommander) writePhase(phase string, attempt int, cmd *core.Command
 	if p.outputDir {
 		p.makeOutputPathADirectory(phase)
 	}
-	if res, failed := p.failure(phase); failed {
+	view := p.viewPhase(cmd, phase)
+	if res, failed := p.failure(phase, view); failed {
 		return res
 	}
-	writeUnder(p.t, filepath.Join(p.dir, phase), p.artifactName(phase), p.artifactBytes(phase, attempt))
-	if cmd.Dir != filepath.Dir(filepath.Dir(filepath.Dir(p.dir))) {
-		p.t.Errorf("cwd = %q", cmd.Dir)
+	writeUnder(p.t, view, p.artifactName(phase), p.artifactBytes(phase, attempt))
+	if p.act != nil {
+		p.act(phase, view, cmd)
 	}
 	return core.Result{}
 }
 
+// viewPhase is the phase directory as the launched agent sees it: under its
+// working directory, the review snapshot's copy of the bundle — never the
+// repository root. Every artifact the fixture writes lands there, so the
+// suite reads it back through the copy-back.
+func (p *phaseCommander) viewPhase(cmd *core.Command, phase string) string {
+	root := filepath.Dir(filepath.Dir(filepath.Dir(p.dir)))
+	bundle := filepath.Join(cmd.Dir, ".verdict", "state", filepath.Base(p.dir))
+	if cmd.Dir == root {
+		p.t.Errorf("cwd = %q, the repository root, not a review snapshot", cmd.Dir)
+	}
+	if _, err := os.Stat(filepath.Join(bundle, "full.diff")); err != nil {
+		p.t.Errorf("cwd %q carries no copy of the bundle: %v", cmd.Dir, err)
+	}
+	return filepath.Join(bundle, phase)
+}
+
 // failure is the scripted result of a phase told to fail or to write nothing.
-func (p *phaseCommander) failure(phase string) (core.Result, bool) {
+func (p *phaseCommander) failure(phase, view string) (core.Result, bool) {
 	finder := strings.HasPrefix(phase, "x-finder-")
 	switch {
 	case p.fail && phase == "x-finder-1", p.failFinders && finder:
 		if p.placeholder {
-			writeUnder(p.t, filepath.Join(p.dir, phase), reviewFile, `{"schema_version":"1","findings":[]}`)
+			writeUnder(p.t, view, reviewFile, `{"schema_version":"1","findings":[]}`)
 		}
 		return core.Result{ExitCode: 7, Stderr: p.stderr}, true
 	case p.silentPhase == phase:
@@ -357,7 +377,7 @@ func assertFinderProcedures(t *testing.T, dir string) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !strings.Contains(string(raw), filepath.Join(dir, phase, "review.json")) || strings.Contains(string(raw), "<bundle>") {
+		if !strings.Contains(string(raw), ".verdict/state/"+filepath.Base(dir)+"/"+phase+"/review.json") || strings.Contains(string(raw), "<bundle>") {
 			t.Fatalf("procedure output is not isolated: %s", raw)
 		}
 	}

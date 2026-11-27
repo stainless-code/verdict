@@ -179,10 +179,29 @@ func parseStageRecord(rec string) (entry, error) {
 	return entry{path: path, mode: fields[0], id: fields[1]}, nil
 }
 
+// isExcluded reports a path under one of verdict's own state paths, its
+// segments compared whatever their case: on a case-insensitive filesystem
+// (APFS, NTFS) `.Verdict/state` is the same directory as `.verdict/state`.
 func isExcluded(path string) bool {
-	return slices.ContainsFunc(excluded, func(ex string) bool {
-		return path == ex || strings.HasPrefix(path, ex+"/")
-	})
+	return slices.ContainsFunc(excluded, func(ex string) bool { return HasPathPrefixFold(path, ex) })
+}
+
+// segmentSep separates the segments of a slash-form path.
+const segmentSep = "/"
+
+// HasPathPrefixFold reports whether the slash-form path is prefix or lies
+// below it, each segment compared case-insensitively.
+func HasPathPrefixFold(path, prefix string) bool {
+	parts, want := strings.Split(path, segmentSep), strings.Split(prefix, segmentSep)
+	if len(parts) < len(want) {
+		return false
+	}
+	for i, seg := range want {
+		if !strings.EqualFold(parts[i], seg) {
+			return false
+		}
+	}
+	return true
 }
 
 // hashBatch collects the files the batch hashes, with each one's index mode

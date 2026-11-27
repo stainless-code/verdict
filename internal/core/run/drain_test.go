@@ -15,7 +15,7 @@ import (
 func drainState(root, pr, digest string) *state {
 	return &state{
 		req: &core.RunRequest{
-			Runtime: &core.Runtime{Now: time.Now, Env: map[string]string{}},
+			Runtime: &core.Runtime{Now: time.Now, Env: fixtureEnv(root)},
 			Repo:    "acme/app", Pr: pr, RepoRoot: root, Agent: "claude",
 			TimeoutRaw: "30", RoundsRaw: "1",
 			LookPath: func(string) (string, error) { return "/bin/true", nil },

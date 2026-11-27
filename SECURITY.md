@@ -92,20 +92,43 @@ In scope (highest priority first):
   `bwrap`, which can only protect paths that already exist (git honors it
   only when it runs in that subdirectory, as an editor or repository
   scanner that discovers nested repositories may).
-- `run --agent` and `loop` review launches: the shell denial every review
-  launch carries unless `--allow-shell` is set (`claude`, `pi`, `bob`; the
-  operator may not pass the flag the denial uses), and `claude`'s review write
-  grant, scoped to the launch's own directory inside the bundle, with the
-  pre-launch walk that refuses a symlink, a non-regular entry, or (on unix) a
-  hard-linked file in the bundle. A review launch that runs without the denial,
-  or a grant verdict renders wider than the launch's own bundle directory, is a
-  vulnerability. **Review launches are not a write boundary for any agent:**
-  `claude`'s grant is an added allow rule, so allow rules in the operator's
-  own Claude settings still apply, and every other agent keeps its own edit
-  and write tools, so a prompt-injected review can edit the checkout. That is
-  the documented limitation, not a finding — review an untrusted pull request
-  in a disposable checkout, or render the command with `run --print` and run
-  the agent yourself.
+- `run --agent` and `loop` review launches: every review launch runs in its
+  own disposable copy of the reviewed tree, never in the operator's checkout,
+  and only the artifacts that launch is expected to write come back — each a
+  lone regular file within its cap, read from a pinned copy as the very file
+  the walk saw, and written atomically into the pinned bundle — while anything
+  else it wrote inside the copy's wrapper is discarded and named in a
+  warning. A write beyond the wrapper is not discarded: only the OS sandbox,
+  or `claude`'s and `codex`'s own tools, stop it. A copy holds no symlink,
+  no `.git` or `.verdict/state` of the tree's in any case, and no pointer into
+  the operator's repository, and neither does the shared snapshot it is made
+  from; outside a git checkout it holds the bundle alone.
+  Also in scope: the shell denial every review launch carries unless
+  `--allow-shell` is set (`claude`, `pi`, `bob`; the operator may not pass the
+  flag the denial uses), `claude`'s `--setting-sources=user` and
+  `--strict-mcp-config` and the flags a review launch owns, `codex`'s
+  workspace sandbox with `/tmp` excluded, the private TMPDIR, and `claude`'s
+  review write grant, scoped to the launch's own directory inside the bundle
+  copy, with the pre-launch walk that refuses a symlink, a non-regular entry,
+  or a hard-linked file in the bundle. A review launch that runs in the
+  checkout, copies back a file outside its expected artifacts or through a
+  link, runs in a copy holding a symlink or a path back to the operator's
+  repository, loads the reviewed tree's own agent configuration, runs without
+  the denial, or carries a grant verdict renders wider than the launch's own
+  bundle directory, is a vulnerability. The copies are not a write boundary
+  by themselves: the agent starts in its copy, and `claude` (without
+  `--allow-shell`) and `codex` stay in it through their own tools (its
+  scoped grant, its workspace sandbox), but any other agent runs as the
+  operator's user and can write outside it — to a sibling launch's copy
+  (forging the artifact it hands back) or the operator's files — unless the
+  OS sandbox is active. The shared snapshot is symlink-free, owner-only
+  read-only, and fingerprinted by path, mode, size, and modification time,
+  plus inode and change time on unix: any write to it there, even one that
+  restores the size, mode, and modification time, refuses every later copy.
+  On Windows the fingerprint holds the first four alone, so a same-size
+  rewrite that restores the modification time is not detected. Writes outside
+  a copy are the OS sandbox's to stop; without it, that is the documented
+  limitation, not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

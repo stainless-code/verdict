@@ -72,7 +72,7 @@ func repairFixture(t *testing.T) string {
 // repairRequest builds a service request with the round cap and a human-line
 // collector.
 func repairRequest(root string, cmdr *sequenced, rounds string, lines *collector) *core.RunRequest {
-	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr, Progress: lines}
+	rt := &core.Runtime{Env: fixtureEnv(root), Now: time.Now, Commander: cmdr, Progress: lines}
 	return &core.RunRequest{
 		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,
 		LookPath: func(string) (string, error) {

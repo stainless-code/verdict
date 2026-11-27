@@ -41,6 +41,14 @@ func (s *argvSpy) seen() [][]string {
 // below pin it as a literal because it is what the child's argv carries.
 const discoveryFlag = "--disallowedTools=Bash,PowerShell"
 
+// settingsFlag and mcpFlag are the claude row's review flags, which every
+// review launch carries: the reviewed tree's own .claude settings and MCP
+// servers never load.
+const (
+	settingsFlag = "--setting-sources=user"
+	mcpFlag      = "--strict-mcp-config"
+)
+
 // TestDiscoveryLaunchesCarryTheRowRestriction proves every launch a two-finder
 // run makes — both finders and both cross-checks — carries the row's documented
 // read-only flags, ahead of the directive and ahead of the operator's own
@@ -61,7 +69,7 @@ func TestDiscoveryLaunchesCarryTheRowRestriction(t *testing.T) {
 // two-finder execution requests to measure each spawn's spend.
 func assertRestrictedArgv(t *testing.T, argv []string) {
 	t.Helper()
-	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag}; !slices.Equal(argv[:5], want) {
+	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag}; !slices.Equal(argv[:7], want) {
 		t.Errorf("argv = %q, want the prefix %q", argv, want)
 	}
 	if n := countArg(argv, discoveryFlag); n != 1 {
@@ -91,8 +99,9 @@ func spawnedArgvs(t *testing.T, passthrough string, allowShell bool) [][]string 
 }
 
 // TestAllowShellOmitsTheRestriction proves --allow-shell restores the row's own
-// tool set: no launch carries the flag, and the argv is the one the launcher
-// composed before the restriction existed.
+// tool set — no launch carries the shell denial — while every launch keeps
+// the review flags, which keep the reviewed tree's configuration out whatever
+// the tool set.
 func TestAllowShellOmitsTheRestriction(t *testing.T) {
 	t.Parallel()
 	for _, argv := range spawnedArgvs(t, "", true) {
@@ -102,6 +111,15 @@ func TestAllowShellOmitsTheRestriction(t *testing.T) {
 		if slices.Contains(argv, discoveryFlag) {
 			t.Errorf("--allow-shell argv still carries %q: %q", discoveryFlag, argv)
 		}
+		assertReviewFlags(t, argv)
+	}
+}
+
+// assertReviewFlags fails unless argv carries both of claude's review flags.
+func assertReviewFlags(t *testing.T, argv []string) {
+	t.Helper()
+	if !slices.Contains(argv, settingsFlag) || !slices.Contains(argv, mcpFlag) {
+		t.Errorf("argv %q dropped the review flags %q and %q", argv, settingsFlag, mcpFlag)
 	}
 }
 
@@ -278,7 +296,7 @@ func TestDrainLaunchCarriesTheRestriction(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("drain args refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", discoveryFlag}; !slices.Equal(args.argv[:3], want) {
+	if want := []string{"claude", "-p", discoveryFlag, settingsFlag, mcpFlag}; !slices.Equal(args.argv[:5], want) {
 		t.Errorf("drain argv = %q, want the prefix %q", args.argv, want)
 	}
 	if filepath.Base(args.abs) != drainFile {
@@ -302,7 +320,7 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 		t.Fatalf("run refused: %v", ref)
 	}
 	want := []string{
-		"claude", "-p", "--output-format", "json", discoveryFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
+		"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
 		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
 	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {

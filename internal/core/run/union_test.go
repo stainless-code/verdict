@@ -1,7 +1,6 @@
 package run
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -71,19 +70,19 @@ func TestFinderProceduresShareS4ContractAndDistinctMethods(t *testing.T) {
 	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	first, ref := finderProcedure(dir, filepath.Join(dir, "x-finder-1"), 0)
+	first, ref := finderProcedure(dir, ".verdict/state/42", ".verdict/state/42/x-finder-1/review.json", 0)
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	second, ref := finderProcedure(dir, filepath.Join(dir, "x-finder-2"), 1)
+	second, ref := finderProcedure(dir, ".verdict/state/42", ".verdict/state/42/x-finder-2/review.json", 1)
 	if ref != nil {
 		t.Fatal(ref)
 	}
 	if !strings.Contains(string(first), "Read spec/context first.") || !strings.Contains(string(second), "last file toward the first") {
 		t.Fatal("finder methods lost their different entry points")
 	}
-	assertFinderContract(t, first, filepath.Join(dir, "x-finder-1", "review.json"))
-	assertFinderContract(t, second, filepath.Join(dir, "x-finder-2", "review.json"))
+	assertFinderContract(t, first, ".verdict/state/42/x-finder-1/review.json")
+	assertFinderContract(t, second, ".verdict/state/42/x-finder-2/review.json")
 }
 
 func assertFinderContract(t *testing.T, raw []byte, outputPath string) {

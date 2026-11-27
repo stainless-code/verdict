@@ -108,7 +108,9 @@ func newFixture(t *testing.T) *fixture {
 	writeFile(t, filepath.Join(dir, "source.json"),
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
 	writeFile(t, filepath.Join(dir, "full.diff"), fixtureDiff)
+	testenv.Checkout(t, root)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	return &fixture{root: root, dir: dir, bin: t.TempDir(), slug: bundleSlug}
 }
@@ -289,7 +291,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -375,7 +377,7 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	argv := readArgv(t, argvFile)
 	assertPrintedMatchesSpawned(t, printed, argv)
 	assertArgvPrefix(t, argv, []string{
-		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--allowedTools=Edit(./.verdict/state/local-work/**)",
+		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--strict-mcp-config", "--allowedTools=Edit(./.verdict/state/local-work/**)",
 		"--model", "opus",
 	})
 }
@@ -631,8 +633,9 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 // --print.
 func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 	const wantLine = "warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
-		"so review.json may never be written; trust this repository in agy's settings or pass " +
-		"-- --dangerously-skip-permissions (your approval bypass)\n"
+		"and a review runs in a fresh copy outside them, " +
+		"so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names " +
+		"(a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)\n"
 
 	f := newFixture(t)
 	f.writeReviewSrc(t)

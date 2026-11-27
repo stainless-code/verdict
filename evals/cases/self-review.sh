@@ -32,7 +32,7 @@ loop_leg() {
   repo="$EVAL_SANDBOX/repo-$leg"
   output="$EVAL_SANDBOX/$leg"
   eval_fixture_repo "$repo"
-  export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$leg.log"
+  export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$leg.log" LOOP_REPO="$repo"
   : >"$LOOP_LOG"
   set +e
   (cd "$repo" && "$EVAL_CLI" loop acme/app --agent "$agent" --output "$output" --json "$@") \

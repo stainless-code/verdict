@@ -422,3 +422,19 @@ func TestSnapshotIgnoresAnInheritedIndex(t *testing.T) {
 		t.Fatal("an inherited GIT_INDEX_FILE let the snapshot rewrite the user's index")
 	}
 }
+
+// TestStateIsExcludedWhateverItsCase proves verdict's state keeps its index
+// version however its path is cased: on APFS and NTFS `.Verdict/state` is the
+// same directory as `.verdict/state`, so an edit there is never content.
+func TestStateIsExcludedWhateverItsCase(t *testing.T) {
+	t.Parallel()
+	root, g := repo(t)
+	write(t, root, ".Verdict/State/42/validation.json", "{}\n")
+	git(t, root, "add", "-A")
+	git(t, root, "commit", "-q", "-m", "state")
+	head := git(t, root, "rev-parse", "HEAD^{tree}")
+	write(t, root, ".Verdict/State/42/validation.json", "{\"forged\":true}\n")
+	if got := mustTree(t, g); got != head {
+		t.Errorf("tree = %s after a state edit, want HEAD's %s", got, head)
+	}
+}

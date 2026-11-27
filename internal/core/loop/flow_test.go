@@ -36,9 +36,11 @@ type agentCommander struct {
 	t      *testing.T
 	costAt string
 	// severity is the finding's severity; "" is important.
-	severity       string
-	spawns         []string
-	argvs          [][]string
+	severity string
+	spawns   []string
+	argvs    [][]string
+	// dirs is each agent spawn's working directory, beside spawns.
+	dirs           []string
 	fixExit        int
 	reviews        int
 	datedCost      bool
@@ -94,6 +96,7 @@ func (a *agentCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 	directive := cmd.Argv[len(cmd.Argv)-1]
 	if m := reviewPath.FindStringSubmatch(directive); m != nil {
 		a.spawns = append(a.spawns, "review")
+		a.dirs = append(a.dirs, cmd.Dir)
 		a.review(cmd.Dir, m[1]+m[2])
 		return core.Result{Stdout: a.stdout("0.1")}, nil
 	}
@@ -101,6 +104,7 @@ func (a *agentCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 		return core.Result{}, errNeverStarted
 	}
 	a.spawns = append(a.spawns, "fix")
+	a.dirs = append(a.dirs, cmd.Dir)
 	a.fix(cmd.Dir, directive)
 	if a.fixCapped {
 		return core.Result{}, errCapped
@@ -361,7 +365,7 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 	return &Request{
 		Flow: &reviewflow.Flow{
 			Runtime: &core.Runtime{
-				Env: map[string]string{"HOME": home}, Now: flowNow, Progress: &testkit.Collector{},
+				Env: flowEnv(t, home), Now: flowNow, Progress: &testkit.Collector{},
 			},
 			Root:           &root,
 			Effective:      core.Defaults(),
@@ -417,10 +421,27 @@ func TestLoopThroughTheShippedServices(t *testing.T) {
 	if got := strings.Join(agent.spawns, ","); got != "review,fix,review" {
 		t.Errorf("spawns = %s, want review,fix,review", got)
 	}
+	assertOnlyTheFixInTheCheckout(t, repo, agent)
 	assertFixedRound(t, &resp.Data.Rounds[0])
 	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
 	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
 		t.Errorf("month-to-date = %+v, want 0.5 known (two reviews and the priced fix)", mtd)
+	}
+}
+
+// assertOnlyTheFixInTheCheckout proves the confinement split: each review
+// spawn starts in a disposable review snapshot, never the checkout, while the
+// fix spawn — whose job is editing the working tree — starts in it.
+func assertOnlyTheFixInTheCheckout(t *testing.T, repo string, agent *agentCommander) {
+	t.Helper()
+	for i, spawn := range agent.spawns {
+		dir := agent.dirs[i]
+		switch {
+		case spawn == "fix" && dir != repo:
+			t.Errorf("fix spawn %d ran in %q, want the checkout %q", i, dir, repo)
+		case spawn == "review" && (dir == repo || !strings.Contains(dir, "verdict-snapshot-")):
+			t.Errorf("review spawn %d ran in %q, want a review snapshot", i, dir)
+		}
 	}
 }
 
@@ -883,4 +904,14 @@ func TestLoopFixRefusesAHardLinkedPatchFile(t *testing.T) {
 		}
 		return nil
 	})
+}
+
+// flowEnv is the injected environment of an integration loop: its HOME, and
+// a temp directory of its own — TMPDIR, and TMP and TEMP as Windows reads
+// them — so the review snapshots of the fixture checkout, itself in the
+// host temp directory, are kept apart from it.
+func flowEnv(t *testing.T, home string) map[string]string {
+	t.Helper()
+	tmp := t.TempDir()
+	return map[string]string{"HOME": home, "TMPDIR": tmp, "TMP": tmp, "TEMP": tmp}
 }

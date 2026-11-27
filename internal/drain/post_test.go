@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 type drainHostStub struct {
@@ -124,6 +125,7 @@ func setupDrainBundle(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte("diff sentinel\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	testenv.Checkout(t, root)
 	return root, dir
 }
 
@@ -136,7 +138,9 @@ func runDrainTest(t *testing.T, root string, cmdr core.Commander, args []string)
 		Cmd: "drain", JSONMode: true, Effective: cli.Defaults(),
 	}
 	req := Request{
-		Runtime:  &core.Runtime{Env: map[string]string{}, Commander: cmdr},
+		// The fixture checkout sits in the host temp directory; a temp
+		// directory beside it keeps a draft's review snapshot apart from it.
+		Runtime:  &core.Runtime{Env: siblingTmp(t, root), Commander: cmdr},
 		Repo:     "acme/app",
 		Pr:       "7",
 		RepoRoot: root,
@@ -516,4 +520,15 @@ func runConcurrentPosts(t *testing.T, root string, cmdr *drainHostStub) ([]int, 
 	close(start)
 	wg.Wait()
 	return codes, outs, diags
+}
+
+// siblingTmp makes a temp directory beside root and returns the injected
+// environment naming it: TMPDIR, and TMP and TEMP as Windows reads them.
+func siblingTmp(t *testing.T, root string) map[string]string {
+	t.Helper()
+	dir := filepath.Join(filepath.Dir(root), "tmp")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return map[string]string{"TMPDIR": dir, "TMP": dir, "TEMP": dir}
 }
