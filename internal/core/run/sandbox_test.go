@@ -397,6 +397,7 @@ func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 // writable allows.
 func TestSeatbeltReviewProfileShape(t *testing.T) {
 	t.Parallel()
+	posixOnly(t)
 	home := t.TempDir()
 	box := &reviewBox{
 		home:        home,
@@ -629,6 +630,7 @@ func TestCodexWrappedOnMacOSIsToldToDropItsOwnSandbox(t *testing.T) {
 // (macOS) or bound (Linux), by its path and the file it resolves to.
 func TestBinaryInAHiddenRootStaysAlone(t *testing.T) {
 	t.Parallel()
+	posixOnly(t)
 	var b strings.Builder
 	if err := seatbeltBinaryRead(&b, "/tmp/agent", nil); err != nil {
 		t.Fatal(err)
@@ -658,6 +660,7 @@ func TestBinaryInAHiddenRootStaysAlone(t *testing.T) {
 // it sits below one.
 func TestBwrapBindsABinaryInAHiddenRootAlone(t *testing.T) {
 	t.Parallel()
+	posixOnly(t)
 	if got := hiddenBinary("/tmp/agent", []string{"/tmp"}, nil); !slices.Equal(got, []string{"/tmp/agent"}) {
 		t.Errorf("bwrap binds %v for a binary in /tmp, want the binary alone", got)
 	}
@@ -783,6 +786,7 @@ func TestKeychainIsOnlyTheCatalogLogin(t *testing.T) {
 // matching rule.
 func TestSeatbeltPinsFollowEveryAllow(t *testing.T) {
 	t.Parallel()
+	posixOnly(t)
 	dir := filepath.Join(t.TempDir(), ".tmp")
 	var b strings.Builder
 	state := []statePath{{path: dir}, {path: dir, prefix: true}}
@@ -1090,5 +1094,14 @@ func TestBinaryLinkTargetStaysReachable(t *testing.T) {
 	dirs, _ := binaryReach(link, nil)
 	if !slices.Contains(dirs, resolvedTarget) {
 		t.Errorf("Seatbelt reads %v, want the target's directory %s too", dirs, resolvedTarget)
+	}
+}
+
+// posixOnly skips a test of the Seatbelt or bwrap shape on Windows: both
+// take POSIX paths, and neither runs there.
+func posixOnly(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("Seatbelt and bwrap take POSIX paths, and neither runs on Windows")
 	}
 }

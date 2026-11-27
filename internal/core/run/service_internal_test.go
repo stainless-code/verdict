@@ -207,6 +207,17 @@ func request(root string, cmdr core.Commander) *core.RunRequest {
 	}
 }
 
+// resolvedFixture is how a run names a fixture binary path once it has
+// resolved it: absolute in the platform's own form (Windows adds the drive).
+func resolvedFixture(t *testing.T, path string) string {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return abs
+}
+
 // TestRunSuccess proves a successful launch asserts the fresh artifact, records
 // the provenance, and hands off without recording or posting anything itself.
 func TestRunSuccess(t *testing.T) {
@@ -517,7 +528,7 @@ func assertLauncherRecord(t *testing.T, dir string) {
 	t.Helper()
 	rec := readLauncher(t, dir)
 	assertLauncherKeys(t, rec)
-	if rec["agent"] != "claude" || rec["binary"] != "/opt/agents/claude" {
+	if rec["agent"] != "claude" || rec["binary"] != resolvedFixture(t, "/opt/agents/claude") {
 		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
 	}
 	if _, ok := rec["output_tail"]; ok {

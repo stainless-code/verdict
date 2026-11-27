@@ -102,7 +102,7 @@ func probeFixture(t *testing.T) (string, string, *probeCdr) {
 // binary, its own argv, no stdin, the launch's environment, and the byte cap.
 func assertProbeCommand(t *testing.T, root string, cmd *core.Command) {
 	t.Helper()
-	if want := []string{"/opt/agents/local-agent", "ask", "--help"}; !slices.Equal(cmd.Argv, want) {
+	if want := []string{resolvedFixture(t, "/opt/agents/local-agent"), "ask", "--help"}; !slices.Equal(cmd.Argv, want) {
 		t.Errorf("probe argv = %q, want %q", cmd.Argv, want)
 	}
 	if cmd.OutputCap != 1024*1024 {
@@ -200,7 +200,7 @@ func assertProbeRefusal(t *testing.T, tc probeRefusalCase) {
 // the binary path, the probe result, and a concrete next step.
 func assertProbeMessage(t *testing.T, message, result string) {
 	t.Helper()
-	for _, frag := range []string{"local", "/opt/agents/local-agent", result} {
+	for _, frag := range []string{"local", resolvedFixture(t, "/opt/agents/local-agent"), result} {
 		if !strings.Contains(message, frag) {
 			t.Errorf("message = %q, want it to name %q", message, frag)
 		}
