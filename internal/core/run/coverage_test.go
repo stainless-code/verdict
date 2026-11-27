@@ -221,6 +221,15 @@ func rulePathFixture(t *testing.T) string {
 func assertOutsideCwdRulePath(t *testing.T, checkout, state, bundle string) {
 	t.Helper()
 	got, why := rulePath(checkout, state, bundle)
+	// The temp root is the host's: a TMPDIR holding a space or another rule
+	// metacharacter gets no grant, which is the same rule doing its job. The
+	// spelling itself is pinned on synthetic paths in assertAbsoluteRulePaths.
+	if spelled := absoluteRulePath(bundle); strings.Trim(spelled, rulePathSafe) != "" {
+		if got != "" || why != rulePathSyntax {
+			t.Errorf("outside cwd under an unsafe temp root: rulePath = %q, %q; want no grant, %q", got, why, rulePathSyntax)
+		}
+		return
+	}
 	if why != "" || !strings.HasPrefix(got, "//") || !strings.HasSuffix(got, "/repo/.verdict/state/42") {
 		t.Errorf("outside cwd: rulePath = %q, %q; want the bundle's absolute // path", got, why)
 	}
@@ -247,9 +256,12 @@ const rulePathSyntax = "its path holds a character the permission-rule syntax re
 // slashes, a drive letter takes the /c form, and a root or UNC share has none.
 func assertAbsoluteRulePaths(t *testing.T) {
 	t.Helper()
-	cases := map[string]string{"/": "", "/repo/x": "//repo/x"}
+	cases := map[string]string{"/": "", "/repo/x": "//repo/x", "/repo/.verdict/state/42": "//repo/.verdict/state/42"}
 	if runtime.GOOS == "windows" {
-		cases = map[string]string{`C:\`: "", `C:\repo\x`: "//c/repo/x", `\\server\share\x`: "", `\\server\share`: ""}
+		cases = map[string]string{
+			`C:\`: "", `C:\repo\x`: "//c/repo/x", `C:\repo\.verdict\state\42`: "//c/repo/.verdict/state/42",
+			`\\server\share\x`: "", `\\server\share`: "",
+		}
 	}
 	for in, want := range cases {
 		if got := absoluteRulePath(in); got != want {
@@ -400,8 +412,8 @@ func TestRunRefusesBundleSymlink(t *testing.T) {
 
 // TestReviewGrantYieldsToOperatorPermissions pins when the operator's `--`
 // tail owns the grant's question: a permission mode, a permission bypass, an
-// allow list, or a whole tool set drops it; an unrelated flag, or the same
-// spelling as another option's operand, keeps it.
+// allow list, an extra directory, or a whole tool set drops it, wherever the
+// spelling sits; an unrelated flag keeps it.
 func TestReviewGrantYieldsToOperatorPermissions(t *testing.T) {
 	t.Parallel()
 	root := repairFixture(t)
@@ -416,7 +428,12 @@ func TestReviewGrantYieldsToOperatorPermissions(t *testing.T) {
 		{pass: []string{"--allowedTools=Read"}},
 		{pass: []string{"--tools", "Read"}},
 		{pass: []string{"--model", "opus"}, grant: true},
-		{pass: []string{"--append-system-prompt", "--permission-mode"}, grant: true},
+		// Wherever a grant-dropping spelling sits — after a flag that takes no
+		// value, or as another option's operand — the grant drops: the safe
+		// direction.
+		{pass: []string{"--verbose", "--allowedTools=Read"}},
+		{pass: []string{"--verbose", "--add-dir", "/tmp"}},
+		{pass: []string{"--append-system-prompt", "--permission-mode"}},
 	} {
 		grant, why := reviewGrant(claude, tc.pass, root, state, bundle)
 		if (len(grant) == 1) != tc.grant || why != "" {
@@ -612,4 +629,18 @@ func assertNoReadThroughLink(t *testing.T, bundle, path string) {
 	if raw, ok := crashReviewBytes(bundle, path); ok {
 		t.Errorf("crashReviewBytes read %d bytes of %s through a link", len(raw), path)
 	}
+}
+
+// TestRunRefusesAHardLinkedArtifact proves the walk refuses a review.json
+// hard-linked to a source file, on every platform that can make the link
+// (unix and NTFS): the agent's write would land in the source.
+func TestRunRefusesAHardLinkedArtifact(t *testing.T) {
+	t.Parallel()
+	assertUnsafeBundleRefused(t, func(t *testing.T, bundle, source string) error {
+		t.Helper()
+		if err := os.Link(source, filepath.Join(bundle, reviewFile)); err != nil {
+			t.Skipf("hard links unavailable on this filesystem: %v", err)
+		}
+		return nil
+	})
 }

@@ -44,3 +44,23 @@ func linkedBundle(t *testing.T, names ...string) (root, dir string) {
 	}
 	return root, dir
 }
+
+// TestHasHardLinksCountsLinks proves the link count is read on every platform
+// that can make a hard link: a lone file has one name, a linked one two.
+func TestHasHardLinksCountsLinks(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "file")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Lstat(path); err != nil || HasHardLinks(path, info) {
+		t.Fatalf("a lone file reads as hard-linked (%v)", err)
+	}
+	if err := os.Link(path, filepath.Join(dir, "second")); err != nil {
+		t.Skipf("hard links unavailable on this filesystem: %v", err)
+	}
+	if info, err := os.Lstat(path); err != nil || !HasHardLinks(path, info) {
+		t.Errorf("a file with a second name reads as singly linked (%v)", err)
+	}
+}

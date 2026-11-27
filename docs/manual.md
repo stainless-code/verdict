@@ -4292,9 +4292,10 @@ as `record` and `post` do), and since the grant covers the whole bundle, `run`
 walks it before any agent starts: a symlink, a non-regular entry (a FIFO, a
 socket, a device), or a regular file with a second hard link anywhere in it
 refuses `artifact-path-unsafe` (a checked-in `review.json -> ../../../src/main.go`
-or a `cost.json` link would aim the agent's write at that source file). Only
-unix reports a link count, so on Windows the hard-link check does not apply;
-the symlink and non-regular checks do. After the agent exits the artifact is
+or a `cost.json` link would aim the agent's write at that source file). The
+link count is read from the file itself on every platform — `Stat_t.Nlink` on
+unix, `NumberOfLinks` from `GetFileInformationByHandle` on Windows. After the
+agent exits the artifact is
 read without following a link at any component below the bundle, and the
 rule path is built from the resolved
 directory, which must lie strictly under the resolved `.verdict/state` and
@@ -7818,7 +7819,7 @@ still report `corrupt-store`.
 Before opening a PR, run the loop from the repository being reviewed:
 
 ```sh
-verdict loop owner/repo --agent codex --max-rounds 3 --timeout 600s
+verdict loop owner/repo --agent claude --max-rounds 3 --timeout 600s
 ```
 
 `--agent` takes any row of `run`'s agent table or an operator-defined agent from
@@ -7873,8 +7874,14 @@ denial; the loop's verify step runs the tests), `codex` `--sandbox
 workspace-write` (codex documents no edit-only mode: workspace-write also runs
 shell commands, sandboxed to the working tree). Every other row carries none
 (an approval bypass such as `--yolo` or `--dangerously-skip-permissions` is
-never used as one). The review spawn needs no edit grant: it carries `run`'s
-own scoped review-write grant. Arguments after `--` (`verdict loop owner/repo
+never used as one). The review spawn needs no edit grant, but it must still
+write `review.json`: it carries `run`'s scoped review-write grant only for a
+row that defines one, which today is `claude` alone. Any other agent's review
+writes with whatever its own default mode allows. `codex exec` runs read-only
+by default, and `loop --` takes only a model flag, so a `codex` loop review
+cannot write `review.json` itself: it relies on `run`'s salvage of a fenced
+findings block from its stdout, and a round whose review leaves none stops the
+loop with `no-review-artifact`. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
 grant. They also reach the review of untrusted content, so they are an
 allowlist, not a denylist: only the agent row's model flag with one value

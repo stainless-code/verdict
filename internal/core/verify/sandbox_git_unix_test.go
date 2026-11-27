@@ -540,12 +540,12 @@ func TestSandboxAcceptsALocalCloneWithASubmodule(t *testing.T) {
 func requireSubmoduleObjectsHardlinked(t *testing.T, gitdir string) {
 	t.Helper()
 	linked := false
-	err := filepath.WalkDir(filepath.Join(gitdir, "objects"), func(_ string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(filepath.Join(gitdir, "objects"), func(path string, d fs.DirEntry, err error) error {
 		if err != nil || !d.Type().IsRegular() {
 			return err
 		}
 		info, err := d.Info()
-		linked = linked || (err == nil && sandboxHasLinks(info))
+		linked = linked || (err == nil && sandboxHasLinks(path, info))
 		return err
 	})
 	if err != nil || !linked {

@@ -706,7 +706,7 @@ func RefuseUnsafeArtifacts(root, dir string, names ...string) *core.RefusalError
 		if err != nil {
 			continue
 		}
-		if why := unsafeEntry(fs.FileInfoToDirEntry(info)); why != "" {
+		if why := unsafeEntry(path, fs.FileInfoToDirEntry(info)); why != "" {
 			return &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("%s is %s; "+
 				"verdict and its agent write that path, and it would carry the write to another file — "+
 				"remove it, then re-run", bundlePath(root, path), why)}
@@ -764,7 +764,7 @@ func walkCause(err error) error {
 // unsafeBundleEntry is the refusal one walked entry earns, nil when it is
 // the bundle itself or safe.
 func unsafeBundleEntry(root, dir, path string, entry fs.DirEntry) *core.RefusalError {
-	why := unsafeEntry(entry)
+	why := unsafeEntry(path, entry)
 	if why == "" || path == dir {
 		return nil
 	}
@@ -775,7 +775,7 @@ func unsafeBundleEntry(root, dir, path string, entry fs.DirEntry) *core.RefusalE
 
 // unsafeEntry names what makes one bundle entry unsafe, "" when it is a
 // plain directory or a singly linked regular file.
-func unsafeEntry(entry fs.DirEntry) string {
+func unsafeEntry(path string, entry fs.DirEntry) string {
 	mode := entry.Type()
 	switch {
 	case mode&fs.ModeSymlink != 0:
@@ -789,7 +789,7 @@ func unsafeEntry(entry fs.DirEntry) string {
 	switch {
 	case err != nil:
 		return "unreadable"
-	case HasHardLinks(info):
+	case HasHardLinks(path, info):
 		return "a hard link"
 	}
 	return ""

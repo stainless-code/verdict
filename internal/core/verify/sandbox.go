@@ -1380,7 +1380,7 @@ func (s *sandboxGitScanner) hardlinkRefusal(path string, d fs.DirEntry) *core.Re
 		return nil
 	case err != nil:
 		return sandboxGitInspectRefusal(path, err)
-	case sandboxHasLinks(info):
+	case sandboxHasLinks(path, info):
 		return sandboxUnavailable(fmt.Sprintf("the git control file %s has another hard link, so a name for it "+
 			"in the writable root would write it past every path rule — remove the extra name, or verify a "+
 			"clone made with --no-hardlinks", path))

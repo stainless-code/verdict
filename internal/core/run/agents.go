@@ -128,27 +128,18 @@ const (
 	inlineValue  = "="
 )
 
-// operatorSpells reports whether the operator's pass-through spells one of
-// flags as an option. Only the `--` tail counts — the restriction and the
-// grant verdict adds are never in it — and an argument right after a bare
-// option is read as that option's value (`--append-system-prompt --tools`),
-// never as a flag: the doubt keeps verdict's own restriction and grant.
+// operatorSpells reports whether any argument of the operator's
+// pass-through spells one of flags, spaced or `=`-joined, wherever it sits —
+// after a flag that takes no value included (`--verbose --allowedTools=Read`).
+// Only the `--` tail counts: the restriction and the grant verdict adds are
+// never in it. It decides only whether the review grant is dropped, so a
+// spelling that is really another option's operand over-matches toward
+// dropping the grant, the fail-safe direction.
 func operatorSpells(passthrough, flags []string) bool {
-	for i, arg := range passthrough {
-		if !strings.HasPrefix(arg, optionPrefix) || (i > 0 && bareOption(passthrough[i-1])) {
-			continue
-		}
-		if name, _, _ := strings.Cut(arg, inlineValue); slices.Contains(flags, name) {
-			return true
-		}
-	}
-	return false
-}
-
-// bareOption reports an option spelled without an inline value, which may
-// take the next argument as its value.
-func bareOption(arg string) bool {
-	return len(arg) > 1 && strings.HasPrefix(arg, optionPrefix) && !strings.Contains(arg, inlineValue)
+	return slices.ContainsFunc(passthrough, func(arg string) bool {
+		name, _, _ := strings.Cut(arg, inlineValue)
+		return slices.Contains(flags, name)
+	})
 }
 
 // reviewGrant is the row's scoped review-write grant for one launch whose
