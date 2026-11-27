@@ -4363,7 +4363,10 @@ shared snapshot (refused by its read-only bits, and caught by its
 fingerprint), a sibling launch's live copy — a finder can forge the artifact
 its sibling hands back — and whatever else your user account can write, your
 checkout included. Without that sandbox, review an untrusted pull request
-with `claude` or `codex`, or in a disposable checkout. A review agent can always read the reviewed tree
+with `claude` or `codex`, or inside an OS-isolated environment — a VM or
+container with no access to your other files and credentials. A disposable
+checkout alone is not that: it protects neither your other files nor a
+sibling launch's artifacts. A review agent can always read the reviewed tree
 and the bundle, and use the network. A review of a directory
 outside any git checkout — the temp directory `demo` reviews a pull request
 URL in, or a plain directory — copies none of it: its copy holds the bundle
