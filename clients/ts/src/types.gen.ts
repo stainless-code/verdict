@@ -22,6 +22,8 @@ export interface RunData {
   repair?: RunRepair | null;
   /** The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key. */
   budget?: ReviewBudget | null;
+  /** The review launches' OS-sandbox posture: the mechanism (sandbox-exec, bwrap, or none) and whether launches were sandboxed, self-sandboxed by the agent, unsandboxed (an agent that confines its own writes on a host with no sandbox, or --allow-unsandboxed-review), or unavailable (a --print render whose launch would refuse review-sandbox-unavailable). A --print render adds the wrapper argv with a {snapshot} placeholder for the launch's snapshot directory, which holds its working copy and private TMPDIR. Absent when the runtime's commander starts no host process. */
+  sandbox?: RunSandbox | null;
   [key: string]: unknown;
 }
 
@@ -110,6 +112,13 @@ export interface ReviewBudget {
   reasons: Array<string>;
   /** finders when an explicit --finders outranked the budget; the effective finder count beside it is the one that launched. */
   overridden_by?: "finders";
+  [key: string]: unknown;
+}
+
+export interface RunSandbox {
+  mechanism: "sandbox-exec" | "bwrap" | "none";
+  posture: "sandboxed" | "self-sandboxed" | "unsandboxed" | "unavailable";
+  wrapper?: Array<string>;
   [key: string]: unknown;
 }
 
@@ -699,6 +708,8 @@ export interface LoopPlanStep {
   phase: "fetch" | "review" | "record" | "gate" | "fix" | "verify";
   when: "always" | "gate-failed" | "verify-cmd-declared";
   argv: Array<string>;
+  /** The review step's OS-sandbox posture and wrapper, as run --print renders them; absent on every other step. */
+  sandbox?: RunSandbox | null;
   [key: string]: unknown;
 }
 

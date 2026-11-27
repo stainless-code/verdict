@@ -327,3 +327,7 @@ func checkNothingBuilt(t *testing.T, f *replayFixture) {
 		t.Errorf("a refused run wrote resume records: %v", err)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (plantedRunner) SimulatesProcesses() bool { return true }

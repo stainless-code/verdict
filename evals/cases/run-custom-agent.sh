@@ -21,8 +21,12 @@ LAUNCHER="$DIR/launcher.json"
 SETTINGS_DIR="$SANDBOX/xdg/verdict"
 SETTINGS="$SETTINGS_DIR/settings.json"
 AGENTBIN="$SANDBOX/custombin"
-STUB_LOG="$SANDBOX/custom-agent.log"
-mkdir -p "$SETTINGS_DIR" "$AGENTBIN"
+# The launch runs in the OS review sandbox, which lets the agent write only
+# its snapshot, a private TMPDIR, and the state paths its prefs row declares
+# (state_locations), so its argv log lives there, under a case-owned HOME.
+export HOME="$SANDBOX/home"
+STUB_LOG="$HOME/.custom-agent/custom-agent.log"
+mkdir -p "$SETTINGS_DIR" "$AGENTBIN" "$HOME/.custom-agent"
 export XDG_CONFIG_HOME="$SANDBOX/xdg"
 export STUB_LOG
 
@@ -30,7 +34,7 @@ write_settings() {
   printf '%s\n' "$1" >"$SETTINGS"
 }
 
-write_settings '{"agents":{"local":{"binary":"custom-agent","args":["exec"],"prompt_flag":"-p","model_flag":"--model","install":"install custom-agent"}}}'
+write_settings '{"agents":{"local":{"binary":"custom-agent","args":["exec"],"prompt_flag":"-p","model_flag":"--model","install":"install custom-agent","state_locations":[".custom-agent"]}}}'
 
 # The stub is a cooperating agent, not a recording of one expected argv: it
 # refuses a wrong subcommand or a prompt flag that is not immediately before

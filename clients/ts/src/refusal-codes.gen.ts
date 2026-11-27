@@ -212,6 +212,7 @@ export type RefusalCode =
   | "requirement-unmet"
   | "resume-drift"
   | "review-insufficient"
+  | "review-sandbox-unavailable"
   | "rigor-below-floor"
   | "rounds-path-unsafe"
   | "run-mismatch"

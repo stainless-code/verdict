@@ -247,3 +247,7 @@ func TestPlanOnlyLocksBeforeWritingPlan(t *testing.T) {
 		t.Fatalf("plan not written: %v", err)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*lockProbingCommander) SimulatesProcesses() bool { return true }

@@ -125,9 +125,16 @@ else
   bad "P6 cap: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"
 fi
 
+# The drafting launch runs in the OS review sandbox, which lets claude write
+# only its snapshot, TMPDIR, and its own data: the stub counts its launches
+# in its debug directory, relocated into the case by CLAUDE_CONFIG_DIR.
+export CLAUDE_CONFIG_DIR="$EVAL_SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent.log"
+: >"$AGENT_LOG"
 cat >"$EVAL_STUBBIN/claude" <<'AGENT'
 #!/usr/bin/env bash
-echo "stub-agent $*" >>"$EVAL_STUBLOG"
+echo "stub-agent $*" >>"$CLAUDE_CONFIG_DIR/debug/agent.log"
 if [ "${DRAIN_AGENT_MODE:-good}" = good ]; then
   digest="$(jq -r .plan_digest .verdict/state/7/drain.json)"
   jq -n --arg digest "$digest" '{schema_version:"1",plan_digest:$digest,replies:[
@@ -166,7 +173,7 @@ export DRAIN_PAGE="$EVAL_SANDBOX/empty.json"
 rm -f "$DIR/threads.json"
 run_review drain acme/app 7 --agent claude --json
 if [ "$EVAL_STATUS" -eq 0 ] && jq -e '.data.pending | length == 0' <"$EVAL_OUT" >/dev/null \
-  && [ "$(grep -c 'stub-agent' "$EVAL_STUBLOG")" = "3" ]; then
+  && [ "$(grep -c 'stub-agent' "$AGENT_LOG")" = "3" ]; then
   good "P10 zero pending launches no agent"
 else
   bad "P10 zero pending: exit $EVAL_STATUS $(head -c 300 "$EVAL_ERR")"

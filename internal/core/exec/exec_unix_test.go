@@ -509,3 +509,31 @@ func runThenCancel(t *testing.T, run func(context.Context, *core.Command) (core.
 	}
 	return core.Result{}
 }
+
+// TestNewSessionHasNoTerminalAndDiesWithItsTree proves a NewSession launch
+// leads a session of its own — no controlling terminal to push input into —
+// and that the watchdog's group kill still reaches its whole tree: a
+// grandchild sleeping past the budget dies with it, no orphan left.
+func TestNewSessionHasNoTerminalAndDiesWithItsTree(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "grandchild.pid")
+	tctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	// The PID file goes to the script as "$1", so a path with a space stays
+	// one word.
+	script := `sleep 30 & echo $! > "$1"; ps -o sess=,pgid= -p $$; ps -o tty= -p $$; wait`
+	res, err := Watchdog{}.Run(tctx, &core.Command{
+		Argv: []string{"/bin/sh", "-c", script, "sh", pidFile}, Env: os.Environ(), NewSession: true,
+		GracePeriod: time.Second,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.TimedOut {
+		t.Errorf("result = %+v, want the budget to fire", res)
+	}
+	lines := strings.Fields(res.Stdout)
+	if len(lines) < 3 || lines[2] != "??" && lines[2] != "?" {
+		t.Errorf("ps = %q, want a session with no controlling terminal", res.Stdout)
+	}
+	assertPidDead(t, pidFile)
+}

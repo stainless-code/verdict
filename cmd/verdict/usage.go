@@ -96,7 +96,8 @@ func usageText() string {
 		"        vibe|zcode>\n" +
 		"      [--finders <1|2, default 2>] [--budget <auto|light|standard|deep>] [--recipe <slug>]\n" +
 		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
-		"      [--print] [--resume] [--allow-shell] [--require-coverage] [-- <agent args>...] [--json]\n" +
+		"      [--print] [--resume] [--allow-shell] [--allow-unsandboxed-review] [--require-coverage]\n" +
+		"      [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
 		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
 		"    --resume continues the two-finder execution launcher.json records instead of\n" +
@@ -110,8 +111,14 @@ func usageText() string {
 		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
 		"    row's own tools; no flag after '--' drops the restriction, and the flag it uses (pi's\n" +
 		"    --exclude-tools, bob's --disable-tool-groups) is verdict's on review launches: passing it is\n" +
-		"    bad-flags. This is a shell denial, not a write boundary: review untrusted PRs in a\n" +
-		"    disposable checkout, whatever the agent. verify --sandbox is untouched.\n" +
+		"    bad-flags. This is a shell denial; the write boundary is the OS sandbox every review launch\n" +
+		"    runs in (sandbox-exec on macOS, bwrap on Linux): writes reach only its disposable snapshot,\n" +
+		"    a private TMPDIR, and the agent's own state paths, and credential files stay unreadable.\n" +
+		"    codex keeps its own workspace sandbox instead. With no sandbox (Windows, Linux without\n" +
+		"    bwrap) claude and codex run warned when they confine their own writes (claude: no --allow-shell,\n" +
+		"    no permission flags, no write allow rule in your Claude settings; codex: its own sandbox) and\n" +
+		"    every other agent refuses review-sandbox-unavailable; a policy that cannot be built refuses all;\n" +
+		"    --allow-unsandboxed-review runs every launch without it. verify --sandbox is untouched.\n" +
 		"    claude launches also carry a write grant to the launch's own bundle directory\n" +
 		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +
 		"    flag; it adds an allow rule and removes none from your Claude settings. Your own permission\n" +
@@ -378,7 +385,8 @@ func usageText() string {
 		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
 		"        [--max-severity <critical|important|informational, default important>]\n" +
 		"        [--timeout <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
-		"        [--sandbox | --sandbox-network-only | --no-sandbox] [--print] [-- <model flag> <m>] [--json]\n" +
+		"        [--sandbox | --sandbox-network-only | --no-sandbox] [--allow-unsandboxed-review] [--print]\n" +
+		"        [-- <model flag> <m>] [--json]\n" +
 		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
 		"    fresh local bundle, run (review only, one finder, --require-coverage), record\n" +
 		"    --require-coverage, and gate (open findings at or above --max-severity; informational ones\n" +
@@ -386,7 +394,9 @@ func usageText() string {
 		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
 		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
 		"    (sandboxed by default, --sandbox confirming it; --sandbox-network-only or --no-sandbox, which\n" +
-		"    warns, opt out; no sandbox on the host refuses sandbox-unavailable).\n" +
+		"    warns, opt out; no sandbox on the host refuses sandbox-unavailable). The review runs in run's\n" +
+		"    OS review sandbox; --allow-unsandboxed-review runs it without, as on run (--no-sandbox is\n" +
+		"    verify's alone). The fix spawn is never sandboxed: editing the working tree is its job.\n" +
 		"    The fix spawn carries the row's documented edit grant (claude --permission-mode acceptEdits\n" +
 		"    with the shell still denied, codex --sandbox workspace-write, none elsewhere); arguments after\n" +
 		"    '--' reach every spawn and take only the agent's model flag (anything else: bad-flags). The next\n" +

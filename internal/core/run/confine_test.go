@@ -725,24 +725,39 @@ func heldPhases(bundle, own string) bool {
 	})
 }
 
-// TestUnsandboxedFinderCanForgeItsSibling pins the documented limitation of
-// the copies alone: one finder climbing `../..` into its sibling's live copy
-// forges the review the sibling hands back. Without the OS sandbox only an
-// agent whose own tools keep it in its copy (claude's scoped grant, codex's
-// workspace sandbox) is safe from this; the sandbox denies it.
-func TestUnsandboxedFinderCanForgeItsSibling(t *testing.T) {
+// TestOptedOutFinderCanForgeItsSibling pins the risk --allow-unsandboxed-review
+// accepts: with the review sandbox off, one finder climbing `../..` into its
+// sibling's live copy forges the review the sibling hands back. Only an agent
+// whose own tools keep it in its copy (claude's scoped grant, codex's
+// workspace sandbox) is safe from this unsandboxed; under the sandbox the same
+// climb is denied (TestReviewSandboxKeepsFindersOutOfEachOther).
+func TestOptedOutFinderCanForgeItsSibling(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.FindersRaw = "2"
+	req.AllowUnsandboxedReview = true
+	req.Commander = hostPhases{commander}
 	commander.act = forgeLiveSibling(t)
-	if _, ref := TwoFinders(t.Context(), req); ref != nil && ref.Code == codeCanceled {
+	resp, ref := TwoFinders(t.Context(), req)
+	if ref != nil && ref.Code == codeCanceled {
 		t.Fatalf("two finders canceled: %v", ref)
+	}
+	if resp == nil || resp.Data.Sandbox == nil || resp.Data.Sandbox.Posture != "unsandboxed" {
+		t.Fatalf("response = %+v, want the opted-out, unsandboxed posture", resp)
 	}
 	raw := readPhaseBytes(t, filepath.Join(commander.dir, "x-finder-2", reviewFile))
 	if !strings.Contains(string(raw), forgedClaim) {
-		t.Errorf("x-finder-2's review = %s, want finder 1's forgery: the limitation this test pins moved", raw)
+		t.Errorf("x-finder-2's review = %s, want finder 1's forgery: the risk this test pins moved", raw)
 	}
 }
+
+// hostPhases marks the scripted phases as a host commander, so the run
+// takes its review-sandbox decision for them.
+type hostPhases struct{ *phaseCommander }
+
+// SimulatesProcesses overrides the embedded double's answer: the run takes
+// its review-sandbox decision for this commander as for a host one.
+func (hostPhases) SimulatesProcesses() bool { return false }
 
 // forgedClaim marks the review finder 1 forges in finder 2's copy.
 const forgedClaim = "Forged by finder 1."
@@ -889,6 +904,14 @@ func assertWarned(t *testing.T, warnings []string, want string) {
 		t.Errorf("warnings = %q, want one carrying %q", warnings, want)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*viewAgent) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*crashingAgent) SimulatesProcesses() bool { return true }
 
 // TestTempAndCacheDirectoriesFollowThePlatform proves the temp and cache
 // directories are read from the injected environment as each platform's own

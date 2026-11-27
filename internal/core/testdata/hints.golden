@@ -208,6 +208,7 @@ requirement-blocked	try: address the cause above, then re-run the same command
 requirement-unmet	try: address the cause above, then re-run the same command
 resume-drift	try: re-run without --resume to retire the interrupted execution and review the bundle as it stands; --resume only continues unchanged inputs
 review-insufficient	try: fix the evidence gaps named above (quote at path:line, receipt hunk key, spec item), rewrite review.json, then re-run record or run --rounds
+review-sandbox-unavailable	try: on Linux install bubblewrap and allow unprivileged user namespaces, or re-run with --allow-unsandboxed-review for a PR you trust
 rigor-below-floor	try: deepen the evidence for the named findings, or re-run with --force to publish them and record the bypass
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory

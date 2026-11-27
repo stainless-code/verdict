@@ -182,7 +182,8 @@ func runWithProbeBudget(t *testing.T, root, name, bin string, budget time.Durati
 	t.Helper()
 	req := request(root, stubCommander{inner: coreexec.Watchdog{}, name: name, bin: bin})
 	req.Agent = name
-	req.LookPath = func(string) (string, error) { return bin, nil }
+	req.LookPath = hostLook(bin)
+	req.Environ = append(req.Environ, "HOME="+t.TempDir(), "PATH="+os.Getenv("PATH"))
 	req.ProbeTimeout = budget
 	return Run(t.Context(), req)
 }
@@ -292,3 +293,7 @@ func assertProbeCaptureRefusal(t *testing.T, ref *core.RefusalError, err error) 
 		t.Errorf("review file exists after refusal (err = %v); want no launch", err)
 	}
 }
+
+// SimulatesProcesses forwards the inner commander's answer, as every
+// wrapper must: over the real watchdog the launch takes the OS sandbox.
+func (s stubCommander) SimulatesProcesses() bool { return !core.StartsHostProcesses(s.inner) }

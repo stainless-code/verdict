@@ -17,7 +17,7 @@ for agent in claude codex opencode my-agent; do
 done
 # An operator-defined agent: the loop takes any settings.json row, not a
 # hardcoded list.
-printf '{"agents":{"mine":{"binary":"my-agent","args":["exec"]}}}\n' \
+printf '{"agents":{"mine":{"binary":"my-agent","args":["exec"],"state_locations":[".mine"]}}}\n' \
   >"$EVAL_SANDBOX/home/.config/verdict/settings.json"
 PATH="$EVAL_SANDBOX/agentbin:$(dirname "$EVAL_CLI"):$PATH"
 HOME="$EVAL_SANDBOX/home"
@@ -32,7 +32,20 @@ loop_leg() {
   repo="$EVAL_SANDBOX/repo-$leg"
   output="$EVAL_SANDBOX/$leg"
   eval_fixture_repo "$repo"
-  export LOOP_MODE="$mode" LOOP_LOG="$EVAL_SANDBOX/$leg.log" LOOP_REPO="$repo"
+  # The review runs in the OS review sandbox, which lets an agent write only
+  # its snapshot, its private TMPDIR, and its own data paths, so each agent's
+  # spawn log lives in a data directory under the case's HOME (mine
+  # declares its own in prefs; codex keeps its own sandbox instead).
+  # opencode has none: its data and state homes are ephemeral, in its
+  # wrapper, so only its (unsandboxed) fix spawn logs.
+  case "$agent" in
+    claude) state="$HOME/.claude/debug" ;;
+    codex) state="$HOME/.codex" ;;
+    opencode) state="$EVAL_SANDBOX/opencode-log" ;;
+    mine) state="$HOME/.mine" ;;
+  esac
+  mkdir -p "$state"
+  export LOOP_MODE="$mode" LOOP_LOG="$state/$leg.log" LOOP_REPO="$repo"
   : >"$LOOP_LOG"
   set +e
   (cd "$repo" && "$EVAL_CLI" loop acme/app --agent "$agent" --output "$output" --json "$@") \
@@ -54,7 +67,10 @@ for agent in claude codex opencode mine; do
   assert_json_field "$agent envelope is the summary" pass '.data.stop' "$EVAL_OUT"
   bin="$agent"
   [ "$agent" = mine ] && bin=my-agent
-  assert_eq "$agent review, fix, review" "$bin review,$bin fix,$bin review" "$(paste -sd, "$LOOP_LOG")"
+  spawns="$bin review,$bin fix,$bin review"
+  # opencode's sandboxed reviews cannot log (its receipts above prove both).
+  [ "$agent" = opencode ] && spawns="$bin fix"
+  assert_eq "$agent review, fix, review" "$spawns" "$(paste -sd, "$LOOP_LOG")"
   assert_eq "$agent fix landed in the working tree only" "fixed line" "$(sed -n 2p "$repo/notes.txt")"
   assert_eq "$agent never commits" "eval-base" "$(git -C "$repo" log -1 --format=%s)"
 done
@@ -78,7 +94,9 @@ assert_json_field "an unattested review refuses" review-insufficient '.refusal.c
 assert_json_field "a refusal is the refused stop" refused '.stop' "$output/summary.json"
 assert_json_field "empty review never reaches gate" null '.rounds[0].gate' "$output/summary.json"
 
-loop_leg stale opencode stale
+# The edit from outside the review is the stub writing the checkout, which the
+# review sandbox denies, so this leg opts the review out of it.
+loop_leg stale opencode stale --allow-unsandboxed-review
 assert_exit "edit during review refuses" 1
 assert_json_field "edit after fetch is typed" coverage-stale '.refusal.code' "$output/summary.json"
 

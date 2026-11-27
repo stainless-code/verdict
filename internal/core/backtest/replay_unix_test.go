@@ -1050,7 +1050,7 @@ func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 	// The launch starts in its review snapshot of the replay checkout, whose
 	// bundle copy sits at the repository-relative path the grant names.
 	if lines[0][2] != "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config "+
-		"--allowedTools=Edit(./.verdict/state/local-bt-1-ra/**) --model fast" {
+		"--permission-mode default --allowedTools=Edit(./.verdict/state/local-bt-1-ra/**) --model fast" {
 		t.Errorf("agent argv = %q; want the restriction, the bundle grant, then the pass-through", lines[0][2])
 	}
 }
@@ -1251,3 +1251,11 @@ func TestReplayCheckoutRunsNoRepoCode(t *testing.T) {
 		t.Errorf("replay ran repository-controlled code: %q", ran)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*gitGone) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*agentRan) SimulatesProcesses() bool { return true }

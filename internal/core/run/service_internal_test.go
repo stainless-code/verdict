@@ -207,6 +207,17 @@ func request(root string, cmdr core.Commander) *core.RunRequest {
 	}
 }
 
+// resolvedFixture is how a run names a fixture binary path once it has
+// resolved it: absolute in the platform's own form (Windows adds the drive).
+func resolvedFixture(t *testing.T, path string) string {
+	t.Helper()
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return abs
+}
+
 // TestRunSuccess proves a successful launch asserts the fresh artifact, records
 // the provenance, and hands off without recording or posting anything itself.
 func TestRunSuccess(t *testing.T) {
@@ -517,7 +528,7 @@ func assertLauncherRecord(t *testing.T, dir string) {
 	t.Helper()
 	rec := readLauncher(t, dir)
 	assertLauncherKeys(t, rec)
-	if rec["agent"] != "claude" || rec["binary"] != "/opt/agents/claude" {
+	if rec["agent"] != "claude" || rec["binary"] != resolvedFixture(t, "/opt/agents/claude") {
 		t.Errorf("launcher.json agent/binary = %v/%v", rec["agent"], rec["binary"])
 	}
 	if _, ok := rec["output_tail"]; ok {
@@ -544,15 +555,15 @@ func assertLauncherKeys(t *testing.T, rec map[string]any) {
 // and land in the record verbatim, with the directive reduced to a placeholder.
 func assertPassThroughArgv(t *testing.T, got []string, shape []any) {
 	t.Helper()
-	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
+	assertArgvPrefix(t, got, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag, "--model", "opus", "--max-turns", "12"})
 	if !strings.Contains(got[len(got)-1], ".verdict/state/42") {
 		t.Errorf("last argv element %q does not carry the bundle directive", got[len(got)-1])
 	}
 	if shape[len(shape)-1] != promptPlaceholder {
 		t.Errorf("recorded argv tail = %v, want %q", shape[len(shape)-1], promptPlaceholder)
 	}
-	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != settingsFlag || shape[4] != mcpFlag || shape[5] != reviewGrantFlag ||
-		shape[6] != "--model" || shape[7] != "opus" {
+	if shape[2] != "--disallowedTools=Bash,PowerShell" || shape[3] != settingsFlag || shape[4] != mcpFlag || shape[5] != modeFlag ||
+		shape[6] != modeDefault || shape[7] != reviewGrantFlag || shape[8] != "--model" || shape[9] != "opus" {
 		t.Errorf("recorded argv = %v, want the discovery restriction then the pass-through flags verbatim", shape)
 	}
 }
@@ -1271,9 +1282,9 @@ func assertPrintWroteNothing(t *testing.T, root string) {
 // stage that declares no single hint.
 func argvParts(kind string) []string {
 	if kind == recipe.StageSynthesize {
-		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, modelFlag, "opus"}
+		return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag, modelFlag, "opus"}
 	}
-	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag}
+	return []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag}
 }
 
 // TestRunPrintRendersOneStage proves --print --stage composes one stage's
@@ -1410,7 +1421,7 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
+	if want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag, quickPipelineDirective}; !slices.Equal(resp.Data.Argv, want) {
 		t.Fatalf("argv =\n%q\nwant\n%q", resp.Data.Argv, want)
 	}
 	if _, ok := runData(t, resp)["stage"]; ok {
@@ -1529,7 +1540,7 @@ func TestRunStageKeepsAPassThroughModelAgainstADeclaredNothing(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
 	}
-	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "haiku"}
+	want := []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag, "--model", "haiku"}
 	if len(resp.Data.Argv) != len(want)+1 || !slices.Equal(resp.Data.Argv[:len(want)], want) {
 		t.Fatalf("argv = %q, want %q then the lens directive", resp.Data.Argv, want)
 	}
@@ -1748,3 +1759,11 @@ func TestCarriesHintReadsOptionsNotValues(t *testing.T) {
 		}
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*scripted) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (lateExit) SimulatesProcesses() bool { return true }

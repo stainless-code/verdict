@@ -41,12 +41,15 @@ func (s *argvSpy) seen() [][]string {
 // below pin it as a literal because it is what the child's argv carries.
 const discoveryFlag = "--disallowedTools=Bash,PowerShell"
 
-// settingsFlag and mcpFlag are the claude row's review flags, which every
-// review launch carries: the reviewed tree's own .claude settings and MCP
-// servers never load.
+// settingsFlag, mcpFlag, and modeFlag with modeDefault are the claude row's
+// review flags, which every review launch carries: the reviewed tree's own
+// .claude settings and MCP servers never load, and no settings defaultMode
+// widens its writes.
 const (
 	settingsFlag = "--setting-sources=user"
 	mcpFlag      = "--strict-mcp-config"
+	modeFlag     = "--permission-mode"
+	modeDefault  = "default"
 )
 
 // TestDiscoveryLaunchesCarryTheRowRestriction proves every launch a two-finder
@@ -69,7 +72,7 @@ func TestDiscoveryLaunchesCarryTheRowRestriction(t *testing.T) {
 // two-finder execution requests to measure each spawn's spend.
 func assertRestrictedArgv(t *testing.T, argv []string) {
 	t.Helper()
-	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag}; !slices.Equal(argv[:7], want) {
+	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag, modeFlag, modeDefault}; !slices.Equal(argv[:9], want) {
 		t.Errorf("argv = %q, want the prefix %q", argv, want)
 	}
 	if n := countArg(argv, discoveryFlag); n != 1 {
@@ -296,7 +299,7 @@ func TestDrainLaunchCarriesTheRestriction(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("drain args refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", discoveryFlag, settingsFlag, mcpFlag}; !slices.Equal(args.argv[:5], want) {
+	if want := []string{"claude", "-p", discoveryFlag, settingsFlag, mcpFlag, modeFlag, modeDefault}; !slices.Equal(args.argv[:7], want) {
 		t.Errorf("drain argv = %q, want the prefix %q", args.argv, want)
 	}
 	if filepath.Base(args.abs) != drainFile {
@@ -320,10 +323,15 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 		t.Fatalf("run refused: %v", ref)
 	}
 	want := []string{
-		"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
+		"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, mcpFlag, modeFlag, modeDefault,
+		"--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
 		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
 	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {
 		t.Fatalf("recorded argv = %q, want %q", shape, want)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*argvSpy) SimulatesProcesses() bool { return true }

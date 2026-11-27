@@ -532,3 +532,7 @@ func siblingTmp(t *testing.T, root string) map[string]string {
 	}
 	return map[string]string{"TMPDIR": dir, "TMP": dir, "TEMP": dir}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*drainHostStub) SimulatesProcesses() bool { return true }

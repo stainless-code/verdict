@@ -290,6 +290,8 @@ var hintRules = []HintRule{
 	{codes: []string{"verify-repo-escape"}, hint: "try: rewrite verifyCmd with repo-relative paths (/tmp for scratch), then re-run"},
 	{codes: []string{"verify-indirection"}, hint: "try: write the tool word plainly instead of " +
 		"$VAR, then re-run"},
+	{codes: []string{"review-sandbox-unavailable"}, hint: "try: on Linux install bubblewrap and allow " +
+		"unprivileged user namespaces, or re-run with --allow-unsandboxed-review for a PR you trust"},
 	{codes: []string{"sandbox-unavailable"}, hint: "try: on Linux install bubblewrap and allow unprivileged " +
 		"user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust"},
 	{codes: []string{"agent-mismatch"}, hint: "try: define it in settings.json agents with an absolute binary path, " +

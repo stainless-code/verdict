@@ -20,6 +20,7 @@ func TestParsePersonalAgents(t *testing.T) {
 				"prompt_flag": "-p", "model_flag": "-m",
 				"install":    "brew install local-agent",
 				"probe_args": []string{"ask", "--help"}, "probe_match": "ask",
+				"state_locations": []string{".local-agent", ".local-agent.json*"},
 			},
 			"a-min": map[string]any{"binary": binary},
 		},
@@ -56,6 +57,9 @@ func assertMinimalAgent(t *testing.T, row *PersonalAgent, binary string) {
 
 func assertFullAgent(t *testing.T, row *PersonalAgent) {
 	t.Helper()
+	if !slices.Equal(row.StatePaths, []string{".local-agent", ".local-agent.json*"}) {
+		t.Errorf("state paths = %q, want the declared two", row.StatePaths)
+	}
 	if row.Name != "z-local" || row.Binary != "local-agent" ||
 		!slices.Equal(row.Args, []string{"exec", "-q"}) ||
 		row.PromptFlag != "-p" || row.ModelFlag != "-m" ||
@@ -162,6 +166,24 @@ func TestPersonalAgentsRefusals(t *testing.T) {
 			name: "wrong probe match type",
 			give: []byte(`{"agents":{"local":{"binary":"local","probe_match":true}}}`),
 			want: "$.agents.local.probe_match",
+		},
+		{
+			name:   "absolute state path",
+			give:   []byte(`{"agents":{"local":{"binary":"local","state_locations":[".local-agent","/etc"]}}}`),
+			want:   "$.agents.local.state_locations[1]",
+			detail: "must be relative to HOME",
+		},
+		{
+			name:   "state path leaving HOME",
+			give:   []byte(`{"agents":{"local":{"binary":"local","state_locations":["../other"]}}}`),
+			want:   "$.agents.local.state_locations[0]",
+			detail: "must be a clean path below HOME",
+		},
+		{
+			name:   "state path naming HOME",
+			give:   []byte(`{"agents":{"local":{"binary":"local","state_locations":["*"]}}}`),
+			want:   "$.agents.local.state_locations[0]",
+			detail: "names HOME itself",
 		},
 	}
 	for _, tc := range tests {

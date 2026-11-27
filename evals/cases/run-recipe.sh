@@ -46,7 +46,11 @@ mkdir -p "$AGENTBIN"
 cp "$STUB_SRC" "$AGENTBIN/claude"
 chmod +x "$AGENTBIN/claude"
 export PATH="$AGENTBIN:$PATH"
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+# The review sandbox lets the agent write only its snapshot, TMPDIR, and its
+# own data paths: the argv log lives in claude's relocated debug directory.
+export CLAUDE_CONFIG_DIR="$SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent-argv.log"
 
 # spawns counts the agent processes the stub itself recorded, so "no process
 # started" is the child's own evidence rather than an inference from output.
@@ -163,8 +167,8 @@ assert_envelope "--print --stage"
 assert_json_field "data.stage names the rendered position" "2" '.data.stage.index'
 assert_json_field "data.stage names the stage kind" "synthesize" '.data.stage.kind'
 assert_json_field "the rendered command carries the stage's declared model" \
-  "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --allowedTools=Edit(./.verdict/state/local-demo/**) --model opus" \
-  '.data.argv[:8] | join(" ")'
+  "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --permission-mode default --allowedTools=Edit(./.verdict/state/local-demo/**) --model opus" \
+  '.data.argv[:10] | join(" ")'
 assert_json_field "the stage directive names the stage and its declared hint" "true" \
   '.data.argv[-1] | contains("stage 2 of 4 (synthesize) of recipe quick@1.2.3 (repo)") and contains("(model hint opus)")'
 assert_json_field "the stage directive names the review it reads" "true" \
@@ -185,7 +189,7 @@ assert_json_field "the lens stage renders the declared lens hint and caps" "true
   '.data.argv[-1] | contains("logic (model sonnet, max_files 8, max_findings 6)")'
 assert_json_field "the lens stage renders no model argument" "claude -p" '.data.argv[:2] | join(" ")'
 assert_json_field "the lens stage's argv is the agent flags, the discovery restriction, the review flags, the review grant, and one directive" \
-  "7" '.data.argv | length'
+  "9" '.data.argv | length'
 assert_json_field "the first stage reads no previous review" "true" \
   '.data.argv[-1] | contains("the previous stage wrote") | not'
 

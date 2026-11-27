@@ -159,7 +159,18 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
-	return st.launchSelected(ctx, args, rounds)
+	return st.launchBoxed(ctx, args, rounds)
+}
+
+// launchBoxed settles the execution's review sandbox before any agent
+// starts, then launches, recording the posture in the response.
+func (st *state) launchBoxed(ctx context.Context, args *launchArgs, rounds int) (*core.RunResponse, *core.RefusalError) {
+	if ref := st.settleBox(ctx, &args.def); ref != nil {
+		return nil, ref
+	}
+	resp, ref := st.launchSelected(ctx, args, rounds)
+	st.box.annotate(resp, st.req.Print)
+	return resp, ref
 }
 
 // argsFor resolves everything one invocation works from: the declared pipeline,
@@ -599,7 +610,10 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	receiptID   string
 	// ws is the execution's reviewed tree every review launch copies its
 	// view from; nil for a render and for a dispatch, which run no review.
-	ws         *workspace
+	ws *workspace
+	// box is the execution's review-sandbox posture, decided before any
+	// agent starts; nil when the commander starts no host process.
+	box        *reviewBox
 	twoFinders bool
 }
 
@@ -822,6 +836,7 @@ func operatorAgent(def *config.PersonalAgent) agentcatalog.Launch {
 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
 		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
 		ProbeArgs: slices.Clone(def.ProbeArgs), Source: agentSourcePrefs,
+		StateWritable: slices.Clone(def.StatePaths), StateCitation: "prefs",
 	}
 }
 
@@ -980,6 +995,9 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 		look = exec.LookPath
 	}
 	bin, err := look(def.Binary)
+	if err == nil {
+		bin, err = filepath.Abs(bin)
+	}
 	if err != nil {
 		message := fmt.Sprintf("agent '%s' is not installed: no '%s' on PATH", def.Name, def.Binary)
 		if def.Install != "" {
@@ -1001,6 +1019,15 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap, dir string,
 	env []string,
 ) (*core.Result, error) {
+	return st.spawnAt(ctx, "", argv, timeout, tap, dir, env, false)
+}
+
+// spawnAt is spawn with the executable pinned to path (empty for argv[0]
+// resolved against PATH), so a review launch runs exactly the binary its
+// resolution found.
+func (st *state) spawnAt(ctx context.Context, path string, argv []string, timeout int, tap *agentusage.Tap,
+	dir string, env []string, session bool,
+) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, errNoCommander
@@ -1008,11 +1035,13 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *age
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	cmd := &core.Command{
+		Path:        path,
 		Argv:        argv,
 		Env:         env,
 		Dir:         dir,
 		OutputCap:   coreexec.VerifyOutputCap,
 		GracePeriod: agentGracePeriod,
+		NewSession:  session,
 	}
 	if tap != nil {
 		cmd.StdoutTap = tap

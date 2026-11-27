@@ -73,6 +73,16 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	Print        bool
 	Resume       bool
 	AllowShell   bool
+	// AllowUnsandboxedReview is --allow-unsandboxed-review: every review
+	// launch runs without verdict's OS sandbox (writes confined to the
+	// snapshot, the agent's state paths, and a private TMPDIR; the
+	// credential table unreadable), warned. Without it a launch the host
+	// cannot sandbox runs only for a row that confines its own writes.
+	AllowUnsandboxedReview bool
+	// UnsandboxedOptOut says the calling verb offers --allow-unsandboxed-review
+	// (run and loop), so a refusal or warning names it; every other verb's
+	// says nothing of a flag it would reject.
+	UnsandboxedOptOut bool
 	// RequireCoverage is record --require-coverage carried into the launch:
 	// a review whose diff-coverage attestation record would refuse gets the
 	// gap in its repair round, and a run that ends with it refuses
@@ -157,6 +167,19 @@ type RunData struct { //nolint:govet // field order is the published property or
 	Resume     *RunResume         `anyOf:"null"                 json:"resume,omitempty"`
 	Repair     *RunRepair         `anyOf:"null"                 json:"repair,omitempty"`
 	Budget     *ReviewBudget      `anyOf:"null"                 json:"budget,omitempty"`
+	Sandbox    *RunSandbox        `anyOf:"null"                 json:"sandbox,omitempty"`
+}
+
+// RunSandbox is the review launches' OS-sandbox posture: the mechanism that
+// wraps them (sandbox-exec on macOS, bwrap on Linux, none), the posture, and
+// on a --print render the wrapper argv with a placeholder for the
+// per-launch path ({snapshot}: the launch's snapshot directory, which holds
+// its working copy and its private TMPDIR). It is absent when the runtime's
+// commander starts no host process.
+type RunSandbox struct {
+	Mechanism string   `enum:"sandbox-exec|bwrap|none"                          json:"mechanism"`
+	Posture   string   `enum:"sandboxed|self-sandboxed|unsandboxed|unavailable" json:"posture"`
+	Wrapper   []string `json:"wrapper,omitempty"`
 }
 
 // ReviewBudget is the resolved review-depth decision: what was asked for, which

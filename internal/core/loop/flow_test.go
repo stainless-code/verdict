@@ -545,7 +545,8 @@ func assertEverySpawnCarries(t *testing.T, agent *agentCommander, arg string) {
 func assertSpawnGrants(t *testing.T, agent *agentCommander) {
 	t.Helper()
 	for i, argv := range agent.argvs {
-		edits := slices.Contains(argv, "--permission-mode")
+		// The edit grant is acceptEdits; a review pins the default mode.
+		edits := slices.Contains(argv, "acceptEdits")
 		grant := slices.ContainsFunc(argv, func(a string) bool { return strings.HasPrefix(a, "--allowedTools=Edit(") })
 		if fix := agent.spawns[i] == "fix"; edits != fix || grant == fix || !slices.Contains(argv, shellDenial) {
 			t.Errorf("%s argv = %q, want the edit grant only on the fix, the bundle grant only on reviews, "+
@@ -905,6 +906,10 @@ func TestLoopFixRefusesAHardLinkedPatchFile(t *testing.T) {
 		return nil
 	})
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*agentCommander) SimulatesProcesses() bool { return true }
 
 // flowEnv is the injected environment of an integration loop: its HOME, and
 // a temp directory of its own — TMPDIR, and TMP and TEMP as Windows reads

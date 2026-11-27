@@ -1,7 +1,11 @@
 // Package agentcatalog owns the capabilities of shipped agents.
 package agentcatalog
 
-import "slices"
+import (
+	"path"
+	"slices"
+	"strings"
+)
 
 // Agent has optional capabilities; absence keeps it out of that verb.
 type Agent struct {
@@ -114,6 +118,96 @@ type Launch struct {
 	// DiscoveryOwnedFlags spelling does, unless --allow-shell is set: then the
 	// operator owns the agent's tool set and its configuration.
 	ReviewOwnedFlags []string
+	// StateWritable are the home-relative paths, in slash form, where the
+	// CLI keeps its own data — sessions, logs, caches, its login's token
+	// refresh — the only paths besides its review snapshot a review launch in
+	// verdict's OS sandbox may write. They may be read even where the
+	// credential table hides a path (claude's macOS login keychain). An entry
+	// is a directory (created before a Linux launch so bwrap can bind it), or,
+	// ending in `*`, a name prefix for files: one file beside its atomic-write
+	// siblings. StateCitation names where each was read or observed.
+	StateWritable []string
+	// StateReadOnly are the CLI's own config and code under the same roots —
+	// settings, plugins, extensions, hooks, agent definitions, MCP config —
+	// which a later run outside verdict loads: readable in the sandbox, never
+	// writable, so a prompt-injected review cannot persist past it. No
+	// StateWritable entry may sit inside one or name one as a prefix. One
+	// inside a writable directory names a directory, made before every
+	// sandboxed launch so the agent cannot make it its own, and stays
+	// read-only over it. A `*` segment matches any one directory
+	// (`.claude/projects/*/memory`).
+	StateReadOnly []string
+	// StateDirs are directories under read-only state the CLI makes at
+	// startup and fails without; each is made, empty, before every sandboxed
+	// launch, and stays read-only.
+	StateDirs []string
+	// StateEphemeral are the variables every review launch points at a
+	// throwaway directory in its wrapper instead of the CLI's real one —
+	// for state a later session would trust — each seeded with no-follow
+	// copies of the files Seed names below the real one (its login).
+	StateEphemeral []EphemeralVar
+	// ProjectState is the per-working-directory state the CLI keeps under
+	// one root; a sandboxed review launch may write only its own, made
+	// before the launch and removed after.
+	ProjectState  *ProjectState
+	StateCitation string
+	// Confinement is how the CLI confines its own review launch without
+	// verdict's OS sandbox, "" for not at all. [OwnSandbox]: its
+	// SnapshotWriteArgs start the CLI's own OS sandbox, which verdict's would
+	// nest — a nested Seatbelt profile fails on macOS (sandbox_apply:
+	// Operation not permitted) — so while those args apply its launch skips
+	// verdict's wrapper. [OwnWrites]: its shell is denied and its write grant
+	// scoped to the bundle. Either way, on a host with no OS sandbox it still
+	// runs, warned that its reads are not confined; every other row refuses
+	// there unless the operator opts out. ConfinementCitation names the doc.
+	Confinement         string
+	ConfinementCitation string
+	// TempEnv are the variables that move the CLI's own scratch directory
+	// off a hardcoded host temp root; every review launch points them at its
+	// private TMPDIR, since the sandbox closes the host temp roots.
+	TempEnv []string
+	// StateEnv are the variables that relocate the state: an absolute value
+	// replaces its Root, so every StateWritable entry at or below Root moves
+	// under the value instead.
+	StateEnv []StateVar
+}
+
+// The Confinement values.
+const (
+	// OwnSandbox is a CLI whose review launch runs its own OS sandbox.
+	OwnSandbox = "own-sandbox"
+	// OwnWrites is a CLI whose review launch confines its own writes.
+	OwnWrites = "own-writes"
+)
+
+// StateVar is one environment variable that relocates an agent's state: its
+// value stands in for the home-relative Root.
+type StateVar struct {
+	Name string
+	Root string
+}
+
+// EphemeralVar is one variable a review launch points at a throwaway
+// directory: Root is its home-relative default, Seed the files below the real
+// directory copied in first, and SeedKeys, for a JSON seed, the top-level
+// keys its copy keeps (every other key dropped).
+type EphemeralVar struct {
+	SeedKeys map[string][]string
+	Name     string
+	Root     string
+	Seed     []string
+}
+
+// ProjectState is per-working-directory state: Root is the home-relative
+// directory (relocated like the row's state) holding one directory per
+// working directory, named by the working directory's real path with every
+// character but an ASCII letter or digit a dash; MaxSlug is the longest name
+// the CLI uses as is (a longer one it shortens unpredictably, so the launch
+// gets none); ReadOnly are the subdirectories of it a later session loads.
+type ProjectState struct {
+	Root     string
+	ReadOnly []string
+	MaxSlug  int
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -180,6 +274,22 @@ const (
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
 	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
 	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
+	// docClaudeSettings names ~/.claude/settings.json and ~/.claude.json,
+	// and CLAUDE_CONFIG_DIR — read 2026-11-27.
+	docClaudeSettings = "https://code.claude.com/docs/en/settings"
+	// docClaudeIAM states that macOS keeps Claude Code's credentials in the
+	// encrypted macOS Keychain — read 2026-11-27.
+	docClaudeIAM = "https://code.claude.com/docs/en/iam"
+	// docCodexSandbox states workspace-write's Seatbelt and Landlock
+	// sandboxes and what they let the agent write — read 2026-11-27.
+	docCodexSandbox = "https://developers.openai.com/codex/security"
+	// docOpenCodeStorage names opencode's data directory
+	// (~/.local/share/opencode: auth, sessions, logs), its config directory
+	// and its cache (~/.cache/opencode) — read 2026-11-27.
+	docOpenCodeStorage = "https://opencode.ai/docs/troubleshooting/"
+	// docPiConfig is getAgentDir: PI_CODING_AGENT_DIR, else ~/.pi/agent —
+	// read 2026-11-27.
+	docPiConfig = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts"
 )
 
 const (
@@ -196,6 +306,10 @@ const (
 // probe match, its discovery restriction, and the operator spelling that
 // replaces it.
 const flagDisableToolGroups = "--disable-tool-groups"
+
+// flagPermissionMode is claude's permission-mode flag, spelled once for its
+// edit grant, its permission flags, and the mode a review pins.
+const flagPermissionMode = "--permission-mode"
 
 // flagSandbox and valueWorkspaceWrite are codex's sandbox flag and the mode
 // that writes its working directory.
@@ -301,10 +415,10 @@ var catalog = []Agent{
 			PermissionCitation: docClaudeCLI,
 			// acceptEdits also auto-approves filesystem shell commands (mkdir,
 			// rm, mv, sed), so the fix keeps the review's shell denial.
-			EditArgs:     []string{"--permission-mode", "acceptEdits", "--disallowedTools=Bash,PowerShell"},
+			EditArgs:     []string{flagPermissionMode, "acceptEdits", "--disallowedTools=Bash,PowerShell"},
 			EditCitation: docClaudePermissions,
 			PermissionFlags: []string{
-				"--permission-mode", "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+				flagPermissionMode, "--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
 				"--allowedTools", "--allowed-tools", "--add-dir",
 			},
 			// The joined `=` form, like the discovery restriction: the
@@ -330,7 +444,10 @@ var catalog = []Agent{
 			// `--strict-mcp-config` loads no MCP server but --mcp-config's, so
 			// the tree's .mcp.json starts none. The flags that would undo them
 			// or load other configuration are verdict's on a review launch.
-			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config"},
+			// `--permission-mode default` outranks a settings defaultMode
+			// (acceptEdits, bypassPermissions) that would widen its writes —
+			// verified empirically against the agent's CLI.
+			ReviewArgs:         []string{"--setting-sources=user", "--strict-mcp-config", flagPermissionMode, "default"},
 			ReviewArgsCitation: docClaudeCLI,
 			ReviewOwnedFlags: []string{
 				"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config",
@@ -344,6 +461,48 @@ var catalog = []Agent{
 				Args: []string{"--output-format", "json"},
 			},
 			Install: "curl -fsSL https://claude.ai/install.sh | bash",
+			// ~/.claude holds settings, plugins, skills, agents, commands,
+			// hooks and output styles beside its session data, and
+			// ~/.claude.json holds mcpServers beside its counters, per the
+			// settings doc; CLAUDE_CONFIG_DIR relocates ~/.claude. The macOS
+			// login lives in the login keychain, which the Security framework
+			// reads and writes in-process (token refresh). The data
+			// directories and ~/Library/Caches/claude-cli-nodejs, and that it
+			// reaches its API with nothing under ~/.claude writable but its
+			// debug log and its launch's project directory, were verified
+			// empirically against the agent's CLI.
+			// Read-only, because a later session loads them as instructions
+			// or code: shell-snapshots and session-env (sourced scripts),
+			// sessions, todos and file-history (a resumed session's state and
+			// the files /rewind restores), backups (a corrupt ~/.claude.json
+			// is restored from them), cache and statsig (cached configuration
+			// and feature gates). .credentials.json is the Linux login.
+			StateWritable: []string{
+				".claude/debug", ".claude/.credentials.json*", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
+			},
+			StateReadOnly: []string{
+				".claude.json", ".claude/settings.json", ".claude/settings.local.json", ".claude/plugins",
+				".claude/skills", ".claude/agents", ".claude/commands", ".claude/hooks", ".claude/output-styles",
+				".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/sessions",
+				".claude/todos", ".claude/file-history", ".claude/backups", ".claude/cache", ".claude/statsig",
+			},
+			// Its transcript goes to projects/<slug of the working directory's
+			// real path, every non-alphanumeric character a dash>, a longer
+			// slug than 200 characters ending in a hash it alone computes;
+			// memory there holds instructions every later session there
+			// loads — verified empirically against the agent's CLI.
+			ProjectState: &ProjectState{Root: ".claude/projects", ReadOnly: []string{"memory"}, MaxSlug: 200},
+			StateEnv:     []StateVar{{Name: "CLAUDE_CONFIG_DIR", Root: ".claude"}},
+			// claude makes /tmp/claude-<uid> whatever TMPDIR says;
+			// CLAUDE_CODE_TMPDIR moves it (named in its own disk-quota
+			// message) — verified empirically against the agent's CLI.
+			TempEnv:       []string{"CLAUDE_CODE_TMPDIR"},
+			StateCitation: docClaudeSettings + " ; " + docClaudeIAM,
+			// Bash and PowerShell denied (DiscoveryArgs) and Edit allowed only
+			// under the bundle (ReviewWriteArgs): Write/Edit outside an allow
+			// rule are denied in print mode.
+			Confinement:         OwnWrites,
+			ConfinementCitation: docClaudePermissions,
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -408,13 +567,20 @@ var catalog = []Agent{
 			// /tmp unless excluded; TMPDIR is the review's private one.
 			SnapshotWriteArgs: []string{
 				flagSandbox, valueWorkspaceWrite, "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+				// A writable root in the operator's config.toml would widen the
+				// sandbox past the snapshot; the override empties the list.
+				"-c", "sandbox_workspace_write.writable_roots=[]",
 			},
 			SnapshotWriteCitation: docCodexConfig,
 			// A working directory, a managed worktree, an approval reviewer,
 			// or trusted repository hooks would each take the review out of
 			// its snapshot or run the tree's own code.
+			// --ephemeral persists no session: verdict resumes none, and a
+			// later `codex resume` would load one as its context.
+			ReviewArgs: []string{"--ephemeral"},
 			ReviewOwnedFlags: []string{
-				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust",
+				"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
+				"--ignore-user-config",
 			},
 			ReviewArgsCitation: docCodexCLIRef,
 			// `--model, -m` per the codex CLI reference.
@@ -425,6 +591,13 @@ var catalog = []Agent{
 			PermissionFlags: []string{
 				flagSandbox, "-s", "--ask-for-approval", "-a", "--full-auto",
 				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
+				// A config override or profile can set sandbox_mode itself, a
+				// feature toggle is a config override, --remote runs the agent
+				// in an app server outside any sandbox verdict starts, --trust
+				// persists trust (MCP commands outside the sandbox included),
+				// and -o writes a file wherever it names.
+				"-c", "--config", "-p", "--profile", "--enable", "--disable", "--remote",
+				"--remote-auth-token-env", "--trust", "-o", "--output-last-message",
 			},
 			KeyEnv:         "OPENAI_API_KEY",
 			KeyEnvCitation: docCodexReadme,
@@ -434,11 +607,50 @@ var catalog = []Agent{
 			ResumeCitation: docCodexReadme,
 			Usage:          &Usage{Format: UsageCodexJSONL, Citation: docCodexExecJSON, Args: []string{"--json"}},
 			Install:        "npm install -g @openai/codex",
+			// CODEX_HOME, ~/.codex by default, holds config.toml, AGENTS.md,
+			// rules, prompts, skills and plugins beside auth.json, sessions,
+			// history and logs — and its cache (MCP tool schemas, the plugin
+			// catalog), scratch (plugin and git staging) and tmp/arg0* (the
+			// PATH shims of running sessions), which later sessions load or
+			// run. So every review launch, its own sandbox or verdict's, gets
+			// a throwaway CODEX_HOME in its wrapper seeded with its login and
+			// config, and the real one is read-only; with --ephemeral it
+			// starts and reaches its API there — verified empirically against
+			// the agent's CLI.
+			StateReadOnly: []string{dirCodex},
+			StateEphemeral: []EphemeralVar{
+				{
+					Name: envCodexHome, Root: dirCodex, Seed: []string{"auth.json", fileCodexConfig},
+					// Model, provider, and connection keys alone: an MCP server,
+					// a notify or hook command, a profile, a feature, project
+					// trust, or a sandbox setting would start or widen something
+					// outside every sandbox (codex merges `-c` overrides, so
+					// none can clear them).
+					SeedKeys: map[string][]string{fileCodexConfig: {
+						"model", "model_provider", "model_reasoning_effort", "model_reasoning_summary",
+						"model_verbosity", "model_context_window", "model_max_output_tokens",
+						"forced_login_method", "chatgpt_base_url",
+						"model_providers.*.name", "model_providers.*.base_url", "model_providers.*.env_key",
+						"model_providers.*.env_key_instructions", "model_providers.*.wire_api",
+						"model_providers.*.query_params", "model_providers.*.http_headers",
+						"model_providers.*.env_http_headers", "model_providers.*.request_max_retries",
+						"model_providers.*.stream_max_retries", "model_providers.*.stream_idle_timeout_ms",
+						"model_providers.*.requires_openai_auth",
+					}},
+				},
+			},
+			StateEnv:      []StateVar{{Name: envCodexHome, Root: dirCodex}},
+			StateCitation: docCodexReadme,
+			// workspace-write runs codex's own Seatbelt (macOS) or
+			// Landlock/seccomp (Linux) sandbox, which confines its writes —
+			// shell included — to the working directory and temp roots.
+			Confinement:         OwnSandbox,
+			ConfinementCitation: docCodexSandbox,
 		},
 		Skills: &Skills{
 			Base:     valueHome,
-			Env:      "CODEX_HOME",
-			Parts:    []string{".codex", valueSkills},
+			Env:      envCodexHome,
+			Parts:    []string{dirCodex, valueSkills},
 			Order:    2,
 			Citation: "https://developers.openai.com/codex/skills",
 		},
@@ -795,6 +1007,34 @@ var catalog = []Agent{
 				Args: []string{"--format", "json"},
 			},
 			Install: "npm install -g @opencode/cli",
+			// The XDG data directory holds auth, sessions (opencode.db),
+			// logs, snapshots and tool output; the config directory holds
+			// opencode.json, plugins, agents, commands and skills, and the
+			// cache directory the provider and plugin packages it installs.
+			// ~/.local/state/opencode (model, kv, locks, prompt history) was
+			// verified empirically against the agent's CLI.
+			// Its data directory also holds what a later session trusts — the
+			// shadow git repositories of snapshot and repos (a planted
+			// core.fsmonitor runs on the next session), managed tools, LSP
+			// binaries and packages — so a review launch gets a throwaway data
+			// and state home in its wrapper, seeded with copies of its logins,
+			// and the real ones stay read-only. It makes the cache's bin at
+			// startup. Verified empirically against the agent's CLI.
+			StateReadOnly: []string{
+				".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode",
+			},
+			StateDirs: []string{".cache/opencode/bin"},
+			StateEphemeral: []EphemeralVar{
+				{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+				{Name: "XDG_STATE_HOME", Root: ".local/state"},
+			},
+			StateEnv: []StateVar{
+				{Name: "XDG_DATA_HOME", Root: ".local/share"},
+				{Name: "XDG_STATE_HOME", Root: ".local/state"},
+				{Name: "XDG_CACHE_HOME", Root: ".cache"},
+				{Name: "XDG_CONFIG_HOME", Root: ".config"},
+			},
+			StateCitation: docOpenCodeStorage,
 		},
 		Skills: &Skills{
 			Base:     "config",
@@ -832,13 +1072,45 @@ var catalog = []Agent{
 			ResumeCitation: docPiQuickstart,
 			// A denylist, so read/edit/write stay and only the two shell tools
 			// go: `bash` on Unix, `powershell` on Windows.
-			DiscoveryArgs:       []string{"--exclude-tools", "bash,powershell"},
-			DiscoveryCitation:   docPiCLI,
+			DiscoveryArgs:     []string{"--exclude-tools", "bash,powershell"},
+			DiscoveryCitation: docPiCLI,
+			// --no-approve ignores the reviewed tree's project-local files
+			// (extensions, settings, MCP servers) without asking, and so
+			// without the trust lock it would otherwise take in its agent
+			// directory.
+			// --no-session saves no session: verdict resumes none, and a later
+			// `pi -c` in a directory would load one as its context.
+			ReviewArgs:         []string{"--no-approve", "--no-session"},
+			ReviewArgsCitation: docPiCLI,
+			ReviewOwnedFlags: []string{
+				"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers", "--no-session", "--session-dir",
+			},
 			DiscoveryOwnedFlags: []string{"--exclude-tools", "-xt"},
 			DiscoveryOverrideFlags: []string{
 				"--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
 			},
 			Install: "curl -fsSL https://pi.dev/install.sh | sh",
+			// The agent directory (~/.pi/agent) holds auth.json and sessions
+			// beside settings.json, models.json, extensions, skills, prompts,
+			// themes, AGENTS.md and the managed install (bin, install, npm)
+			// — per its docs, verified empirically against the agent's CLI.
+			// auth.json is executable config (a `!command` value runs), so no
+			// review writes it: every review launch gets a throwaway agent
+			// directory in its wrapper seeded with its login, its models, and
+			// the model and network keys of its settings — never extensions,
+			// packages, skills, prompts, themes, or a command or path setting,
+			// third-party code a review does not need.
+			StateReadOnly: []string{".pi"},
+			StateEphemeral: []EphemeralVar{{
+				Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent", Seed: []string{"auth.json", "models.json", "settings.json"},
+				SeedKeys: map[string][]string{"settings.json": {
+					"defaultProvider", "defaultModel", "defaultThinkingLevel", "modelThinkingLevels", "enabledModels",
+					"thinkingBudgets", "transport", "retry", "httpProxy", "httpIdleTimeoutMs",
+					"websocketConnectTimeoutMs", "websockets", "cacheWarming", "compaction",
+				}},
+			}},
+			StateEnv:      []StateVar{{Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent"}},
+			StateCitation: docPiConfig,
 		},
 	},
 	// --agent 'qoder' is the product slug.
@@ -946,6 +1218,38 @@ var catalog = []Agent{
 	},
 }
 
+// dirCodex is codex's home directory below HOME, envCodexHome the variable
+// that relocates it, and fileCodexConfig its configuration file there.
+const (
+	dirCodex        = ".codex"
+	envCodexHome    = "CODEX_HOME"
+	fileCodexConfig = "config.toml"
+)
+
+// cloneEphemeral copies the ephemeral variables and their seeds.
+func cloneEphemeral(in []EphemeralVar) []EphemeralVar {
+	out := slices.Clone(in)
+	for i := range out {
+		out[i].Seed = slices.Clone(out[i].Seed)
+		keys := make(map[string][]string, len(out[i].SeedKeys))
+		for seed, allowed := range out[i].SeedKeys {
+			keys[seed] = slices.Clone(allowed)
+		}
+		out[i].SeedKeys = keys
+	}
+	return out
+}
+
+// cloneProject copies the project state and its read-only list.
+func cloneProject(in *ProjectState) *ProjectState {
+	if in == nil {
+		return nil
+	}
+	p := *in
+	p.ReadOnly = slices.Clone(p.ReadOnly)
+	return &p
+}
+
 // All returns independent data to prevent mutation of the catalog.
 func All() []Agent {
 	out := slices.Clone(catalog)
@@ -965,6 +1269,13 @@ func All() []Agent {
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
 			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
+			v.StateWritable = slices.Clone(v.StateWritable)
+			v.StateReadOnly = slices.Clone(v.StateReadOnly)
+			v.StateDirs = slices.Clone(v.StateDirs)
+			v.StateEphemeral = cloneEphemeral(v.StateEphemeral)
+			v.ProjectState = cloneProject(v.ProjectState)
+			v.TempEnv = slices.Clone(v.TempEnv)
+			v.StateEnv = slices.Clone(v.StateEnv)
 			v.ReviewArgs = slices.Clone(v.ReviewArgs)
 			v.ReviewOwnedFlags = slices.Clone(v.ReviewOwnedFlags)
 			a.Launch = &v
@@ -990,4 +1301,20 @@ func Lookup(name string) (Agent, bool) {
 		}
 	}
 	return Agent{}, false
+}
+
+// StatePathShape checks one home-relative state entry, its trailing `*`
+// removed: a clean, relative, slash-form path strictly below HOME. It says
+// what is wrong, "" for a sound entry. The catalog's rows and an operator's
+// prefs entries share it.
+func StatePathShape(rel string) string {
+	switch {
+	case rel == "" || rel == ".":
+		return "names HOME itself"
+	case strings.HasPrefix(rel, "/") || strings.Contains(rel, `\`) || (len(rel) > 1 && rel[1] == ':'):
+		return "must be relative to HOME, in slash form"
+	case path.Clean(rel) != rel || rel == ".." || strings.HasPrefix(rel, "../"):
+		return "must be a clean path below HOME"
+	}
+	return ""
 }

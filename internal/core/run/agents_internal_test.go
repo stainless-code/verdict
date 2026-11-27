@@ -70,7 +70,7 @@ func builtinRows() []builtinRow {
 			name: "claude", binary: "claude", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://claude.ai/install.sh | bash",
 			wantArgv:      []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, reviewGrantFlag, "--model", "M", "PROMPT"},
+			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", settingsFlag, mcpFlag, modeFlag, modeDefault, reviewGrantFlag, "--model", "M", "PROMPT"},
 		},
 		{
 			name: "cline", binary: "cline", args: []string{}, promptFlag: "",
@@ -94,7 +94,7 @@ func builtinRows() []builtinRow {
 			name: "codex", binary: "codex", args: []string{"exec"}, promptFlag: "",
 			install:       "npm install -g @openai/codex",
 			wantArgv:      []string{"codex", "exec", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"codex", "exec", "--model", "M", "PROMPT"},
+			wantPrintArgv: []string{"codex", "exec", "--ephemeral", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "commandcode", binary: "commandcode", args: []string{}, promptFlag: "-p",
@@ -273,9 +273,12 @@ func builtinRows() []builtinRow {
 		},
 		{
 			name: "pi", binary: "pi", args: []string{"-p"}, promptFlag: "",
-			install:       "curl -fsSL https://pi.dev/install.sh | sh",
-			wantArgv:      []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "PROMPT"},
+			install:  "curl -fsSL https://pi.dev/install.sh | sh",
+			wantArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{
+				"pi", "-p", "--exclude-tools", "bash,powershell", "--no-approve", "--no-session", "--model", "M",
+				"PROMPT",
+			},
 		},
 		{
 			name: "qoder", binary: "qoder", args: []string{"-p"}, promptFlag: "",

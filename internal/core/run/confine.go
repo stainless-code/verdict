@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/hostsandbox"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
@@ -904,7 +905,10 @@ var droppedEnvPrefixes = []string{"GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"}
 
 // configHomes are the agent configuration directories a relative value of
 // which would resolve inside the view instead of where the operator meant.
-var configHomes = []string{"CLAUDE_CONFIG_DIR", "CODEX_HOME"}
+var configHomes = []string{
+	"CLAUDE_CONFIG_DIR", "CODEX_HOME", "PI_CODING_AGENT_DIR", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME",
+	"XDG_CONFIG_HOME",
+}
 
 // env is the launch environment for the view: PWD names the view and
 // TMPDIR, TMP and TEMP its private temp directory; the variables naming the
@@ -1264,7 +1268,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	}
 	defer v.closeRoot()
 	st.warnDropped(v.dropped)
-	res, err := st.spawn(ctx, argv, args.timeout, tap, v.cwd, v.env(st.childEnv()))
+	res, err := st.spawnBoxed(ctx, args, argv, tap, v)
 	if res != nil {
 		s := v.settle(bundle, expect)
 		st.warnSettled(args.def.Name, &s)
@@ -1274,6 +1278,55 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	}
 	return res, err
 }
+
+// spawnBoxed runs one review launch in its view, wrapped in the execution's
+// OS sandbox when it has one. A sandbox that cannot be built for the launch
+// refuses it as never started: a sandboxed execution never falls back to a
+// bare launch.
+func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string, tap *agentusage.Tap, v *view,
+) (*core.Result, error) {
+	env := hostsandbox.OverrideEnv(stripSocketEnv(v.env(st.childEnv())), tempEnv(&args.def, v.tmp))
+	if st.box == nil && core.StartsHostProcesses(st.commander()) {
+		return nil, &core.StartError{Err: errNoBox}
+	}
+	env, err := st.throwawayHomes(&args.def, v, env)
+	if err != nil {
+		return nil, err
+	}
+	if !st.box.sandboxed() {
+		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env, false)
+	}
+	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
+	launch, err := st.box.launch(v.cwd)
+	// Registered first: a setup that made the project directory and then
+	// failed leaves nothing behind.
+	defer st.dropLaunch(launch)
+	if err != nil {
+		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
+	}
+	wrapped, err := launch.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
+	if err != nil {
+		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
+	}
+	// A session of its own: the sandboxed agent has no controlling terminal
+	// to push input into (bwrap's --new-session does the same on Linux).
+	return st.spawnAt(ctx, "", wrapped, args.timeout, tap, v.cwd, env, true)
+}
+
+// resolvedArgv names the binary the resolution found in place of the bare
+// name: the wrapper would resolve that name again against the child's PATH,
+// whose relative entries reach into the reviewed snapshot.
+func resolvedArgv(args *launchArgs, argv []string) []string {
+	inner := slices.Clone(argv)
+	if args.bin != "" {
+		inner[0] = args.bin
+	}
+	return inner
+}
+
+// errNoBox is a host launch reached without its execution's sandbox
+// decision: a wiring bug, refused rather than run bare.
+var errNoBox = jq.NewErr("no review sandbox decision for this launch")
 
 // reviewDirs is a review launch's bundle and its output directory relative
 // to the bundle, in slash form ("." for the bundle itself).

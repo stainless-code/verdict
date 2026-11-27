@@ -57,3 +57,7 @@ func TestMineStderrNoiseDoesNotCorruptParses(t *testing.T) {
 		t.Errorf("mine.json differs with stderr noise:\n%s\n---\n%s", clean, got)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (noisyCommander) SimulatesProcesses() bool { return true }

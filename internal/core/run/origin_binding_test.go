@@ -92,3 +92,7 @@ func assertOriginDispatch(t *testing.T, base *phaseCommander, self bool) {
 		t.Fatalf("trusted origin plan = %s", got)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*forgedOriginCommander) SimulatesProcesses() bool { return true }

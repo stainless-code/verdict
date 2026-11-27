@@ -220,7 +220,10 @@ func TestGrantsAreScopedAndCited(t *testing.T) {
 		collectGrant(t, snapshot, agent.Name, "SnapshotWriteArgs", l.SnapshotWriteArgs, l.SnapshotWriteCitation)
 	}
 	if want := map[string][]string{
-		"codex": {"--sandbox", "workspace-write", "-c", "sandbox_workspace_write.exclude_slash_tmp=true"},
+		"codex": {
+			"--sandbox", "workspace-write", "-c", "sandbox_workspace_write.exclude_slash_tmp=true",
+			"-c", "sandbox_workspace_write.writable_roots=[]",
+		},
 	}; !maps.EqualFunc(snapshot, want, slices.Equal) {
 		t.Errorf("SnapshotWriteArgs rows = %v, want %v", snapshot, want)
 	}
@@ -322,10 +325,20 @@ func TestReviewArgsAreScopedAndCited(t *testing.T) {
 		collectGrant(t, args, agent.Name, "ReviewArgs", l.ReviewArgs, l.ReviewArgsCitation)
 		collectGrant(t, owned, agent.Name, "ReviewOwnedFlags", l.ReviewOwnedFlags, l.ReviewArgsCitation)
 	}
-	wantArgs := map[string][]string{"claude": {"--setting-sources=user", "--strict-mcp-config"}}
+	wantArgs := map[string][]string{
+		"claude": {"--setting-sources=user", "--strict-mcp-config", "--permission-mode", "default"},
+		"codex":  {"--ephemeral"},
+		"pi":     {"--no-approve", "--no-session"},
+	}
 	wantOwned := map[string][]string{
 		"claude": {"--settings", "--setting-sources", "--plugin-dir", "--mcp-config", "--strict-mcp-config"},
-		"codex":  {"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust"},
+		"codex": {
+			"-C", "--cd", "--worktree", "--approve-for-me", "--dangerously-bypass-hook-trust", "--ephemeral",
+			"--ignore-user-config",
+		},
+		"pi": {
+			"--approve", "-a", "--no-approve", "-na", "--mcp-project-servers", "--no-session", "--session-dir",
+		},
 	}
 	if !maps.EqualFunc(args, wantArgs, slices.Equal) {
 		t.Errorf("ReviewArgs rows = %v, want %v", args, wantArgs)

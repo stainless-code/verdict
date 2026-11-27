@@ -14,7 +14,10 @@ import (
 // process environment. ExtraFiles are inherited as descriptors 3, 4, … in
 // order (POSIX only), the way a caller hands a pinned directory to a child.
 type Command struct {
-	Stdin       io.Reader
+	Stdin io.Reader
+	// Path, when set, is the executable to run in place of resolving
+	// Argv[0] against PATH again; Argv[0] stays the name the child sees.
+	Path        string
 	StdoutTap   io.Writer
 	Dir         string
 	Argv        []string
@@ -22,6 +25,11 @@ type Command struct {
 	ExtraFiles  []*os.File
 	OutputCap   int
 	GracePeriod time.Duration
+	// NewSession starts the child in a session of its own, with no
+	// controlling terminal, instead of only a process group of its own: it
+	// cannot open the operator's /dev/tty to push input into it (TIOCSTI).
+	// The group kill reaches it alike, the session leader leading its group.
+	NewSession bool
 }
 
 // Result is one completed process: the captured streams plus the wait
@@ -51,6 +59,26 @@ type Result struct {
 // inject a scripted commander. No service body calls exec directly.
 type Commander interface {
 	Run(ctx context.Context, cmd *Command) (Result, error)
+}
+
+// Simulation is implemented by a test double whose Run starts no host
+// process, answering true. Every other commander — the production runners
+// and any wrapper around them — is taken to start real host processes, so a
+// review launch through it is wrapped in the host's OS sandbox: a commander
+// that forgets to say otherwise fails closed, never silently bare. A wrapper
+// forwards its inner commander's answer.
+type Simulation interface {
+	SimulatesProcesses() bool
+}
+
+// StartsHostProcesses reports whether c runs real host processes: true for
+// every commander but a test double that says it simulates them.
+func StartsHostProcesses(c Commander) bool {
+	if c == nil {
+		return false
+	}
+	sim, ok := c.(Simulation)
+	return !ok || !sim.SimulatesProcesses()
 }
 
 // ExitFailure renders the completed process as the error its wait code

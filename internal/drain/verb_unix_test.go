@@ -162,11 +162,20 @@ func literalDrainProcedure(t *testing.T) []byte {
 
 func procedureProbe(t *testing.T, expected []byte) string {
 	t.Helper()
-	expectedPath := filepath.Join(t.TempDir(), "expected.procedure")
+	// The draft launch runs in the OS review sandbox, which lets claude
+	// write only its snapshot, TMPDIR, and its own data, and on Linux hides
+	// the rest of /tmp: the expected bytes and the probe both live in its
+	// debug directory, relocated into the test by CLAUDE_CONFIG_DIR.
+	state := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", state)
+	if err := os.Mkdir(filepath.Join(state, "debug"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	expectedPath := filepath.Join(state, "debug", "expected.procedure")
 	if err := os.WriteFile(expectedPath, expected, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	probe := filepath.Join(t.TempDir(), "probe")
+	probe := filepath.Join(state, "debug", "probe")
 	t.Setenv("VERDICT_TEST_EXPECTED_PROCEDURE", expectedPath)
 	t.Setenv("VERDICT_TEST_PROCEDURE_PROBE", probe)
 	return probe
@@ -263,3 +272,7 @@ func TestAgentPostSkipsThreadResolvedDuringDrafting(t *testing.T) {
 		t.Fatalf("posts = %d, want 0 for resolved thread", got)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*resolvingDraftHost) SimulatesProcesses() bool { return true }

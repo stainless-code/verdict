@@ -98,8 +98,13 @@ In scope (highest priority first):
   lone regular file within its cap, read from a pinned copy as the very file
   the walk saw, and written atomically into the pinned bundle — while anything
   else it wrote inside the copy's wrapper is discarded and named in a
-  warning. A write beyond the wrapper is not discarded: only the OS sandbox,
-  or `claude`'s and `codex`'s own tools, stop it. A copy holds no symlink,
+  warning. A write beyond the wrapper is not discarded by the copy: the OS
+  review sandbox (below) blocks it on macOS and Linux, and `claude`'s
+  (while the operator's own Claude settings allow no write tool) and
+  `codex`'s own tools keep them in their copy; on Windows, which has no OS
+  sandbox verdict can apply, and under `--allow-unsandboxed-review`, nothing
+  blocks it for another agent, and the sandbox's own residuals are tracked
+  in STA-539 and STA-540. A copy holds no symlink,
   no `.git` or `.verdict/state` of the tree's in any case, and no pointer into
   the operator's repository, and neither does the shared snapshot it is made
   from; outside a git checkout it holds the bundle alone.
@@ -115,20 +120,92 @@ In scope (highest priority first):
   link, runs in a copy holding a symlink or a path back to the operator's
   repository, loads the reviewed tree's own agent configuration, runs without
   the denial, or carries a grant verdict renders wider than the launch's own
-  bundle directory, is a vulnerability. The copies are not a write boundary
-  by themselves: the agent starts in its copy, and `claude` (without
-  `--allow-shell`) and `codex` stay in it through their own tools (its
-  scoped grant, its workspace sandbox), but any other agent runs as the
-  operator's user and can write outside it — to a sibling launch's copy
-  (forging the artifact it hands back) or the operator's files — unless the
-  OS sandbox is active. The shared snapshot is symlink-free, owner-only
-  read-only, and fingerprinted by path, mode, size, and modification time,
-  plus inode and change time on unix: any write to it there, even one that
-  restores the size, mode, and modification time, refuses every later copy.
-  On Windows the fingerprint holds the first four alone, so a same-size
-  rewrite that restores the modification time is not detected. Writes outside
-  a copy are the OS sandbox's to stop; without it, that is the documented
-  limitation, not a finding.
+  bundle directory, is a vulnerability. The shared snapshot is
+  symlink-free, owner-only read-only, and fingerprinted by path, mode, size,
+  and modification time, plus inode and change time on unix: any write to it
+  there, even one that restores the size, mode, and modification time,
+  refuses every later copy. On Windows the fingerprint holds the first four
+  alone, so a same-size rewrite that restores the modification time is not
+  detected.
+- The review sandbox around every review launch (`run --agent` finders,
+  cross-checks, repair rounds and drain, `loop`'s review, `demo` and
+  `backtest` reviews; not the loop's fix spawn, which edits the checkout by
+  design), applied to every launch through verdict's own process runners and
+  any wrapper around them — only a test double that declares it simulates
+  its processes skips it. On macOS the launch runs under `sandbox-exec` with
+  a generated profile, on Linux under `bwrap`; the network stays open so the
+  agent reaches its model API. A review agent can write only its launch's
+  snapshot directory (its working copy, private `TMPDIR`, and the throwaway
+  homes opencode, codex and pi get there — `XDG_DATA_HOME`/`XDG_STATE_HOME`,
+  `CODEX_HOME`, `PI_CODING_AGENT_DIR` — seeded with no-follow copies of
+  their logins and model configuration, for every review launch, sandboxed or
+  not), and, for claude alone, its debug log, its login's token refresh, its
+  CLI cache, and its launch's own `~/.claude/projects/<slug>` (made before
+  the launch and removed after), and the devices a process needs; no other
+  row writes anything under the real `HOME`. It cannot write
+  anything a later session loads as instructions or code or trusts
+  (`~/.claude.json`, claude's settings, hooks, plugins, shell snapshots,
+  sessions, todos, file history, backups and caches, every project's memory
+  and every other project, all of `~/.codex` — its login, config, cache,
+  scratch, `tmp/arg0*` PATH shims, sessions, goals and memories —
+  `~/.config/opencode`, opencode's real data and state directories — its
+  shadow git repositories, database, managed tools and packages — and all
+  of `~/.pi`, including `auth.json`, whose `!command` values run), any other
+  dotfile in `HOME`, the rest of
+  `~/.config`, the operator's checkout, the execution's shared snapshot, or
+  another launch's snapshot directory, and it cannot replace a data
+  directory with a link (its own entry is pinned, a linked state path
+  refuses, and the state is re-checked before every launch). It cannot read
+  the credential table `verify --sandbox` hides (`~/.ssh`, `~/.aws`, gh and
+  glab tokens, `.netrc`, `.git-credentials`, the agent logins of codex,
+  opencode (and its MCP logins), pi, claude, copilot and gemini, the X11
+  cookie, the 1Password, Bitwarden and Secretive ssh-agent socket
+  directories, the rest of that list and the variables that relocate them),
+  except its own login, nor the host temp roots (and on Linux `/run`). On
+  macOS it cannot connect to a unix socket beyond the resolver's and
+  syslog's, and cannot look up a Mach service beyond the allowlist
+  (directory lookups, trustd, SystemConfiguration, and for claude the
+  keychain brokers) — so no preference write, pasteboard, keychain (but
+  claude's own), LaunchServices registration, login item, window server, or
+  Shortcuts. On Linux it cannot reach a filesystem socket in `/tmp`,
+  `/var/tmp`, `/run`, `/var/run`, or the table, and other processes'
+  environments are hidden (a private PID namespace). It inherits no socket
+  or display variable, and it cannot push input into the operator's
+  terminal: it starts in a session of its own with no controlling terminal,
+  and on macOS every read, write, and ioctl on `/dev/tty` and `/dev/ttys*` is
+  denied. codex's throwaway home gets only the model, provider, and
+  connection keys of the operator's `config.toml` — never its MCP servers,
+  `notify` or hook commands, profiles, or sandbox settings, which codex would
+  start or apply outside every sandbox. A sandbox policy that
+  cannot be built refuses the launch. A review launch that writes, reads,
+  connects, or reaches a service past that policy is a vulnerability. Not
+  boundaries, and so not findings: everything else stays readable (the agent
+  reads the tree and its own config; on Linux a sibling launch's snapshot
+  outside a hidden temp root too); on Linux the network namespace is the
+  host's, so an abstract-namespace unix socket (a `dbus-launch` session bus,
+  an X11 display without its cookie) and a filesystem socket under `HOME`
+  outside the table stay reachable; claude's own data paths stay writable,
+  so it can alter its own logs, CLI cache, or token store, though nothing a
+  later session loads or trusts; the review shell is denied by flags only for
+  `claude`, `bob`, and `pi` — every other row's agent has a live shell
+  inside the sandbox. `codex` runs in its own `--sandbox workspace-write`
+  sandbox instead of verdict's — a nested Seatbelt profile fails on macOS —
+  so codex confines its writes to the snapshot but nothing hides the
+  credential table from its reads. With no sandbox (Windows, Linux without
+  `bwrap`, a failed probe), `claude` (shell denied, write grant scoped to the
+  bundle, `--permission-mode default` pinned, and no write-tool allow rule
+  at all in the operator's own settings) and `codex` (its own
+  sandbox, no operator flag deciding it) run with a warning that their reads
+  are not confined, and every other agent refuses
+  `review-sandbox-unavailable`; `--allow-unsandboxed-review` (on `run` and
+  `loop`) runs every launch without the sandbox, warned, which is the
+  operator's choice. Without the sandbox only `claude` and `codex` stay in
+  their copy through their own tools, `claude` only while the operator's own
+  Claude settings allow no write tool (the opt-out does not check them); the opt-out accepts that any other
+  agent can climb out with `..` or an absolute path — to a sibling launch's
+  live copy (forging the artifact it hands back) or anything the operator's
+  user can write — and read the credential table, so what an opted-out
+  review does there is not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

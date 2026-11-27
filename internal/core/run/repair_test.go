@@ -1517,3 +1517,11 @@ func TestRepairNonGatingQuoteIsPublishedUnverified(t *testing.T) {
 		t.Errorf("round 1 quote = %v, want unverified", got)
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*sequenced) SimulatesProcesses() bool { return true }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*probeRecordingRepair) SimulatesProcesses() bool { return true }

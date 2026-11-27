@@ -1344,6 +1344,12 @@ binding approval with it, even under `--force`.
 
 Fix: run `record --dry-run` and read what it names — the finding quote at `path:line` that `full.diff` does not carry, the `hunks.tsv` row with no receipt, the spec item with no check or no code evidence — rewrite `review.json`, then re-run `record` or `run --rounds`. A quote gets one repair round; a receipt or spec gap re-prompts on every round.
 
+## `review-sandbox-unavailable`
+
+Cause: `run` or `loop` could not put a review launch in the OS sandbox, and the agent confines neither its writes nor its reads on its own. The message names why: no `bubblewrap` on Linux, no `sandbox-exec` on macOS, no OS sandbox at all (Windows), a sandbox probe that failed (unprivileged user namespaces restricted), `HOME` unset in the child environment, or a state path that would re-open more than the agent's own state (`HOME` itself, or a path holding `~/.ssh` and the rest of the credential table). A policy that cannot be built — an unset or relative `HOME`, a state path or relocation root that fails its checks — refuses every agent outright. Only a missing or failing mechanism lets an agent that confines its own review writes run warned instead: `codex` in its own sandbox (unless your `--` arguments decide its permissions), and `claude` unless `--allow-shell`, your own permission flags, or any write-tool allow rule in your own Claude settings (or settings that cannot be parsed) void that confinement. Every other agent refuses before it starts.
+
+Fix: on Linux install `bubblewrap` and allow unprivileged user namespaces; fix `HOME` or the relocation variable the message names; or re-run with `--allow-unsandboxed-review` for a PR you trust, which runs every review launch without the sandbox (a prompt-injected diff could then write anywhere you can and read your credentials).
+
 ## `rigor-below-floor`
 
 Cause: a posting finding's evidence rung sits below the floor its severity demands, in gate mode.

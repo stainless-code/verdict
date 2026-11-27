@@ -157,7 +157,7 @@ type tree struct {
 
 var trees sync.Map
 
-func setGroup(cmd *osexec.Cmd) {
+func setGroup(cmd *osexec.Cmd, _ bool) {
 	tr := &tree{}
 	handle := win32Call(procCreateJobObject, 0, 0)
 	if handle != 0 {

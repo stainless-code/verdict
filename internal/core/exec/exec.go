@@ -75,8 +75,9 @@ func spawnWatched(ctx context.Context, cmd *core.Command,
 	expired *atomic.Bool,
 ) (*osexec.Cmd, chan error, *boundedBuffer, *terminator, error) {
 	//nolint:gosec // G204: argv is the operator's own verify command (the documented bash -c model), not external input.
-	proc := osexec.CommandContext(ctx, cmd.Argv[0], cmd.Argv[1:]...)
-	setGroup(proc)
+	proc := osexec.CommandContext(ctx, executable(cmd), cmd.Argv[1:]...)
+	proc.Args[0] = cmd.Argv[0]
+	setGroup(proc, cmd.NewSession)
 	term := newTerminator(proc, cmd.GracePeriod, expired)
 	proc.Cancel = term.cancel(ctx)
 	proc.WaitDelay = waitDelay
@@ -232,3 +233,12 @@ func waitStatusCode(exitErr *osexec.ExitError, timedOut bool) int {
 const sigkillExit = 137
 
 const sigOffset = 128
+
+// executable is the program a command runs: its resolved Path when the
+// caller pinned one, else Argv[0], resolved against PATH.
+func executable(cmd *core.Command) string {
+	if cmd.Path != "" {
+		return cmd.Path
+	}
+	return cmd.Argv[0]
+}

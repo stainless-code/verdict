@@ -147,6 +147,11 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	// They are mutually exclusive.
 	VerifySandboxNetworkOnly bool
 	VerifyNoSandbox          bool
+	// AllowUnsandboxedReview is --allow-unsandboxed-review: the review step
+	// runs without verdict's OS sandbox, as run's flag does. It never
+	// touches verify's sandbox or the fix spawn, which edits the checkout by
+	// design.
+	AllowUnsandboxedReview bool
 }
 
 // Response carries the loop outcome for the adapter.

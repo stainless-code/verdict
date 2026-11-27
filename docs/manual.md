@@ -4316,8 +4316,11 @@ the agent's write. Anything else the agent wrote inside the copy's wrapper —
 deleted bundle file — stays there, is deleted with it, and is named in one
 warning, which is worth reading as evidence of an injection attempt. A write
 beyond the wrapper (further up with `..`, or to an absolute path) is neither
-discarded nor seen: only the OS sandbox stops it, or `claude`'s and `codex`'s
-own tools (below). A crashed or timed-out agent's valid artifacts are copied
+discarded nor seen by the copy: the review sandbox blocks it on macOS and
+Linux, and `claude`'s (while your own Claude settings allow no write tool)
+and `codex`'s own tools keep them in their copy
+(below); on Windows and under `--allow-unsandboxed-review` nothing blocks it
+for another agent. A crashed or timed-out agent's valid artifacts are copied
 back the same way, so salvage, repair rounds, and `--resume` read the bundle
 exactly as before. The loop's fix phase is the one launch that runs in your
 checkout: editing it is its job.
@@ -4354,27 +4357,282 @@ same-size rewrite that restores the modification time is not caught.
 What holds, and for whom. The agent starts in its copy, where every agent's
 edit tools aim, so its writes to paths that resolve inside the copy land
 there (`../outside.txt` resolves to the copy's wrapper, and further `..`
-leaves it); nothing comes back from the copy but the expected
-artifacts, and writes beyond its wrapper are not discarded. `claude` (without `--allow-shell`, through its scoped `Edit`
-grant) and `codex` (its workspace sandbox, rooted at the copy) stay in their
-copy through their own tools. Any other agent can still write outside it
-unless the OS sandbox around review launches is active: it runs as your user,
-and one that climbs out with `..` or names an absolute path can reach the
-shared snapshot (refused by its read-only bits, and caught by its
-fingerprint), a sibling launch's live copy — a finder can forge the artifact
-its sibling hands back — and whatever else your user account can write, your
-checkout included. Without that sandbox, review an untrusted pull request
-with `claude` or `codex`, or inside an OS-isolated environment — a VM or
-container with no access to your other files and credentials. A disposable
-checkout alone is not that: it protects neither your other files nor a
-sibling launch's artifacts. A review agent can always read the reviewed tree
-and the bundle, and use the network. A review of a directory
+leaves it); nothing comes back from the copy but the expected artifacts.
+Writes beyond its wrapper — through `..` or an absolute path — are not
+discarded by the copy: the review sandbox (below) blocks them on macOS and
+Linux. Where it is not active — Windows, which has no OS sandbox verdict can
+apply, or a run with `--allow-unsandboxed-review` — `claude` (without
+`--allow-shell`, through its scoped `Edit` grant, and only while your own Claude settings allow no write tool, which `--allow-unsandboxed-review` does not check)
+and `codex` (its workspace sandbox, rooted at the copy) still stay in their
+copy through their own tools, but any other agent runs as your user, and one that climbs out with
+`..` or names an absolute path can reach the shared snapshot (refused by its
+read-only bits, and caught by its fingerprint), a sibling launch's live copy
+— a finder can forge the artifact its sibling hands back — and whatever else
+your user account can write, your checkout included. There, review an
+untrusted pull request with `claude` or `codex`, or inside an OS-isolated
+environment — a VM or container with no access to your other files and
+credentials. A disposable checkout alone is not that: it protects neither
+your other files nor a sibling launch's artifacts. Even inside the sandbox,
+the residuals it names remain: abstract-namespace unix sockets on Linux
+(STA-539) and loopback services and the other residuals of its final review
+(STA-540). A review agent can always read the reviewed tree and the bundle,
+and use the network. A review of a directory
 outside any git checkout — the temp directory `demo` reviews a pull request
 URL in, or a plain directory — copies none of it: its copy holds the bundle
 alone, from which a remote review reads its diff. A snapshot that cannot be
 made (a git failure, `TMPDIR` inside the repository) refuses
 `agent-spawn-failed` before any agent starts — a review never falls back to
 your checkout.
+
+### Review sandbox
+
+Every review launch — `run`'s finders, cross-checks, repair rounds and drain,
+`loop`'s review step, `demo`'s and `backtest`'s reviews — also runs in the
+host's OS sandbox, because most agents' file tools take absolute paths, and
+most rows (opencode, cline, gemini, cursor, copilot, every agent you define in
+prefs) keep a live shell too: only `claude`, `bob`, and `pi` deny it by flag.
+Without the sandbox, a prompt-injected diff could steer one into `~/.zshrc`,
+`~/.config`, or your checkout, or into reading `~/.ssh` and leaking it through
+review text verdict may post. On macOS the launch runs under
+`/usr/bin/sandbox-exec` with a generated profile; on Linux under `bwrap`
+(bubblewrap, run by the path verdict resolved) with a read-only `/`, a fresh
+`/dev`, and a private PID namespace whose `/proc` hides other processes'
+environments. The network stays open: the agent has to reach its model API.
+On Linux that means the network namespace is shared too (see Sockets below).
+
+- **Writes** reach only the launch's snapshot directory — its working copy
+  and the private `TMPDIR` beside it, both removed after the launch — the
+  agent's own data paths (the table below), and `/dev/null`, `/dev/tty`, and
+  `/dev/fd/*`. Every other path is denied: every dotfile in `HOME`, the rest
+  of `~/.config`, the agent's own config and code, your checkout, the
+  execution's shared snapshot, and every other launch's snapshot directory.
+- **Reads** of the credential table `verify --sandbox` hides are denied —
+  `~/.ssh`, `~/.aws`, `~/.config/gh`, `~/.config/glab-cli`, `~/.docker`,
+  `~/.kube`, `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `.netrc`,
+  `.git-credentials`, `~/.config/git/credentials`, `.npmrc`, `.pypirc`,
+  `~/.terraform.d`, cargo credentials, `.vault-token`, `~/Library/Keychains`,
+  and the agent logins `~/.codex/auth.json`,
+  `~/.local/share/opencode/auth.json`, `~/.pi/agent/auth.json`,
+  `~/.local/share/opencode/mcp-auth.json`, `~/.claude/.credentials.json`,
+  `~/.config/github-copilot`, and `~/.gemini/oauth_creds.json`; the X11
+  cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
+  Bitwarden, and Secretive — under your child, process, and account homes,
+  plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,
+  `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, `DOCKER_CONFIG`,
+  `KUBECONFIG`, `CLOUDSDK_CONFIG`, `CODEX_HOME`, `XDG_DATA_HOME`,
+  `PI_CODING_AGENT_DIR`, `CLAUDE_CONFIG_DIR`, and `XAUTHORITY` move —
+  except the agent's own login, which is its state: pi reads its own
+  `auth.json`, never codex's. The host temp roots (`/tmp`, `/var/tmp`; on
+  Linux `/run` and a real `/var/run` too) are hidden; on macOS the launch
+  may still stat (never list) the directories on the way to its own. On macOS every other
+  snapshot directory beside the launch's own is unreadable; on Linux one in
+  a hidden temp root is too. Everything else stays readable: the agent reads
+  the tree and its own config.
+- **Sockets and services.** On macOS every unix socket is closed by the
+  profile but the resolver's and syslog's — an ssh agent, gpg-agent, Docker
+  Desktop, tmux, a language server. On Linux the filesystem sockets in
+  `/tmp`, `/var/tmp`, `/run`, and `/var/run` are hidden (the systemd user
+  manager and its bus, the docker and podman sockets, tmux, a desktop ssh
+  agent; the resolver file behind `/etc/resolv.conf` is bound back read-only
+  when it lives there, so DNS keeps working), and so are the ssh-agent
+  socket directories in the credential table. The launch inherits none of
+  `SSH_AUTH_SOCK`, `DBUS_SESSION_BUS_ADDRESS`, `GPG_AGENT_INFO`, `TMUX`,
+  `NVIM`, `XDG_RUNTIME_DIR`, `DISPLAY`, `WAYLAND_DISPLAY`, or `XAUTHORITY`.
+  **What stays open on Linux:** the launch shares the host's network
+  namespace, so an abstract-namespace unix socket stays reachable — a
+  session bus started by `dbus-launch` (non-systemd desktops), an X11
+  display's abstract socket (which refuses without the hidden cookie) — as
+  does a filesystem socket under `HOME` outside the credential table.
+  Closing those takes a private network namespace with an egress proxy,
+  which verdict does not do yet.
+- **Mach services (macOS).** Every Mach service lookup is denied but a short
+  allowlist: user and group lookups (`opendirectoryd.libinfo`), certificate
+  trust (`trustd.agent`), and the system proxy and resolver settings
+  (`SystemConfiguration` `configd` and `DNSConfiguration`); `claude`, whose
+  login is the keychain, also gets the keychain brokers (`SecurityServer`,
+  `securityd.xpc`). That closes preference writes through cfprefsd (a
+  `defaults write` into another app's plist), the pasteboard, the keychain
+  for every other agent, LaunchServices' database (`lsregister` of a planted
+  app), login items, the window server (synthetic input), and Shortcuts;
+  LaunchServices launches, AppleEvents, launchd jobs, and signals to
+  processes outside the sandbox are denied too.
+- **Terminals.** A review launch cannot push input into your terminal
+  (`TIOCSTI`, which your shell would run once verdict exits): it starts in a
+  session of its own, with no controlling terminal (`--new-session` under
+  `bwrap`, a new session on macOS), and the macOS profile also denies every
+  read, write, and ioctl on `/dev/tty` and `/dev/ttys*`. A TLS client that loads its
+  roots from the keychain (codex's) gets `SSL_CERT_FILE=/etc/ssl/cert.pem`
+  unless you set one: a corporate root that lives only in your keychain
+  must be in the bundle you point `SSL_CERT_FILE` at.
+
+A row's state paths come in two cited lists, each read from the CLI's docs or
+observed from the real CLI. **Writable** paths are data nothing trusts later —
+logs, caches, its login's token refresh — and are the only paths beside its
+snapshot it may write. **Read-only** paths are everything a later session
+loads as instructions or code: settings, plugins, extensions, hooks, agent
+definitions, MCP config, managed tools, sourced shell state — and also the
+data a later session trusts: saved sessions it resumes, todos and file
+history, memory, cached configuration, shadow git repositories. Every one is
+denied writes explicitly (a Seatbelt denial, a read-only bind), so a
+prompt-injected review cannot plant anything that persists past the sandbox.
+No row but `claude` may write anything under your real `HOME`; the others
+get a throwaway home instead. Every review launch of these rows — in
+verdict's sandbox, in the agent's own, or opted out — points the variable at
+a fresh directory in its private `TMPDIR`, seeded with copies of a few files
+from the real one, each read through a root handle without following a link
+(a real directory reached through a symlink, or a seed that is a link, not a
+regular file, or over 1 MiB, refuses the launch). Everything it writes there
+goes with the launch, including a token it refreshes:
+
+- `opencode`: `XDG_DATA_HOME` and `XDG_STATE_HOME`, seeded with its logins
+  (`opencode/auth.json`, `opencode/mcp-auth.json`); its database, snapshot and
+  repos shadow repositories (a planted git config there would run on your
+  next opencode session), and logs land there. Its config stays where it is.
+- `codex`: `CODEX_HOME`, seeded with `auth.json` and `config.toml` cut down
+  to its model, provider, and connection keys (`model`, `model_provider`,
+  the reasoning and verbosity settings, `forced_login_method`,
+  `chatgpt_base_url`, and each `[model_providers.<id>]` table's `name`,
+  `base_url`, `env_key`, `wire_api`, headers, query parameters, retries, and
+  timeouts). Your MCP servers, `notify` and hook commands, profiles,
+  features, project trust, and sandbox settings are dropped — codex starts
+  MCP servers outside every sandbox, and a `-c` override cannot clear them.
+  Its
+  cache (MCP tool schemas, the plugin catalog), scratch (plugin and git
+  staging), `tmp/arg0*` (the PATH shims of your running sessions), sessions,
+  goals, and memories all land there; no plugin, skill, prompt, rule, or
+  `AGENTS.md` of yours is loaded. Its review launches also carry
+  `--ephemeral`.
+- `pi`: `PI_CODING_AGENT_DIR`, seeded with `auth.json` (whose `!command`
+  values run, so no review may write the real one), `models.json`, and
+  `settings.json` cut down to its model and network keys
+  (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`,
+  `modelThinkingLevels`, `enabledModels`, `thinkingBudgets`, `transport`,
+  `retry`, `httpProxy`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`,
+  `websockets`, `cacheWarming`, `compaction`). A review loads none of your
+  pi extensions, packages, skills, prompts, or themes — third-party code a
+  review does not need — and no shell, editor, npm, or session setting. Its
+  review launches also carry `--no-session`.
+
+`claude` keeps its real config directory, because a per-launch one would lose
+its macOS keychain login, so it alone writes real state:
+
+- `claude` may write only its launch's own project directory,
+  `~/.claude/projects/<the working directory's real path, every character but
+an ASCII letter or digit a dash>`, made before the launch with its `memory`
+  read-only and removed after it (without following any link inside); a path
+  whose name would pass 200 characters, which claude shortens with a hash of
+  its own, gets none. `~/.claude/projects` itself, every other project, and
+  claude's sessions, todos, file history, backups, cache, and feature-gate
+  cache are read-only.
+
+A relocation variable moves the paths under its root (a relative value
+resolves where verdict runs); an entry ending in `*` names files of its
+directory that start with the rest. Each writable directory is created before
+the launch and pinned: the agent may write anything below it but cannot
+remove or rename the directory itself, so it cannot swap one for a link
+between launches. The directories a CLI makes at startup under read-only state
+(opencode's `~/.cache/opencode/bin`) are created empty, and one that cannot be
+made as a directory of its own refuses the launch. A state path that is a
+link, or reaches its target through one below `HOME` or its relocation root
+(a dotfile manager's), refuses, as does a relocation root that is a link,
+`/`, `HOME` itself, or an ancestor of `HOME` (`CLAUDE_CONFIG_DIR=$HOME`,
+`XDG_DATA_HOME=$HOME`), and a state path that holds a credential location
+other than the agent's own login or sits inside one; the check runs again
+before every launch. On Linux `bwrap` binds a writable file as itself, so a
+CLI that saves it by writing a sibling and renaming it over the original
+cannot save it there; one that writes in place can (`claude`'s Linux login,
+`.credentials.json`, is such a file). `claude` reaches its API with
+`~/.claude.json` and every config path read-only, and its own scratch
+directory (`CLAUDE_CODE_TMPDIR`, otherwise `/tmp/claude-<uid>`) follows the
+launch's `TMPDIR`. An agent binary in a hidden root itself (`/tmp/agent`) is
+made readable alone, by its path and the file it resolves to, never its
+directory.
+
+| Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                                                                                  | Relocated by                                                           | Source                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after                                                                   | `CLAUDE_CONFIG_DIR` (for `.claude`)                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
+| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`'s model and provider keys; `--ephemeral`                    | `CODEX_HOME`                                                           | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
+| `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its private `TMPDIR`, seeded with its logins                                                           | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
+| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
+
+`codex`'s read-only list applies only when your `--` decides its permissions;
+otherwise it runs in its own sandbox (below), still with its throwaway
+`CODEX_HOME`. An opencode provider it has not installed yet is read-only in the
+sandbox; run opencode once outside verdict to install it, or pass
+`--allow-unsandboxed-review` on `run` or `loop`.
+
+Every other row declares none: in the sandbox it writes only its snapshot
+(with its private `TMPDIR`), so it cannot save its own login or sessions, and
+`run` says so in a warning, naming `--allow-unsandboxed-review` on the verbs
+that offer it; an agent you define in prefs declares its own writable data
+paths as `agents.<name>.state_locations` (see
+[Operator-defined agents](#operator-defined-agents)).
+
+`codex` keeps its own sandbox instead: its review launch already runs
+`--sandbox workspace-write`, whose Seatbelt profile cannot nest inside
+verdict's on macOS, so verdict does not wrap it. codex confines its writes —
+its shell included — to the snapshot, but nothing hides the credential table
+from its reads, and `run` warns so. Your own flags after `--` that decide its
+sandbox — `-s`/`--sandbox` in any spelling (`-sdanger-full-access`
+included), `-c`/`--config`, `-p`/`--profile`, `--full-auto`, and the rest —
+drop codex's sandbox, and the launch takes verdict's instead; so do
+`--enable`/`--disable`, `--remote` (an app server outside any sandbox),
+`--trust`, and `-o`/`--output-last-message`. On macOS codex's own sandbox
+then fails nested inside verdict's, and `run` warns: pass
+`--sandbox danger-full-access` after `--` so verdict's sandbox alone confines
+it. codex's own sandbox also gets
+`-c sandbox_workspace_write.writable_roots=[]`, so a writable root in your
+`config.toml` cannot widen it past the snapshot.
+
+`pi`'s review launches carry `--no-approve`: pi ignores the reviewed tree's
+project-local extensions, settings, and MCP servers without asking (and
+without taking its trust lock in `~/.pi/agent`); `--approve`, `-a`,
+`--no-approve`, `-na`, `--mcp-project-servers`, `--no-session`, and
+`--session-dir` after `--` refuse `bad-flags` on a review launch unless
+`--allow-shell` is set. codex's `--ephemeral` is verdict's the same way, and
+codex's review-owned flags (`-C`/`--cd`, `--worktree`, `--approve-for-me`,
+`--dangerously-bypass-hook-trust`, `--ephemeral`, `--ignore-user-config`),
+which `--allow-shell` lets
+through, count as your `--` deciding its permissions.
+
+`claude`'s review launches pin `--permission-mode default`, so no
+`defaultMode` in your settings widens what its tools may write.
+
+A sandbox policy that cannot be built refuses the launch
+(`review-sandbox-unavailable`), whatever the agent: a state path or root that
+fails the checks above, an unset or relative `HOME`, a credential location
+that holds the reviewed tree, a path the profile cannot spell. With no
+sandbox at all — Windows, Linux without `bwrap`, a probe that fails (Ubuntu
+24.04 restricts the unprivileged user namespaces `bwrap` needs unless
+`kernel.apparmor_restrict_unprivileged_userns=0`) — `claude` (shell denied,
+write grant scoped to the bundle) and `codex` (its own sandbox) still run, warned
+that their reads are not confined; every other agent refuses
+`review-sandbox-unavailable` before it starts, as does `claude` with
+`--allow-shell`, your own permission flags, or any allow rule for a write
+tool (`Write`, `Edit`, `MultiEdit`, `NotebookEdit`, whatever path it names)
+in your own Claude settings — settings that cannot be parsed, and a `HOME`
+that is unset or relative, count too. `--allow-unsandboxed-review` (on `run` and
+`loop`) runs every review launch without the sandbox, warned — the operator's
+choice for a pull request they trust. Without the sandbox only `claude` (its
+scoped `Edit` grant, its shell denied, and only while your own Claude settings allow no write tool, which `--allow-unsandboxed-review` does not check: an `Edit` allow
+rule there lets an opted-out claude write outside its copy too) and `codex`
+(its own workspace sandbox) are kept in their copy by their own tools; the opt-out accepts that
+any other agent can climb out with `..` or an absolute path and write outside
+its copy — a sibling launch's live copy (forging the artifact it hands back),
+your checkout, anything your user can write — and read your credential files.
+`demo`, `drain`, and `backtest` have no opt-out. `loop --no-sandbox` is
+verify's alone and never touches the review. Every launch through verdict's
+own process runners is sandboxed; only a test double that says it simulates
+its processes is not. The sandbox is probed once per execution, before any
+agent starts; `--print` probes nothing and reports the posture a launch would
+take in `data.sandbox` (`mechanism`: `sandbox-exec`, `bwrap`, or `none`;
+`posture`: `sandboxed`, `self-sandboxed`, `unsandboxed`, or `unavailable`;
+and the `wrapper` argv with `{snapshot}` standing for the per-launch
+directory), as `loop --print` does for each review step in `plan[].sandbox`.
+Every review launch runs the agent binary `run` resolved, by its absolute
+path, so neither the wrapper nor a bare launch resolves the name again
+against a `PATH` that may reach into the snapshot. The loop's fix spawn is
+never sandboxed: editing your checkout is its job.
 
 ### Review write grant
 
@@ -4488,7 +4746,8 @@ and `agents`:
       "model_flag": "--model",
       "install": "brew install local-agent",
       "probe_args": ["ask", "--help"],
-      "probe_match": "ask"
+      "probe_match": "ask",
+      "state_locations": [".local-agent", ".local-agent.json*"]
     }
   }
 }
@@ -4497,7 +4756,15 @@ and `agents`:
 `binary` is required and is either a name resolved on `PATH` or an absolute
 path; `args` defaults to `[]`, and the other fields are optional strings.
 `probe_match` is required when `probe_args` is set, and both use the same
-identity check as the shipped rows.
+identity check as the shipped rows. `state_locations` (a shipped row's writable
+state paths; the settings scanner refuses any key holding `pat`) lists where the
+agent keeps its own data — sessions, logs, its login's token refresh — relative
+to `HOME` in slash form (a trailing `*` names a prefix): the only paths besides
+its snapshot and `TMPDIR` it may write in the [review sandbox](#review-sandbox).
+List data only: a config file or plugin directory listed here is one a
+prompt-injected review could change for the agent's next run. Each must be a clean path below
+`HOME` (an absolute path, `..`, or `HOME` itself refuses `bad-settings`), and
+one that overlaps the credential table makes the sandbox unavailable at launch.
 A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.
 Unknown keys at any level, a blank binary, a relative binary containing a path
 separator, a bad name, and a collision all refuse `bad-settings` naming the
@@ -8011,7 +8278,12 @@ write `review.json`: it runs in `run`'s disposable review snapshot (see
 and carries `run`'s review write grants — `claude`'s scoped `Edit` rule,
 `codex`'s `--sandbox workspace-write` inside the snapshot. Any other agent's
 review writes with whatever its own default mode allows, and only its
-expected artifacts come back. Arguments after `--` (`verdict loop owner/repo
+expected artifacts come back. The review also runs in `run`'s OS
+[review sandbox](#review-sandbox), with the same fallback and refusal;
+`--allow-unsandboxed-review` runs it without, as on `run`, and appears in the
+review step of `--print`'s plan, whose `sandbox` object names the posture and
+wrapper. `--no-sandbox` is verify's alone, and the fix spawn is never
+sandboxed: editing the working tree is its job. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
 grant. They also reach the review of untrusted content, so they are an
 allowlist, not a denylist: only the agent row's model flag with one value

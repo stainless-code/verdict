@@ -237,3 +237,7 @@ func assertReplayedWarnings(t *testing.T, warnings []string) {
 		t.Fatalf("warnings[1] = %q, want the second finder's", warnings[1])
 	}
 }
+
+// SimulatesProcesses marks a test double: it starts no host process,
+// so no review launch through it is OS-sandboxed.
+func (*barrierCommander) SimulatesProcesses() bool { return true }

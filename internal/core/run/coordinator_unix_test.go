@@ -16,18 +16,26 @@ import (
 func TestCoordinatorOfflineLauncherSkipsEmptyCrossBatches(t *testing.T) {
 	t.Parallel()
 	req, commander := coordinatorFixture(t)
-	count := filepath.Join(t.TempDir(), "launches")
+	// The finders run in the OS review sandbox: each writes its review
+	// relative to its own view, and the launch counter lands in claude's
+	// debug directory under the fixture's HOME.
+	home := t.TempDir()
+	count := filepath.Join(home, ".claude", "debug", "launches")
+	if err := os.MkdirAll(filepath.Dir(count), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	script := "#!/bin/sh\nset -eu\n" +
 
 		"case \"$*\" in\n" +
-		" *x-finder-1*) output=" + shellLiteral(filepath.Join(commander.dir, "x-finder-1", "review.json")) + "; marker=first ;;\n" +
-		" *x-finder-2*) output=" + shellLiteral(filepath.Join(commander.dir, "x-finder-2", "review.json")) + "; marker=second ;;\n" +
+		" *x-finder-1*) output=.verdict/state/42/x-finder-1/review.json; marker=first ;;\n" +
+		" *x-finder-2*) output=.verdict/state/42/x-finder-2/review.json; marker=second ;;\n" +
 		" *) exit 91 ;;\nesac\n" +
 		"printf '%s\\n' \"$marker\" >> " + shellLiteral(count) + "\n" +
 		"printf '%s' " + shellLiteral(`{"schema_version":"1","findings":[],"summary":"All changed hunks reviewed.",`+fixtureReceipts+`}`) + " > \"$output\"\n"
 	bin := plantStub(t, "claude", script)
 	req.Commander = stubCommander{inner: coreexec.Watchdog{}, name: "claude", bin: bin}
-	req.LookPath = func(string) (string, error) { return bin, nil }
+	req.LookPath = hostLook(bin)
+	req.Environ = append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH"))
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}

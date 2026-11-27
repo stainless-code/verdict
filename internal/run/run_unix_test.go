@@ -133,9 +133,21 @@ func (f *fixture) plantAs(t *testing.T, binary, mode string) string {
 	if err := os.Symlink(exe, filepath.Join(f.bin, binary)); err != nil {
 		t.Fatalf("link the fake agent: %v", err)
 	}
-	argvFile := filepath.Join(t.TempDir(), "argv")
+	// The launch runs in the OS review sandbox, which lets an agent write only
+	// its snapshot, its TMPDIR, and its own data paths: claude's argv log
+	// lands in its debug directory under the fixture's HOME, and the review
+	// goes where a real agent writes it, relative to its snapshot working
+	// directory.
+	stateDir := filepath.Join(os.Getenv("HOME"), "."+binary)
+	if binary == "claude" {
+		stateDir = filepath.Join(stateDir, "debug")
+	}
+	if err := os.MkdirAll(stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	argvFile := filepath.Join(stateDir, "argv")
 	t.Setenv("FAKE_ARGV", argvFile)
-	t.Setenv("FAKE_ARTIFACT", filepath.Join(f.dir, "review.json"))
+	t.Setenv("FAKE_ARTIFACT", filepath.Join(".verdict", "state", f.slug, "review.json"))
 	t.Setenv(fakeModeEnv, mode)
 	t.Setenv("PATH", f.bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return argvFile
@@ -187,10 +199,13 @@ func copyReview() int {
 	return 0
 }
 
-// writeReviewSrc plants the review the fake agent copies into the bundle.
+// writeReviewSrc plants the review the fake agent copies into the bundle,
+// beside the fake agent itself: the review sandbox lets it read its own
+// binary's directory, while on Linux it hides the rest of /tmp, the
+// fixture's checkout included.
 func (f *fixture) writeReviewSrc(t *testing.T) {
 	t.Helper()
-	path := filepath.Join(f.dir, "..", "review-src.json")
+	path := filepath.Join(f.bin, "review-src.json")
 	writeFile(t, path, validReview)
 	t.Setenv("FAKE_REVIEW_SRC", path)
 }
@@ -291,7 +306,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --strict-mcp-config --permission-mode default --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -375,9 +390,16 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 		t.Fatalf("run exit = %d: %s", code, errOut)
 	}
 	argv := readArgv(t, argvFile)
+	// A sandboxed launch runs the resolved binary, so the child's argv[0] is
+	// the planted path (a host with no review sandbox spawns the bare name);
+	// every argument after it is byte-for-byte the render.
+	if resolved := filepath.Join(f.bin, "claude"); argv[0] != resolved && argv[0] != "claude" {
+		t.Errorf("spawned argv[0] = %q, want %q or the bare name", argv[0], resolved)
+	}
+	argv[0] = "claude"
 	assertPrintedMatchesSpawned(t, printed, argv)
 	assertArgvPrefix(t, argv, []string{
-		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--strict-mcp-config", "--allowedTools=Edit(./.verdict/state/local-work/**)",
+		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--strict-mcp-config", "--permission-mode", "default", "--allowedTools=Edit(./.verdict/state/local-work/**)",
 		"--model", "opus",
 	})
 }
@@ -396,8 +418,12 @@ func TestRunRefusalsWithFakeBinaries(t *testing.T) {
 			wantOut: 1,
 		},
 		{
-			name:    "spawn failure",
-			before:  func(t *testing.T, f *fixture) { t.Helper(); f.plantUnrunnable(t) },
+			name:   "spawn failure",
+			before: func(t *testing.T, f *fixture) { t.Helper(); f.plantUnrunnable(t) },
+			// A sandboxed launch spawns the wrapper, which then reports the
+			// agent's exec failure as its own exit; only a bare launch can
+			// fail to spawn the agent itself.
+			args:    []string{"--allow-unsandboxed-review"},
 			want:    "agent-spawn-failed",
 			wantMsg: "could not start agent",
 			wantOut: 1,
@@ -630,9 +656,13 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 
 // TestRunAgyWarnsOnStderrAtLaunch proves `run --agent agy` prints the one-line
 // headless warning on stderr at launch without refusing, and stays silent on
-// --print.
+// --print. agy declares no state paths, so the case opts out of the review
+// sandbox — the same posture on every host — and its warning leads.
 func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
-	const wantLine = "warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
+	const wantLine = "warn: --allow-unsandboxed-review: agy reviews without verdict's OS sandbox — a " +
+		"prompt-injected diff can make it write anywhere you can and read your credentials (~/.ssh, ~/.aws, " +
+		"gh tokens) into review text verdict may post\n" +
+		"warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
 		"and a review runs in a fresh copy outside them, " +
 		"so review.json may never be written; review with claude or codex instead, or opt into a trade-off the manual names " +
 		"(a global agy write rule, or -- --dangerously-skip-permissions, your approval bypass)\n"
@@ -641,7 +671,7 @@ func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 	f.writeReviewSrc(t)
 	f.plantAs(t, "agy", "write")
 
-	code, _, printDiag := runVerb(t, f, "--agent", "agy", "--print")
+	code, _, printDiag := runVerb(t, f, "--agent", "agy", "--allow-unsandboxed-review", "--print")
 	if code != cli.ExitOK {
 		t.Fatalf("--print exit = %d, want 0", code)
 	}
@@ -649,7 +679,7 @@ func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 		t.Errorf("--print stderr = %q, want empty", printDiag)
 	}
 
-	code, out, diag := runVerb(t, f, "--agent", "agy", "--rounds", "1")
+	code, out, diag := runVerb(t, f, "--agent", "agy", "--allow-unsandboxed-review", "--rounds", "1")
 	if code != cli.ExitOK {
 		t.Fatalf("run exit = %d, want 0\nstdout: %s\nstderr: %s", code, out, diag)
 	}

@@ -269,7 +269,13 @@ else
   bad "Action review skill installation failed"
 fi
 
-export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
+# Every review launch runs in the OS review sandbox, which lets the agent
+# write only its snapshot, its private TMPDIR, and its own data paths: the
+# stub's argv log lives in claude's debug directory, relocated into the
+# sandbox by CLAUDE_CONFIG_DIR so the case never touches the real ~/.claude.
+export CLAUDE_CONFIG_DIR="$SANDBOX/claude-state"
+mkdir -p "$CLAUDE_CONFIG_DIR/debug"
+export STUB_AGENT_LOG="$CLAUDE_CONFIG_DIR/debug/agent-argv.log"
 
 # runs the extracted step with the stub agent, the verdict shim, and the stub
 # gh ahead of the system PATH, from the sandbox repo root.
