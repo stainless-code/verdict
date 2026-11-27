@@ -4446,15 +4446,39 @@ data a later session trusts: saved sessions it resumes, todos and file
 history, memory, cached configuration, shadow git repositories. Every one is
 denied writes explicitly (a Seatbelt denial, a read-only bind), so a
 prompt-injected review cannot plant anything that persists past the sandbox.
-The rows that would otherwise need such data writable get it another way:
+No row but `claude` may write anything under your real `HOME`; the others
+get a throwaway home instead. Every review launch of these rows — in
+verdict's sandbox, in the agent's own, or opted out — points the variable at
+a fresh directory in its private `TMPDIR`, seeded with copies of a few files
+from the real one, each read through a root handle without following a link
+(a real directory reached through a symlink, or a seed that is a link, not a
+regular file, or over 1 MiB, refuses the launch). Everything it writes there
+goes with the launch, including a token it refreshes:
 
-- `opencode` runs with `XDG_DATA_HOME` and `XDG_STATE_HOME` pointed at fresh
-  directories in its launch's wrapper, seeded with copies of its logins
+- `opencode`: `XDG_DATA_HOME` and `XDG_STATE_HOME`, seeded with its logins
   (`opencode/auth.json`, `opencode/mcp-auth.json`); its database, snapshot and
-  repos shadow repositories, and logs land there and go with the wrapper. Its
-  real data and state directories are read-only (a planted git config in a
-  shadow repository would run on your next opencode session), its config
-  stays where it is, and a token refreshed during the review is discarded.
+  repos shadow repositories (a planted git config there would run on your
+  next opencode session), and logs land there. Its config stays where it is.
+- `codex`: `CODEX_HOME`, seeded with `auth.json` and `config.toml`. Its
+  cache (MCP tool schemas, the plugin catalog), scratch (plugin and git
+  staging), `tmp/arg0*` (the PATH shims of your running sessions), sessions,
+  goals, and memories all land there; no plugin, skill, prompt, rule, or
+  `AGENTS.md` of yours is loaded. Its review launches also carry
+  `--ephemeral`.
+- `pi`: `PI_CODING_AGENT_DIR`, seeded with `auth.json` (whose `!command`
+  values run, so no review may write the real one), `models.json`, and
+  `settings.json` cut down to its model and network keys
+  (`defaultProvider`, `defaultModel`, `defaultThinkingLevel`,
+  `modelThinkingLevels`, `enabledModels`, `thinkingBudgets`, `transport`,
+  `retry`, `httpProxy`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`,
+  `websockets`, `cacheWarming`, `compaction`). A review loads none of your
+  pi extensions, packages, skills, prompts, or themes — third-party code a
+  review does not need — and no shell, editor, npm, or session setting. Its
+  review launches also carry `--no-session`.
+
+`claude` keeps its real config directory, because a per-launch one would lose
+its macOS keychain login, so it alone writes real state:
+
 - `claude` may write only its launch's own project directory,
   `~/.claude/projects/<the working directory's real path, every character but
 an ASCII letter or digit a dash>`, made before the launch with its `memory`
@@ -4463,9 +4487,6 @@ an ASCII letter or digit a dash>`, made before the launch with its `memory`
   its own, gets none. `~/.claude/projects` itself, every other project, and
   claude's sessions, todos, file history, backups, cache, and feature-gate
   cache are read-only.
-- `codex` review launches carry `--ephemeral` and `pi`'s `--no-session`, so
-  neither saves a session (verdict resumes none); their sessions, and codex's
-  goals, memories, state stores, history, and models cache, are read-only.
 
 A relocation variable moves the paths under its root (a relative value
 resolves where verdict runs); an entry ending in `*` names files of its
@@ -4490,18 +4511,18 @@ launch's `TMPDIR`. An agent binary in a hidden root itself (`/tmp/agent`) is
 made readable alone, by its path and the file it resolves to, never its
 directory.
 
-| Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                | Relocated by                                                           | Source                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after | `CLAUDE_CONFIG_DIR` (for `.claude`)                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
-| `codex`    | `.codex/` `log`, `logs_*`, `cache`, `tmp`, `.tmp`, `.tmp*`, `installation_id*`, `.sandbox_migration*`, `auth.json*`                        | `.codex/` `config.toml`, `AGENTS.md`, `rules`, `prompts`, `skills`, `plugins`, `packages`, `shell_snapshots`, `sessions`, `archived_sessions`, `sqlite`, `session_index.jsonl`, `state_*`, `goals_*`, `memories*`, `history.jsonl`, `models_cache.json`                                          | `--ephemeral`: no session saved                                           | `CODEX_HOME`                                                           | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
-| `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its wrapper, seeded with its logins  | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
-| `pi`       | `.pi/agent/auth.json*`                                                                                                                     | `.pi/agent/` `sessions`, `settings.json`, `models.json`, `extensions`, `skills`, `prompts`, `themes`, `AGENTS.md`, `mcp.json`, `bin`, `install`, `npm`                                                                                                                                           | `--no-session`: no session saved                                          | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
+| Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                                                                                  | Relocated by                                                           | Source                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after                                                                   | `CLAUDE_CONFIG_DIR` (for `.claude`)                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
+| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`; `--ephemeral`                                              | `CODEX_HOME`                                                           | `CODEX_HOME`                                                                                            |
+| `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its private `TMPDIR`, seeded with its logins                                                           | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
+| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                                                 |
 
-`codex`'s lists apply only when your `--` decides its permissions; otherwise it
-runs in its own sandbox (below). An extension's own data outside these lists —
-a pi extension writing beside `~/.pi/agent`, an opencode provider it has not
-installed yet — is read-only in the sandbox; run the agent once outside verdict
-to install it, or pass `--allow-unsandboxed-review` on `run` or `loop`.
+`codex`'s read-only list applies only when your `--` decides its permissions;
+otherwise it runs in its own sandbox (below), still with its throwaway
+`CODEX_HOME`. An opencode provider it has not installed yet is read-only in the
+sandbox; run opencode once outside verdict to install it, or pass
+`--allow-unsandboxed-review` on `run` or `loop`.
 
 Every other row declares none: in the sandbox it writes only its snapshot
 (with its private `TMPDIR`), so it cannot save its own login or sessions, and

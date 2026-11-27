@@ -71,10 +71,12 @@ func requireReviewSandbox(t *testing.T) {
 // rewrite the operator's checkout, plant a config directory, read a private
 // key into its output, and plant its own config or code (CONFIG_PATHS,
 // colon-separated) that a later run outside the sandbox would load. Each
-// attempt's outcome is printed; its own state write goes to STATE_FILE, or
-// into its ephemeral data home; the review is written where it is owed.
+// attempt's outcome is printed; its own state write goes to STATE_FILE, or to
+// STATE_REL below the throwaway home STATE_VAR names; the review is written
+// where it is owed.
 const escapeScript = "#!/bin/sh\n" +
-	"sf=\"${STATE_FILE:-$XDG_DATA_HOME/opencode/snapshot/x/config}\"; /bin/mkdir -p \"${sf%/*}\"\n" +
+	"if [ -n \"$STATE_VAR\" ]; then sf=\"$(printenv \"$STATE_VAR\")/$STATE_REL\"; else sf=\"$STATE_FILE\"; fi\n" +
+	"/bin/mkdir -p \"${sf%/*}\"\n" +
 	"{ printf 'evil\\n' >> \"$HOME/.zshrc\" && echo zshrc=written || echo zshrc=denied\n" +
 	"  printf 'evil\\n' > \"$CHECKOUT_FILE\" && echo checkout=written || echo checkout=denied\n" +
 	"  /bin/mkdir -p \"$HOME/.config/evil\" && echo config=written || echo config=denied\n" +
@@ -90,32 +92,46 @@ const escapeScript = "#!/bin/sh\n" +
 // agent.
 const privateKeyCanary = "-----BEGIN CANARY PRIVATE KEY----- verdict-review-sandbox"
 
-// escapeRow is one agent's own layout: the state file it may write ("" for
-// its ephemeral data home), planted first so a Linux file bind exists, and
-// the config, code, and trusted data paths a later run would load, which it
-// may not — existing ones planted first, so a denied write leaves them
-// unchanged.
+// escapeRow is one agent's own layout: the real state file it may write
+// (claude's, planted first so a Linux file bind exists) or the throwaway
+// home variable and the path below it that it may write instead; the
+// config, code, and trusted data paths a later run would load, which it may
+// not — existing ones planted first, so a denied write leaves them
+// unchanged; and the operator's `--` arguments, which put codex in
+// verdict's sandbox.
 type escapeRow struct {
 	agent     string
 	state     string
+	stateVar  string
+	stateRel  string
 	otherCred string
 	config    []string
 	planted   []string
+	pass      []string
 }
 
 // escapeRows are the rows with state paths, each with config and plugin
 // paths from its read-only list.
 var escapeRows = []escapeRow{
 	{
-		agent: "pi", state: ".pi/agent/auth.json", otherCred: ".codex/auth.json",
+		agent: "pi", stateVar: "PI_CODING_AGENT_DIR", stateRel: "auth.json", otherCred: ".codex/auth.json",
 		config: []string{
-			".pi/agent/extensions/x.ts", ".pi/agent/settings.json", ".pi/agent/AGENTS.md",
+			".pi/agent/auth.json", ".pi/agent/extensions/x.ts", ".pi/agent/settings.json", ".pi/agent/AGENTS.md",
 			".pi/agent/sessions/x/s.jsonl",
 		},
-		planted: []string{".pi/agent/settings.json"},
+		planted: []string{".pi/agent/auth.json", ".pi/agent/settings.json"},
 	},
 	{
-		agent: "opencode", otherCred: ".pi/agent/auth.json",
+		agent: "codex", stateVar: "CODEX_HOME", stateRel: "auth.json", otherCred: ".pi/agent/auth.json",
+		config: []string{
+			".codex/auth.json", ".codex/config.toml", ".codex/tmp/arg0x/git", ".codex/cache/x", ".codex/.tmp/x",
+			".codex/sessions/x.jsonl",
+		},
+		planted: []string{".codex/auth.json", ".codex/config.toml"},
+		pass:    []string{"--sandbox", "danger-full-access"},
+	},
+	{
+		agent: "opencode", stateVar: "XDG_DATA_HOME", stateRel: "opencode/snapshot/x/config", otherCred: ".pi/agent/auth.json",
 		config: []string{
 			".config/opencode/plugin/x.js", ".config/opencode/opencode.json",
 			".cache/opencode/node_modules/x/index.js", ".local/share/opencode/bin/x",
@@ -167,8 +183,10 @@ func assertEscapeDenied(t *testing.T, row *escapeRow) {
 	}
 	if row.state != "" {
 		env = append(env, "STATE_FILE="+filepath.Join(home, filepath.FromSlash(row.state)))
+	} else {
+		env = append(env, "STATE_VAR="+row.stateVar, "STATE_REL="+row.stateRel)
 	}
-	resp, ref, out := sandboxedRunAs(t, row.agent, root, home, escapeScript, "", env...)
+	resp, ref, out := sandboxedRunWith(t, row.agent, root, home, escapeScript, "", row.pass, env...)
 	if ref != nil {
 		t.Fatalf("review refused: %v", ref)
 	}
@@ -445,10 +463,17 @@ func sandboxedRun(t *testing.T, root, home, script, rounds string, env ...string
 func sandboxedRunAs(t *testing.T, agent, root, home, script, rounds string, env ...string,
 ) (*core.RunResponse, *core.RefusalError, string) {
 	t.Helper()
+	return sandboxedRunWith(t, agent, root, home, script, rounds, nil, env...)
+}
+
+// sandboxedRunWith is sandboxedRunAs with the operator's `--` arguments.
+func sandboxedRunWith(t *testing.T, agent, root, home, script, rounds string, pass []string, env ...string,
+) (*core.RunResponse, *core.RefusalError, string) {
+	t.Helper()
 	bin := plantStub(t, agent, script)
 	host := &capturedHost{}
 	req := request(root, host)
-	req.Agent, req.RoundsRaw = agent, rounds
+	req.Agent, req.RoundsRaw, req.PassThrough = agent, rounds, pass
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	req.Environ = append(append(req.Environ, "HOME="+home, "PATH="+os.Getenv("PATH")), env...)
 	resp, ref := Run(t.Context(), req)
@@ -523,13 +548,13 @@ func TestReviewSandboxStateLinkRefusesTheNextLaunch(t *testing.T) {
 func TestReviewSandboxRefusesALinkedStatePath(t *testing.T) {
 	t.Parallel()
 	home, elsewhere := t.TempDir(), t.TempDir()
-	if err := os.MkdirAll(filepath.Join(home, ".pi"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(elsewhere, filepath.Join(home, ".pi", "agent")); err != nil {
+	if err := os.Symlink(elsewhere, filepath.Join(home, ".claude", "debug")); err != nil {
 		t.Fatal(err)
 	}
-	def, _ := lookupAgent("pi")
+	def, _ := lookupAgent("claude")
 	if _, err := newReviewBox(&def, []string{"HOME=" + home}, nil); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("newReviewBox = %v, want the linked state path refused", err)
 	}

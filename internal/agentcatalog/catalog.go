@@ -2,6 +2,7 @@
 package agentcatalog
 
 import (
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -141,10 +142,10 @@ type Launch struct {
 	// startup and fails without; each is made, empty, before every sandboxed
 	// launch, and stays read-only.
 	StateDirs []string
-	// StateEphemeral are the variables a sandboxed review launch points at a
+	// StateEphemeral are the variables every review launch points at a
 	// throwaway directory in its wrapper instead of the CLI's real one —
-	// for state a later session would trust — each seeded with copies of
-	// the files Seed names below the real one (its login).
+	// for state a later session would trust — each seeded with no-follow
+	// copies of the files Seed names below the real one (its login).
 	StateEphemeral []EphemeralVar
 	// ProjectState is the per-working-directory state the CLI keeps under
 	// one root; a sandboxed review launch may write only its own, made
@@ -187,13 +188,15 @@ type StateVar struct {
 	Root string
 }
 
-// EphemeralVar is one variable a sandboxed review launch points at a
-// throwaway directory: Root is its home-relative default, Seed the files
-// below the real directory copied in first.
+// EphemeralVar is one variable a review launch points at a throwaway
+// directory: Root is its home-relative default, Seed the files below the real
+// directory copied in first, and SeedKeys, for a JSON seed, the top-level
+// keys its copy keeps (every other key dropped).
 type EphemeralVar struct {
-	Name string
-	Root string
-	Seed []string
+	SeedKeys map[string][]string
+	Name     string
+	Root     string
+	Seed     []string
 }
 
 // ProjectState is per-working-directory state: Root is the home-relative
@@ -605,27 +608,19 @@ var catalog = []Agent{
 			Install:        "npm install -g @openai/codex",
 			// CODEX_HOME, ~/.codex by default, holds config.toml, AGENTS.md,
 			// rules, prompts, skills and plugins beside auth.json, sessions,
-			// history and logs. With --ephemeral it needs only its logs,
-			// cache, scratch, installation id, migration marker and login —
-			// verified empirically against the agent's CLI. Used only when
-			// the operator's `--` decides codex's permissions; otherwise
-			// codex runs in its own sandbox.
-			StateWritable: []string{
-				".codex/log", ".codex/logs_*", ".codex/cache", ".codex/tmp", ".codex/.tmp", ".codex/.tmp*",
-				".codex/installation_id*", ".codex/.sandbox_migration*", ".codex/auth.json*",
+			// history and logs — and its cache (MCP tool schemas, the plugin
+			// catalog), scratch (plugin and git staging) and tmp/arg0* (the
+			// PATH shims of running sessions), which later sessions load or
+			// run. So every review launch, its own sandbox or verdict's, gets
+			// a throwaway CODEX_HOME in its wrapper seeded with its login and
+			// config, and the real one is read-only; with --ephemeral it
+			// starts and reaches its API there — verified empirically against
+			// the agent's CLI.
+			StateReadOnly: []string{dirCodex},
+			StateEphemeral: []EphemeralVar{
+				{Name: envCodexHome, Root: dirCodex, Seed: []string{"auth.json", "config.toml"}},
 			},
-			// Read-only, because a later session loads them as instructions
-			// or code: shell_snapshots (sourced scripts), sessions and their
-			// index and state stores (a resumed session's context), goals and
-			// memories (carried into later sessions), the history and the
-			// models cache (model metadata).
-			StateReadOnly: []string{
-				".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-				".codex/plugins", ".codex/packages", ".codex/shell_snapshots", ".codex/sessions",
-				".codex/archived_sessions", ".codex/sqlite", ".codex/session_index.jsonl", ".codex/state_*",
-				".codex/goals_*", ".codex/memories*", ".codex/history.jsonl", ".codex/models_cache.json",
-			},
-			StateEnv:      []StateVar{{Name: "CODEX_HOME", Root: ".codex"}},
+			StateEnv:      []StateVar{{Name: envCodexHome, Root: dirCodex}},
 			StateCitation: docCodexReadme,
 			// workspace-write runs codex's own Seatbelt (macOS) or
 			// Landlock/seccomp (Linux) sandbox, which confines its writes —
@@ -635,8 +630,8 @@ var catalog = []Agent{
 		},
 		Skills: &Skills{
 			Base:     valueHome,
-			Env:      "CODEX_HOME",
-			Parts:    []string{".codex", valueSkills},
+			Env:      envCodexHome,
+			Parts:    []string{dirCodex, valueSkills},
 			Order:    2,
 			Citation: "https://developers.openai.com/codex/skills",
 		},
@@ -1080,13 +1075,21 @@ var catalog = []Agent{
 			// beside settings.json, models.json, extensions, skills, prompts,
 			// themes, AGENTS.md and the managed install (bin, install, npm)
 			// — per its docs, verified empirically against the agent's CLI.
-			// With --no-session only its login is written.
-			StateWritable: []string{".pi/agent/auth.json*"},
-			StateReadOnly: []string{
-				".pi/agent/sessions", ".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions", ".pi/agent/skills",
-				".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
-				".pi/agent/bin", ".pi/agent/install", ".pi/agent/npm",
-			},
+			// auth.json is executable config (a `!command` value runs), so no
+			// review writes it: every review launch gets a throwaway agent
+			// directory in its wrapper seeded with its login, its models, and
+			// the model and network keys of its settings — never extensions,
+			// packages, skills, prompts, themes, or a command or path setting,
+			// third-party code a review does not need.
+			StateReadOnly: []string{".pi"},
+			StateEphemeral: []EphemeralVar{{
+				Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent", Seed: []string{"auth.json", "models.json", "settings.json"},
+				SeedKeys: map[string][]string{"settings.json": {
+					"defaultProvider", "defaultModel", "defaultThinkingLevel", "modelThinkingLevels", "enabledModels",
+					"thinkingBudgets", "transport", "retry", "httpProxy", "httpIdleTimeoutMs",
+					"websocketConnectTimeoutMs", "websockets", "cacheWarming", "compaction",
+				}},
+			}},
 			StateEnv:      []StateVar{{Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent"}},
 			StateCitation: docPiConfig,
 		},
@@ -1196,11 +1199,19 @@ var catalog = []Agent{
 	},
 }
 
+// dirCodex is codex's home directory below HOME, and envCodexHome the
+// variable that relocates it.
+const (
+	dirCodex     = ".codex"
+	envCodexHome = "CODEX_HOME"
+)
+
 // cloneEphemeral copies the ephemeral variables and their seeds.
 func cloneEphemeral(in []EphemeralVar) []EphemeralVar {
 	out := slices.Clone(in)
 	for i := range out {
 		out[i].Seed = slices.Clone(out[i].Seed)
+		out[i].SeedKeys = maps.Clone(out[i].SeedKeys)
 	}
 	return out
 }

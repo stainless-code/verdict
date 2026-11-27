@@ -1121,16 +1121,19 @@ func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string
 	if st.box == nil && core.StartsHostProcesses(st.commander()) {
 		return nil, &core.StartError{Err: errNoBox}
 	}
+	env, err := st.throwawayHomes(&args.def, v, env)
+	if err != nil {
+		return nil, err
+	}
 	if !st.box.sandboxed() {
 		return st.spawnAt(ctx, args.bin, argv, args.timeout, tap, v.cwd, env)
 	}
 	env = hostsandbox.OverrideEnv(env, st.box.trustEnv(env))
-	launch, err := st.box.launch(v.wrapper, v.cwd)
+	launch, err := st.box.launch(v.cwd)
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}
 	}
 	defer st.dropLaunch(launch)
-	env = hostsandbox.OverrideEnv(env, launch.env)
 	wrapped, err := launch.box.wrap(v.wrapper, args.bin, resolvedArgv(args, argv))
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not build its review sandbox (%v) — nothing ran", err)}

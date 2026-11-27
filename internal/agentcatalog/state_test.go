@@ -17,11 +17,6 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 		"claude": {
 			".claude/debug", ".claude/.credentials.json*", "Library/Caches/claude-cli-nodejs", "Library/Keychains",
 		},
-		"codex": {
-			".codex/log", ".codex/logs_*", ".codex/cache", ".codex/tmp", ".codex/.tmp", ".codex/.tmp*",
-			".codex/installation_id*", ".codex/.sandbox_migration*", ".codex/auth.json*",
-		},
-		"pi": {".pi/agent/auth.json*"},
 	}
 	readOnly := map[string][]string{
 		"claude": {
@@ -30,18 +25,9 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/sessions",
 			".claude/todos", ".claude/file-history", ".claude/backups", ".claude/cache", ".claude/statsig",
 		},
-		"codex": {
-			".codex/config.toml", ".codex/AGENTS.md", ".codex/rules", ".codex/prompts", ".codex/skills",
-			".codex/plugins", ".codex/packages", ".codex/shell_snapshots", ".codex/sessions",
-			".codex/archived_sessions", ".codex/sqlite", ".codex/session_index.jsonl", ".codex/state_*",
-			".codex/goals_*", ".codex/memories*", ".codex/history.jsonl", ".codex/models_cache.json",
-		},
+		"codex":    {".codex"},
 		"opencode": {".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode"},
-		"pi": {
-			".pi/agent/sessions", ".pi/agent/settings.json", ".pi/agent/models.json", ".pi/agent/extensions",
-			".pi/agent/skills", ".pi/agent/prompts", ".pi/agent/themes", ".pi/agent/AGENTS.md", ".pi/agent/mcp.json",
-			".pi/agent/bin", ".pi/agent/install", ".pi/agent/npm",
-		},
+		"pi":       {".pi"},
 	}
 	gotW, gotR := collectState(t)
 	if !maps.EqualFunc(gotW, writable, slices.Equal) || !maps.EqualFunc(gotR, readOnly, slices.Equal) {
@@ -132,18 +118,26 @@ func overlapping(w string, readOnly []string) (string, bool) {
 }
 
 // TestTrustedStateIsEphemeralOrScoped pins how the rows whose later
-// sessions trust their own data get any writable data at all: opencode an
-// ephemeral data and state home seeded with its logins, claude only its
-// launch's own project directory with memory read-only.
+// sessions trust their own data get any writable data at all: opencode, codex
+// and pi a throwaway home seeded with their logins (and pi's model settings
+// alone), claude only its launch's own project directory with memory
+// read-only.
 func TestTrustedStateIsEphemeralOrScoped(t *testing.T) {
-	opencode, _ := Lookup("opencode")
-	want := []EphemeralVar{
-		{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
-		{Name: "XDG_STATE_HOME", Root: ".local/state"},
+	want := map[string][]EphemeralVar{
+		"opencode": {
+			{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+			{Name: "XDG_STATE_HOME", Root: ".local/state"},
+		},
+		"codex": {{Name: "CODEX_HOME", Root: ".codex", Seed: []string{"auth.json", "config.toml"}}},
+		"pi":    {{Name: "PI_CODING_AGENT_DIR", Root: ".pi/agent", Seed: []string{"auth.json", "models.json", "settings.json"}}},
 	}
-	if got := opencode.Launch.StateEphemeral; !slices.EqualFunc(got, want, sameEphemeral) {
-		t.Errorf("opencode ephemeral = %+v, want %+v", got, want)
+	for name, vars := range want {
+		a, _ := Lookup(name)
+		if got := a.Launch.StateEphemeral; !slices.EqualFunc(got, vars, sameEphemeral) {
+			t.Errorf("%s ephemeral = %+v, want %+v", name, got, vars)
+		}
 	}
+	checkPiSettingsKeys(t)
 	claude, _ := Lookup("claude")
 	if p := claude.Launch.ProjectState; p == nil || p.Root != ".claude/projects" || p.MaxSlug != 200 ||
 		!slices.Equal(p.ReadOnly, []string{"memory"}) {
@@ -151,13 +145,30 @@ func TestTrustedStateIsEphemeralOrScoped(t *testing.T) {
 	}
 }
 
-// TestOnlyTrustingRowsHaveEphemeralOrProjectState keeps ephemeral homes and
-// per-launch project directories to the rows whose cited layout needs them.
-func TestOnlyTrustingRowsHaveEphemeralOrProjectState(t *testing.T) {
+// checkPiSettingsKeys fails pi's settings seed when it keeps a key that
+// loads code or names a command or path.
+func checkPiSettingsKeys(t *testing.T) {
+	t.Helper()
+	pi, _ := Lookup("pi")
+	keys := pi.Launch.StateEphemeral[0].SeedKeys["settings.json"]
+	banned := []string{
+		"extensions", "packages", "skills", "prompts", "themes", "shellPath", "shellCommandPrefix", "npmCommand",
+		"selfUpdateCommand", "externalEditor", "sessionDir",
+	}
+	if len(keys) == 0 || slices.ContainsFunc(keys, func(k string) bool { return slices.Contains(banned, k) }) {
+		t.Errorf("pi's settings keep %q, want model and network keys alone", keys)
+	}
+}
+
+// TestNoWritableRealHomeStateButClaudes proves no catalog row but claude may
+// write anything under the real HOME: every other row's state is read-only
+// or a throwaway home in its wrapper. claude keeps its debug log, its
+// login's refresh, its CLI cache, and its launch's own project directory,
+// because a per-launch config directory would lose its keychain login.
+func TestNoWritableRealHomeStateButClaudes(t *testing.T) {
 	for _, agent := range All() {
-		if l := agent.Launch; l != nil && !slices.Contains([]string{"opencode", "claude"}, agent.Name) &&
-			(len(l.StateEphemeral) > 0 || l.ProjectState != nil) {
-			t.Errorf("%s declares ephemeral or project state", agent.Name)
+		if l := agent.Launch; l != nil && agent.Name != "claude" && (len(l.StateWritable) > 0 || l.ProjectState != nil) {
+			t.Errorf("%s writes real HOME state: %q (project %+v)", agent.Name, l.StateWritable, l.ProjectState)
 		}
 	}
 }

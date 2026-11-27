@@ -373,9 +373,9 @@ func TestReviewSandboxRefusalNamesTheOptOutOnlyWhereItExists(t *testing.T) {
 // runs, as its launch environment resolves it — not HOME's default.
 func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 	t.Parallel()
-	def, _ := lookupAgent("pi")
+	def, _ := lookupAgent("claude")
 	home := t.TempDir()
-	env := absConfigHomes([]string{"HOME=" + home, "PI_CODING_AGENT_DIR=rel/agent"})
+	env := absConfigHomes([]string{"HOME=" + home, "CLAUDE_CONFIG_DIR=rel/claude"})
 	got, err := stateEntries(&def, home, env, def.StateWritable)
 	if err != nil {
 		t.Fatal(err)
@@ -384,8 +384,8 @@ func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(cwd, "rel", "agent", "auth.json"); got[0].path != want || !got[0].relocated {
-		t.Errorf("pi's login = %s (relocated %v), want %s", got[0].path, got[0].relocated, want)
+	if want := filepath.Join(cwd, "rel", "claude", "debug"); got[0].path != want || !got[0].relocated {
+		t.Errorf("claude's debug = %s (relocated %v), want %s", got[0].path, got[0].relocated, want)
 	}
 }
 
@@ -869,32 +869,128 @@ func TestCodexReviewOwnedFlagsVoidItsOwnSandbox(t *testing.T) {
 	}
 }
 
-// TestEphemeralHomesSitInThePrivateTmp proves the ephemeral homes are made
-// in the launch's private temp directory, seeded through no link, so the
+// TestEphemeralHomesSitInThePrivateTmp proves the throwaway homes are made
+// in the launch's private temp directory and seeded through no link, so the
 // launch never reports them as its own stray writes.
 func TestEphemeralHomesSitInThePrivateTmp(t *testing.T) {
 	t.Parallel()
-	source, wrapper := t.TempDir(), t.TempDir()
-	writeUnder(t, source, filepath.Join("opencode", "auth.json"), "login")
-	if err := os.Symlink(filepath.Join(source, "opencode", "auth.json"),
-		filepath.Join(source, "opencode", "mcp-auth.json")); err != nil {
+	home, tmp := t.TempDir(), t.TempDir()
+	data := filepath.Join(home, ".local", "share")
+	writeUnder(t, data, filepath.Join("opencode", "auth.json"), "login")
+	if err := os.Symlink(filepath.Join(data, "opencode", "auth.json"),
+		filepath.Join(data, "opencode", "mcp-auth.json")); err != nil {
 		t.Fatal(err)
 	}
-	box := &reviewBox{ephemeral: []ephemeralHome{{
-		name: "XDG_DATA_HOME", source: source, seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"},
-	}}}
-	launch, err := box.launch(wrapper, wrapper)
+	def, _ := lookupAgent("opencode")
+	_, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
+	if err == nil || !strings.Contains(err.Error(), "mcp-auth.json") {
+		t.Fatalf("a linked seed = %v, want the launch refused", err)
+	}
+	if err := os.Remove(filepath.Join(data, "opencode", "mcp-auth.json")); err != nil {
+		t.Fatal(err)
+	}
+	env, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
-	dir := filepath.Join(wrapper, privateTmp, "home-xdg_data_home")
-	if !slices.Equal(launch.env, []string{"XDG_DATA_HOME=" + dir}) {
-		t.Errorf("env = %v, want the home in the private tmp", launch.env)
+	dir := filepath.Join(tmp, "home-xdg_data_home")
+	if !slices.Contains(env, "XDG_DATA_HOME="+dir) {
+		t.Errorf("env = %v, want the home in the private tmp", env)
 	}
 	if got, err := os.ReadFile(filepath.Join(dir, "opencode", "auth.json")); string(got) != "login" {
 		t.Errorf("seeded login = %q (%v)", got, err)
 	}
-	if _, err := os.Lstat(filepath.Join(dir, "opencode", "mcp-auth.json")); !os.IsNotExist(err) {
-		t.Errorf("a linked seed was copied (err = %v)", err)
+}
+
+// TestEphemeralSeedRefusesALinkedSource proves seeding refuses a real
+// directory reached through a symlink — opencode's data directory linked to
+// another agent's — whether the link is the directory itself or one above
+// it.
+func TestEphemeralSeedRefusesALinkedSource(t *testing.T) {
+	t.Parallel()
+	for _, link := range []string{
+		filepath.Join(".local", "share", "opencode"), filepath.Join(".local", "share"),
+	} {
+		home, other := t.TempDir(), t.TempDir()
+		writeUnder(t, other, "auth.json", "another agent's login")
+		writeUnder(t, other, filepath.Join("opencode", "auth.json"), "another agent's login")
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(home, link)), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(other, filepath.Join(home, link)); err != nil {
+			t.Fatal(err)
+		}
+		def, _ := lookupAgent("opencode")
+		if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, t.TempDir()); err == nil {
+			t.Errorf("seeding through a linked %s passed", link)
+		}
+	}
+}
+
+// TestEphemeralSeedRefusesALinkedRelocation proves a relocation variable
+// that names a symlink refuses, rather than seeding from wherever it points.
+func TestEphemeralSeedRefusesALinkedRelocation(t *testing.T) {
+	t.Parallel()
+	home, target := t.TempDir(), t.TempDir()
+	linked := filepath.Join(home, "codex-link")
+	if err := os.Symlink(target, linked); err != nil {
+		t.Fatal(err)
+	}
+	def, _ := lookupAgent("codex")
+	if _, err := ephemeralEnv(&def, []string{"HOME=" + home, "CODEX_HOME=" + linked}, t.TempDir()); err == nil {
+		t.Error("a linked CODEX_HOME passed")
+	}
+}
+
+// TestPiSeedKeepsNoExtensionOrCommand proves pi's throwaway agent directory
+// gets its login and models as they are, and its settings with only the
+// model and network keys: no extension, package, skill, or command setting
+// reaches a review.
+func TestPiSeedKeepsNoExtensionOrCommand(t *testing.T) {
+	t.Parallel()
+	home, tmp := t.TempDir(), t.TempDir()
+	agent := filepath.Join(".pi", "agent")
+	writeUnder(t, home, filepath.Join(agent, "auth.json"), `{"k":"login"}`)
+	writeUnder(t, home, filepath.Join(agent, "settings.json"),
+		`{"defaultModel":"m","extensions":["/x.ts"],"packages":["npm:x"],"shellPath":"/bin/evil","npmCommand":["x"]}`)
+	writeUnder(t, home, filepath.Join(agent, "extensions", "x.ts"), "code")
+	def, _ := lookupAgent("pi")
+	if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(tmp, "home-pi_coding_agent_dir")
+	if got, err := os.ReadFile(filepath.Join(dir, "settings.json")); string(got) != `{"defaultModel":"m"}` {
+		t.Errorf("seeded settings = %s (%v), want the model key alone", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "auth.json")); string(got) != `{"k":"login"}` {
+		t.Errorf("seeded login = %s (%v)", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(dir, "extensions")); !os.IsNotExist(err) {
+		t.Errorf("extensions reached the throwaway home (err = %v)", err)
+	}
+}
+
+// TestEveryReviewLaunchGetsItsThrowawayHome proves a row's throwaway homes
+// apply to every review launch, not only to one verdict's sandbox wraps:
+// codex in its own sandbox gets its CODEX_HOME in the launch's private
+// TMPDIR, as pi does under the opt-out.
+func TestEveryReviewLaunchGetsItsThrowawayHome(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		look        func(string) (string, error)
+		agent, name string
+		optOut      bool
+	}{
+		{agent: "codex", name: "CODEX_HOME", look: lookEverything},
+		{agent: "pi", name: "PI_CODING_AGENT_DIR", look: lookNoSandbox, optOut: true},
+	} {
+		req, cmdr := sandboxRequest(t, tc.agent, tc.look)
+		req.AllowUnsandboxedReview = tc.optOut
+		runBoxed(t, req)
+		value := hostsandbox.EnvLookup(cmdr.cmd.Env, tc.name)
+		tmp := hostsandbox.EnvLookup(cmdr.cmd.Env, "TMPDIR")
+		if tmp == "" || value != filepath.Join(tmp, "home-"+strings.ToLower(tc.name)) {
+			t.Errorf("%s: %s = %q, want a home in the launch's TMPDIR %q", tc.agent, tc.name, value, tmp)
+		}
 	}
 }

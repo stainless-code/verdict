@@ -175,7 +175,6 @@ type reviewBox struct {
 	state       []statePath
 	readOnly    []statePath
 	dirs        []statePath
-	ephemeral   []ephemeralHome
 	operator    bool
 }
 
@@ -187,15 +186,6 @@ type statePath struct {
 	base      string
 	prefix    bool
 	relocated bool
-}
-
-// ephemeralHome is one variable a sandboxed launch points at a throwaway
-// directory in its wrapper, and the real directory its seeds are copied
-// from.
-type ephemeralHome struct {
-	name   string
-	source string
-	seed   []string
 }
 
 // sandboxed reports whether launches are wrapped.
@@ -560,55 +550,19 @@ func absConfigHomes(env []string) []string {
 }
 
 // launchBox is one launch's sandbox: the execution's box with the launch's
-// own project directory added, the environment pointing the row's ephemeral
-// homes into its wrapper, and the project directory verdict made, removed
-// after the launch.
+// own project directory added, and the project directory verdict made,
+// removed after the launch.
 type launchBox struct {
 	box      *reviewBox
 	projects string
 	made     string
-	env      []string
 }
 
-// seedCap bounds one seed file copied into an ephemeral home, and seedMode
-// is its copy's mode: a login, the owner's alone.
-const (
-	seedCap  = 1 << 20
-	seedMode = 0o600
-)
-
-// launch prepares one sandboxed launch in wrapper with its working directory
-// cwd: each ephemeral home made in the wrapper's private temp directory —
-// verdict's own, never reported as the agent's stray writes — and seeded,
-// and the launch's own project directory (launchProject).
-func (b *reviewBox) launch(wrapper, cwd string) (*launchBox, error) {
+// launch prepares one sandboxed launch with its working directory cwd: the
+// launch's own project directory (launchProject).
+func (b *reviewBox) launch(cwd string) (*launchBox, error) {
 	out := &launchBox{box: b}
-	for _, e := range b.ephemeral {
-		dir := filepath.Join(wrapper, privateTmp, "home-"+strings.ToLower(e.name))
-		if err := os.MkdirAll(dir, viewDirMode); err != nil {
-			return nil, jq.Sealed("make an ephemeral home", err)
-		}
-		for _, rel := range e.seed {
-			seedFile(filepath.Join(e.source, filepath.FromSlash(rel)), filepath.Join(dir, filepath.FromSlash(rel)))
-		}
-		out.env = append(out.env, e.name+inlineValue+dir)
-	}
 	return out, b.launchProject(out, cwd)
-}
-
-// seedFile copies one regular file into an ephemeral home, never through a
-// link; a missing, linked, or oversized one is left out.
-func seedFile(src, dst string) {
-	info, err := os.Lstat(src)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > seedCap {
-		return
-	}
-	raw, err := os.ReadFile(src)
-	if err != nil || os.MkdirAll(filepath.Dir(dst), viewDirMode) != nil {
-		return
-	}
-	// dst is a catalog-cited seed joined under the launch's own wrapper.
-	_ = os.WriteFile(dst, raw, seedMode) //nolint:errcheck,gosec // best effort: an unseeded home starts logged out
 }
 
 // launchProject makes the launch's own project directory — the one the CLI
@@ -1118,8 +1072,8 @@ func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewB
 	return box, box.checkState()
 }
 
-// resolveState resolves the row's state lists, its ephemeral homes, and its
-// project root under HOME.
+// resolveState resolves the row's state lists and its project root under
+// HOME.
 func (b *reviewBox) resolveState(def *agentcatalog.Launch, env []string) error {
 	var err error
 	if b.state, err = stateEntries(def, b.home, env, def.StateWritable); err != nil {
@@ -1131,20 +1085,7 @@ func (b *reviewBox) resolveState(def *agentcatalog.Launch, env []string) error {
 	if b.dirs, err = stateEntries(def, b.home, env, def.StateDirs); err != nil {
 		return err
 	}
-	b.resolveEphemeral(def, env)
 	return b.resolveProject(def, env)
-}
-
-// resolveEphemeral names the real directory each ephemeral home is seeded
-// from: the variable's absolute value, else its home-relative default.
-func (b *reviewBox) resolveEphemeral(def *agentcatalog.Launch, env []string) {
-	for _, v := range def.StateEphemeral {
-		source := filepath.Join(b.home, filepath.FromSlash(v.Root))
-		if value := hostsandbox.EnvLookup(env, v.Name); filepath.IsAbs(value) {
-			source = filepath.Clean(value)
-		}
-		b.ephemeral = append(b.ephemeral, ephemeralHome{name: v.Name, source: source, seed: v.Seed})
-	}
 }
 
 // resolveProject resolves the row's project root like its state.

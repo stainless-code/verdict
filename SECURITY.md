@@ -128,19 +128,23 @@ In scope (highest priority first):
   its processes skips it. On macOS the launch runs under `sandbox-exec` with
   a generated profile, on Linux under `bwrap`; the network stays open so the
   agent reaches its model API. A review agent can write only its launch's
-  snapshot directory (its working copy, private `TMPDIR`, and opencode's
-  ephemeral data and state homes, seeded with copies of its logins), its own
-  cited data paths that nothing trusts later (logs, caches, its login's
-  token refresh — such as `~/.claude/debug`, `~/.pi/agent/auth.json`),
-  claude's own launch's `~/.claude/projects/<slug>` (made before the launch
-  and removed after), and the devices a process needs; it cannot write
+  snapshot directory (its working copy, private `TMPDIR`, and the throwaway
+  homes opencode, codex and pi get there — `XDG_DATA_HOME`/`XDG_STATE_HOME`,
+  `CODEX_HOME`, `PI_CODING_AGENT_DIR` — seeded with no-follow copies of
+  their logins and model configuration, for every review launch, sandboxed or
+  not), and, for claude alone, its debug log, its login's token refresh, its
+  CLI cache, and its launch's own `~/.claude/projects/<slug>` (made before
+  the launch and removed after), and the devices a process needs; no other
+  row writes anything under the real `HOME`. It cannot write
   anything a later session loads as instructions or code or trusts
   (`~/.claude.json`, claude's settings, hooks, plugins, shell snapshots,
   sessions, todos, file history, backups and caches, every project's memory
-  and every other project, codex's shell snapshots, sessions, goals and
-  memories, `~/.config/opencode`, opencode's real data and state directories
-  — its shadow git repositories, database, managed tools and packages — and
-  pi's sessions, extensions and settings), any other dotfile in `HOME`, the rest of
+  and every other project, all of `~/.codex` — its login, config, cache,
+  scratch, `tmp/arg0*` PATH shims, sessions, goals and memories —
+  `~/.config/opencode`, opencode's real data and state directories — its
+  shadow git repositories, database, managed tools and packages — and all
+  of `~/.pi`, including `auth.json`, whose `!command` values run), any other
+  dotfile in `HOME`, the rest of
   `~/.config`, the operator's checkout, the execution's shared snapshot, or
   another launch's snapshot directory, and it cannot replace a data
   directory with a link (its own entry is pinned, a linked state path
@@ -167,9 +171,9 @@ In scope (highest priority first):
   outside a hidden temp root too); on Linux the network namespace is the
   host's, so an abstract-namespace unix socket (a `dbus-launch` session bus,
   an X11 display without its cookie) and a filesystem socket under `HOME`
-  outside the table stay reachable; an agent's own data paths stay
-  writable, so it can alter its own logs, caches, or token store, though
-  nothing a later session loads or trusts; the review shell is denied by flags only for
+  outside the table stay reachable; claude's own data paths stay writable,
+  so it can alter its own logs, CLI cache, or token store, though nothing a
+  later session loads or trusts; the review shell is denied by flags only for
   `claude`, `bob`, and `pi` — every other row's agent has a live shell
   inside the sandbox. `codex` runs in its own `--sandbox workspace-write`
   sandbox instead of verdict's — a nested Seatbelt profile fails on macOS —
