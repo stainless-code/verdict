@@ -822,9 +822,18 @@ func TestLoopRetriesAnAgentThatRejectsTheUsageFlag(t *testing.T) {
 // file it names.
 func TestLoopFixRefusesALinkedPatchFile(t *testing.T) {
 	t.Parallel()
+	assertFixRefusesPlanted(t, func(dir string) error {
+		return os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(dir, patchFile))
+	})
+}
+
+// assertFixRefusesPlanted plants one entry in a fresh round bundle, then
+// proves the fix phase refuses artifact-path-unsafe without spawning.
+func assertFixRefusesPlanted(t *testing.T, plant func(dir string) error) {
+	t.Helper()
 	dir := t.TempDir()
-	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere"), filepath.Join(dir, patchFile)); err != nil {
-		t.Fatalf("symlink: %v", err)
+	if err := plant(dir); err != nil {
+		t.Fatalf("plant: %v", err)
 	}
 	agent := &agentCommander{t: t}
 	repo := t.TempDir()

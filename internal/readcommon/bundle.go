@@ -690,19 +690,26 @@ func IsFile(path string) bool {
 // or verdict is about to write.
 const CodeArtifactUnsafe = "artifact-path-unsafe"
 
-// RefuseArtifactLinks refuses when any of names under dir is a symlink. Each
-// is a path verdict or its agent writes or reads back inside the bundle; a
-// checked-in link there (`review.json -> ../../../src/main.go`) would carry
-// the agent's scoped write onto the file it names. An absent path is fine:
-// the writer creates it. The refusal names the path relative to root, the
-// repository, in slash form, as every bundle refusal does.
-func RefuseArtifactLinks(root, dir string, names ...string) *core.RefusalError {
+// RefuseUnsafeArtifacts refuses when any of names under dir is unsafe the way
+// the bundle walk judges an entry: a symlink, a non-regular file, or (on
+// unix) a regular file with a second hard link. Each is a path verdict or its
+// agent writes or reads back inside the bundle; a checked-in link there
+// (`patch.json -> ../../../src/main.go`, or a hard link to a source file)
+// would carry the agent's write, or verdict's read, onto the file it names.
+// An absent path is fine: the writer creates it. The refusal names the path
+// relative to root, the repository, in slash form, as every bundle refusal
+// does.
+func RefuseUnsafeArtifacts(root, dir string, names ...string) *core.RefusalError {
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		if info, err := os.Lstat(path); err == nil && info.Mode()&fs.ModeSymlink != 0 {
-			return &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("%s is a symlink; "+
-				"verdict and its agent write that path, and the link would carry the write to the file it "+
-				"names — remove it, then re-run", bundlePath(root, path))}
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		if why := unsafeEntry(fs.FileInfoToDirEntry(info)); why != "" {
+			return &core.RefusalError{Code: CodeArtifactUnsafe, Message: core.Msgf("%s is %s; "+
+				"verdict and its agent write that path, and it would carry the write to another file — "+
+				"remove it, then re-run", bundlePath(root, path), why)}
 		}
 	}
 	return nil

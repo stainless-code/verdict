@@ -4246,13 +4246,17 @@ spelling of it after `--`, `=`-joined, short, after a further `--`, or inside
 another option's value, refuses `bad-flags` (pass `--allow-shell` to own the
 tool set yourself).
 
-**The denial is not a write boundary.** Only `claude`'s review writes are
-confined to the bundle (its scoped grant, below). Every other agent keeps its
-own edit and write tools during review, so a prompt-injected review on
-`pi`, `opencode`, `cline` and the rest can edit files in the checkout without
-a shell. Review an untrusted pull request with those agents in a disposable
-checkout, or render the command with `run --print` and run the agent yourself
-somewhere it can do no harm.
+**The denial is not a write boundary, for any agent.** verdict denies the
+shell and, for `claude`, grants a write to the launch's own bundle directory
+(below), but it removes nothing the agent is otherwise allowed: `claude`'s
+grant is an added allow rule, so an allow rule in your own Claude settings
+(`Edit(**)` in `~/.claude/settings.json`, or a project's
+`.claude/settings.json`) still applies, and every other agent keeps its own
+edit and write tools during review. A prompt-injected review can therefore
+edit files in the checkout without a shell. Until review launches run against
+a read-only snapshot, review an untrusted pull request in a disposable
+checkout, whatever the agent, or render the command with `run --print` and run
+the agent yourself somewhere it can do no harm.
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
@@ -4277,8 +4281,10 @@ drain — scoped to that launch's own output directory and nothing else:
 (a finder or cross-check names its own phase directory under the bundle; a
 launch from another checkout names the directory absolutely, `//<path>`, with
 a Windows drive as `//c/...`). Claude Code's `Edit` rules cover every built-in
-file-editing tool, so the agent can write its artifacts there and nowhere
-else: a review of an untrusted change still cannot edit source.
+file-editing tool, so the grant lets the agent write its artifacts there.
+It is an added allow rule, not a confinement: verdict never removes allow
+rules you configured in Claude's own settings, so review an untrusted change
+in a disposable checkout (see above).
 
 The grant never widens past that directory. `run` refuses a bundle whose
 `.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,

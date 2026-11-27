@@ -18,7 +18,7 @@ func TestUnsafeBundleRefusalsNameTheRepoRelativePath(t *testing.T) {
 	if walk == nil || !strings.HasPrefix(walk.Message, ".verdict/state/42/cost.json is a symlink inside the bundle;") {
 		t.Errorf("walk refusal = %v, want it to name .verdict/state/42/cost.json first", walk)
 	}
-	named := RefuseArtifactLinks(root, dir, "patch.json")
+	named := RefuseUnsafeArtifacts(root, dir, "patch.json")
 	if named == nil || !strings.HasPrefix(named.Message, ".verdict/state/42/patch.json is a symlink;") {
 		t.Errorf("named refusal = %v, want it to name .verdict/state/42/patch.json first", named)
 	}

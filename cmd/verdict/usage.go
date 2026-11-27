@@ -110,12 +110,12 @@ func usageText() string {
 		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
 		"    row's own tools; no flag after '--' drops the restriction, and the flag it uses (pi's\n" +
 		"    --exclude-tools, bob's --disable-tool-groups) is verdict's on review launches: passing it is\n" +
-		"    bad-flags. Only claude's review writes are confined to the bundle; other agents can edit the\n" +
-		"    checkout, so review untrusted PRs with them in a disposable checkout. verify --sandbox is\n" +
-		"    untouched.\n" +
-		"    claude launches also carry a write grant scoped to the launch's own bundle directory\n" +
+		"    bad-flags. This is a shell denial, not a write boundary: review untrusted PRs in a\n" +
+		"    disposable checkout, whatever the agent. verify --sandbox is untouched.\n" +
+		"    claude launches also carry a write grant to the launch's own bundle directory\n" +
 		"    (--allowedTools=Edit(./.verdict/state/<pr>/**)) so the review.json write needs no permission\n" +
-		"    flag; your own permission flag after '--' drops it, and a symlinked bundle is refused.\n" +
+		"    flag; it adds an allow rule and removes none from your Claude settings. Your own permission\n" +
+		"    flag after '--' drops it, and a symlinked or hard-linked bundle entry is refused.\n" +
 		"    --require-coverage repairs, then refuses coverage-incomplete, a review whose coverage\n" +
 		"    attestation record --require-coverage would refuse.\n" +
 		"    --budget auto classifies the diff before launching: light runs one finder, standard and\n" +

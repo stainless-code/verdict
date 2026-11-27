@@ -98,13 +98,14 @@ In scope (highest priority first):
   grant, scoped to the launch's own directory inside the bundle, with the
   pre-launch walk that refuses a symlink, a non-regular entry, or (on unix) a
   hard-linked file in the bundle. A review launch that runs without the denial,
-  or a `claude` review write that lands outside the bundle, is a
-  vulnerability. **Only `claude`'s review writes are confined to the bundle:**
-  every other agent keeps its own edit and write tools during review, so a
-  prompt-injected review on those agents can edit the checkout. That is the
-  documented limitation, not a finding — review an untrusted pull request with
-  them in a disposable checkout, or render the command with `run --print` and
-  run the agent yourself.
+  or a grant verdict renders wider than the launch's own bundle directory, is a
+  vulnerability. **Review launches are not a write boundary for any agent:**
+  `claude`'s grant is an added allow rule, so allow rules in the operator's
+  own Claude settings still apply, and every other agent keeps its own edit
+  and write tools, so a prompt-injected review can edit the checkout. That is
+  the documented limitation, not a finding — review an untrusted pull request
+  in a disposable checkout, or render the command with `run --print` and run
+  the agent yourself.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the
