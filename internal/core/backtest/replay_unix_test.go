@@ -406,10 +406,9 @@ func checkLaunch(t *testing.T, f *replayFixture, i int, line []string) {
 	if want := ".worktree-bt-" + replayTestRun + "-" + strconv.Itoa(i+1); filepath.Base(line[0]) != want {
 		t.Errorf("launch %d cwd = %q, want the detached checkout %q", i, line[0], want)
 	}
-	wantArtifact, err := filepath.EvalSymlinks(filepath.Join(f.bundlePath(i+1), "review.json"))
-	if err != nil {
-		t.Fatalf("resolve the planted artifact: %v", err)
-	}
+	// The launch starts in its review snapshot of the checkout, which carries
+	// the bundle at its repository-relative path, so the directive names it so.
+	wantArtifact := ".verdict/state/local-bt-" + strconv.Itoa(i+1) + "-" + replayTestRun + "/review.json"
 	if line[1] != wantArtifact {
 		t.Errorf("launch %d artifact = %q, want %q", i, line[1], wantArtifact)
 	}
@@ -1041,10 +1040,10 @@ func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 	f.plant(t, "write", "0.6")
 	runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.PassThrough = []string{"--model", "fast"} }))
 	lines := f.launchLines(t)
-	// The replay checkout is not the repository root, so the review grant
-	// names the bundle absolutely (`//`).
-	if !strings.HasPrefix(lines[0][2], "claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(//") ||
-		!strings.Contains(lines[0][2], "/.verdict/state/local-bt-1-ra/**) --model fast") {
+	// The launch starts in its review snapshot of the replay checkout, whose
+	// bundle copy sits at the repository-relative path the grant names.
+	if lines[0][2] != "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user "+
+		"--allowedTools=Edit(./.verdict/state/local-bt-1-ra/**) --model fast" {
 		t.Errorf("agent argv = %q; want the restriction, the bundle grant, then the pass-through", lines[0][2])
 	}
 }

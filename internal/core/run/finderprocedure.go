@@ -13,7 +13,10 @@ import (
 
 const finderCount = 2
 
-func finderProcedure(dir, output string, index int) ([]byte, *core.RefusalError) {
+// finderProcedure writes one finder's Procedure. It names the bundle and the
+// finder's review by bundle and review — the repository-relative paths the
+// finder's review snapshot carries them at — and reads the bundle at dir.
+func finderProcedure(dir, bundle, review string, index int) ([]byte, *core.RefusalError) {
 	method := "Read spec/context first. Identify requirements, boundary values and declared defaults; " +
 		"compare each with implementation, then trace callers and partner paths. Cover every hunk."
 	if index == 1 {
@@ -34,8 +37,8 @@ func finderProcedure(dir, output string, index int) ([]byte, *core.RefusalError)
 	}
 	text += fragments.String()
 	text = finderCheckInstructions(text)
-	text = strings.ReplaceAll(text, "<bundle>/review.json", filepath.Join(output, reviewFile))
-	text = strings.ReplaceAll(text, "<bundle>", dir)
+	text = strings.ReplaceAll(text, "<bundle>/review.json", review)
+	text = strings.ReplaceAll(text, "<bundle>", bundle)
 	return []byte(text), nil
 }
 

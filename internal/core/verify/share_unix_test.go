@@ -281,10 +281,10 @@ func plantLinkOntoTracked(t *testing.T, root string) {
 func TestSweepNeverFollowsASharedLink(t *testing.T) {
 	root := shareCheckout(t, shareConfig("node_modules"), "true")
 	tmp := t.TempDir()
-	stranded := filepath.Join(tmp, snapshotPrefix+"1-stranded")
+	stranded := filepath.Join(tmp, contenttree.SnapshotPrefix+"1-stranded")
 	mustShareFS(t, os.MkdirAll(stranded, 0o755))
 	mustShareFS(t, os.Symlink(filepath.Join(root, "node_modules"), filepath.Join(stranded, "node_modules")))
-	sweepSnapshots(t.Context(), shareGit(root), tmp, time.Now())
+	contenttree.SweepSnapshots(t.Context(), shareGit(root), tmp, time.Now())
 	if _, err := os.Lstat(stranded); !os.IsNotExist(err) {
 		t.Fatalf("the stranded snapshot survived the sweep (err=%v)", err)
 	}

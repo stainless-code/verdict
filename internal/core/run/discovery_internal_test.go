@@ -41,6 +41,10 @@ func (s *argvSpy) seen() [][]string {
 // below pin it as a literal because it is what the child's argv carries.
 const discoveryFlag = "--disallowedTools=Bash,PowerShell"
 
+// settingsFlag is the rest of the claude row's restriction: the reviewed
+// tree's own .claude settings never load on a review launch.
+const settingsFlag = "--setting-sources=user"
+
 // TestDiscoveryLaunchesCarryTheRowRestriction proves every launch a two-finder
 // run makes — both finders and both cross-checks — carries the row's documented
 // read-only flags, ahead of the directive and ahead of the operator's own
@@ -61,7 +65,7 @@ func TestDiscoveryLaunchesCarryTheRowRestriction(t *testing.T) {
 // two-finder execution requests to measure each spawn's spend.
 func assertRestrictedArgv(t *testing.T, argv []string) {
 	t.Helper()
-	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag}; !slices.Equal(argv[:5], want) {
+	if want := []string{"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag}; !slices.Equal(argv[:6], want) {
 		t.Errorf("argv = %q, want the prefix %q", argv, want)
 	}
 	if n := countArg(argv, discoveryFlag); n != 1 {
@@ -142,7 +146,7 @@ func TestDiscoveryRestrictionResolution(t *testing.T) {
 		row  string
 		want []string
 	}{
-		{name: "claude default", row: "claude", want: []string{"--disallowedTools=Bash,PowerShell"}},
+		{name: "claude default", row: "claude", want: []string{"--disallowedTools=Bash,PowerShell", settingsFlag}},
 		{name: "bob default", row: "bob", want: []string{"--disable-tool-groups", "execute,mcp"}},
 		{name: "pi default", row: "pi", want: []string{"--exclude-tools", "bash,powershell"}},
 		{name: "row with no documented flag", row: "codex"},
@@ -278,7 +282,7 @@ func TestDrainLaunchCarriesTheRestriction(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("drain args refused: %v", ref)
 	}
-	if want := []string{"claude", "-p", discoveryFlag}; !slices.Equal(args.argv[:3], want) {
+	if want := []string{"claude", "-p", discoveryFlag, settingsFlag}; !slices.Equal(args.argv[:4], want) {
 		t.Errorf("drain argv = %q, want the prefix %q", args.argv, want)
 	}
 	if filepath.Base(args.abs) != drainFile {
@@ -302,7 +306,7 @@ func TestRecordedArgvRedactsAfterTheRestriction(t *testing.T) {
 		t.Fatalf("run refused: %v", ref)
 	}
 	want := []string{
-		"claude", "-p", "--output-format", "json", discoveryFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
+		"claude", "-p", "--output-format", "json", discoveryFlag, settingsFlag, "--allowedTools=Edit(./.verdict/state/42/x-cross-2/**)",
 		"--model", "opus", redactedValue, redactedValue, promptPlaceholder,
 	}
 	if shape := resp.Data.Argv; !slices.Equal(shape, want) {

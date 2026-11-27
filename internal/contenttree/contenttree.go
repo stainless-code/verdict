@@ -172,13 +172,35 @@ func (g Git) materialize(ctx context.Context, tree, staging, dest string, expand
 	return nil
 }
 
-// commitTree makes the unreferenced commit a snapshot checks out.
+// commitTree makes the commit a snapshot checks out: HEAD itself when the
+// tree is HEAD's, so git inside the snapshot reads the checkout's own history
+// and commit; otherwise one unreferenced commit of the tree on top of HEAD
+// (parentless when the checkout has no HEAD). Either way the commit's tree is
+// exactly the snapshot's.
 func (g Git) commitTree(ctx context.Context, tree string) (string, error) {
-	res, err := g.runEnv(ctx, identity, "commit-tree", tree, "-m", "verdict verify snapshot")
+	args := []string{"commit-tree", tree, "-m", "verdict verify snapshot"}
+	if head, ok := g.head(ctx); ok {
+		if headTree, err := g.Commit(ctx, head); err == nil && headTree == tree {
+			return head, nil
+		}
+		args = append(args, "-p", head)
+	}
+	res, err := g.runEnv(ctx, identity, args...)
 	if err != nil {
 		return "", err
 	}
 	return objectID("commit-tree", res.Stdout)
+}
+
+// head is the checkout's HEAD commit, ok false when it has none (an unborn
+// branch) or git printed anything but an object id.
+func (g Git) head(ctx context.Context) (string, bool) {
+	res, err := g.exec(ctx, cmdRevParse, "--verify", "-q", "HEAD^{commit}")
+	if err != nil || res.ExitCode != 0 {
+		return "", false
+	}
+	id, err := objectID(cmdRevParse, res.Stdout)
+	return id, err == nil
 }
 
 // fill moves the staged bytes into a fresh linked worktree at g.Root and reads
@@ -206,14 +228,14 @@ func (g Git) absolute() (Git, error) {
 // Commit returns the tree id of rev, or ErrUnresolved when the repository
 // does not hold it.
 func (g Git) Commit(ctx context.Context, rev string) (string, error) {
-	res, err := g.exec(ctx, "rev-parse", "--verify", "-q", rev+"^{tree}")
+	res, err := g.exec(ctx, cmdRevParse, "--verify", "-q", rev+"^{tree}")
 	if err != nil {
 		return "", err
 	}
 	if res.ExitCode != 0 {
 		return "", ErrUnresolved
 	}
-	return objectID("rev-parse", res.Stdout)
+	return objectID(cmdRevParse, res.Stdout)
 }
 
 // objectID returns git's output as an object id (SHA-1 or SHA-256 hex), or

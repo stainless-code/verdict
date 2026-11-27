@@ -31,7 +31,7 @@ func isPrune(argv []string) bool {
 
 // snapshotDir is the snapshot directory name a run with this deadline makes.
 func snapshotDir(deadline time.Time, suffix string) string {
-	return filepath.Join(os.TempDir(), snapshotPrefix+strconv.FormatInt(deadline.Unix(), decimal)+"-"+suffix)
+	return filepath.Join(os.TempDir(), contenttree.SnapshotPrefix+strconv.FormatInt(deadline.Unix(), 10)+"-"+suffix)
 }
 
 func mustMkdir(t *testing.T, dir string) {
@@ -72,7 +72,7 @@ func TestSweepRemovesOnlySnapshotsPastTheirDeadline(t *testing.T) {
 	mustMkdir(t, live)
 	lockedTree(t, filepath.Join(stale, "locked"))
 	cmdr := &pruneCommander{}
-	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: t.TempDir()}, resolved(tmp), now)
+	contenttree.SweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: t.TempDir()}, contenttree.Resolved(tmp), now)
 	for _, gone := range []string{stale, staging} {
 		if _, err := os.Stat(gone); !os.IsNotExist(err) {
 			t.Errorf("%s survived the sweep (%v)", gone, err)
@@ -93,19 +93,19 @@ func TestSweepRemovesOnlySnapshotsPastTheirDeadline(t *testing.T) {
 func TestSweepNeverTouchesTheCheckout(t *testing.T) {
 	root := t.TempDir()
 	tmp := filepath.Join(root, "tmpdir")
-	victim := filepath.Join(tmp, snapshotPrefix+"1-victim")
+	victim := filepath.Join(tmp, contenttree.SnapshotPrefix+"1-victim")
 	mustMkdir(t, victim)
 	if err := os.WriteFile(filepath.Join(victim, "keep.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	outside := t.TempDir()
-	if err := os.Symlink(victim, filepath.Join(outside, snapshotPrefix+"1-link")); err != nil {
+	if err := os.Symlink(victim, filepath.Join(outside, contenttree.SnapshotPrefix+"1-link")); err != nil {
 		t.Fatal(err)
 	}
 	cmdr := &pruneCommander{}
 	now := time.Unix(2_000_000_000, 0)
-	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, resolved(tmp), now)
-	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, resolved(outside), now)
+	contenttree.SweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, contenttree.Resolved(tmp), now)
+	contenttree.SweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, contenttree.Resolved(outside), now)
 	if _, err := os.Stat(filepath.Join(victim, "keep.txt")); err != nil {
 		t.Errorf("the sweep deleted checkout content: %v", err)
 	}
@@ -132,7 +132,7 @@ func requireTempRootRefused(t *testing.T, sub string) {
 	root := t.TempDir()
 	t.Chdir(root)
 	tmp := filepath.Join(root, sub)
-	keep := filepath.Join(tmp, snapshotPrefix+"1-victim", "keep.txt")
+	keep := filepath.Join(tmp, contenttree.SnapshotPrefix+"1-victim", "keep.txt")
 	mustMkdir(t, filepath.Dir(keep))
 	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)

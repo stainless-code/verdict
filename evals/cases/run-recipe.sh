@@ -163,8 +163,8 @@ assert_envelope "--print --stage"
 assert_json_field "data.stage names the rendered position" "2" '.data.stage.index'
 assert_json_field "data.stage names the stage kind" "synthesize" '.data.stage.kind'
 assert_json_field "the rendered command carries the stage's declared model" \
-  "claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(./.verdict/state/local-demo/**) --model opus" \
-  '.data.argv[:6] | join(" ")'
+  "claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --allowedTools=Edit(./.verdict/state/local-demo/**) --model opus" \
+  '.data.argv[:7] | join(" ")'
 assert_json_field "the stage directive names the stage and its declared hint" "true" \
   '.data.argv[-1] | contains("stage 2 of 4 (synthesize) of recipe quick@1.2.3 (repo)") and contains("(model hint opus)")'
 assert_json_field "the stage directive names the review it reads" "true" \
@@ -185,7 +185,7 @@ assert_json_field "the lens stage renders the declared lens hint and caps" "true
   '.data.argv[-1] | contains("logic (model sonnet, max_files 8, max_findings 6)")'
 assert_json_field "the lens stage renders no model argument" "claude -p" '.data.argv[:2] | join(" ")'
 assert_json_field "the lens stage's argv is the agent flags, the discovery restriction, the review grant, and one directive" \
-  "5" '.data.argv | length'
+  "6" '.data.argv | length'
 assert_json_field "the first stage reads no previous review" "true" \
   '.data.argv[-1] | contains("the previous stage wrote") | not'
 

@@ -771,7 +771,7 @@ func (c *coordinator) persistProgress() *core.RefusalError {
 }
 
 func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *core.RefusalError) {
-	procedure, ref := finderProcedure(c.dir, output, index)
+	procedure, ref := finderProcedure(c.dir, c.st.display(c.dir), c.st.display(filepath.Join(output, reviewFile)), index)
 	if ref != nil {
 		return nil, ref
 	}

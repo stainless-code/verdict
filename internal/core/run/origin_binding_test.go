@@ -27,12 +27,12 @@ func (p *forgedOriginCommander) Run(ctx context.Context, cmd *core.Command) (cor
 	switch phase {
 	case "x-finder-1":
 		raw := strings.Replace(coordinatorReview, `"path":"a.go"`, `"origin":"finder-2","path":"a.go"`, 1)
-		writeUnder(p.t, filepath.Join(p.dir, phase), "review.json", raw)
+		writeUnder(p.t, p.viewPhase(cmd, phase), "review.json", raw)
 	case "x-finder-2":
-		writeUnder(p.t, filepath.Join(p.dir, phase), "review.json", strings.TrimSuffix(coordinatorEmpty, "}")+`,"summary":"No defects found."}`)
+		writeUnder(p.t, p.viewPhase(cmd, phase), "review.json", strings.TrimSuffix(coordinatorEmpty, "}")+`,"summary":"No defects found."}`)
 	case "x-cross-2":
 		if p.self {
-			path := filepath.Join(p.dir, phase, "verdicts.json")
+			path := filepath.Join(p.viewPhase(cmd, phase), "verdicts.json")
 			receipt := readPhaseObject(p.t, path)
 			rows := jq.Elements(readcommon.FieldOf(receipt, "results"))
 			row, ok := rows[0].(*jq.Obj)
@@ -40,7 +40,7 @@ func (p *forgedOriginCommander) Run(ctx context.Context, cmd *core.Command) (cor
 				p.t.Fatal("cross result is not an object")
 			}
 			row.Set("checker", "finder-1")
-			writeUnder(p.t, filepath.Join(p.dir, phase), "verdicts.json", receipt.MarshalCompact())
+			writeUnder(p.t, p.viewPhase(cmd, phase), "verdicts.json", receipt.MarshalCompact())
 		}
 	}
 	return result, err

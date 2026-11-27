@@ -4246,30 +4246,68 @@ spelling of it after `--`, `=`-joined, short, after a further `--`, or inside
 another option's value, refuses `bad-flags` (pass `--allow-shell` to own the
 tool set yourself).
 
-**The denial is not a write boundary, for any agent.** verdict denies the
-shell and, for `claude`, grants a write to the launch's own bundle directory
-(below), but it removes nothing the agent is otherwise allowed: `claude`'s
-grant is an added allow rule, so an allow rule in your own Claude settings
-(`Edit(**)` in `~/.claude/settings.json`, or a project's
-`.claude/settings.json`) still applies, and every other agent keeps its own
-edit and write tools during review. A prompt-injected review can therefore
-edit files in the checkout without a shell. Until review launches run against
-a read-only snapshot, review an untrusted pull request in a disposable
-checkout, whatever the agent, or render the command with `run --print` and run
-the agent yourself somewhere it can do no harm.
+Discovery is not the write boundary — the review snapshot is (below).
 The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
 under its own enforced sandbox and never reads this table.
 
-| Name     | Discovery flags                     | Flag verdict owns on review launches | Source                                                                                     |
-| -------- | ----------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
-| `claude` | `--disallowedTools=Bash,PowerShell` | none (a deny rule beats any allow)   | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
-| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+| Name     | Discovery flags                                            | Flag verdict owns on review launches | Source                                                                                     |
+| -------- | ---------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp`                        | `--disable-tool-groups`              | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell --setting-sources=user` | `--setting-sources`                  | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`                          | `--exclude-tools`, `-xt`             | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
 
 `claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
 option takes `<tools...>`: the spaced form swallows the directive as a tool
 name. PowerShell is denied beside Bash because Windows Claude Code can reach the
-shell through either tool.
+shell through either tool. Its deny rule beats any allow, so verdict owns no
+tool flag; it owns `--setting-sources`, which it sets to `user`: the reviewed
+tree's own `.claude/settings.json` and `.claude/settings.local.json` never load
+on a review launch, because a hook there runs a shell command and an allow rule
+there can name paths outside the review snapshot. Your own
+`~/.claude/settings.json` still loads; a project setting your review needs
+(a model, an environment value) belongs there.
+
+### Review snapshot
+
+No review launch runs in your checkout. Every launch `run` makes — the
+one-shot review, finders, opposite-finder cross-checks, repair rounds, drain,
+and `loop`'s review step — starts in its own disposable copy of the reviewed
+tree under the host temp directory. The tree is the content-bound snapshot
+`verify` takes (the index paths with their working-tree bytes, no filter,
+hook, or Git LFS program run), taken once per execution and copied afresh for
+each launch, with a copy of the bundle at its usual
+`.verdict/state/<bundle>/` path, so every path a directive names resolves
+unchanged. Untracked and ignored files (`node_modules`, build output, local
+config) are not in it: a review reads the diff and the source, not installed
+dependencies. When the agent exits, `run` copies back only the artifacts that
+launch is expected to write — `review.json` and, beside a bundle-level review,
+`cost.json`, `chunks/chunk-*.cost.json`, `validation.json`, and
+`verification.json`; a finder's `x-finder-N/review.json`; a cross-check's
+`x-cross-N/verdicts.json`; a drain's `drain.replies.json` — each a lone regular
+file (no symlink, no hard link) of at most 32 MiB, written atomically with the
+agent's own modification time, so the freshness check still reads the agent's
+write. Anything else the agent wrote — `src/main.go`, `../outside.txt`, a
+`findings.json` only verdict writes — stays in the copy, is deleted with it,
+and is named in one warning, which is worth reading as evidence of an
+injection attempt. A crashed or timed-out agent's valid artifacts are copied
+back the same way, so salvage, repair rounds, and `--resume` read the bundle
+exactly as before. The loop's fix phase is the one launch that runs in your
+checkout: editing it is its job.
+
+What a review agent can still do: read the reviewed tree and the bundle, and
+use the network. What it can no longer do: write your checkout through a path
+relative to its working directory, which is where every agent's edit tools
+aim, and which `claude`'s and `codex`'s own workspace rules confine it to.
+verdict does not OS-sandbox a review launch (agents need the network), so a
+tool that accepts an absolute path outside its working directory — or a
+tracked symlink that points out of the tree — still reaches what your user
+account can write; review an untrusted pull request in a disposable checkout
+if your agent's tools allow that. A tree outside any git checkout — the
+temp directory `demo` reviews a pull request URL in — has no index to name
+content by, so it is copied as it stands, verdict's state left out. A
+snapshot that cannot be made (a git failure, `TMPDIR` inside the repository)
+refuses `agent-spawn-failed` before any agent starts — a review never falls
+back to your checkout.
 
 ### Review write grant
 
@@ -4277,14 +4315,14 @@ shell through either tool.
 the review would refuse `no-review-artifact`. `run` therefore adds one grant to
 every `claude` launch it makes — finders, cross-checks, repair rounds, and
 drain — scoped to that launch's own output directory and nothing else:
-`--allowedTools=Edit(./.verdict/state/<bundle>/**)` from the repository root
-(a finder or cross-check names its own phase directory under the bundle; a
-launch from another checkout names the directory absolutely, `//<path>`, with
-a Windows drive as `//c/...`). Claude Code's `Edit` rules cover every built-in
-file-editing tool, so the grant lets the agent write its artifacts there.
-It is an added allow rule, not a confinement: verdict never removes allow
-rules you configured in Claude's own settings, so review an untrusted change
-in a disposable checkout (see above).
+`--allowedTools=Edit(./.verdict/state/<bundle>/**)`, relative to the review
+snapshot the agent starts in (a finder or cross-check names its own phase
+directory under the bundle; a `--print` render for another checkout names the
+directory absolutely, `//<path>`, with a Windows drive as `//c/...`). Claude
+Code's `Edit` rules cover every built-in file-editing tool, so the grant lets
+the agent write its artifacts there. It is an added allow rule kept as
+defense in depth: the review snapshot is the boundary, since verdict never
+removes allow rules you configured in your own Claude settings.
 
 The grant never widens past that directory. `run` refuses a bundle whose
 `.verdict`, `.verdict/state`, or bundle directory is a symlink (`bad-config`,
@@ -4306,11 +4344,16 @@ launches without the grant and with a warning that says why. The operator's
 own permission flags after `--` own the question and drop the grant: the
 row's `--permission-mode`, `--dangerously-skip-permissions`,
 `--allowedTools`, `--add-dir`, and `--tools`. `--print` renders the grant like
-every other argument. No other row carries one: `codex exec` runs read-only by
+every other argument. No other row carries one. `codex exec` runs read-only by
 default and documents no writable option narrower than `--sandbox
-workspace-write` (the whole working tree), so a `codex` review still needs
-that flag after `--`, and `no-review-artifact` names it.
-([Claude Code permission rules](https://code.claude.com/docs/en/permissions))
+workspace-write` (its whole working directory), so a `codex` review launch
+carries `--sandbox workspace-write` instead: its working directory is the
+disposable review snapshot, whose writes come back only as the expected
+artifacts. A `--print` render never carries it — the printed command runs
+wherever you run it — and your own `--sandbox`, `--ask-for-approval`,
+`--full-auto`, or `--add-dir` after `--` drops it.
+([Claude Code permission rules](https://code.claude.com/docs/en/permissions),
+[Codex README](https://github.com/openai/codex/blob/main/README.md))
 
 `cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
 
@@ -7875,13 +7918,12 @@ workspace-write` (codex documents no edit-only mode: workspace-write also runs
 shell commands, sandboxed to the working tree). Every other row carries none
 (an approval bypass such as `--yolo` or `--dangerously-skip-permissions` is
 never used as one). The review spawn needs no edit grant, but it must still
-write `review.json`: it carries `run`'s scoped review-write grant only for a
-row that defines one, which today is `claude` alone. Any other agent's review
-writes with whatever its own default mode allows. `codex exec` runs read-only
-by default, and `loop --` takes only a model flag, so a `codex` loop review
-cannot write `review.json` itself: it relies on `run`'s salvage of a fenced
-findings block from its stdout, and a round whose review leaves none stops the
-loop with `no-review-artifact`. Arguments after `--` (`verdict loop owner/repo
+write `review.json`: it runs in `run`'s disposable review snapshot (see
+[Review snapshot](#review-snapshot)), never in the working tree the fix edits,
+and carries `run`'s review write grants — `claude`'s scoped `Edit` rule,
+`codex`'s `--sandbox workspace-write` inside the snapshot. Any other agent's
+review writes with whatever its own default mode allows, and only its
+expected artifacts come back. Arguments after `--` (`verdict loop owner/repo
 --agent claude -- --model opus`) go to every spawn, after the fix's edit
 grant. They also reach the review of untrusted content, so they are an
 allowlist, not a denylist: only the agent row's model flag with one value

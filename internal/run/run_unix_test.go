@@ -108,6 +108,7 @@ func newFixture(t *testing.T) *fixture {
 	writeFile(t, filepath.Join(dir, "source.json"),
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
 	writeFile(t, filepath.Join(dir, "full.diff"), fixtureDiff)
+	testenv.Checkout(t, root)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	return &fixture{root: root, dir: dir, bin: t.TempDir(), slug: bundleSlug}
@@ -289,7 +290,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell --setting-sources=user --allowedTools=Edit(./.verdict/state/local-work/**) <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -375,7 +376,7 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	argv := readArgv(t, argvFile)
 	assertPrintedMatchesSpawned(t, printed, argv)
 	assertArgvPrefix(t, argv, []string{
-		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--allowedTools=Edit(./.verdict/state/local-work/**)",
+		"claude", "-p", "--disallowedTools=Bash,PowerShell", "--setting-sources=user", "--allowedTools=Edit(./.verdict/state/local-work/**)",
 		"--model", "opus",
 	})
 }

@@ -422,3 +422,36 @@ func TestSnapshotIgnoresAnInheritedIndex(t *testing.T) {
 		t.Fatal("an inherited GIT_INDEX_FILE let the snapshot rewrite the user's index")
 	}
 }
+
+// TestSnapshotKeepsTheCheckoutsHistory proves git inside a snapshot reads the
+// checkout's own history: a clean checkout's snapshot is checked out at HEAD
+// itself, and an edited one's at a commit of its tree on top of HEAD.
+func TestSnapshotKeepsTheCheckoutsHistory(t *testing.T) {
+	t.Parallel()
+	root, g := repo(t)
+	head := git(t, root, "rev-parse", "HEAD")
+	clean := snapshotHead(t, g, "HEAD")
+	if clean != head {
+		t.Errorf("clean snapshot HEAD = %s, want the checkout's HEAD %s", clean, head)
+	}
+	write(t, root, "app.go", "package app // edited\n")
+	if parent := snapshotHead(t, g, "HEAD^"); parent != head {
+		t.Errorf("edited snapshot HEAD^ = %s, want the checkout's HEAD %s", parent, head)
+	}
+}
+
+// snapshotHead snapshots g's checkout and returns rev as git resolves it
+// inside the snapshot.
+func snapshotHead(t *testing.T, g contenttree.Git, rev string) string {
+	t.Helper()
+	dest := filepath.Join(t.TempDir(), "snap")
+	if _, err := g.Snapshot(t.Context(), dest); err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	defer func() {
+		if err := g.RemoveCheckout(context.Background(), dest); err != nil {
+			t.Errorf("RemoveCheckout: %v", err)
+		}
+	}()
+	return git(t, dest, "rev-parse", rev)
+}

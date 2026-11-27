@@ -112,7 +112,7 @@ func TestRepairRoundsCarryTheScopedReviewGrant(t *testing.T) {
 	requireRun(t, ref)
 	assertSpawns(t, cmdr, 2)
 	for _, argv := range cmdr.argv {
-		if want := []string{"claude", "-p", discoveryFlag, reviewGrantFlag}; !slices.Equal(argv[:4], want) {
+		if want := []string{"claude", "-p", discoveryFlag, settingsFlag, reviewGrantFlag}; !slices.Equal(argv[:5], want) {
 			t.Errorf("round argv = %q, want the prefix %q", argv[:len(argv)-1], want)
 		}
 	}
@@ -295,7 +295,7 @@ func TestFinderProcedureAsksForTheAttestation(t *testing.T) {
 	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
-	plain, ref := finderProcedure(dir, filepath.Join(dir, "x-finder-1"), 0)
+	plain, ref := finderProcedure(dir, ".verdict/state/42", ".verdict/state/42/x-finder-1/review.json", 0)
 	if ref != nil {
 		t.Fatal(ref)
 	}
@@ -303,7 +303,7 @@ func TestFinderProcedureAsksForTheAttestation(t *testing.T) {
 		t.Errorf("finder procedure never asks for coverage[]:\n%s", plain)
 	}
 	writeUnder(t, dir, filepath.Join("chunks", "manifest.json"), `{"chunks":[]}`)
-	chunked, ref := finderProcedure(dir, filepath.Join(dir, "x-finder-1"), 0)
+	chunked, ref := finderProcedure(dir, ".verdict/state/42", ".verdict/state/42/x-finder-1/review.json", 0)
 	if ref != nil {
 		t.Fatal(ref)
 	}

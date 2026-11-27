@@ -49,8 +49,10 @@ type Launch struct {
 	EditCitation string
 	// ReviewWriteCitation is the doc that states ReviewWriteArgs' rule syntax.
 	ReviewWriteCitation string
-	ProbeArgs           []string
-	DiscoveryArgs       []string
+	// SnapshotWriteCitation is the doc that states SnapshotWriteArgs.
+	SnapshotWriteCitation string
+	ProbeArgs             []string
+	DiscoveryArgs         []string
 	// DiscoveryOwnedFlags are the spellings of the flag the restriction
 	// itself uses (DiscoveryArgs is that flag and its value). A later
 	// spelling may replace verdict's, and one the agent does not parse drops
@@ -89,6 +91,15 @@ type Launch struct {
 	// PermissionFlags or DiscoveryOverrideFlags spelling). A row without an
 	// equally scoped option leaves both it and ReviewWriteCitation empty.
 	ReviewWriteArgs []string
+	// SnapshotWriteArgs is the documented flag set that lets a review launch
+	// write in its working directory, for a row whose only write path is
+	// that broad. It is sound only because every review launch runs in a
+	// disposable snapshot whose expected artifacts alone are copied back:
+	// verdict run adds it to real review launches, never to a --print
+	// render (that command runs wherever the operator runs it), and drops it
+	// like ReviewWriteArgs when the operator's `--` arguments decide
+	// permissions.
+	SnapshotWriteArgs []string
 }
 
 // ReviewDir is the placeholder ReviewWriteArgs carries for the launch's
@@ -168,6 +179,13 @@ const (
 // probe match, its discovery restriction, and the operator spelling that
 // replaces it.
 const flagDisableToolGroups = "--disable-tool-groups"
+
+// flagSandbox and valueWorkspaceWrite are codex's sandbox flag and the mode
+// that writes its working directory.
+const (
+	flagSandbox         = "--sandbox"
+	valueWorkspaceWrite = "workspace-write"
+)
 
 // agyLaunchWarning flags Antigravity CLI's headless write soft-denial before
 // launch: outside trustedWorkspaces, `agy -p` auto-denies file edits and exits
@@ -285,9 +303,14 @@ var catalog = []Agent{
 			// the one that cannot swallow the directive as a tool name. Bash and
 			// PowerShell are both denied — a Windows Claude Code reaches the
 			// shell through either — which leaves Read/Glob/Grep/Write for
-			// review.json.
-			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
-			DiscoveryCitation: docClaudeCLI,
+			// review.json. `--setting-sources=user` loads the operator's own
+			// settings only: the reviewed tree's .claude/settings*.json can
+			// carry hooks (shell commands) and allow rules for paths outside
+			// the review snapshot, and the tree is untrusted content. A later
+			// spelling would replace it, so verdict owns that flag.
+			DiscoveryArgs:       []string{"--disallowedTools=Bash,PowerShell", "--setting-sources=user"},
+			DiscoveryCitation:   docClaudeCLI,
+			DiscoveryOwnedFlags: []string{"--setting-sources"},
 			// The shell denial is never dropped for an operator flag; a deny rule
 			// beats any allow. --tools decides the tool set, so it drops the
 			// review write grant.
@@ -352,15 +375,21 @@ var catalog = []Agent{
 			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
 			PermissionCitation: docCodexReadme,
-			EditArgs:           []string{"--sandbox", "workspace-write"},
+			EditArgs:           []string{flagSandbox, valueWorkspaceWrite},
 			EditCitation:       docCodexReadme,
+			// `codex exec` defaults to the read-only sandbox, so a review could
+			// only hand its review.json back through stdout salvage; inside the
+			// review snapshot the workspace sandbox writes the copy, and only
+			// the expected artifacts come back.
+			SnapshotWriteArgs:     []string{flagSandbox, valueWorkspaceWrite},
+			SnapshotWriteCitation: docCodexReadme,
 			// `--model, -m` per the codex CLI reference.
 			ModelFlagAliases:   []string{"-m"},
 			ModelAliasCitation: docCodexCLIRef,
 			// workspace-write also runs shell commands, sandboxed to the
 			// workspace; codex documents no edit-only mode.
 			PermissionFlags: []string{
-				"--sandbox", "-s", "--ask-for-approval", "-a", "--full-auto",
+				flagSandbox, "-s", "--ask-for-approval", "-a", "--full-auto",
 				"--dangerously-bypass-approvals-and-sandbox", "--add-dir",
 			},
 			KeyEnv:         "OPENAI_API_KEY",
@@ -901,6 +930,7 @@ func All() []Agent {
 			v.EditArgs = slices.Clone(v.EditArgs)
 			v.PermissionFlags = slices.Clone(v.PermissionFlags)
 			v.ReviewWriteArgs = slices.Clone(v.ReviewWriteArgs)
+			v.SnapshotWriteArgs = slices.Clone(v.SnapshotWriteArgs)
 			a.Launch = &v
 		}
 		if a.Skills != nil {

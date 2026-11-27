@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 type drainHostStub struct {
@@ -124,6 +125,7 @@ func setupDrainBundle(t *testing.T) (string, string) {
 	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte("diff sentinel\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	testenv.Checkout(t, root)
 	return root, dir
 }
 

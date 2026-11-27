@@ -155,7 +155,7 @@ func (st *state) spawnTapped(ctx context.Context, args *launchArgs, prompt strin
 	if len(args.usage) > 0 {
 		tap = agentusage.NewTap(args.def.Usage.Format)
 	}
-	res, err := st.spawn(ctx, argv, args.timeout, tap)
+	res, err := st.spawnLaunch(ctx, args, argv, tap)
 	if res != nil && tap != nil && !res.StdoutTapped {
 		tap = untapped(tap, res)
 	}
@@ -165,6 +165,17 @@ func (st *state) spawnTapped(ctx context.Context, args *launchArgs, prompt strin
 		res = nil
 	}
 	return spawned{res: res, tap: tap}, err
+}
+
+// spawnLaunch runs one launch: a review launch in its own view of the
+// reviewed tree, its artifacts copied back after it (spawnReview); a
+// dispatch — the loop's fix, whose job is editing the checkout — in the
+// checkout itself.
+func (st *state) spawnLaunch(ctx context.Context, args *launchArgs, argv []string, tap *agentusage.Tap) (*core.Result, error) {
+	if args.target.output == "" {
+		return st.spawn(ctx, argv, args.timeout, tap, st.workDir(), st.childEnv())
+	}
+	return st.spawnReview(ctx, args, argv, tap)
 }
 
 // untapped fills the tap from a commander that cannot tap: its whole stdout,
