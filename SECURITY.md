@@ -114,12 +114,17 @@ In scope (highest priority first):
   repository, loads the reviewed tree's own agent configuration, runs without
   the denial, or carries a grant verdict renders wider than the launch's own
   bundle directory, is a vulnerability. The copies are not a write boundary
-  by themselves: `claude` and `codex` stay in their copy through their own
-  tools (its scoped grant, its workspace sandbox), but any other agent runs as
-  the operator's user and can climb out with `..` or an absolute path — to a
-  sibling launch's copy (forging the artifact it hands back) or the
-  operator's files. The shared snapshot is symlink-free, read-only, and
-  fingerprinted, so a change to it refuses every later copy. Writes outside
+  by themselves: the agent starts in its copy, and `claude` (without
+  `--allow-shell`) and `codex` stay in it through their own tools (its
+  scoped grant, its workspace sandbox), but any other agent runs as the
+  operator's user and can write outside it — to a sibling launch's copy
+  (forging the artifact it hands back) or the operator's files — unless the
+  OS sandbox is active. The shared snapshot is symlink-free, owner-only
+  read-only, and fingerprinted by path, mode, size, and modification time,
+  plus inode and change time on unix: any write to it there, even one that
+  restores the size, mode, and modification time, refuses every later copy.
+  On Windows the fingerprint holds the first four alone, so a same-size
+  rewrite that restores the modification time is not detected. Writes outside
   a copy are the OS sandbox's to stop; without it, that is the documented
   limitation, not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed

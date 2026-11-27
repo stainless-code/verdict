@@ -205,8 +205,9 @@ func (w *workspace) take(ctx context.Context) (string, error) {
 // seal readies the snapshot to be shared by every launch's copy: it drops
 // every committed symlink — the snapshot sits beside each copy, where a
 // write through `../../<snapshot>/<link>` would follow a link to the
-// operator's own files — makes the rest read-only (directories 0555, files
-// 0444) so a plain file tool's write is refused, and fingerprints it, so a
+// operator's own files — makes the rest read-only and owner-only
+// (directories 0500, files at most 0500) so a plain file tool's write is
+// refused and no other user reads the copy, and fingerprints it, so a
 // change any launch made despite that is caught before the next copy.
 func (w *workspace) seal(dir string) error {
 	dropped, err := stripLinks(dir)
@@ -252,7 +253,7 @@ func readOnly(dir string) error {
 		if err != nil {
 			return err //nolint:wrapcheck // sealed below
 		}
-		return os.Chmod(p, info.Mode().Perm()&^writeBits)
+		return os.Chmod(p, info.Mode().Perm()&ownerBits&^writeBits)
 	})
 	for i := len(dirs) - 1; i >= 0 && err == nil; i-- {
 		err = os.Chmod(dirs[i], readOnlyDirMode)
@@ -263,15 +264,22 @@ func readOnly(dir string) error {
 	return nil
 }
 
-// readOnlyDirMode is a sealed snapshot directory: listed and entered, never
-// written; writeBits are every class's write permission.
+// readOnlyDirMode is a sealed snapshot directory: listed and entered by its
+// owner alone, never written; ownerBits keep a sealed file's owner bits and
+// drop the group's and others', and writeBits are every class's write
+// permission. Windows applies no directory mode, and only the read-only
+// attribute of a file.
 const (
-	readOnlyDirMode = 0o555
+	readOnlyDirMode = 0o500
+	ownerBits       = 0o700
 	writeBits       = 0o222
 )
 
-// fingerprint names every entry below dir by path, mode, size, and
-// modification time: cheap, and changed by any write a launch could make.
+// fingerprint names every entry below dir by path, mode, size, modification
+// time, and — on unix — inode and change time, all from the lstat the walk
+// already makes. A write that restores an entry's size, mode, and
+// modification time still moves its change time, which no user-space call
+// can set; on Windows such a rewrite passes.
 func fingerprint(dir string) (string, error) {
 	h := sha256.New()
 	err := walkRel(dir, func(_, rel string, d fs.DirEntry) error {
@@ -279,7 +287,8 @@ func fingerprint(dir string) (string, error) {
 		if err != nil {
 			return err //nolint:wrapcheck // sealed below
 		}
-		fmt.Fprintf(h, "%s\x00%s\x00%d\x00%d\n", rel, info.Mode(), info.Size(), info.ModTime().UnixNano())
+		fmt.Fprintf(h, "%s\x00%s\x00%d\x00%d\x00%s\n", rel, info.Mode(), info.Size(), info.ModTime().UnixNano(),
+			identity(info))
 		return nil
 	})
 	if err != nil {
