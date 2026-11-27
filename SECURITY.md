@@ -105,8 +105,10 @@ In scope (highest priority first):
   with the pre-launch walk that refuses a symlink, a non-regular entry, or a
   hard-linked file in the bundle. A review launch that runs in the checkout,
   copies back a file outside its expected artifacts or through a link, runs
-  without the denial, or carries a grant verdict renders wider than the
-  launch's own bundle directory, is a vulnerability.
+  in a copy holding a `.git` pointer into the operator's repository or a
+  symlink that resolves outside the copy, runs without the denial, or carries
+  a grant verdict renders wider than the launch's own bundle directory, is a
+  vulnerability.
 - The review sandbox around every `run --agent` and `loop` review launch
   (finders, cross-checks, repair rounds, drain; not the loop's fix spawn,
   which edits the checkout by design). On macOS the launch runs under

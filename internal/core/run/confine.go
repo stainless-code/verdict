@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
@@ -236,6 +237,9 @@ type view struct {
 	cwd     string
 	bundle  string
 	rel     string
+	// dropped names the tree's symlinks the view leaves out: each one
+	// resolved outside the view.
+	dropped []string
 }
 
 // stamp is what an entry looked like when verdict copied it in. sum is set
@@ -289,9 +293,14 @@ func bundleRel(bundle string) (string, error) {
 	return stateRel + slash + name, nil
 }
 
-// fill copies the tree, then the bundle, into the view.
+// fill copies the tree, then the bundle, into the view, and gives it a git
+// directory of its own.
 func (v *view) fill(tree, bundle, own string, expect func(string) bool) error {
 	if err := v.copyTree(tree); err != nil {
+		return err
+	}
+	v.dropEscapingLinks()
+	if err := standaloneGit(v.cwd); err != nil {
 		return err
 	}
 	if err := realDirs(v.cwd, v.rel); err != nil {
@@ -316,21 +325,99 @@ func walkRel(src string, visit func(p, rel string, d fs.DirEntry) error) error {
 	})
 }
 
+// gitDir is a checkout's git entry.
+const gitDir = ".git"
+
 // copyTree copies the snapshot into cwd, stamping each non-directory entry.
 // Verdict's state directory stays out — the snapshot holds only its index
 // version, never a bundle — and so does a tracked .verdict that is not a
-// real directory, which the bundle copy below it would otherwise follow.
+// real directory, which the bundle copy below it would otherwise follow. The
+// snapshot's .git stays out too: it is a linked worktree's pointer into the
+// operator's repository, through whose hooks and config an agent with plain
+// file tools could reach code that runs on the operator's next commit. A
+// symlink whose target, read as a path, leaves the view is left out
+// (escapes) and named, never followed.
 func (v *view) copyTree(src string) error {
 	v.tree = map[string]stamp{}
 	if err := os.Mkdir(v.cwd, viewDirMode); err != nil {
 		return jq.Sealed(opCreate+v.cwd, err)
 	}
 	return walkRel(src, func(p, rel string, d fs.DirEntry) error {
-		if rel == stateRel || (rel == config.VerdictDir && !d.IsDir()) {
+		switch {
+		case rel == stateRel || rel == gitDir || (rel == config.VerdictDir && !d.IsDir()):
 			return skipEntry(d)
+		case d.Type()&fs.ModeSymlink != 0 && escapes(p, rel):
+			v.dropped = append(v.dropped, rel)
+			return nil
 		}
 		return copyEntry(p, filepath.Join(v.cwd, filepath.FromSlash(rel)), rel, d, v.tree, nil)
 	})
+}
+
+// escapes reports whether the symlink at p, at rel below the view's root,
+// names a target outside the view: an absolute or rooted target, one whose
+// `..` climbs above the root, or one that cannot be read.
+func escapes(p, rel string) bool {
+	target, err := os.Readlink(p)
+	return err != nil || targetEscapes(rel, target)
+}
+
+// targetEscapes reports whether a symlink at rel naming target leads outside
+// the tree it sits in, read as a path.
+func targetEscapes(rel, target string) bool {
+	if filepath.IsAbs(target) || filepath.VolumeName(target) != "" || strings.HasPrefix(target, slash) ||
+		strings.HasPrefix(target, `\`) {
+		return true
+	}
+	joined := path.Join(path.Dir(rel), filepath.ToSlash(target))
+	return joined == up || strings.HasPrefix(joined, up+slash)
+}
+
+// dropEscapingLinks removes every copied symlink that, resolved through the
+// view's other links, still lands outside the view: a target that reads as
+// inside can climb out through another link's `..`. A link that does not
+// resolve stays only while the path it names is inside the view.
+func (v *view) dropEscapingLinks() {
+	for rel, st := range v.tree {
+		if st.mode&fs.ModeSymlink != 0 && v.leadsOut(rel) {
+			delete(v.tree, rel)
+			v.dropped = append(v.dropped, rel)
+		}
+	}
+	slices.Sort(v.dropped)
+}
+
+// leadsOut removes the copied symlink at rel when it resolves outside the
+// view and reports whether it did.
+func (v *view) leadsOut(rel string) bool {
+	link := filepath.Join(v.cwd, filepath.FromSlash(rel))
+	resolved, err := filepath.EvalSymlinks(link)
+	return err == nil && !contenttree.Inside(v.cwd, resolved) && os.Remove(link) == nil
+}
+
+// gitFiles are the files of an empty repository: enough for an agent CLI
+// that looks for a git checkout (codex's trust check, opencode's project
+// root) to find the view, and nothing that names the operator's repository.
+var gitFiles = map[string]string{
+	"HEAD":   "ref: refs/heads/main\n",
+	"config": "[core]\n\trepositoryformatversion = 0\n\tbare = false\n",
+}
+
+// standaloneGit gives the view a git directory of its own: an empty
+// repository with no history, no hooks, and no path outside the view.
+func standaloneGit(cwd string) error {
+	dir := filepath.Join(cwd, gitDir)
+	for _, sub := range []string{"", "objects", "refs", filepath.Join("refs", "heads"), filepath.Join("refs", "tags")} {
+		if err := os.Mkdir(filepath.Join(dir, sub), viewDirMode); err != nil {
+			return jq.Sealed(opCreate+dir, err)
+		}
+	}
+	for name, body := range gitFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), viewFileMode); err != nil {
+			return jq.Sealed(opCreate+dir, err)
+		}
+	}
+	return nil
 }
 
 // copyBundle copies the bundle into the view: its inputs, its earlier
@@ -445,12 +532,14 @@ func copyFile(src, dst string, info fs.FileInfo, summed bool) (sum [sha256.Size]
 }
 
 // env is the launch environment with PWD naming the view, as a shell
-// starting there would set it, and no OLDPWD: the operator's own PWD names
-// their checkout.
+// starting there would set it, no OLDPWD — the operator's own PWD names their
+// checkout — and none of git's location variables (GIT_DIR and friends),
+// which would point git inside the view back at the operator's repository.
 func (v *view) env(env []string) []string {
 	out := make([]string, 0, len(env)+1)
 	for _, kv := range env {
-		if !strings.HasPrefix(kv, "PWD=") && !strings.HasPrefix(kv, "OLDPWD=") {
+		name, _, _ := strings.Cut(kv, "=")
+		if name != "PWD" && name != "OLDPWD" && !gitcmd.Inherited(name) {
 			out = append(out, kv)
 		}
 	}
@@ -583,7 +672,7 @@ func (v *view) treeStrays(out *settled) {
 	//nolint:errcheck // best effort: a write the walk cannot read is still discarded
 	_ = walkRel(v.cwd, func(_, rel string, d fs.DirEntry) error {
 		switch {
-		case rel == v.rel:
+		case rel == v.rel, rel == gitDir:
 			return filepath.SkipDir
 		case d.IsDir():
 			return nil
@@ -666,6 +755,19 @@ func (st *state) warnSettled(agent string, s *settled) {
 	}
 }
 
+// warnDropped names, once per run, the tree's symlinks the review snapshot
+// leaves out because they lead outside it.
+func (st *state) warnDropped(dropped []string) {
+	if len(dropped) == 0 {
+		return
+	}
+	msg := core.Msgf("the review snapshot leaves out %d symlink(s) that lead outside it: %s — "+
+		"a write through one would leave the snapshot", len(dropped), capList(dropped))
+	if !slices.Contains(st.warnings, msg) {
+		st.warn(msg)
+	}
+}
+
 // capList joins items, naming at most shownStrays of them.
 func capList(items []string) string {
 	if len(items) <= shownStrays {
@@ -694,6 +796,7 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 	if err != nil {
 		return nil, st.viewFailure(ctx, err)
 	}
+	st.warnDropped(v.dropped)
 	res, err := st.spawnBoxed(ctx, args, argv, tap, v)
 	if res != nil {
 		s := v.settle(bundle, expect)

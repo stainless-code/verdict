@@ -412,8 +412,15 @@ func checkLaunch(t *testing.T, f *replayFixture, i int, line []string) {
 	if line[1] != wantArtifact {
 		t.Errorf("launch %d artifact = %q, want %q", i, line[1], wantArtifact)
 	}
-	if want := f.candidateHead(t, wantPR); line[3] != want {
-		t.Errorf("launch %d checked out %q; PR #%d must be read at its historical head %q", i, line[3], wantPR, want)
+	head := f.candidateHead(t, wantPR)
+	want := contentPrint(func(name string) ([]byte, bool) {
+		if !f.repo.gitAllow("cat-file", "-e", head+":"+name) {
+			return nil, false
+		}
+		return []byte(f.repo.git("show", head+":"+name)), true
+	})
+	if line[3] != want {
+		t.Errorf("launch %d read content %s; PR #%d must be read at its historical head %s", i, line[3], wantPR, head)
 	}
 }
 
