@@ -275,3 +275,27 @@ func TestSnapshotBaseRefusesALinkedCacheComponent(t *testing.T) {
 		t.Errorf("the refusal left %d entries in the checkout (%v)", len(entries), err)
 	}
 }
+
+// TestSnapshotBaseResolvesALinkAboveAMissingCache proves a cache directory
+// that does not exist yet below a link into the checkout —
+// `<outside>/link/missing`, link pointing at the checkout — refuses before
+// anything is created: the deepest existing ancestor is resolved first.
+func TestSnapshotBaseResolvesALinkAboveAMissingCache(t *testing.T) {
+	t.Parallel()
+	tmp := contenttree.Resolved(t.TempDir())
+	root := filepath.Join(tmp, "repo")
+	outside := contenttree.Resolved(t.TempDir())
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(root, filepath.Join(outside, "link")); err != nil {
+		t.Fatal(err)
+	}
+	cache := filepath.Join(outside, "link", "missing")
+	if _, err := snapshotBase(root, tmp, map[string]string{"XDG_CACHE_HOME": cache}, true); err == nil {
+		t.Error("a cache below a link into the checkout was used")
+	}
+	if entries, err := os.ReadDir(root); err != nil || len(entries) > 0 {
+		t.Errorf("the refusal left %d entries in the checkout (%v)", len(entries), err)
+	}
+}

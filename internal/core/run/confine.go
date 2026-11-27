@@ -354,7 +354,10 @@ func plannedSnapshotDir(root, tmp, cache string) (string, error) {
 			"(XDG_CACHE_HOME, else HOME, or LOCALAPPDATA on Windows) is set to hold its review snapshots "+
 			"apart from it", root, tmp)
 	}
-	base := contenttree.Resolved(cache)
+	base, err := physical(cache)
+	if err != nil {
+		return "", err
+	}
 	dir := filepath.Join(base, "verdict", "snapshots")
 	if err := noLinkBelow(base, dir); err != nil {
 		return "", err
@@ -364,6 +367,45 @@ func plannedSnapshotDir(root, tmp, cache string) (string, error) {
 			"and the temp directory", dir, apart)
 	}
 	return dir, nil
+}
+
+// physical is name with its deepest existing ancestor resolved through every
+// link and the components below it, which do not exist yet, joined back: the
+// directory MkdirAll would really create. A missing tail is never resolved
+// by itself, so a link above it (a cache under `<outside>/link/missing`,
+// link pointing into the checkout) is followed here, before anything is
+// created through it.
+func physical(name string) (string, error) {
+	abs, err := filepath.Abs(name)
+	if err != nil {
+		return "", jq.Sealed("resolve "+name, err)
+	}
+	at, missing := deepestExisting(abs)
+	if at == "" {
+		return abs, nil
+	}
+	resolved, err := filepath.EvalSymlinks(at)
+	if err != nil {
+		return "", jq.Sealed("resolve "+at, err)
+	}
+	return filepath.Join(append([]string{resolved}, missing...)...), nil
+}
+
+// deepestExisting is the deepest ancestor of abs (abs itself included) that
+// exists, and the components below it that do not, in order; "" when none
+// exists.
+func deepestExisting(abs string) (string, []string) {
+	var missing []string
+	for at := abs; ; at = filepath.Dir(at) {
+		if _, err := os.Lstat(at); err == nil {
+			slices.Reverse(missing)
+			return at, missing
+		}
+		if filepath.Dir(at) == at {
+			return "", nil
+		}
+		missing = append(missing, filepath.Base(at))
+	}
 }
 
 // noLinkBelow refuses when any existing component of dir below base is a
