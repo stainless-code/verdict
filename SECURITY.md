@@ -113,9 +113,13 @@ In scope (highest priority first):
   link, runs in a copy holding a symlink or a path back to the operator's
   repository, loads the reviewed tree's own agent configuration, runs without
   the denial, or carries a grant verdict renders wider than the launch's own
-  bundle directory, is a vulnerability. The shared snapshot every copy is
-  made from is symlink-free, read-only, and fingerprinted, so a change to it
-  refuses every later copy.
+  bundle directory, is a vulnerability. The shared snapshot is
+  symlink-free, owner-only read-only, and fingerprinted by path, mode, size,
+  and modification time, plus inode and change time on unix: any write to it
+  there, even one that restores the size, mode, and modification time,
+  refuses every later copy. On Windows the fingerprint holds the first four
+  alone, so a same-size rewrite that restores the modification time is not
+  detected.
 - The review sandbox around every review launch (`run --agent` finders,
   cross-checks, repair rounds and drain, `loop`'s review, `demo` and
   `backtest` reviews; not the loop's fix spawn, which edits the checkout by

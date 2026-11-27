@@ -4338,9 +4338,15 @@ git's command-scope `GIT_CONFIG_*`, whatever their case; a relative
 `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is resolved where you ran verdict.
 
 The shared snapshot every copy is made from holds no symlink either, and is
-read-only (directories 0555, files 0444) and fingerprinted when it is taken: a
-launch that changed it anyway refuses every later launch's copy
+read-only and owner-only (directories 0500, files at most 0500; Windows
+applies no directory mode, and only a file's read-only attribute). It is
+fingerprinted when it is taken — every entry's path, mode, size, and
+modification time, plus its inode and change time on unix — and a launch
+that changed it anyway refuses every later launch's copy
 (`agent-spawn-failed`, naming the change) instead of handing the change on.
+On unix that catches any write, even one that restores a file's size, mode,
+and modification time, since the change time moves with it; on Windows a
+same-size rewrite that restores the modification time is not caught.
 
 What a review agent can still do: read the reviewed tree and the bundle, and
 use the network. What it can no longer do: write your checkout through a path

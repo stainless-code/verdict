@@ -155,7 +155,8 @@ func TestSharedSnapshotHoldsNoSymlinkAndIsReadOnly(t *testing.T) {
 }
 
 // probeSharedSnapshot finds the shared snapshot beside the copy cmd runs in
-// and reports it, every symlink and every writable entry in it, after
+// and reports it, every symlink, every writable entry, and every entry the
+// group or others may read in it, after
 // writing through the committed src/escape link as a hostile agent would.
 func probeSharedSnapshot(t *testing.T, cmd *core.Command) []string {
 	t.Helper()
@@ -170,7 +171,8 @@ func probeSharedSnapshot(t *testing.T, cmd *core.Command) []string {
 	return found
 }
 
-// unsealed names every symlink and every writable entry below dir.
+// unsealed names every symlink, every writable entry, and every entry the
+// group or others may read, below dir.
 func unsealed(dir string) []string {
 	var found []string
 	_ = filepath.WalkDir(dir, func(p string, _ os.DirEntry, _ error) error { //nolint:errcheck // reports below
@@ -189,6 +191,64 @@ func unsealedEntry(p string, info os.FileInfo) []string {
 		return []string{"link=" + p}
 	case info.Mode().Perm()&0o222 != 0:
 		return []string{"writable=" + p}
+	case info.Mode().Perm()&0o077 != 0:
+		return []string{"shared=" + p}
 	}
 	return nil
+}
+
+// TestRestoredRewriteOfTheSnapshotRefusesTheNextCopy proves a rewrite of the
+// shared snapshot that restores a file's size, mode, and modification time
+// — chmod u+w, write, chmod u-w, touch — still refuses the next copy: the
+// write moved the file's change time, which no user-space call can set.
+func TestRestoredRewriteOfTheSnapshotRefusesTheNextCopy(t *testing.T) {
+	t.Parallel()
+	ws, root := fakeCanonical(t, map[string]string{"src/main.go": originalMain})
+	expect := expectedArtifacts(here, reviewFile, nil)
+	if _, err := ws.open(t.Context(), bundleDir(root), here, expect, 30); err != nil {
+		t.Fatalf("a sealed snapshot refused its first copy: %v", err)
+	}
+	rewriteRestored(t, filepath.Join(ws.tree, "src", "main.go"), strings.Replace(originalMain, "original", "poisoned", 1))
+	_, err := ws.open(t.Context(), bundleDir(root), here, expect, 30)
+	if err == nil || !strings.Contains(err.Error(), "changed after it was taken") {
+		t.Errorf("a restored rewrite of the snapshot gave a copy (err = %v)", err)
+	}
+}
+
+// rewriteRestored rewrites the file at path in place with body, which must be
+// its size, then restores its mode and modification time.
+func rewriteRestored(t *testing.T, path, body string) {
+	t.Helper()
+	before, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if int64(len(body)) != before.Size() {
+		t.Fatalf("the rewrite is %d bytes, want the file's %d", len(body), before.Size())
+	}
+	if err := os.Chmod(path, before.Mode().Perm()|0o200); err != nil {
+		t.Fatal(err)
+	}
+	writeInPlace(t, path, body)
+	if err := os.Chmod(path, before.Mode().Perm()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeInPlace writes body over the file at path without replacing it.
+func writeInPlace(t *testing.T, path, body string) {
+	t.Helper()
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
