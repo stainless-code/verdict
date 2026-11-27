@@ -262,8 +262,23 @@ func (st *state) settleBox(ctx context.Context, def *agentcatalog.Launch) *core.
 	}
 	st.box = box
 	st.warnStateless(def)
+	st.warnKeychainLogin(def)
 	st.warnNested(def)
 	return nil
+}
+
+// warnKeychainLogin warns a macOS launch of a row whose saved sign-in is the
+// login keychain, which the profile keeps closed to it, unless the variable
+// that signs it in instead is set.
+func (st *state) warnKeychainLogin(def *agentcatalog.Launch) {
+	if def.KeychainLoginEnv == "" || st.box.mechanism != hostsandbox.SandboxExecTool || st.box.keychain() ||
+		hostsandbox.EnvLookup(st.childEnv(), def.KeychainLoginEnv) != "" {
+		return
+	}
+	st.boxWarn(core.Msgf("%s's saved macOS sign-in is in your login keychain, which verdict's review sandbox keeps "+
+		"closed to it: %s keeps a shell in every review, and with the keychain open a prompt-injected diff could "+
+		"read every token stored there (gh's among them) into review text; set %s for its review launches%s",
+		def.Name, def.Name, def.KeychainLoginEnv, st.optOutRemedy()))
 }
 
 // valueFullAccess is codex's sandbox mode that starts no sandbox of its own.
@@ -368,9 +383,11 @@ func (st *state) boxWarn(msg string) {
 }
 
 // warnStateless names the one limit a row without state paths runs into in
-// the sandbox: it cannot save its own login or sessions.
+// the sandbox: it cannot save its own login or sessions. A row whose state is
+// all read-only (agy's) declared that it needs none writable.
 func (st *state) warnStateless(def *agentcatalog.Launch) {
-	if len(def.StateWritable) > 0 || len(def.StateEphemeral) > 0 || def.ProjectState != nil {
+	if len(def.StateWritable) > 0 || len(def.StateReadOnly) > 0 || len(def.StateEphemeral) > 0 ||
+		def.ProjectState != nil {
 		return
 	}
 	remedy := "it cannot run sandboxed"

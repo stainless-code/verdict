@@ -902,14 +902,14 @@ func TestEphemeralHomesSitInThePrivateTmp(t *testing.T) {
 		t.Fatal(err)
 	}
 	def, _ := lookupAgent("opencode")
-	_, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
+	_, _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
 	if err == nil || !strings.Contains(err.Error(), "mcp-auth.json") {
 		t.Fatalf("a linked seed = %v, want the launch refused", err)
 	}
 	if err := os.Remove(filepath.Join(data, "opencode", "mcp-auth.json")); err != nil {
 		t.Fatal(err)
 	}
-	env, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
+	env, _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -941,7 +941,7 @@ func TestEphemeralSeedRefusesALinkedSource(t *testing.T) {
 			t.Fatal(err)
 		}
 		def, _ := lookupAgent("opencode")
-		if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, t.TempDir()); err == nil {
+		if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home}, t.TempDir()); err == nil {
 			t.Errorf("seeding through a linked %s passed", link)
 		}
 	}
@@ -957,7 +957,7 @@ func TestEphemeralSeedRefusesALinkedRelocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	def, _ := lookupAgent("codex")
-	if _, err := ephemeralEnv(&def, []string{"HOME=" + home, "CODEX_HOME=" + linked}, t.TempDir()); err == nil {
+	if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home, "CODEX_HOME=" + linked}, t.TempDir()); err == nil {
 		t.Error("a linked CODEX_HOME passed")
 	}
 }
@@ -975,7 +975,7 @@ func TestPiSeedKeepsNoExtensionOrCommand(t *testing.T) {
 		`{"defaultModel":"m","extensions":["/x.ts"],"packages":["npm:x"],"shellPath":"/bin/evil","npmCommand":["x"]}`)
 	writeUnder(t, home, filepath.Join(agent, "extensions", "x.ts"), "code")
 	def, _ := lookupAgent("pi")
-	if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
+	if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
 		t.Fatal(err)
 	}
 	dir := filepath.Join(tmp, "home-pi_coding_agent_dir")
@@ -1059,7 +1059,7 @@ trust_level = "trusted"
 path = "evil"
 `)
 	def, _ := lookupAgent("codex")
-	if _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
+	if _, _, err := ephemeralEnv(&def, []string{"HOME=" + home}, tmp); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(filepath.Join(tmp, "home-codex_home", "config.toml"))

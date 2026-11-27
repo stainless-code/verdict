@@ -33,40 +33,63 @@ const (
 
 // ephemeralEnv makes the row's ephemeral homes under tmp, seeds them from the
 // real directories env names (an absolute relocation value, else the
-// home-relative default), and returns the environment pointing at them. A
-// real directory reached through a symlink, a relocation that is unsafe as a
-// state root, or a seed that is a link, not a regular file, or oversized
-// refuses the launch; a missing directory or seed is left out.
-func ephemeralEnv(def *agentcatalog.Launch, env []string, tmp string) ([]string, error) {
+// home-relative default), and returns the environment pointing at them, with
+// a warning for each login database it could not read. A real directory
+// reached through a symlink, a relocation that is unsafe as a state root, or
+// a seed or login database that is a link, not a regular file, or oversized
+// refuses the launch; a missing directory, seed, or database is left out.
+func ephemeralEnv(def *agentcatalog.Launch, env []string, tmp string) (homes, warnings []string, err error) {
 	if len(def.StateEphemeral) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	home, ok := hostsandbox.Home(env)
 	if !ok || !filepath.IsAbs(home) {
-		return nil, jq.NewErrf("HOME is unset or relative, so %s's real home cannot be named", def.Name)
+		return nil, nil, jq.NewErrf("HOME is unset or relative, so %s's real home cannot be named", def.Name)
 	}
-	out := make([]string, 0, len(def.StateEphemeral))
+	homes = make([]string, 0, len(def.StateEphemeral))
 	for _, v := range def.StateEphemeral {
-		dir, err := makeHome(v, filepath.Clean(home), env, tmp)
+		entries, warning, err := makeHome(def.Name, v, filepath.Clean(home), env, tmp)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		out = append(out, v.Name+inlineValue+dir)
+		homes = append(homes, entries...)
+		warnings = appendWarning(warnings, warning)
 	}
-	return out, nil
+	return homes, warnings, nil
 }
 
-// makeHome makes one variable's throwaway home under tmp and seeds it.
-func makeHome(v agentcatalog.EphemeralVar, home string, env []string, tmp string) (string, error) {
+// appendWarning appends a warning that is not empty.
+func appendWarning(warnings []string, w string) []string {
+	if w == "" {
+		return warnings
+	}
+	return append(warnings, w)
+}
+
+// makeHome makes one variable's throwaway home under tmp, seeds it, and
+// returns the entries pointing the launch at it.
+func makeHome(name string, v agentcatalog.EphemeralVar, home string, env []string, tmp string,
+) (entries []string, warning string, err error) {
 	source, err := ephemeralSource(v, home, env)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	dir := filepath.Join(tmp, "home-"+strings.ToLower(v.Name))
 	if err := os.MkdirAll(dir, viewDirMode); err != nil {
-		return "", jq.Sealed("make a throwaway home", err)
+		return nil, "", jq.Sealed("make a throwaway home", err)
 	}
-	return dir, seedHome(source.path, dir, v)
+	if err := seedHome(source.path, dir, v); err != nil {
+		return nil, "", err
+	}
+	entries = []string{v.Name + inlineValue + dir}
+	if v.LoginDB == nil {
+		return entries, "", nil
+	}
+	entry, warning, err := seedLoginDB(name, v.LoginDB, source.path, dir, env)
+	if err != nil {
+		return nil, "", err
+	}
+	return append(entries, entry), warning, nil
 }
 
 // ephemeralSource names the real directory a variable's home is seeded from
@@ -305,9 +328,14 @@ func (st *state) throwawayHomes(def *agentcatalog.Launch, v *view, env []string)
 	if st.box == nil {
 		return env, nil
 	}
-	homes, err := ephemeralEnv(def, absConfigHomes(st.childEnv()), v.tmp)
+	homes, warnings, err := ephemeralEnv(def, absConfigHomes(st.childEnv()), v.tmp)
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not make its throwaway home (%v) — nothing ran", err)}
+	}
+	for _, w := range warnings {
+		if !slices.Contains(st.warnings, w) {
+			st.warn(w)
+		}
 	}
 	return hostsandbox.OverrideEnv(env, homes), nil
 }

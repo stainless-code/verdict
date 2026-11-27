@@ -82,6 +82,7 @@ FUZZ_TARGETS := \
 	./internal/mcpconfig:FuzzMergeTOML \
 	./internal/release:FuzzExtractTarGz \
 	./internal/release:FuzzExtractZip \
+	./internal/sqliteread:FuzzTable \
 	./internal/untrusted:FuzzFlatten
 
 .PHONY: fuzz

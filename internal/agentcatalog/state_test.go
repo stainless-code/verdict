@@ -25,6 +25,7 @@ func TestStatePathsAreCitedAndShaped(t *testing.T) {
 			".claude/CLAUDE.md", ".claude/shell-snapshots", ".claude/session-env", ".claude/sessions",
 			".claude/todos", ".claude/file-history", ".claude/backups", ".claude/cache", ".claude/statsig",
 		},
+		"agy":      {".gemini"},
 		"codex":    {".codex"},
 		"opencode": {".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode"},
 		"pi":       {".pi"},
@@ -119,13 +120,16 @@ func overlapping(w string, readOnly []string) (string, bool) {
 
 // TestTrustedStateIsEphemeralOrScoped pins how the rows whose later
 // sessions trust their own data get any writable data at all: opencode, codex
-// and pi a throwaway home seeded with their logins (and pi's model settings
-// alone), claude only its launch's own project directory with memory
-// read-only.
+// and pi a throwaway home seeded with their logins (opencode's also from its
+// database's credential table, and pi's model settings alone), claude only
+// its launch's own project directory with memory read-only.
 func TestTrustedStateIsEphemeralOrScoped(t *testing.T) {
 	want := map[string][]EphemeralVar{
 		"opencode": {
-			{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+			{
+				Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"},
+				LoginDB: &LoginDB{Path: "opencode/opencode.db", Env: "OPENCODE_DB", Into: "opencode/auth.json"},
+			},
 			{Name: "XDG_STATE_HOME", Root: ".local/state"},
 		},
 		"codex": {{Name: "CODEX_HOME", Root: ".codex", Seed: []string{"auth.json", "config.toml"}}},
@@ -175,7 +179,8 @@ func TestNoWritableRealHomeStateButClaudes(t *testing.T) {
 
 // sameEphemeral compares two ephemeral variables field by field.
 func sameEphemeral(a, b EphemeralVar) bool {
-	return a.Name == b.Name && a.Root == b.Root && slices.Equal(a.Seed, b.Seed)
+	return a.Name == b.Name && a.Root == b.Root && slices.Equal(a.Seed, b.Seed) &&
+		(a.LoginDB == nil) == (b.LoginDB == nil) && (a.LoginDB == nil || *a.LoginDB == *b.LoginDB)
 }
 
 // TestSourcedCodeIsNeverWritable proves no row's writable state names a

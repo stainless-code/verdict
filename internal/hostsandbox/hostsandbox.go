@@ -120,19 +120,38 @@ var CredentialPaths = []string{
 	".bitwarden-ssh-agent.sock",
 	filepath.Join("Library", "Group Containers", "2BUA8C4S2C.com.1password"),
 	filepath.Join("Library", "Containers", "com.maxgoedjen.Secretive.SecretAgent"),
+	// opencode's database keeps its logins in a credential table, the same
+	// tokens auth.json held, beside its write-ahead log and shared memory.
+	filepath.Join(".local", "share", "opencode", "opencode.db"),
+	filepath.Join(".local", "share", "opencode", "opencode.db-wal"),
+	filepath.Join(".local", "share", "opencode", "opencode.db-shm"),
 }
 
 // credentialVar is one environment variable that relocates a credential
 // store away from its home-relative default: the path it names (joined with
-// suffix), or every entry of a path list.
+// suffix, then ext appended to its name), or every entry of a path list.
 type credentialVar struct {
 	name   string
 	suffix string
+	ext    string
 	list   bool
 }
 
+// The files SQLite keeps beside a database in write-ahead-log mode.
+const (
+	extWAL = "-wal"
+	extSHM = "-shm"
+)
+
 // xdgConfigHome relocates the XDG config directory several stores live in.
 const xdgConfigHome = "XDG_CONFIG_HOME"
+
+// xdgDataHome relocates the XDG data directory opencode keeps its logins
+// in, and envOpenCodeDB opencode's database alone.
+const (
+	xdgDataHome   = "XDG_DATA_HOME"
+	envOpenCodeDB = "OPENCODE_DB"
+)
 
 // credentialEnv is the relocation half of the table, read from both the
 // child environment and the verdict process environment, so a store moved by
@@ -150,13 +169,19 @@ var credentialEnv = []credentialVar{
 	{name: xdgConfigHome, suffix: "glab-cli"},
 	{name: "GLAB_CONFIG_DIR"},
 	{name: "CODEX_HOME", suffix: "auth.json"},
-	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "auth.json")},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "auth.json")},
 	{name: "PI_CODING_AGENT_DIR", suffix: "auth.json"},
 	{name: "CLAUDE_CONFIG_DIR", suffix: ".credentials.json"},
 	{name: xdgConfigHome, suffix: "github-copilot"},
 	{name: xdgConfigHome, suffix: filepath.FromSlash("git/credentials")},
-	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "mcp-auth.json")},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "mcp-auth.json")},
 	{name: "XAUTHORITY"},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db")},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db"), ext: extWAL},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "opencode.db"), ext: extSHM},
+	{name: envOpenCodeDB},
+	{name: envOpenCodeDB, ext: extWAL},
+	{name: envOpenCodeDB, ext: extSHM},
 }
 
 // Inputs is what a policy resolves the credential table against: the
@@ -257,7 +282,7 @@ func (v credentialVar) paths(env []string) []string {
 	var paths []string
 	for _, path := range values {
 		if filepath.IsAbs(path) {
-			paths = append(paths, filepath.Join(path, v.suffix))
+			paths = append(paths, filepath.Join(path, v.suffix)+v.ext)
 		}
 	}
 	return paths

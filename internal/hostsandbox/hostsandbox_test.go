@@ -96,6 +96,7 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 			"HOME=" + h, "CODEX_HOME=" + filepath.Join(x, "codex"), "XDG_DATA_HOME=" + filepath.Join(x, "data"),
 			"PI_CODING_AGENT_DIR=" + filepath.Join(x, "pi"), "CLAUDE_CONFIG_DIR=" + filepath.Join(x, "claude"),
 			"XDG_CONFIG_HOME=" + filepath.Join(x, "cfg"), "XAUTHORITY=" + filepath.Join(x, "xauth"),
+			"OPENCODE_DB=" + filepath.Join(x, "oc.db"),
 		},
 	}.CredentialLocations(filepath.Join(base, "r"), false)
 	if err != nil {
@@ -111,6 +112,9 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 		"h/.Xauthority", "x/xauth", "h/.1password", "h/.bitwarden-ssh-agent.sock",
 		"h/Library/Group Containers/2BUA8C4S2C.com.1password",
 		"h/Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
+		"h/.local/share/opencode/opencode.db", "h/.local/share/opencode/opencode.db-wal",
+		"h/.local/share/opencode/opencode.db-shm", "x/data/opencode/opencode.db", "x/data/opencode/opencode.db-wal",
+		"x/data/opencode/opencode.db-shm", "x/oc.db", "x/oc.db-wal", "x/oc.db-shm",
 	} {
 		root, rest, _ := strings.Cut(want, "/")
 		if path := filepath.Join(roots[root], filepath.FromSlash(rest)); !slices.Contains(got, path) {

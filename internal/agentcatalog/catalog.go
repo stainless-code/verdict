@@ -44,6 +44,14 @@ type Launch struct {
 	Source             string
 	PermissionHint     string
 	KeyEnv             string
+	// KeychainLoginEnv is, for a CLI whose saved macOS sign-in lives in the
+	// login keychain verdict's review sandbox keeps closed to it, the
+	// variable that signs it in instead: a sandboxed macOS review launch
+	// whose environment lacks it warns that the sign-in cannot be reached.
+	// The keychain opens only to a row whose own login it is and whose shell
+	// is denied (claude's): with the brokers open, a shell could read every
+	// item `security` stored, gh's token among them.
+	KeychainLoginEnv   string
 	PermissionCitation string
 	LaunchWarning      string
 	ProbeMatch         string
@@ -193,9 +201,23 @@ type StateVar struct {
 // keys its copy keeps (every other key dropped).
 type EphemeralVar struct {
 	SeedKeys map[string][]string
+	LoginDB  *LoginDB
 	Name     string
 	Root     string
 	Seed     []string
+}
+
+// LoginDB is a login the CLI keeps in its SQLite database rather than a
+// file, as opencode's credential table: a review launch reads the table's
+// provider logins read-only from the real database — Path below the real
+// directory, or Env's absolute value — and writes them over the seeded copy
+// of Into, the login file a fresh database imports when it starts; Env then
+// names the throwaway copy's database, so the launch never opens the real
+// one.
+type LoginDB struct {
+	Path string
+	Env  string
+	Into string
 }
 
 // ProjectState is per-working-directory state: Root is the home-relative
@@ -283,6 +305,8 @@ const (
 	// docCodexSandbox states workspace-write's Seatbelt and Landlock
 	// sandboxes and what they let the agent write — read 2026-11-27.
 	docCodexSandbox = "https://developers.openai.com/codex/security"
+	// docAgy is Antigravity CLI's repository — read 2026-11-17.
+	docAgy = "https://github.com/google-antigravity/antigravity-cli"
 	// docOpenCodeStorage names opencode's data directory
 	// (~/.local/share/opencode: auth, sessions, logs), its config directory
 	// and its cache (~/.cache/opencode) — read 2026-11-27.
@@ -351,12 +375,23 @@ var catalog = []Agent{
 	{
 		Name: "agy",
 		Launch: &Launch{
-			Citation:           "https://github.com/google-antigravity/antigravity-cli",
+			Citation:           docAgy,
 			PermissionHint:     "--dangerously-skip-permissions",
 			PermissionCitation: "https://github.com/google-antigravity/antigravity-cli",
 			Binary:             "agy", ModelFlag: modelFlag, PromptFlag: "-p",
 			LaunchWarning: agyLaunchWarning,
 			Install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+			// ~/.gemini holds its settings, MCP config, plugins and skills,
+			// and the conversations, memories, and summaries a later session
+			// loads; a review reaches its API with all of it read-only —
+			// verified empirically against the agent's CLI.
+			StateReadOnly: []string{".gemini"},
+			StateCitation: docAgy,
+			// Its saved macOS sign-in is a login-keychain item it reads
+			// through `security`, and GEMINI_API_KEY connects it instead of a
+			// saved sign-in (`agy changelog`) — verified empirically against
+			// the agent's CLI.
+			KeychainLoginEnv: "GEMINI_API_KEY",
 		},
 	},
 	// https://ampcode.com/docs/markdown/cli/execute-mode — read 2026-11-17
@@ -1019,13 +1054,20 @@ var catalog = []Agent{
 			// binaries and packages — so a review launch gets a throwaway data
 			// and state home in its wrapper, seeded with copies of its logins,
 			// and the real ones stay read-only. It makes the cache's bin at
-			// startup. Verified empirically against the agent's CLI.
+			// startup. Its current releases keep the logins in the database's
+			// credential table instead (OPENCODE_DB relocates the database),
+			// and a fresh database imports auth.json when it starts, so the
+			// seeded auth.json carries the table's provider logins. Verified
+			// empirically against the agent's CLI.
 			StateReadOnly: []string{
 				".config/opencode", ".cache/opencode", ".local/share/opencode", ".local/state/opencode",
 			},
 			StateDirs: []string{".cache/opencode/bin"},
 			StateEphemeral: []EphemeralVar{
-				{Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"}},
+				{
+					Name: "XDG_DATA_HOME", Root: ".local/share", Seed: []string{"opencode/auth.json", "opencode/mcp-auth.json"},
+					LoginDB: &LoginDB{Path: "opencode/opencode.db", Env: "OPENCODE_DB", Into: "opencode/auth.json"},
+				},
 				{Name: "XDG_STATE_HOME", Root: ".local/state"},
 			},
 			StateEnv: []StateVar{
@@ -1236,6 +1278,10 @@ func cloneEphemeral(in []EphemeralVar) []EphemeralVar {
 			keys[seed] = slices.Clone(allowed)
 		}
 		out[i].SeedKeys = keys
+		if out[i].LoginDB != nil {
+			login := *out[i].LoginDB
+			out[i].LoginDB = &login
+		}
 	}
 	return out
 }

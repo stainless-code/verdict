@@ -4414,13 +4414,15 @@ On Linux that means the network namespace is shared too (see Sockets below).
   and the agent logins `~/.codex/auth.json`,
   `~/.local/share/opencode/auth.json`, `~/.pi/agent/auth.json`,
   `~/.local/share/opencode/mcp-auth.json`, `~/.claude/.credentials.json`,
-  `~/.config/github-copilot`, and `~/.gemini/oauth_creds.json`; the X11
+  `~/.config/github-copilot`, `~/.gemini/oauth_creds.json`, and opencode's
+  database `~/.local/share/opencode/opencode.db` (with its `-wal` and `-shm`
+  files), which holds its logins; the X11
   cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
   Bitwarden, and Secretive — under your child, process, and account homes,
   plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,
   `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, `DOCKER_CONFIG`,
   `KUBECONFIG`, `CLOUDSDK_CONFIG`, `CODEX_HOME`, `XDG_DATA_HOME`,
-  `PI_CODING_AGENT_DIR`, `CLAUDE_CONFIG_DIR`, and `XAUTHORITY` move —
+  `PI_CODING_AGENT_DIR`, `CLAUDE_CONFIG_DIR`, `OPENCODE_DB`, and `XAUTHORITY` move —
   except the agent's own login, which is its state: pi reads its own
   `auth.json`, never codex's. The host temp roots (`/tmp`, `/var/tmp`; on
   Linux `/run` and a real `/var/run` too) are hidden; on macOS the launch
@@ -4485,9 +4487,17 @@ regular file, or over 1 MiB, refuses the launch). Everything it writes there
 goes with the launch, including a token it refreshes:
 
 - `opencode`: `XDG_DATA_HOME` and `XDG_STATE_HOME`, seeded with its logins
-  (`opencode/auth.json`, `opencode/mcp-auth.json`); its database, snapshot and
-  repos shadow repositories (a planted git config there would run on your
-  next opencode session), and logs land there. Its config stays where it is.
+  (`opencode/auth.json`, `opencode/mcp-auth.json`). Current opencode keeps its
+  logins in its database's credential table instead, so verdict reads that
+  table read-only — from `opencode/opencode.db` and its write-ahead log, or
+  wherever `OPENCODE_DB` points, never following a link — and writes each
+  provider's chosen login over the `auth.json` copy, which the launch's fresh
+  database imports when it starts; an MCP server's login, which `auth.json`
+  never held, is left out. A database it cannot read as one leaves the copy as
+  it is, with a warning. `OPENCODE_DB` points at the copy's database, so its
+  database, snapshot and repos shadow repositories (a planted git config there
+  would run on your next opencode session), and logs land there. Its config
+  stays where it is.
 - `codex`: `CODEX_HOME`, seeded with `auth.json` and `config.toml` cut down
   to its model, provider, and connection keys (`model`, `model_provider`,
   the reasoning and verbosity settings, `forced_login_method`,
@@ -4548,18 +4558,28 @@ launch's `TMPDIR`. An agent binary in a hidden root itself (`/tmp/agent`) is
 made readable alone, by its path and the file it resolves to, never its
 directory.
 
-| Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                                                                                  | Relocated by                                                           | Source                                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after                                                                   | `CLAUDE_CONFIG_DIR` (for `.claude`)                                    | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
-| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`'s model and provider keys; `--ephemeral`                    | `CODEX_HOME`                                                           | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
-| `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its private `TMPDIR`, seeded with its logins                                                           | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME` | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
-| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
+| Name       | Writable (relative to `HOME`)                                                                                                              | Read-only (loaded or trusted later)                                                                                                                                                                                                                                                              | Per launch                                                                                                                                  | Relocated by                                                                                         | Source                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `agy`      | none                                                                                                                                       | `.gemini` (all of it: settings, MCP config, plugins, skills, conversations, memories, summaries)                                                                                                                                                                                                 | none                                                                                                                                        | none                                                                                                 | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                |
+| `claude`   | `.claude/debug`, `.claude/.credentials.json*` (the Linux login); `Library/Caches/claude-cli-nodejs`; `Library/Keychains` (the macOS login) | `.claude.json` (`mcpServers`), `.claude/` `settings.json`, `settings.local.json`, `plugins`, `skills`, `agents`, `commands`, `hooks`, `output-styles`, `CLAUDE.md`, `shell-snapshots`, `session-env`, `sessions`, `todos`, `file-history`, `backups`, `cache`, `statsig`; `projects` but its own | its own `.claude/projects/<slug>` (its `memory` read-only), removed after                                                                   | `CLAUDE_CONFIG_DIR` (for `.claude`)                                                                  | [Claude settings](https://code.claude.com/docs/en/settings), [IAM](https://code.claude.com/docs/en/iam) |
+| `codex`    | none                                                                                                                                       | `.codex` (all of it: login, config, cache, scratch, `tmp/arg0*`, sessions, goals, memories, plugins, skills)                                                                                                                                                                                     | `CODEX_HOME` in its private `TMPDIR`, seeded with `auth.json` and `config.toml`'s model and provider keys; `--ephemeral`                    | `CODEX_HOME`                                                                                         | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                     |
+| `opencode` | none                                                                                                                                       | `.config/opencode`, `.cache/opencode` (installed packages), `.local/share/opencode` (logins, database, shadow repositories, managed tools), `.local/state/opencode`                                                                                                                              | `XDG_DATA_HOME`, `XDG_STATE_HOME` in its private `TMPDIR`, seeded with its logins, its database's among them; `OPENCODE_DB` at the copy     | `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `XDG_CONFIG_HOME`, `OPENCODE_DB` (its database) | [OpenCode troubleshooting](https://opencode.ai/docs/troubleshooting/)                                   |
+| `pi`       | none                                                                                                                                       | `.pi` (all of it: login, settings, models, sessions, extensions, skills, prompts, themes, install)                                                                                                                                                                                               | `PI_CODING_AGENT_DIR` in its private `TMPDIR`, seeded with `auth.json`, `models.json`, and settings' model and network keys; `--no-session` | `PI_CODING_AGENT_DIR` (for `.pi/agent`)                                                              | [pi config.ts](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/src/config.ts)       |
 
 `codex`'s read-only list applies only when your `--` decides its permissions;
 otherwise it runs in its own sandbox (below), still with its throwaway
 `CODEX_HOME`. An opencode provider it has not installed yet is read-only in the
 sandbox; run opencode once outside verdict to install it, or pass
 `--allow-unsandboxed-review` on `run` or `loop`.
+
+`agy` keeps its saved macOS sign-in in your login keychain, and the review
+sandbox keeps the keychain closed to it: agy keeps a shell in every review,
+and with the keychain brokers open that shell could read every item stored
+through `security` — your `gh` token among them — into review text verdict may
+post. The keychain opens only to `claude`, whose login it is and whose shell
+a review denies unless `--allow-shell` restores it. So a sandboxed macOS `agy` review signs in only through
+`GEMINI_API_KEY` in its environment, and `run` warns before launch when that
+is unset, naming `--allow-unsandboxed-review` on the verbs that offer it.
 
 Every other row declares none: in the sandbox it writes only its snapshot
 (with its private `TMPDIR`), so it cannot save its own login or sessions, and

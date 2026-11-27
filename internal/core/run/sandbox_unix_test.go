@@ -731,6 +731,56 @@ func TestReviewSandboxStartsOpencodeEphemeral(t *testing.T) {
 	}
 }
 
+// opencodeDBScript reads the logins in opencode's throwaway data home and
+// names the database the launch points it at, then reaches for the real
+// database, where its logins live.
+const opencodeDBScript = "#!/bin/sh\n" +
+	"real=\"$HOME/.local/share/opencode/opencode.db\"\n" +
+	"{ /bin/cat \"$XDG_DATA_HOME/opencode/auth.json\" 2>/dev/null; echo\n" +
+	"  case \"$OPENCODE_DB\" in \"$XDG_DATA_HOME\"/*) echo db=ephemeral ;; *) echo \"db=$OPENCODE_DB\" ;; esac\n" +
+	"  /usr/bin/head -c 15 \"$real\" 2>/dev/null | /usr/bin/grep -q SQLite && echo realdb=read || echo realdb=hidden\n" +
+	"} 2>&1\n" +
+	"printf '%s' '" + reviewDoc + "' > .verdict/state/42/review.json\n"
+
+// TestReviewSandboxSeedsOpencodesDatabaseLogins proves, under the real
+// mechanism, that opencode's review launch reads the provider logins its
+// database holds from its throwaway home and opens the throwaway database,
+// while the real database — opencode's logins — stays hidden from it and
+// from every other agent.
+func TestReviewSandboxSeedsOpencodesDatabaseLogins(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	for _, tc := range []struct {
+		agent string
+		leak  string
+		want  []string
+	}{
+		{agent: "opencode", want: []string{"realdb=hidden", seededLogins, "db=ephemeral"}},
+		{agent: "pi", want: []string{"realdb=hidden"}, leak: "an-key"},
+	} {
+		home := t.TempDir()
+		plantOpencodeDB(t, filepath.Join(home, ".local", "share"))
+		_, ref, log := sandboxedRunAs(t, tc.agent, confinedRoot(t), home, opencodeDBScript, "1")
+		if ref != nil {
+			t.Fatalf("%s review refused: %v", tc.agent, ref)
+		}
+		assertLogHas(t, tc.agent, log, tc.want)
+		if tc.leak != "" && strings.Contains(log, tc.leak) {
+			t.Errorf("%s read opencode's logins:\n%s", tc.agent, log)
+		}
+	}
+}
+
+// assertLogHas fails for each wanted line an agent's log lacks.
+func assertLogHas(t *testing.T, agent, log string, want []string) {
+	t.Helper()
+	for _, w := range want {
+		if !strings.Contains(log, w) {
+			t.Errorf("%s log lacks %q:\n%s", agent, w, log)
+		}
+	}
+}
+
 // claudeProjectScript is a prompt-injected claude reaching for project
 // state: it writes a transcript into its own project directory (allowed),
 // then tries its own memory, another project's memory, a staging directory
