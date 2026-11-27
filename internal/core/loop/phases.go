@@ -271,7 +271,7 @@ func (p *flowPhases) gate(ctx context.Context, b *reviewflow.Bundle) (bool, []st
 func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
-	if ref := readcommon.RefuseArtifactLinks(dir, patchFile, fixCostFile); ref != nil {
+	if ref := readcommon.RefuseArtifactLinks(p.req.RepoRoot, dir, patchFile, fixCostFile); ref != nil {
 		return ref
 	}
 	req := p.req.Flow.RunRequest(b, launch, nil)

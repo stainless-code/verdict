@@ -237,7 +237,7 @@ func (st *state) refuseLinkedPaths(target *launchTarget) *core.RefusalError {
 	if dir == "" {
 		dir = target.output
 	}
-	return readcommon.RefuseUnsafeBundle(dir)
+	return readcommon.RefuseUnsafeBundle(st.req.RepoRootPath(), dir)
 }
 
 // grantFor is the row's review-write grant for a launch writing into dir. A
