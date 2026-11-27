@@ -110,6 +110,7 @@ func newFixture(t *testing.T) *fixture {
 	writeFile(t, filepath.Join(dir, "full.diff"), fixtureDiff)
 	testenv.Checkout(t, root)
 	t.Setenv("HOME", t.TempDir())
+	t.Setenv("TMPDIR", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	return &fixture{root: root, dir: dir, bin: t.TempDir(), slug: bundleSlug}
 }

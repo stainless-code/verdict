@@ -250,8 +250,10 @@ func readFile(t *testing.T, path string) []byte {
 // directory: for every snapshot directory beside its own wrapper — the
 // execution's shared tree and finder 2's live view among them — it tries to
 // plant a file, append to the shared tree's src/main.go, forge finder 2's
-// review in the sibling's bundle copy, and list the directory. Each outcome
-// is one line on stdout.
+// review in the sibling's bundle copy, and list the directory; then it
+// forges finder 2's review at the exact live path finder 2 started in
+// (SIBLING_VIEW, `../../<its wrapper>/<its view>`). Each outcome is one line
+// on stdout.
 const siblingAttack = `own=$(basename "$(cd .. && pwd)")
 for d in ../../verdict-snapshot-*; do
   n=$(basename "$d"); [ "$n" = "$own" ] && continue
@@ -262,6 +264,8 @@ for d in ../../verdict-snapshot-*; do
   done
   ls "$d" >/dev/null 2>&1 && echo "read $n" || echo "noread $n"
 done
+(printf '{"forged":true}' > "$SIBLING_VIEW/.verdict/state/42/x-finder-2/review.json") 2>/dev/null &&
+  echo "written exact sibling" || echo "denied exact sibling"
 `
 
 // siblingPhases runs a two-finder execution through the real review
@@ -272,6 +276,7 @@ done
 type siblingPhases struct {
 	inner   *phaseCommander
 	ready   chan struct{}
+	live    string
 	done    chan struct{}
 	attack  string
 	once    sync.Once
@@ -292,8 +297,11 @@ func (s *siblingPhases) Run(ctx context.Context, cmd *core.Command) (core.Result
 	case "x-finder-1":
 		s.finderOne(ctx, cmd, at)
 	case "x-finder-2":
-		s.readyMu.Do(func() { close(s.ready) })
-		waitFor(s.done)
+		s.readyMu.Do(func() {
+			s.live = cmd.Dir
+			close(s.ready)
+		})
+		awaitClose(s.done)
 	}
 	inner := *cmd
 	inner.Argv = cmd.Argv[at:]
@@ -304,9 +312,11 @@ func (s *siblingPhases) Run(ctx context.Context, cmd *core.Command) (core.Result
 // 1's own wrapper.
 func (s *siblingPhases) finderOne(ctx context.Context, cmd *core.Command, at int) {
 	defer s.once.Do(func() { close(s.done) })
-	waitFor(s.ready)
+	awaitClose(s.ready)
 	attack := *cmd
 	attack.Argv = append(slices.Clone(cmd.Argv[:at]), "/bin/sh", "-c", siblingAttack)
+	attack.Env = append(slices.Clone(cmd.Env), "SIBLING_VIEW="+filepath.Join("..", "..",
+		filepath.Base(filepath.Dir(s.live)), filepath.Base(s.live)))
 	res, err := coreexec.Runner{}.Run(ctx, &attack)
 	if err != nil {
 		s.inner.t.Errorf("the attack did not run: %v", err)
@@ -314,9 +324,9 @@ func (s *siblingPhases) finderOne(ctx context.Context, cmd *core.Command, at int
 	s.attack = res.Stdout + res.Stderr
 }
 
-// waitFor waits for ch to close, or gives up after a bound so a broken
+// awaitClose waits for ch to close, or gives up after a bound so a broken
 // dispatch fails the test instead of hanging it.
-func waitFor(ch chan struct{}) {
+func awaitClose(ch chan struct{}) {
 	select {
 	case <-ch:
 	case <-time.After(30 * time.Second):
@@ -372,9 +382,17 @@ func assertSiblingAttackDenied(t *testing.T, log string) {
 	if strings.Count(log, "/forged") < 2 {
 		t.Fatalf("the attack reached fewer than two snapshot directories:\n%s", log)
 	}
-	if strings.Contains(log, "written") {
-		t.Errorf("finder 1 wrote outside its own view:\n%s", log)
+	if strings.Contains(log, "written") || !strings.Contains(log, "denied exact sibling\n") {
+		t.Errorf("finder 1 wrote outside its own view, or never tried finder 2's live path:\n%s", log)
 	}
+	assertSiblingReads(t, log)
+}
+
+// assertSiblingReads checks what each platform lets the attack read: macOS
+// lists no other snapshot directory, and Linux, where they stay readable,
+// reached finder 2's bundle copy, so the forgery there was really tried.
+func assertSiblingReads(t *testing.T, log string) {
+	t.Helper()
 	listed := strings.HasPrefix(log, "read ") || strings.Contains(log, "\nread ")
 	if runtime.GOOS == "darwin" && listed {
 		t.Errorf("finder 1 listed another snapshot directory:\n%s", log)

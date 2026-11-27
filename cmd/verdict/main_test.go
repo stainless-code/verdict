@@ -64,6 +64,22 @@ func TestEnvMapUsesInjectedGetenvOverHostEnv(t *testing.T) {
 	}
 }
 
+// TestEnvMapCarriesTheReviewSnapshotDirectories pins that the map every verb
+// receives holds the directories run places its review snapshots by: the
+// temp directory and the user cache directory a checkout in the temp
+// directory keeps them under.
+func TestEnvMapCarriesTheReviewSnapshotDirectories(t *testing.T) {
+	want := map[string]string{
+		"XDG_CACHE_HOME": "/home/op/.cache", "TMPDIR": "/var/tmp/op", "TMP": `C:\tmp`, "TEMP": `C:\temp`,
+	}
+	got := envMap(func(k string) string { return want[k] })
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("envMap()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
 // TestEnvMapCarriesTheGlabHostVariables pins that the map every verb receives
 // holds the variables post's host gate reads (GITLAB_HOST and the ones that
 // redirect glab). They were missing from it, so a write saw GITLAB_HOST unset

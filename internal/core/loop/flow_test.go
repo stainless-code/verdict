@@ -365,7 +365,7 @@ func flowRequest(t *testing.T, repo string, agent *agentCommander) *Request {
 	return &Request{
 		Flow: &reviewflow.Flow{
 			Runtime: &core.Runtime{
-				Env: map[string]string{"HOME": home}, Now: flowNow, Progress: &testkit.Collector{},
+				Env: map[string]string{"HOME": home, "TMPDIR": t.TempDir()}, Now: flowNow, Progress: &testkit.Collector{},
 			},
 			Root:           &root,
 			Effective:      core.Defaults(),

@@ -99,7 +99,8 @@ In scope (highest priority first):
   the walk saw, and written atomically into the pinned bundle — while anything
   else it wrote is discarded and named in a warning. A copy holds no symlink,
   no `.git` or `.verdict/state` of the tree's in any case, and no pointer into
-  the operator's repository; outside a git checkout it holds the bundle alone.
+  the operator's repository, and neither does the shared snapshot it is made
+  from; outside a git checkout it holds the bundle alone.
   Also in scope: the shell denial every review launch carries unless
   `--allow-shell` is set (`claude`, `pi`, `bob`; the operator may not pass the
   flag the denial uses), `claude`'s `--setting-sources=user` and
@@ -112,7 +113,9 @@ In scope (highest priority first):
   link, runs in a copy holding a symlink or a path back to the operator's
   repository, loads the reviewed tree's own agent configuration, runs without
   the denial, or carries a grant verdict renders wider than the launch's own
-  bundle directory, is a vulnerability.
+  bundle directory, is a vulnerability. The shared snapshot every copy is
+  made from is symlink-free, read-only, and fingerprinted, so a change to it
+  refuses every later copy.
 - The review sandbox around every `run --agent` and `loop` review launch
   (finders, cross-checks, repair rounds, drain; not the loop's fix spawn,
   which edits the checkout by design). On macOS the launch runs under
@@ -146,7 +149,12 @@ In scope (highest priority first):
   denied, write grant scoped to the bundle) and `codex` (its own sandbox) run
   with a warning that their reads are not confined, and every other agent
   refuses `review-sandbox-unavailable`; `--allow-unsandboxed-review` runs every
-  launch without the sandbox, warned, which is the operator's choice.
+  launch without the sandbox, warned, which is the operator's choice. Without
+  the sandbox only `claude` and `codex` stay in their copy through their own
+  tools; the opt-out accepts that any other agent can climb out with `..` or
+  an absolute path — to a sibling launch's live copy (forging the artifact it
+  hands back) or anything the operator's user can write — and read the
+  credential table, so what an opted-out review does there is not a finding.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

@@ -4289,7 +4289,9 @@ and `loop`'s review step — starts in its own disposable copy of the reviewed
 tree under the host temp directory — or, for a checkout that itself lies in
 the temp directory (a clone in `/tmp`), under `verdict/snapshots` in your user
 cache directory (`XDG_CACHE_HOME`, else the platform's own), so no snapshot
-sits beside the checkout; without one the review refuses. The tree is the
+sits beside the checkout; the cache directory must lie outside both the
+checkout and the temp directory, and without one the review refuses before
+creating anything. The tree is the
 content-bound snapshot
 `verify` takes (the index paths with their working-tree bytes, no filter,
 hook, or Git LFS program run), taken once per execution and copied afresh for
@@ -4334,6 +4336,11 @@ environment names the copy as `PWD` and its own private temp directory as
 (`GIT_DIR`, `GIT_WORK_TREE`, and the like), `GIT_CEILING_DIRECTORIES`, and
 git's command-scope `GIT_CONFIG_*`, whatever their case; a relative
 `CLAUDE_CONFIG_DIR` or `CODEX_HOME` is resolved where you ran verdict.
+
+The shared snapshot every copy is made from holds no symlink either, and is
+read-only (directories 0555, files 0444) and fingerprinted when it is taken: a
+launch that changed it anyway refuses every later launch's copy
+(`agent-spawn-failed`, naming the change) instead of handing the change on.
 
 What a review agent can still do: read the reviewed tree and the bundle, and
 use the network. What it can no longer do: write your checkout through a path
@@ -4439,7 +4446,13 @@ that their reads are not confined; every other agent refuses
 `review-sandbox-unavailable` before it starts, as does `claude` with
 `--allow-shell` or your own permission flags. `--allow-unsandboxed-review` (on
 `run` and `loop`) runs every review launch without the sandbox, warned — the
-operator's choice for a pull request they trust. `loop --no-sandbox` is verify's
+operator's choice for a pull request they trust. Without the sandbox only
+`claude` (its scoped `Edit` grant, its shell denied) and `codex` (its own
+workspace sandbox) are kept in their copy by their own tools; the opt-out
+accepts that any other agent can climb out with `..` or an absolute path and
+write outside its copy — a sibling launch's live copy (forging the artifact it
+hands back), your checkout, anything your user can write — and read your
+credential files. `loop --no-sandbox` is verify's
 alone and never touches the review. The sandbox is probed once per execution,
 before any agent starts; `--print` probes nothing and reports the posture a
 launch would take in `data.sandbox` (`mechanism`: `sandbox-exec`, `bwrap`, or
