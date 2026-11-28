@@ -482,7 +482,10 @@ func TestSeatbeltReviewProfileKeepsClaudesKeychain(t *testing.T) {
 // the config read-only, and the hidden roots remounted read-only last.
 func TestBwrapReviewArgvShape(t *testing.T) {
 	t.Parallel()
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	sessions := filepath.Join(home, "sessions")
 	extensions := filepath.Join(home, "extensions")
 	for _, dir := range []string{sessions, extensions, filepath.Join(home, ".ssh")} {

@@ -190,13 +190,12 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 	}
 }
 
-// TestSandboxCredentialHomesDedupe keeps one home answered three ways to one
-// set of locations, so the Linux argv carries no duplicate mount.
-func TestSandboxCredentialHomesDedupe(t *testing.T) {
+// Raw home spellings must survive until the resolver walks their links.
+func TestSandboxCredentialHomesPreserveRawSpellings(t *testing.T) {
 	in := sandboxInputs{childEnv: []string{"HOME=/h/same/"}, hostEnv: []string{"HOME=/h/same"}, accountHome: "/h/same"}
 	homes, ref := in.homes()
-	if ref != nil || !slices.Equal(homes, []string{"/h/same"}) {
-		t.Errorf("homes = %v, %v; want [/h/same]", homes, ref)
+	if ref != nil || !slices.Equal(homes, []string{"/h/same/", "/h/same"}) {
+		t.Errorf("homes = %v, %v; want [/h/same/ /h/same]", homes, ref)
 	}
 }
 

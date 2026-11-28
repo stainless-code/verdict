@@ -635,8 +635,8 @@ func absConfigHomes(env []string) []string {
 			!slices.ContainsFunc(configHomes, func(h string) bool { return strings.EqualFold(h, name) }) {
 			continue
 		}
-		if abs, err := filepath.Abs(value); err == nil {
-			out[i] = name + inlineValue + abs
+		if cwd, err := os.Getwd(); err == nil {
+			out[i] = name + inlineValue + cwd + string(filepath.Separator) + value
 		}
 	}
 	return out
@@ -813,7 +813,7 @@ func seatbeltReviewProfile(writable []string, bin string, box *reviewBox) (strin
 		func() error { return seatbeltBinaryRead(&b, bin, writable) },
 		func() error { return seatbeltAncestors(&b, writable, bin) },
 		func() error { b.WriteString(hostsandbox.SeatbeltDeviceWrites + seatbeltTTYDenial); return nil },
-		func() error { return hostsandbox.WriteRules(&b, "deny", hostsandbox.ExpandRealpaths(box.credentials)) },
+		func() error { return hostsandbox.WriteRules(&b, "deny", box.credentials) },
 		func() error { return seatbeltStateRules(&b, box.state, true) },
 		func() error { return seatbeltStateRules(&b, box.readOnly, false) },
 	}
@@ -1187,7 +1187,7 @@ func openCodeDataDirs(in hostsandbox.Inputs) ([]string, error) {
 		}
 		dirs = slices.Concat(dirs, data, db)
 	}
-	return hostsandbox.CleanUnique(dirs), nil
+	return hostsandbox.ResolvePaths(dirs, false) //nolint:wrapcheck // the shared resolver names the offending location
 }
 
 // makeHiddenDirs makes each missing credential directory, and every missing
@@ -1330,7 +1330,11 @@ func (s statePath) prefixed() []string {
 // newReviewBox resolves the row's state under the child's HOME and its
 // relocation variables and checks it (checkState).
 func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewBox, error) {
-	box := &reviewBox{credentials: credentials, operator: def.Source == agentSourcePrefs}
+	resolved, err := hostsandbox.ResolvePaths(credentials, true)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the shared resolver names the offending location
+	}
+	box := &reviewBox{credentials: resolved, operator: def.Source == agentSourcePrefs}
 	if len(def.StateWritable) == 0 && len(def.StateReadOnly) == 0 {
 		return box, nil
 	}
@@ -1339,7 +1343,11 @@ func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewB
 		return nil, jq.NewErrf("HOME is unset or relative in the child environment, so %s's state paths "+
 			"cannot be named", def.Name)
 	}
-	box.home = filepath.Clean(home)
+	resolvedHome, err := hostsandbox.ResolvePath(home)
+	if err != nil {
+		return nil, jq.NewErrf("HOME cannot be resolved: %v", err)
+	}
+	box.home = resolvedHome
 	if err := box.resolveState(def, env); err != nil {
 		return nil, err
 	}
@@ -1399,15 +1407,26 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 	base, tail, relocated := home, trimmed, false
 	for _, v := range def.StateEnv {
 		value := hostsandbox.EnvLookup(env, v.Name)
-		if below, ok := strings.CutPrefix(trimmed, v.Root); ok && filepath.IsAbs(value) &&
-			(below == "" || strings.HasPrefix(below, slash)) {
-			base, tail, relocated = filepath.Clean(value), strings.TrimPrefix(below, slash), true
-			break
+		if !strings.HasPrefix(trimmed+slash, v.Root+slash) || !filepath.IsAbs(value) {
+			continue
 		}
+		resolved, err := resolveStateRoot(value)
+		if err != nil {
+			return statePath{}, jq.NewErrf("%s cannot be resolved: %v", v.Name, err)
+		}
+		base, tail, relocated = resolved, strings.TrimPrefix(strings.TrimPrefix(trimmed, v.Root), slash), true
+		break
 	}
 	return statePath{
 		path: filepath.Join(base, filepath.FromSlash(tail)), base: base, prefix: trimmed != rel, relocated: relocated,
 	}, nil
+}
+
+func resolveStateRoot(value string) (string, error) {
+	if info, err := os.Lstat(value); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return "", jq.NewErrf("the state root %s is a symlink; point the variable at the directory the link names", value)
+	}
+	return hostsandbox.ResolvePath(value) //nolint:wrapcheck // caller names the relocation variable
 }
 
 // checkState refuses a writable state path that would re-open more than the
@@ -1418,7 +1437,7 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 // the box is settled and again before every launch.
 func (b *reviewBox) checkState() error {
 	homes := hostsandbox.ExpandRealpaths([]string{b.home})
-	credentials := slices.DeleteFunc(hostsandbox.ExpandRealpaths(b.credentials), b.ownLogin())
+	credentials := slices.DeleteFunc(slices.Clone(b.credentials), b.ownLogin())
 	made := slices.Concat(b.state, b.dirs)
 	if b.projects != nil {
 		made = append(made, *b.projects)

@@ -39,6 +39,14 @@ func TestSandboxRefusesARootInsideACredentialPath(t *testing.T) {
 // by a host-only relocation variable are both mounted away.
 func TestSandboxArgvMasksAccountHomeAndRelocations(t *testing.T) {
 	root, child, account, moved := gitRoot(t), t.TempDir(), t.TempDir(), t.TempDir()
+	account, err := filepath.EvalSymlinks(account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	moved, err = filepath.EvalSymlinks(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(filepath.Join(account, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}

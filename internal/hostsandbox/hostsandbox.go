@@ -203,16 +203,16 @@ func (in Inputs) Homes() ([]string, error) {
 	if filepath.IsAbs(in.AccountHome) {
 		homes = append(homes, in.AccountHome)
 	}
-	return CleanUnique(homes), nil
+	return uniquePaths(homes), nil
 }
 
 // CredentialLocations resolves the shared table: every home-relative entry
 // under every home, then every relocation variable from the child and host
 // environments. A root inside a credential location refuses, since hiding
 // the location would hide the code under review and allowing the root would
-// expose the credential. expandHomes adds each home's realpath first
-// (Seatbelt matches resolved vnodes; bwrap follows the literal path itself).
-func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, error) {
+// expose the credential. spellings retains as-written paths for Seatbelt;
+// Linux mounts use only resolved destinations.
+func (in Inputs) CredentialLocations(root string, spellings bool) ([]string, error) {
 	homes, err := in.Homes()
 	if err != nil {
 		return nil, err
@@ -222,9 +222,6 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 	if err := allRepresentable(homes); err != nil {
 		return nil, err
 	}
-	if expandHomes {
-		homes = ExpandRealpaths(homes)
-	}
 	locations := homeCredentials(homes)
 	for _, env := range [][]string{in.ChildEnv, in.HostEnv} {
 		moved, err := envLocations(env, homes)
@@ -233,8 +230,12 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 		}
 		locations = append(locations, moved...)
 	}
-	locations = CleanUnique(locations)
-	if location, ok := Enclosing(locations, root); ok {
+	written := locations
+	locations, err = ResolvePaths(locations, spellings)
+	if err != nil {
+		return nil, err
+	}
+	if location, ok := Enclosing(append(slices.Clone(written), locations...), root); ok {
 		return nil, jq.NewErrf(
 			"the reviewed root %s is inside the credential path %s; refusing to expose or hide it", root, location)
 	}
@@ -246,7 +247,13 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 func envLocations(env, homes []string) ([]string, error) {
 	var locations []string
 	for _, v := range credentialEnv {
-		locations = append(locations, v.paths(env)...)
+		for _, raw := range v.paths(env) {
+			resolved, err := ResolvePath(raw)
+			if err != nil {
+				return nil, jq.NewErrf("%s cannot be resolved: %v", v.name, err)
+			}
+			locations = append(locations, raw, resolved)
+		}
 	}
 	data, err := ResolvedOpenCodeDataDirs(env, homes)
 	if err != nil {
@@ -266,7 +273,7 @@ func ResolvedOpenCodeDataDirs(env, homes []string) ([]string, error) {
 	for _, dir := range raw {
 		resolved, err := ResolvePath(dir)
 		if err != nil {
-			return nil, err
+			return nil, jq.NewErrf("XDG_DATA_HOME or home data location cannot be resolved: %v", err)
 		}
 		out = append(out, resolved)
 	}
@@ -284,14 +291,14 @@ func OpenCodeDBDirs(env, homes []string) ([]string, error) {
 	case value == memoryDB:
 		return nil, nil
 	case filepath.IsAbs(value):
-		return dbDirs([]string{filepath.Clean(value)})
+		return dbDirs([]string{value})
 	case value == "":
 		value = defaultOpenCodeDB
 	}
 	dirs := OpenCodeDataDirs(env, homes)
 	paths := make([]string, 0, len(dirs))
 	for _, dir := range dirs {
-		paths = append(paths, filepath.Join(dir, value))
+		paths = append(paths, rawAppend(dir, value))
 	}
 	return dbDirs(paths)
 }
@@ -306,10 +313,10 @@ const defaultOpenCodeDB = "opencode.db"
 func OpenCodeDataDirs(env, homes []string) []string {
 	var dirs []string
 	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
-		dirs = append(dirs, filepath.Join(data, openCodeDir))
+		dirs = append(dirs, rawAppend(data, openCodeDir))
 	}
 	for _, home := range homes {
-		dirs = append(dirs, filepath.Join(home, ".local", "share", openCodeDir))
+		dirs = append(dirs, rawAppend(home, filepath.FromSlash(".local/share/opencode")))
 	}
 	return dirs
 }
@@ -326,9 +333,9 @@ func dbDirs(paths []string) ([]string, error) {
 	for _, path := range paths {
 		resolved, err := ResolveDBDir(path)
 		if err != nil {
-			return nil, err
+			return nil, jq.NewErrf("OPENCODE_DB cannot be resolved: %v", err)
 		}
-		dirs = append(dirs, filepath.Dir(path), resolved)
+		dirs = append(dirs, rawDir(path), resolved)
 	}
 	return dirs, nil
 }
@@ -353,9 +360,9 @@ func ResolveDBDir(path string) (string, error) {
 // of the queue (an absolute target restarting from its root), a directory
 // becomes the prefix, and a file ends the walk only as the last component —
 // one mid-path refuses. A missing component ends it too: no link can exist
-// below a missing entry, so the rest is a missing tail, its "." and ".."
-// resolved within itself and refused when ".." would climb above the first
-// missing component. The result is the real prefix plus that tail, the path
+// below a missing entry, so any ".." in the remaining tail refuses.
+// Its eventual target cannot be known before the missing directories exist.
+// The result is the real prefix plus that tail, the path
 // a file or directory created there will have.
 func ResolvePath(path string) (string, error) {
 	if err := Representable(path); err != nil {
@@ -426,6 +433,9 @@ func (w *realWalk) follow(link string) error {
 	if err != nil {
 		return jq.NewErrf("the link %s cannot be read (%v); remove it or point it at a real path", link, err)
 	}
+	if target == "" {
+		return jq.NewErrf("the link %s has an empty target; point it at a real path", link)
+	}
 	if err := Representable(target); err != nil {
 		return err
 	}
@@ -436,25 +446,14 @@ func (w *realWalk) follow(link string) error {
 	return nil
 }
 
-// missingTail joins a missing tail to the real prefix, its "." and ".."
-// resolved within the tail; a ".." that would climb above its first
-// component refuses, since what lies above a missing entry is not known.
+// A future directory could be replaced by a link before a later component
+// appears, so reducing any ".." in a missing tail would guess its target.
 func missingTail(path, prefix string, tail []string) (string, error) {
-	var kept []string
-	for _, comp := range tail {
-		switch comp {
-		case "", ".":
-		case "..":
-			if len(kept) == 0 {
-				return "", jq.NewErrf("the path %s climbs out of a directory that does not exist, so the review "+
-					"sandbox cannot pin down where it leads; fix the path", path)
-			}
-			kept = kept[:len(kept)-1]
-		default:
-			kept = append(kept, comp)
-		}
+	if slices.Contains(tail, "..") {
+		return "", jq.NewErrf("the path %s steps out of a directory that does not exist yet, "+
+			"so the sandbox cannot know where it will land; fix the path", path)
 	}
-	return filepath.Join(append([]string{prefix}, kept...)...), nil
+	return filepath.Join(append([]string{prefix}, tail...)...), nil
 }
 
 // pathRoot is an absolute path's root: its volume and separator.
@@ -471,9 +470,13 @@ func components(path string) []string {
 // memoryDB is the OPENCODE_DB value that keeps the database in memory.
 const memoryDB = ":memory:"
 
-// withResolved is each path as written and where ResolvePath lands for it.
-func withResolved(paths []string) ([]string, error) {
-	out := slices.Clone(paths)
+// ResolvePaths preserves optional spellings because Seatbelt must deny both
+// the link's name and its target, even before the target exists.
+func ResolvePaths(paths []string, spellings bool) ([]string, error) {
+	var out []string
+	if spellings {
+		out = slices.Clone(paths)
+	}
 	for _, path := range paths {
 		resolved, err := ResolvePath(path)
 		if err != nil {
@@ -481,7 +484,7 @@ func withResolved(paths []string) ([]string, error) {
 		}
 		out = append(out, resolved)
 	}
-	return out, nil
+	return uniquePaths(out), nil
 }
 
 // coversAHome refuses a credential location that is the filesystem root, a
@@ -489,7 +492,7 @@ func withResolved(paths []string) ([]string, error) {
 // hiding it would hide every home below it (an OPENCODE_DB directly in HOME,
 // an opencode data directory linked to HOME).
 func coversAHome(locations, homes []string) error {
-	resolvedHomes, err := withResolved(homes)
+	resolvedHomes, err := ResolvePaths(homes, true)
 	if err != nil {
 		return err
 	}
@@ -512,7 +515,7 @@ func coversOne(location string, homes []string) (bool, error) {
 	if _, root := FilesystemRoot(location); root {
 		return true, nil
 	}
-	spellings, err := withResolved([]string{location})
+	spellings, err := ResolvePaths([]string{location}, true)
 	return slices.ContainsFunc(spellings, func(spelled string) bool {
 		return slices.ContainsFunc(homes, func(home string) bool { return Within(home, spelled) })
 	}), err
@@ -523,7 +526,7 @@ func homeCredentials(homes []string) []string {
 	locations := make([]string, 0, len(homes)*len(CredentialPaths)+len(credentialEnv))
 	for _, home := range homes {
 		for _, rel := range CredentialPaths {
-			locations = append(locations, filepath.Join(home, rel))
+			locations = append(locations, rawAppend(home, rel))
 		}
 	}
 	return locations
@@ -532,8 +535,12 @@ func homeCredentials(homes []string) []string {
 // Enclosing returns the first location that is path or one of its
 // ancestors.
 func Enclosing(locations []string, path string) (string, bool) {
+	resolved, err := ResolvePath(path)
+	if err != nil {
+		resolved = path
+	}
 	for _, location := range locations {
-		if Within(path, location) {
+		if Within(path, location) || (resolved != "" && Within(resolved, location)) {
 			return location, true
 		}
 	}
@@ -556,7 +563,7 @@ func (v credentialVar) paths(env []string) []string {
 	var paths []string
 	for _, path := range values {
 		if filepath.IsAbs(path) {
-			paths = append(paths, filepath.Join(path, v.suffix))
+			paths = append(paths, rawAppend(path, v.suffix))
 		}
 	}
 	return paths
@@ -572,6 +579,34 @@ func EnvLookup(env []string, name string) string {
 		}
 	}
 	return value
+}
+
+// Lexical cleaning would apply ".." before the kernel follows preceding links.
+func rawAppend(base, tail string) string {
+	if tail == "" {
+		return base
+	}
+	return base + string(filepath.Separator) + tail
+}
+
+func rawDir(path string) string {
+	cut := strings.LastIndex(path, string(filepath.Separator))
+	if cut <= len(filepath.VolumeName(path)) {
+		return pathRoot(path)
+	}
+	return path[:cut]
+}
+
+func uniquePaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	var out []string
+	for _, path := range paths {
+		if path != "" && !seen[path] {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 // CleanUnique cleans every path and drops empties and duplicates while
@@ -656,19 +691,16 @@ func CredentialMounts(locations []string) []Mount {
 	return mounts
 }
 
-// credentialMount is the mount that hides one existing location. bwrap
-// refuses a link as a mount's destination, so a location that is one is
-// hidden at the existing path it names (which the table carries too): a
-// link into it then reads the empty mount.
+// CredentialLocations has already resolved every destination. Missing targets
+// cannot be mounted by bwrap; non-opencode stores retain the STA-545 limit.
 func credentialMount(dest string) (Mount, bool) {
-	info, err := os.Stat(dest)
+	dest, err := ResolvePath(dest)
 	if err != nil {
 		return Mount{}, false
 	}
-	if link, err := os.Lstat(dest); err == nil && link.Mode()&fs.ModeSymlink != 0 {
-		if dest, err = filepath.EvalSymlinks(dest); err != nil {
-			return Mount{}, false
-		}
+	info, err := os.Stat(dest)
+	if err != nil {
+		return Mount{}, false
 	}
 	return Mount{Dest: dest, Dir: info.IsDir()}, true
 }

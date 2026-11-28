@@ -361,7 +361,7 @@ func TestMakeHiddenDirMakesBelowALinkedRoot(t *testing.T) {
 // once a host opencode creates it.
 func TestLinuxLaunchMakesTheOpencodeDBDir(t *testing.T) {
 	t.Parallel()
-	base := t.TempDir()
+	base := mustResolve(t, t.TempDir())
 	home, db := filepath.Join(base, "h"), filepath.Join(base, "missing", "deeper", "oc.db")
 	dirs, err := openCodeDataDirs(hostsandbox.Inputs{ChildEnv: []string{"HOME=" + home, "OPENCODE_DB=" + db}})
 	if err != nil {

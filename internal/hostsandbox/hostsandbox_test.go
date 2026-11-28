@@ -90,7 +90,7 @@ func TestFilesystemRootSeesThroughALink(t *testing.T) {
 // the variables that relocate them.
 func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 	// Every root is absolute in the platform's own form, as Inputs requires.
-	base := t.TempDir()
+	base := resolvedTempDir(t)
 	h, x := filepath.Join(base, "h"), filepath.Join(base, "x")
 	got, err := Inputs{
 		ChildEnv: []string{
@@ -126,8 +126,10 @@ func TestCredentialTableHidesTheAgentLogins(t *testing.T) {
 // is hidden where opencode resolves it — below each opencode data
 // directory — and ":memory:" names nothing.
 func TestCredentialTableHidesARelativeOpenCodeDB(t *testing.T) {
-	base := t.TempDir()
+	base := resolvedTempDir(t)
 	h, x := filepath.Join(base, "h"), filepath.Join(base, "x")
+	mustMkdirAll(t, filepath.Join(x, "opencode"))
+	mustMkdirAll(t, filepath.Join(h, ".local", "share", "opencode"))
 	got, err := Inputs{ChildEnv: []string{"HOME=" + h, "XDG_DATA_HOME=" + x, "OPENCODE_DB=../moved/oc.db"}}.
 		CredentialLocations(filepath.Join(base, "r"), false)
 	if err != nil {
@@ -164,7 +166,7 @@ func TestCredentialTableHidesALinkedOpenCodeDBTarget(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on Windows")
 	}
-	base := t.TempDir()
+	base := resolvedTempDir(t)
 	target := filepath.Join(base, "target")
 	link := linkedDB(t, base, target)
 	got, err := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "h"), "OPENCODE_DB=" + link}}.
@@ -357,7 +359,7 @@ func symlinkIn(t *testing.T, dir, name, target string, extra ...string) string {
 // applied to the link's real target, a dangling link mid-path whose target
 // is where the database will be made, chains with relative and absolute
 // targets, and the refusals — a loop, a file mid-path, a missing tail whose
-// `..` climbs out of it.
+// `..` leaves a directory that does not exist yet.
 func TestResolvePathWalksAsTheKernelDoes(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlinks need privileges on Windows")
@@ -381,14 +383,44 @@ func TestResolvePathWalksAsTheKernelDoes(t *testing.T) {
 		filepath.Join(base, "share", "opencode", "opencode.db"):                            filepath.Join(base, "missing", "external", "data", "opencode", "opencode.db"),
 		filepath.Join(base, "chain", "abs"):                                                filepath.Join(base, "real", "f"),
 		base + sep + "configured" + sep + "jump" + sep + ".." + sep + "nested" + sep + "x": filepath.Join(base, "external", "nested", "x"),
-		base + sep + "gone" + sep + "x" + sep + ".." + sep + "y":                           filepath.Join(base, "gone", "y"),
 	} {
 		if got, err := ResolvePath(path); err != nil || got != want {
 			t.Errorf("ResolvePath(%s) = %q, %v; want %q", path, got, err, want)
 		}
 	}
 	assertRefused(t, filepath.Join(base, "l1"), filepath.Join(base, "file", "x"),
-		base+sep+"gone"+sep+".."+sep+".."+sep+"x")
+		base+sep+"gone"+sep+".."+sep+".."+sep+"x", base+sep+"gone"+sep+"x"+sep+".."+sep+"y")
+}
+
+func TestCredentialResolutionRefusesUncertainLinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	for _, tc := range []struct{ name, target, reason string }{
+		{"missing tail", "missing/../jump/../oc.db", "steps out of a directory that does not exist yet"},
+		{"empty target", "", "has an empty target"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkUncertainLink(t, tc.target, tc.reason)
+		})
+	}
+}
+
+func checkUncertainLink(t *testing.T, target, reason string) {
+	t.Helper()
+	if target == "" && runtime.GOOS != "darwin" {
+		t.Skip("empty symlinks need a filesystem that can create them")
+	}
+	base := resolvedTempDir(t)
+	mustMkdirAll(t, filepath.Join(base, "external", "nested"))
+	link(t, "external/nested", filepath.Join(base, "jump"))
+	db := filepath.Join(base, "db")
+	link(t, target, db)
+	in := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "home"), "OPENCODE_DB=" + db}}
+	_, err := in.CredentialLocations(filepath.Join(base, "repo"), true)
+	if err == nil || !strings.Contains(err.Error(), "OPENCODE_DB") || !strings.Contains(err.Error(), reason) {
+		t.Errorf("CredentialLocations = %v, want OPENCODE_DB refusal containing %q", err, reason)
+	}
 }
 
 // assertRefused fails for each path ResolvePath resolves instead of
@@ -414,9 +446,27 @@ func TestResolvePathMatchesEvalSymlinks(t *testing.T) {
 		rng := &splitmix{state: seed}
 		base := resolvedTempDir(t)
 		randomTree(t, rng, base)
+		nested := filepath.Join(base, "db", strconv.Itoa(rng.intN(1000)))
+		mustMkdirAll(t, nested)
+		writeFile(t, filepath.Join(base, "db", "leaf"))
+		link(t, nested, filepath.Join(base, "jump"))
+		assertOperatorDBResolvesLikeKernel(t, seed, base+"/jump/../leaf", base)
 		for range 25 {
 			assertResolvesLikeKernel(t, seed, randomWalk(rng, base))
 		}
+	}
+}
+
+func assertOperatorDBResolvesLikeKernel(t *testing.T, seed uint64, path, base string) {
+	t.Helper()
+	want, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	in := Inputs{ChildEnv: []string{"HOME=" + filepath.Join(base, "home"), "OPENCODE_DB=" + path}}
+	got, err := in.CredentialLocations(filepath.Join(base, "repo"), false)
+	if err != nil || !slices.Contains(got, filepath.Dir(want)) {
+		t.Errorf("seed %d: OPENCODE_DB=%q: missing %q in %q (%v)", seed, path, filepath.Dir(want), got, err)
 	}
 }
 

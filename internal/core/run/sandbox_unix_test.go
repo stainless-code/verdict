@@ -1036,6 +1036,113 @@ func TestReviewSandboxHidesALinkedOpencodeDBTarget(t *testing.T) {
 	}
 }
 
+func TestReviewSandboxCanonicalCredentialPaths(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	for _, name := range []string{"absolute database", "relative database", "data root", "relocated file", "relocated directory", "table link"} {
+		t.Run(name, func(t *testing.T) {
+			checkCanonicalCredentialPath(t, name)
+		})
+	}
+}
+
+func checkCanonicalCredentialPath(t *testing.T, name string) {
+	t.Helper()
+	base, home := visibleTempDir(t), t.TempDir()
+	control := filepath.Join(base, "control")
+	writeUnder(t, base, "control", "visible")
+	env, target := canonicalCredentialFixture(t, name, base, home)
+	root := confinedRoot(t)
+	in := hostsandbox.Inputs{ChildEnv: append([]string{"HOME=" + home}, env...)}
+	seatbelt := runtime.GOOS == "darwin"
+	late := seatbelt && name == "table link"
+	if !late {
+		writeUnder(t, filepath.Dir(target), filepath.Base(target), "fixture")
+	}
+	locations, err := in.CredentialLocations(root, seatbelt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	box := &reviewBox{credentials: locations, mechanism: hostsandbox.BwrapTool, runner: hostsandbox.BwrapTool}
+	if seatbelt {
+		box.mechanism = hostsandbox.SandboxExecTool
+	}
+	argv, err := box.prefix([]string{root}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if late {
+		writeUnder(t, filepath.Dir(target), filepath.Base(target), "fixture")
+	}
+	assertCredentialHidden(t, argv, control, target)
+}
+
+func canonicalCredentialFixture(t *testing.T, name, base, home string) (env []string, target string) {
+	t.Helper()
+	configured, actual := filepath.Join(base, "configured"), filepath.Join(base, "actual")
+	if name == "relative database" {
+		configured = filepath.Join(home, ".local", "share", "opencode")
+	}
+	if name == "table link" {
+		mustSymlink(t, actual, filepath.Join(home, ".ssh"))
+		return nil, filepath.Join(actual, "key")
+	}
+	mustMkdir(t, configured)
+	mustMkdir(t, filepath.Join(actual, "nested"))
+	mustSymlink(t, filepath.Join(actual, "nested"), filepath.Join(configured, "jump"))
+	raw := configured + "/jump/.."
+	switch name {
+	case "absolute database":
+		return []string{"OPENCODE_DB=" + raw + "/oc.db"}, filepath.Join(actual, "oc.db")
+	case "relative database":
+		return []string{"OPENCODE_DB=jump/../oc.db"}, filepath.Join(actual, "oc.db")
+	case "data root":
+		return []string{"XDG_DATA_HOME=" + raw}, filepath.Join(actual, "opencode", "opencode.db")
+	case "relocated file":
+		return []string{"AWS_SHARED_CREDENTIALS_FILE=" + raw + "/credentials"}, filepath.Join(actual, "credentials")
+	case "relocated directory":
+		return []string{"CODEX_HOME=" + raw}, filepath.Join(actual, "auth.json")
+	}
+	t.Fatalf("unknown fixture %q", name)
+	return nil, ""
+}
+
+func assertCredentialHidden(t *testing.T, argv []string, control, target string) {
+	t.Helper()
+	argv = append(argv, "/bin/sh", "-c", `
+test "$(/bin/cat "$1")" = visible || exit 1
+if test -n "$(/bin/cat "$2" 2>/dev/null)"; then
+	echo credential-readable
+	exit 2
+fi
+`, "sandbox-test", control, target)
+	cmd := exec.CommandContext(t.Context(), argv[0], argv[1:]...)
+	cmd.WaitDelay = 5 * time.Second
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("sandbox read check failed: %v: %s", err, out)
+	}
+}
+
+func TestReviewSandboxRefusesAnUncertainCredentialPath(t *testing.T) {
+	t.Parallel()
+	requireReviewSandbox(t)
+	home, store := t.TempDir(), visibleTempDir(t)
+	mustMkdir(t, filepath.Join(store, "configured"))
+	db := filepath.Join(store, "configured", "db")
+	mustSymlink(t, "missing/../jump/../oc.db", db)
+	mustMkdir(t, filepath.Join(store, "external", "nested"))
+	mustSymlink(t, "../external/nested", filepath.Join(store, "configured", "jump"))
+	resp, ref, log := sandboxedRunAs(t, "claude", confinedRoot(t), home, "#!/bin/sh\necho spawned=yes\n",
+		"1", "OPENCODE_DB="+db)
+	if ref == nil || ref.Code != codeReviewSandboxUnavailable ||
+		!strings.Contains(ref.Message, "does not exist yet") || !strings.Contains(ref.Message, "OPENCODE_DB") {
+		t.Errorf("refusal = %v (posture %q), want the missing-directory policy refusal", ref, postureOf(resp))
+	}
+	if strings.Contains(log, "spawned=yes") {
+		t.Errorf("spawned before the refusal:\n%s", log)
+	}
+}
+
 // denyRead makes path unreadable for the test, skipping where the user reads
 // a mode-0 file anyway (root).
 func denyRead(t *testing.T, path string) {

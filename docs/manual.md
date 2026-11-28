@@ -4422,7 +4422,14 @@ On Linux that means the network namespace is shared too (see Sockets below).
   chain followed (at most 40; more refuses), a relative target and every
   `..` applied to the real directory reached so far, never reduced as text,
   a file mid-path refusing, and for a path that does not exist yet — below a
-  dangling link included — the real directory it will be created in. A location that is or resolves to a home
+  dangling link included — the real directory it will be created in. The same
+  walk resolves every home-relative credential entry and relocation variable,
+  including `..` after a link in an operator value. An empty link target refuses.
+  Any `..` after a missing component refuses too — its path steps out of a
+  directory that does not exist yet, so the sandbox cannot know where it will
+  land. These policy refusals also stop self-confining agents such as claude
+  and codex. On macOS, both the as-written location and the resolved target
+  are denied, including targets created after launch. A location that is or resolves to a home
   refuses. On Linux, where bwrap can hide only what exists, every one of
   those directories that is missing is made before the launch — the whole
   missing chain, each level empty and mode 0700, below the real directory of
