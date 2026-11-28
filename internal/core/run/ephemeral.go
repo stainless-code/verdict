@@ -48,7 +48,7 @@ func ephemeralEnv(def *agentcatalog.Launch, env []string, tmp string) (homes, wa
 	}
 	homes = make([]string, 0, len(def.StateEphemeral))
 	for _, v := range def.StateEphemeral {
-		entries, warning, err := makeHome(def.Name, v, filepath.Clean(home), env, tmp)
+		entries, warning, err := makeHome(def.Name, v, home, env, tmp)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -97,9 +97,17 @@ func makeHome(name string, v agentcatalog.EphemeralVar, home string, env []strin
 // root, HOME, or an ancestor of HOME refuses, and so does a path with a
 // symlink between it and its base.
 func ephemeralSource(v agentcatalog.EphemeralVar, home string, env []string) (statePath, error) {
-	s := statePath{path: filepath.Join(home, filepath.FromSlash(v.Root)), base: home}
+	home, err := hostsandbox.ResolvePath(home)
+	if err != nil {
+		return statePath{}, jq.NewErrf("HOME cannot be resolved: %v", err)
+	}
+	s := statePath{path: home + string(filepath.Separator) + filepath.FromSlash(v.Root), base: home}
 	if value := hostsandbox.EnvLookup(env, v.Name); filepath.IsAbs(value) {
-		s = statePath{path: filepath.Clean(value), base: filepath.Clean(value), relocated: true}
+		resolved, err := resolveStateRoot(value)
+		if err != nil {
+			return statePath{}, err
+		}
+		s = statePath{path: resolved, base: resolved, relocated: true}
 	}
 	if err := checkBase(s, hostsandbox.ExpandRealpaths([]string{home})); err != nil {
 		return s, err
@@ -328,7 +336,11 @@ func (st *state) throwawayHomes(def *agentcatalog.Launch, v *view, env []string)
 	if st.box == nil {
 		return env, nil
 	}
-	homes, warnings, err := ephemeralEnv(def, absConfigHomes(st.childEnv()), v.tmp)
+	sourceEnv, err := absConfigHomes(st.childEnv())
+	if err != nil {
+		return nil, &core.StartError{Err: &policyError{err: err}}
+	}
+	homes, warnings, err := ephemeralEnv(def, sourceEnv, v.tmp)
 	if err != nil {
 		return nil, &core.StartError{Err: jq.NewErrf("could not make its throwaway home (%v) — nothing ran", err)}
 	}

@@ -1165,9 +1165,12 @@ func (st *state) refused(ref *core.RefusalError, res *core.Result, ended time.Ti
 func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result, spawnErr error,
 	art artifactState,
 ) *core.RefusalError {
+	policy, policyFailed := errors.AsType[*policyError](spawnErr)
 	switch {
 	case ctx.Err() != nil:
 		return st.refuse(codeCanceled, msgCanceled)
+	case policyFailed:
+		return st.refuse(codeReviewSandboxUnavailable, fmt.Sprintf("review sandbox policy refused: %v — nothing ran", policy))
 	case spawnErr != nil:
 		return st.refuse(codeAgentSpawnFailed, fmt.Sprintf(
 			"could not start agent '%s': %v", args.def.Name, spawnErr))

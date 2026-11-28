@@ -4430,13 +4430,15 @@ On Linux that means the network namespace is shared too (see Sockets below).
   land. These policy refusals also stop self-confining agents such as claude
   and codex. On macOS, both the as-written location and the resolved target
   are denied, including targets created after launch. A location that is or resolves to a home
-  refuses. On Linux, where bwrap can hide only what exists, every one of
-  those directories that is missing is made before the launch — the whole
+  refuses. On Linux, where bwrap can hide only what exists, every missing
+  opencode data or database directory is made before launch — the whole
   missing chain, each level empty and mode 0700, below the real directory of
   its deepest existing ancestor, and kept — so a host opencode's first run
   during the review writes into a hidden directory; a level that cannot be
-  made refuses the launch, naming the directory to create; the X11
-  cookie `~/.Xauthority`; and the ssh-agent socket directories of 1Password,
+  made refuses the launch, naming the directory to create. A non-opencode
+  credential location whose target is missing at launch is not hidden on
+  Linux (STA-545). The table also hides the X11
+  cookie `~/.Xauthority`, and the ssh-agent socket directories of 1Password,
   Bitwarden, and Secretive — under your child, process, and account homes,
   plus the stores `XDG_CONFIG_HOME`, `GH_CONFIG_DIR`, `GLAB_CONFIG_DIR`,
   `AWS_SHARED_CREDENTIALS_FILE`, `AWS_CONFIG_FILE`, `DOCKER_CONFIG`,

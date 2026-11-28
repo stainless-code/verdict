@@ -443,7 +443,10 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if why != "" {
 		return nil, why, nil
 	}
-	env := absConfigHomes(st.childEnv())
+	env, err := absConfigHomes(st.childEnv())
+	if err != nil {
+		return nil, "", err
+	}
 	in := hostsandbox.Inputs{AccountHome: hostsandbox.AccountHome(), ChildEnv: env, HostEnv: st.req.Environ}
 	credentials, err := in.CredentialLocations(st.workDir(), mechanism == hostsandbox.SandboxExecTool)
 	if err != nil {
@@ -627,7 +630,11 @@ func stripSocketEnv(env []string) []string {
 // absConfigHomes resolves a relative agent configuration directory
 // (configHomes) where verdict runs, as the launch environment does, so the
 // sandbox names the directory the agent will use.
-func absConfigHomes(env []string) []string {
+func absConfigHomes(env []string) ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, jq.NewErrf("configuration homes cannot be anchored to the working directory: %v", err)
+	}
 	out := slices.Clone(env)
 	for i, kv := range out {
 		name, value, _ := strings.Cut(kv, inlineValue)
@@ -635,11 +642,13 @@ func absConfigHomes(env []string) []string {
 			!slices.ContainsFunc(configHomes, func(h string) bool { return strings.EqualFold(h, name) }) {
 			continue
 		}
-		if cwd, err := os.Getwd(); err == nil {
-			out[i] = name + inlineValue + cwd + string(filepath.Separator) + value
+		resolved, err := hostsandbox.ResolvePath(cwd + string(filepath.Separator) + value)
+		if err != nil {
+			return nil, jq.NewErrf("%s cannot be resolved: %v", name, err)
 		}
+		out[i] = name + inlineValue + resolved
 	}
-	return out
+	return out, nil
 }
 
 // launchBox is one launch's sandbox: the execution's box with the launch's
@@ -1618,7 +1627,11 @@ var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 // cannot name them, void it too. The settings directory is
 // CLAUDE_CONFIG_DIR, else ~/.claude.
 func claudeWidenedWrites(env []string) string {
-	dir := hostsandbox.EnvLookup(absConfigHomes(env), "CLAUDE_CONFIG_DIR")
+	anchored, err := absConfigHomes(env)
+	if err != nil {
+		return err.Error()
+	}
+	dir := hostsandbox.EnvLookup(anchored, "CLAUDE_CONFIG_DIR")
 	if !filepath.IsAbs(dir) {
 		home, ok := hostsandbox.Home(env)
 		if !ok || !filepath.IsAbs(home) {

@@ -917,22 +917,19 @@ var configHomes = []string{
 // operator's repository, are dropped; and a relative agent configuration
 // directory is resolved where the operator ran verdict. Names match
 // whatever their case, as Windows reads them.
-func (v *view) env(env []string) []string {
+func (v *view) env(env []string) ([]string, error) {
+	anchored, err := absConfigHomes(env)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]string, 0, len(env)+len(droppedEnv))
-	for _, kv := range env {
-		name, value, _ := strings.Cut(kv, "=")
-		switch {
-		case dropsEnv(name):
-		case slices.ContainsFunc(configHomes, func(h string) bool { return strings.EqualFold(h, name) }) &&
-			value != "" && !filepath.IsAbs(value):
-			if abs, err := filepath.Abs(value); err == nil {
-				out = append(out, name+"="+abs)
-			}
-		default:
+	for _, kv := range anchored {
+		name, _, _ := strings.Cut(kv, "=")
+		if !dropsEnv(name) {
 			out = append(out, kv)
 		}
 	}
-	return append(out, "PWD="+v.cwd, "TMPDIR="+v.tmp, "TMP="+v.tmp, "TEMP="+v.tmp)
+	return append(out, "PWD="+v.cwd, "TMPDIR="+v.tmp, "TMP="+v.tmp, "TEMP="+v.tmp), nil
 }
 
 // dropsEnv reports a variable a review launch never inherits.
@@ -1285,11 +1282,15 @@ func (st *state) spawnReview(ctx context.Context, args *launchArgs, argv []strin
 // bare launch.
 func (st *state) spawnBoxed(ctx context.Context, args *launchArgs, argv []string, tap *agentusage.Tap, v *view,
 ) (*core.Result, error) {
-	env := hostsandbox.OverrideEnv(stripSocketEnv(v.env(st.childEnv())), tempEnv(&args.def, v.tmp))
+	env, err := v.env(st.childEnv())
+	if err != nil {
+		return nil, &core.StartError{Err: &policyError{err: err}}
+	}
+	env = hostsandbox.OverrideEnv(stripSocketEnv(env), tempEnv(&args.def, v.tmp))
 	if st.box == nil && core.StartsHostProcesses(st.commander()) {
 		return nil, &core.StartError{Err: errNoBox}
 	}
-	env, err := st.throwawayHomes(&args.def, v, env)
+	env, err = st.throwawayHomes(&args.def, v, env)
 	if err != nil {
 		return nil, err
 	}

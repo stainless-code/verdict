@@ -382,7 +382,10 @@ func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 	t.Parallel()
 	def, _ := lookupAgent("claude")
 	home := t.TempDir()
-	env := absConfigHomes([]string{"HOME=" + home, "CLAUDE_CONFIG_DIR=rel/claude"})
+	env, err := absConfigHomes([]string{"HOME=" + home, "CLAUDE_CONFIG_DIR=rel/claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := stateEntries(&def, home, env, def.StateWritable)
 	if err != nil {
 		t.Fatal(err)

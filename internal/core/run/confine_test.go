@@ -492,12 +492,15 @@ func TestReadPinnedRefusesAHardLinkSwappedIn(t *testing.T) {
 func TestReviewEnvDropsTheOperatorsDirectories(t *testing.T) {
 	t.Parallel()
 	v := &view{cwd: filepath.Join("w", "tree"), tmp: filepath.Join("w", "tmp")}
-	got := v.env([]string{
+	got, err := v.env([]string{
 		"PATH=/bin", "Pwd=/op", "OLDPWD=/op", "git_dir=/op/.git", "GIT_WORK_TREE=/op", "INIT_CWD=/op",
 		"PROJECT_CWD=/op", "npm_config_local_prefix=/op", "CLAUDE_PROJECT_DIR=/op", "GIT_CEILING_DIRECTORIES=/",
 		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=/op/hooks", "TMPDIR=/tmp",
 		"Temp=/tmp", "CLAUDE_CONFIG_DIR=conf",
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	abs, err := filepath.Abs("conf")
 	if err != nil {
 		t.Fatal(err)

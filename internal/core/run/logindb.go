@@ -64,8 +64,11 @@ const loginDBAttempts = 3
 func seedLoginDB(name string, c *agentcatalog.LoginDB, source, dir string, env []string,
 ) (entry, warning string, err error) {
 	entry = c.Env + inlineValue + filepath.Join(dir, filepath.FromSlash(c.Path))
-	dbDir, rel, ok := loginDBPath(c, source, hostsandbox.EnvLookup(env, c.Env))
-	if !ok {
+	dbDir, rel, err := loginDBPath(c, source, hostsandbox.EnvLookup(env, c.Env))
+	if err != nil {
+		return "", "", err
+	}
+	if dbDir == "" {
 		return entry, "", nil
 	}
 	logins, why, err := readLogins(dbDir, rel)
@@ -84,18 +87,25 @@ func seedLoginDB(name string, c *agentcatalog.LoginDB, source, dir string, env [
 }
 
 // loginDBPath is the directory the real database sits in and its name
-// there; false when value keeps it in memory.
-func loginDBPath(c *agentcatalog.LoginDB, source, value string) (dir, name string, ok bool) {
-	def := filepath.Join(source, filepath.FromSlash(c.Path))
+// there; empty when value keeps it in memory.
+func loginDBPath(c *agentcatalog.LoginDB, source, value string) (dir, name string, err error) {
+	def := source + string(filepath.Separator) + filepath.FromSlash(c.Path)
 	switch {
 	case value == memoryDB:
-		return "", "", false
+		return "", "", nil
 	case filepath.IsAbs(value):
-		def = filepath.Clean(value)
+		def = value
 	case value != "":
-		def = filepath.Join(filepath.Dir(def), value)
+		def = source + string(filepath.Separator) + filepath.Dir(filepath.FromSlash(c.Path)) +
+			string(filepath.Separator) + value
 	}
-	return filepath.Dir(def), filepath.Base(def), true
+	// The leaf must retain the seeder's no-follow check; only its parent is resolved here.
+	dir, name = filepath.Split(def)
+	dir, err = hostsandbox.ResolvePath(dir)
+	if err != nil {
+		return "", "", jq.NewErrf("%s cannot be resolved: %v", c.Env, err)
+	}
+	return dir, name, nil
 }
 
 // memoryDB is the database name that keeps it in memory, no file.

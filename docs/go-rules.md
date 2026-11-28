@@ -120,3 +120,4 @@ decision with a reason, not an oversight.
 - **GO-LOG-01 (slog):** the CLI writes frozen `warn:`/`error:` lines and one JSON envelope instead of `slog` records, because byte-identical stdout/stderr is the output contract.
 - **GO-SEC-01 (os.Root):** bundle paths are operator-supplied (G304 excluded in `.golangci.yml`), not agent-supplied.
 - **GO-CRYPTO-02 (SHA-1):** `sig_version "1"` identifiers stay on SHA-1, confined to `internal/sig` by a scoped `depguard` exception; FIPS-only is documented as unsupported rather than tested.
+- **GO-FS-04 (raw sandbox path components):** `internal/hostsandbox`'s `components` and `rawDir` split separators directly so `ResolvePath` can follow links before applying `..`. Path-cleaning helpers such as `filepath.Clean`, `filepath.Join`, and `filepath.Dir` reduce `..` lexically and would change the kernel target before the walk sees it.
