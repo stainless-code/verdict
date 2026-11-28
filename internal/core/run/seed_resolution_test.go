@@ -1,13 +1,10 @@
 package run
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 func TestOpencodeSeedResolvesDotdotAfterALink(t *testing.T) {
@@ -65,13 +62,13 @@ func checkSeedDotdot(t *testing.T, b, raw, variant string) {
 }
 
 func TestConfigPathPolicyFailureIsTyped(t *testing.T) {
-	t.Parallel()
-	st := &state{}
-	def, _ := lookupAgent("claude")
-	args := &launchArgs{def: def}
-	failure := &core.StartError{Err: &policyError{err: errors.New("configuration path cannot be resolved")}}
-	ref := st.verdict(t.Context(), args, nil, failure, artifactState{})
-	if ref == nil || ref.Code != "review-sandbox-unavailable" {
-		t.Fatalf("refusal = %v, want review-sandbox-unavailable", ref)
+	t.Chdir(t.TempDir())
+	req, cmdr := sandboxRequest(t, "codex", lookNoSandbox)
+	sep := string(filepath.Separator)
+	req.Environ = append(req.Environ, "CODEX_HOME=gone"+sep+".."+sep+"x")
+	_, ref := Run(t.Context(), req)
+	assertUnavailable(t, ref, "CODEX_HOME")
+	if cmdr.calls != 0 {
+		t.Errorf("the agent ran %d time(s) after the refusal", cmdr.calls)
 	}
 }

@@ -464,7 +464,7 @@ func pathRoot(path string) string {
 // components splits a path below its root, unreduced: ".." must be applied
 // to the real prefix, never cleaned away lexically.
 func components(path string) []string {
-	return strings.Split(path[len(filepath.VolumeName(path)):], string(filepath.Separator))
+	return strings.Split(filepath.ToSlash(path[len(filepath.VolumeName(path)):]), "/")
 }
 
 // memoryDB is the OPENCODE_DB value that keeps the database in memory.
@@ -590,7 +590,7 @@ func rawAppend(base, tail string) string {
 }
 
 func rawDir(path string) string {
-	cut := strings.LastIndex(path, string(filepath.Separator))
+	cut := strings.LastIndexByte(filepath.ToSlash(path), '/')
 	if cut <= len(filepath.VolumeName(path)) {
 		return pathRoot(path)
 	}

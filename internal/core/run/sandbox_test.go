@@ -390,13 +390,23 @@ func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if want := filepath.Join(resolvedTestCwd(t), "rel", "claude", "debug"); got[0].path != want || !got[0].relocated {
+		t.Errorf("claude's debug = %s (relocated %v), want %s", got[0].path, got[0].relocated, want)
+	}
+}
+
+// resolvedTestCwd avoids [filepath.Abs], which preserves symlink aliases.
+func resolvedTestCwd(t *testing.T) string {
+	t.Helper()
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(cwd, "rel", "claude", "debug"); got[0].path != want || !got[0].relocated {
-		t.Errorf("claude's debug = %s (relocated %v), want %s", got[0].path, got[0].relocated, want)
+	resolved, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return resolved
 }
 
 // TestSeatbeltReviewProfileShape pins the macOS profile's order and the
