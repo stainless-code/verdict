@@ -217,6 +217,11 @@ func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, e
 	if err != nil {
 		return nil, err
 	}
+	// Every home is checked before the filesystem is touched for it, so an
+	// unrepresentable one refuses typed, on every OS, before any Lstat.
+	if err := allRepresentable(homes); err != nil {
+		return nil, err
+	}
 	if expandHomes {
 		homes = ExpandRealpaths(homes)
 	}
@@ -339,75 +344,178 @@ func ResolveDBDir(path string) (string, error) {
 	return filepath.Dir(resolved), err
 }
 
-// ResolvePath is where the kernel lands for path, existing or not: each
-// hop's directory resolved through EvalSymlinks (as deep as it exists, the
-// missing rest appended), a relative link target joined against that
-// resolved directory, followed hop by hop until the leaf exists as other
-// than a link or is missing — the path a file or directory created there
-// will have. A chain longer than maxLinkHops, or a link that cannot be read,
-// refuses: where the path leads cannot be pinned down.
+// ResolvePath is where the kernel lands for an absolute path, existing or
+// not — the one resolver every caller of the credential layout uses. It is a
+// realpath walk over a queue of components, keeping a prefix that is always
+// a real, existing, link-free directory: "." is skipped, ".." moves to the
+// prefix's parent (sound, the prefix being real), a link counts a hop
+// (refusing past maxLinkHops) and puts its target's components at the front
+// of the queue (an absolute target restarting from its root), a directory
+// becomes the prefix, and a file ends the walk only as the last component —
+// one mid-path refuses. A missing component ends it too: no link can exist
+// below a missing entry, so the rest is a missing tail, its "." and ".."
+// resolved within itself and refused when ".." would climb above the first
+// missing component. The result is the real prefix plus that tail, the path
+// a file or directory created there will have.
 func ResolvePath(path string) (string, error) {
-	cur := filepath.Clean(path)
-	for range maxLinkHops + 1 {
-		leaf := filepath.Join(ResolveExisting(filepath.Dir(cur)), filepath.Base(cur))
-		info, err := os.Lstat(leaf)
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			return leaf, nil
-		case err != nil:
-			return "", jq.NewErrf("the path %s cannot be inspected (%v); fix it or the directories above it", leaf, err)
-		case info.Mode()&fs.ModeSymlink == 0:
-			return leaf, nil
-		}
-		target, err := os.Readlink(leaf)
-		if err != nil {
-			return "", jq.NewErrf("the link %s cannot be read (%v); remove it or point it at a real path", leaf, err)
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(filepath.Dir(leaf), target)
-		}
-		cur = filepath.Clean(target)
+	if err := Representable(path); err != nil {
+		return "", err
 	}
-	return "", jq.NewErrf("the path %s runs through more than %d links, so the review sandbox cannot pin "+
-		"down where it leads; point it at the real path directly", path, maxLinkHops)
+	if !filepath.IsAbs(path) {
+		return "", jq.NewErrf("the path %s is not absolute, so the review sandbox cannot resolve it", path)
+	}
+	w := &realWalk{path: path, prefix: pathRoot(path), queue: components(path)}
+	for len(w.queue) > 0 {
+		done, err := w.step()
+		if err != nil || done {
+			return w.result, err
+		}
+	}
+	return w.prefix, nil
 }
 
-// ResolveExisting is dir with its deepest existing ancestor resolved through
-// every link and the missing rest appended as written: a component that
-// does not exist cannot be a link yet.
-func ResolveExisting(dir string) string {
-	var rest []string
-	for at := filepath.Clean(dir); ; at = filepath.Dir(at) {
-		if resolved, err := filepath.EvalSymlinks(at); err == nil {
-			return filepath.Join(append([]string{resolved}, rest...)...)
-		}
-		if filepath.Dir(at) == at {
-			return filepath.Clean(dir)
-		}
-		rest = append([]string{filepath.Base(at)}, rest...)
+// realWalk is one ResolvePath walk: the real prefix, the components left,
+// and the links followed.
+type realWalk struct {
+	path, prefix, result string
+	queue                []string
+	hops                 int
+}
+
+// step takes the queue's first component; true once the walk ends early
+// (a missing tail, or a file as the last component) with w.result set.
+func (w *realWalk) step() (bool, error) {
+	comp := w.queue[0]
+	w.queue = w.queue[1:]
+	switch comp {
+	case "", ".":
+		return false, nil
+	case "..":
+		w.prefix = filepath.Dir(w.prefix)
+		return false, nil
 	}
+	next := filepath.Join(w.prefix, comp)
+	info, err := os.Lstat(next)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		w.result, err = missingTail(w.path, w.prefix, append([]string{comp}, w.queue...))
+		return true, err
+	case err != nil:
+		return true, jq.NewErrf("the path %s cannot be inspected at %s (%v); fix it or the directories above it",
+			w.path, next, err)
+	case info.Mode()&fs.ModeSymlink != 0:
+		return false, w.follow(next)
+	case info.IsDir():
+		w.prefix = next
+		return false, nil
+	case len(w.queue) == 0:
+		w.result = next
+		return true, nil
+	}
+	return true, jq.NewErrf("the path %s runs through the file %s, which is not a directory; fix the path",
+		w.path, next)
+}
+
+// follow puts a link's target at the front of the queue.
+func (w *realWalk) follow(link string) error {
+	if w.hops++; w.hops > maxLinkHops {
+		return jq.NewErrf("the path %s runs through more than %d links, so the review sandbox cannot pin down "+
+			"where it leads; point it at the real path directly", w.path, maxLinkHops)
+	}
+	target, err := os.Readlink(link)
+	if err != nil {
+		return jq.NewErrf("the link %s cannot be read (%v); remove it or point it at a real path", link, err)
+	}
+	if err := Representable(target); err != nil {
+		return err
+	}
+	if filepath.IsAbs(target) {
+		w.prefix = pathRoot(target)
+	}
+	w.queue = append(components(target), w.queue...)
+	return nil
+}
+
+// missingTail joins a missing tail to the real prefix, its "." and ".."
+// resolved within the tail; a ".." that would climb above its first
+// component refuses, since what lies above a missing entry is not known.
+func missingTail(path, prefix string, tail []string) (string, error) {
+	var kept []string
+	for _, comp := range tail {
+		switch comp {
+		case "", ".":
+		case "..":
+			if len(kept) == 0 {
+				return "", jq.NewErrf("the path %s climbs out of a directory that does not exist, so the review "+
+					"sandbox cannot pin down where it leads; fix the path", path)
+			}
+			kept = kept[:len(kept)-1]
+		default:
+			kept = append(kept, comp)
+		}
+	}
+	return filepath.Join(append([]string{prefix}, kept...)...), nil
+}
+
+// pathRoot is an absolute path's root: its volume and separator.
+func pathRoot(path string) string {
+	return filepath.VolumeName(path) + string(filepath.Separator)
+}
+
+// components splits a path below its root, unreduced: ".." must be applied
+// to the real prefix, never cleaned away lexically.
+func components(path string) []string {
+	return strings.Split(path[len(filepath.VolumeName(path)):], string(filepath.Separator))
 }
 
 // memoryDB is the OPENCODE_DB value that keeps the database in memory.
 const memoryDB = ":memory:"
+
+// withResolved is each path as written and where ResolvePath lands for it.
+func withResolved(paths []string) ([]string, error) {
+	out := slices.Clone(paths)
+	for _, path := range paths {
+		resolved, err := ResolvePath(path)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
+}
 
 // coversAHome refuses a credential location that is the filesystem root, a
 // home, or an ancestor of one, under every spelling either resolves to:
 // hiding it would hide every home below it (an OPENCODE_DB directly in HOME,
 // an opencode data directory linked to HOME).
 func coversAHome(locations, homes []string) error {
-	resolvedHomes := ExpandRealpaths(homes)
+	resolvedHomes, err := withResolved(homes)
+	if err != nil {
+		return err
+	}
 	for _, location := range locations {
-		_, root := FilesystemRoot(location)
-		covers := slices.ContainsFunc(ExpandRealpaths([]string{location}), func(spelled string) bool {
-			return slices.ContainsFunc(resolvedHomes, func(home string) bool { return Within(home, spelled) })
-		})
-		if root || covers {
+		covers, err := coversOne(location, resolvedHomes)
+		if err != nil {
+			return err
+		}
+		if covers {
 			return jq.NewErrf("the credential path %s is the filesystem root, a home, or above one; move what "+
 				"it holds into a directory of its own (OPENCODE_DB=<dir>/opencode.db)", location)
 		}
 	}
 	return nil
+}
+
+// coversOne reports whether one location, as written or resolved, is the
+// filesystem root or at or above one of homes.
+func coversOne(location string, homes []string) (bool, error) {
+	if _, root := FilesystemRoot(location); root {
+		return true, nil
+	}
+	spellings, err := withResolved([]string{location})
+	return slices.ContainsFunc(spellings, func(spelled string) bool {
+		return slices.ContainsFunc(homes, func(home string) bool { return Within(home, spelled) })
+	}), err
 }
 
 // homeCredentials joins the home-relative table under every home.
@@ -533,17 +641,36 @@ func (m Mount) Argv() []string {
 }
 
 // CredentialMounts resolves the locations against the host, so a missing
-// entry adds no mount and a file never gets a directory's tmpfs.
+// entry adds no mount, a file never gets a directory's tmpfs, and a link is
+// mounted at the path it resolves to.
 func CredentialMounts(locations []string) []Mount {
 	mounts := make([]Mount, 0, len(locations))
-	for _, dest := range locations {
-		info, err := os.Stat(dest)
-		if err != nil {
-			continue
+	seen := map[string]bool{}
+	for _, location := range locations {
+		mount, ok := credentialMount(location)
+		if ok && !seen[mount.Dest] {
+			seen[mount.Dest] = true
+			mounts = append(mounts, mount)
 		}
-		mounts = append(mounts, Mount{Dest: dest, Dir: info.IsDir()})
 	}
 	return mounts
+}
+
+// credentialMount is the mount that hides one existing location. bwrap
+// refuses a link as a mount's destination, so a location that is one is
+// hidden at the existing path it names (which the table carries too): a
+// link into it then reads the empty mount.
+func credentialMount(dest string) (Mount, bool) {
+	info, err := os.Stat(dest)
+	if err != nil {
+		return Mount{}, false
+	}
+	if link, err := os.Lstat(dest); err == nil && link.Mode()&fs.ModeSymlink != 0 {
+		if dest, err = filepath.EvalSymlinks(dest); err != nil {
+			return Mount{}, false
+		}
+	}
+	return Mount{Dest: dest, Dir: info.IsDir()}, true
 }
 
 // FilesystemRoot reports the spelling under which path is, or resolves to,
@@ -609,17 +736,39 @@ func Realpath(path string) (string, bool) {
 // UTF-8 refuses, because the profile must never be built from a path it
 // cannot represent.
 func SeatbeltLiteral(path string) (string, error) {
+	if err := Representable(path); err != nil {
+		return "", err
+	}
+	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
+	return `"` + quoted + `"`, nil
+}
+
+// allRepresentable is Representable over every path.
+func allRepresentable(paths []string) error {
+	for _, path := range paths {
+		if err := Representable(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Representable refuses a path no sandbox policy can name: invalid UTF-8,
+// or a control character (a newline included), which a Seatbelt profile
+// cannot spell and which no review needs. Every path is checked before the
+// filesystem is touched for it, so this refusal, not an operating system's
+// error at the path, is what the operator reads.
+func Representable(path string) error {
 	if !utf8.ValidString(path) {
-		return "", jq.NewErrf("the sandbox path %q is not valid UTF-8, which the Seatbelt profile cannot represent", path)
+		return jq.NewErrf("the sandbox path %q is not valid UTF-8, which the Seatbelt profile cannot represent", path)
 	}
 	if strings.ContainsFunc(path, func(r rune) bool {
 		return r < seatbeltFirstPrintable || r == seatbeltDelete
 	}) {
-		return "", jq.NewErrf(
-			"the sandbox path %q contains a control character the Seatbelt profile cannot represent", path)
+		return jq.NewErrf("the sandbox path %q contains a control character the Seatbelt profile cannot represent",
+			path)
 	}
-	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
-	return `"` + quoted + `"`, nil
+	return nil
 }
 
 // SeatbeltRegexQuote escapes every regex metacharacter in a path so a

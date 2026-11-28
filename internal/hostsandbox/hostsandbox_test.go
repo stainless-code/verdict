@@ -351,3 +351,215 @@ func symlinkIn(t *testing.T, dir, name, target string, extra ...string) string {
 	}
 	return link
 }
+
+// TestResolvePathWalksAsTheKernelDoes pins the one resolver against the
+// layouts a lexical or partial resolver gets wrong: a `..` after a link
+// applied to the link's real target, a dangling link mid-path whose target
+// is where the database will be made, chains with relative and absolute
+// targets, and the refusals — a loop, a file mid-path, a missing tail whose
+// `..` climbs out of it.
+func TestResolvePathWalksAsTheKernelDoes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := resolvedTempDir(t)
+	sep := string(filepath.Separator)
+	for _, dir := range []string{"external/nested", "configured", "real", "chain"} {
+		mustMkdirAll(t, filepath.Join(base, filepath.FromSlash(dir)))
+	}
+	writeFile(t, filepath.Join(base, "real", "f"))
+	writeFile(t, filepath.Join(base, "file"))
+	link(t, filepath.Join("..", "external", "nested"), filepath.Join(base, "configured", "jump"))
+	link(t, "jump/../oc.db", filepath.Join(base, "configured", "db"))
+	link(t, filepath.Join(base, "missing", "external", "data"), filepath.Join(base, "share"))
+	link(t, "../real/f", filepath.Join(base, "chain", "rel"))
+	link(t, filepath.Join(base, "chain", "rel"), filepath.Join(base, "chain", "abs"))
+	link(t, "l2", filepath.Join(base, "l1"))
+	link(t, "l1", filepath.Join(base, "l2"))
+	for path, want := range map[string]string{
+		filepath.Join(base, "configured", "db"):                                            filepath.Join(base, "external", "oc.db"),
+		filepath.Join(base, "share", "opencode", "opencode.db"):                            filepath.Join(base, "missing", "external", "data", "opencode", "opencode.db"),
+		filepath.Join(base, "chain", "abs"):                                                filepath.Join(base, "real", "f"),
+		base + sep + "configured" + sep + "jump" + sep + ".." + sep + "nested" + sep + "x": filepath.Join(base, "external", "nested", "x"),
+		base + sep + "gone" + sep + "x" + sep + ".." + sep + "y":                           filepath.Join(base, "gone", "y"),
+	} {
+		if got, err := ResolvePath(path); err != nil || got != want {
+			t.Errorf("ResolvePath(%s) = %q, %v; want %q", path, got, err, want)
+		}
+	}
+	assertRefused(t, filepath.Join(base, "l1"), filepath.Join(base, "file", "x"),
+		base+sep+"gone"+sep+".."+sep+".."+sep+"x")
+}
+
+// assertRefused fails for each path ResolvePath resolves instead of
+// refusing.
+func assertRefused(t *testing.T, paths ...string) {
+	t.Helper()
+	for _, path := range paths {
+		if got, err := ResolvePath(path); err == nil {
+			t.Errorf("ResolvePath(%s) = %q, want a refusal", path, got)
+		}
+	}
+}
+
+// TestResolvePathMatchesEvalSymlinks is a property test: over seeded random
+// trees of directories and links (relative and absolute, to anywhere in the
+// tree), a random walk through them — links, `.`, and `..` — to a file that
+// exists resolves exactly as [filepath.EvalSymlinks] resolves it.
+func TestResolvePathMatchesEvalSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	for seed := range uint64(40) {
+		rng := &splitmix{state: seed}
+		base := resolvedTempDir(t)
+		randomTree(t, rng, base)
+		for range 25 {
+			assertResolvesLikeKernel(t, seed, randomWalk(rng, base))
+		}
+	}
+}
+
+// assertResolvesLikeKernel compares ResolvePath with EvalSymlinks for a path
+// that exists.
+func assertResolvesLikeKernel(t *testing.T, seed uint64, path string) {
+	t.Helper()
+	want, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return
+	}
+	if got, err := ResolvePath(path); err != nil || got != want {
+		t.Fatalf("seed %d: ResolvePath(%s) = %q, %v; EvalSymlinks = %q", seed, path, got, err, want)
+	}
+}
+
+// splitmix is a seeded generator (SplitMix64) the property test draws from,
+// so every run builds the same trees.
+type splitmix struct{ state uint64 }
+
+// intN is a draw in [0, n).
+func (r *splitmix) intN(n int) int {
+	r.state += 0x9e3779b97f4a7c15
+	z := r.state
+	z = (z ^ z>>30) * 0xbf58476d1ce4e5b9
+	z = (z ^ z>>27) * 0x94d049bb133111eb
+	return int((z ^ z>>31) % uint64(n))
+}
+
+// randomTree makes nested directories under base, each holding a file
+// named leaf, and links among them.
+func randomTree(t *testing.T, rng *splitmix, base string) {
+	t.Helper()
+	dirs := []string{base}
+	for i := range 8 {
+		dirs = append(dirs, filepath.Join(dirs[rng.intN(len(dirs))], "d"+strconv.Itoa(i)))
+		mustMkdirAll(t, dirs[len(dirs)-1])
+	}
+	for _, dir := range dirs {
+		writeFile(t, filepath.Join(dir, "leaf"))
+	}
+	for i := range 8 {
+		at, to := dirs[rng.intN(len(dirs))], dirs[rng.intN(len(dirs))]
+		target := to
+		if rel, err := filepath.Rel(at, to); err == nil && rng.intN(2) == 0 {
+			target = rel
+		}
+		link(t, target, filepath.Join(at, "l"+strconv.Itoa(i)))
+	}
+}
+
+// randomWalk is a path from base through random entries — directories,
+// links, `.`, `..` — ending at a leaf file, written without cleaning.
+func randomWalk(rng *splitmix, base string) string {
+	path := base
+	for range rng.intN(6) + 1 {
+		choices, ok := walkChoices(path, base)
+		if !ok {
+			break
+		}
+		path += string(filepath.Separator) + choices[rng.intN(len(choices))]
+	}
+	return path + string(filepath.Separator) + "leaf"
+}
+
+// walkChoices are the next components a walk at path may take: ".", ".."
+// above base, and every entry but the leaf; false once path does not
+// resolve.
+func walkChoices(path, base string) ([]string, bool) {
+	at, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, false
+	}
+	entries, err := os.ReadDir(at)
+	if err != nil {
+		return nil, false
+	}
+	choices := []string{"."}
+	if at != base {
+		choices = append(choices, "..")
+	}
+	for _, e := range entries {
+		if e.Name() != "leaf" {
+			choices = append(choices, e.Name())
+		}
+	}
+	return choices, true
+}
+
+func mustMkdirAll(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeFile(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func link(t *testing.T, target, at string) {
+	t.Helper()
+	if err := os.Symlink(target, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestCredentialLocationsRefusesUnrepresentablePathsFirst proves a home or a
+// relocation value no policy can name refuses typed — a control character —
+// before the table is resolved against the filesystem, on every OS: where
+// the OS rejects the name itself (Windows), its error at the path must not
+// win over this refusal.
+func TestCredentialLocationsRefusesUnrepresentablePathsFirst(t *testing.T) {
+	base := t.TempDir()
+	h := filepath.Join(base, "h")
+	for name, env := range map[string][]string{
+		"home":        {"HOME=" + h + "\n"},
+		"data root":   {"HOME=" + h, "XDG_DATA_HOME=" + filepath.Join(base, "da\nta")},
+		"opencode db": {"HOME=" + h, "OPENCODE_DB=" + filepath.Join(base, "d\tb", "oc.db")},
+	} {
+		_, err := Inputs{ChildEnv: env}.CredentialLocations(filepath.Join(base, "r"), false)
+		if err == nil || !strings.Contains(err.Error(), "control character") {
+			t.Errorf("%s: CredentialLocations = %v, want the control-character refusal", name, err)
+		}
+	}
+}
+
+// TestCredentialMountsMountALinkAtItsTarget proves a credential location that
+// is a link is mounted at the path it resolves to — bwrap refuses a link as
+// a mount's destination — once, beside its target named directly.
+func TestCredentialMountsMountALinkAtItsTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	base := resolvedTempDir(t)
+	target := filepath.Join(base, "target")
+	mustMkdirAll(t, target)
+	link(t, target, filepath.Join(base, "link"))
+	got := CredentialMounts([]string{filepath.Join(base, "link"), target})
+	if len(got) != 1 || got[0].Dest != target || !got[0].Dir {
+		t.Errorf("mounts = %+v, want one directory mount at %s", got, target)
+	}
+}

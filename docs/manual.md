@@ -4419,9 +4419,10 @@ On Linux that means the network namespace is shared too (see Sockets below).
   logins (and the directory `OPENCODE_DB` puts the database in), plus the
   directory the database — the default `opencode.db` or `OPENCODE_DB` — will
   actually live in, resolved the way the kernel walks it: every link of a
-  chain followed (at most 40; more refuses), a relative target joined to the
-  real directory of the link, and for a file that does not exist yet the
-  directory it will be created in. A location that is or resolves to a home
+  chain followed (at most 40; more refuses), a relative target and every
+  `..` applied to the real directory reached so far, never reduced as text,
+  a file mid-path refusing, and for a path that does not exist yet — below a
+  dangling link included — the real directory it will be created in. A location that is or resolves to a home
   refuses. On Linux, where bwrap can hide only what exists, every one of
   those directories that is missing is made before the launch — the whole
   missing chain, each level empty and mode 0700, below the real directory of

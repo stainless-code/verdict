@@ -1212,10 +1212,40 @@ func makeHiddenDirs(dirs []string) error {
 func makeHiddenDir(dir string) error {
 	// Resolved as the kernel walks it, so the chain is made below the real
 	// directory a linked data root names, and no link is followed after.
-	ancestor, missing := missingChain(hostsandbox.ResolveExisting(dir))
+	resolved, err := hostsandbox.ResolvePath(dir)
+	if err != nil {
+		return err //nolint:wrapcheck // the resolver's message names the path and the fix
+	}
+	ancestor, missing := missingChain(resolved)
 	if len(missing) == 0 {
 		return nil
 	}
+	if err := realDirectory(dir, ancestor); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(ancestor)
+	if err != nil {
+		return hiddenDirRefusal(dir, ancestor, err.Error())
+	}
+	defer func() { _ = root.Close() }()
+	return makeChain(root, dir, ancestor, missing)
+}
+
+// makeChain makes each missing level below the root handle, in order.
+func makeChain(root *os.Root, dir, ancestor string, missing []string) error {
+	rel := ""
+	for _, part := range missing {
+		rel = filepath.Join(rel, part)
+		if err := root.Mkdir(rel, hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+			return hiddenDirRefusal(dir, filepath.Join(ancestor, rel), err.Error())
+		}
+	}
+	return nil
+}
+
+// realDirectory refuses an ancestor the missing chain cannot be made below:
+// one that is (still) a link, or not a directory.
+func realDirectory(dir, ancestor string) error {
 	info, err := os.Lstat(ancestor)
 	switch {
 	case err != nil:
@@ -1224,18 +1254,6 @@ func makeHiddenDir(dir string) error {
 		return hiddenDirRefusal(dir, ancestor, "it is a symlink; replace the link with the directory it names")
 	case !info.IsDir():
 		return hiddenDirRefusal(dir, ancestor, "it is not a directory")
-	}
-	root, err := os.OpenRoot(ancestor)
-	if err != nil {
-		return hiddenDirRefusal(dir, ancestor, err.Error())
-	}
-	defer func() { _ = root.Close() }()
-	rel := ""
-	for _, part := range missing {
-		rel = filepath.Join(rel, part)
-		if err := root.Mkdir(rel, hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
-			return hiddenDirRefusal(dir, filepath.Join(ancestor, rel), err.Error())
-		}
 	}
 	return nil
 }

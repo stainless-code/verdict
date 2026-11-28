@@ -368,7 +368,7 @@ func TestLinuxLaunchMakesTheOpencodeDBDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		filepath.Join(home, ".local", "share", "opencode"), hostsandbox.ResolveExisting(filepath.Dir(db)),
+		filepath.Join(home, ".local", "share", "opencode"), mustResolve(t, filepath.Dir(db)),
 	} {
 		if !slices.Contains(dirs, want) {
 			t.Errorf("dirs = %q, want %s among them", dirs, want)
@@ -393,4 +393,14 @@ func TestProbeRefusesAPolicyItCannotBuild(t *testing.T) {
 	if why != "" || !errors.As(err, &policy) {
 		t.Fatalf("probeBox = %q, %v; want a policy error", why, err)
 	}
+}
+
+// mustResolve is where the review sandbox's resolver lands for path.
+func mustResolve(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := hostsandbox.ResolvePath(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
 }

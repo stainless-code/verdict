@@ -1109,8 +1109,10 @@ func TestReviewSandboxHidesAFirstRunOpencodeDataDir(t *testing.T) {
 // mechanism, that a database link whose target does not exist when a launch
 // starts hides the directory the kernel will create it in — a direct link,
 // a chain of links, the default opencode.db as a relative `..` link in a
-// linked data directory, and a data directory that is itself a dangling
-// link — so the database a host opencode creates there
+// linked data directory, a `..` after a link in a link's target, a
+// database whose parent directory is a dangling link, a data root that is a
+// dangling link, and a data directory that is itself a
+// dangling link — so the database a host opencode creates there
 // during the launch is unreadable to another agent.
 func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 	t.Parallel()
@@ -1139,6 +1141,29 @@ func TestReviewSandboxHidesADanglingOpencodeDBTarget(t *testing.T) {
 			mustSymlink(t, disk, filepath.Join(home, ".local", "share", "opencode"))
 			mustSymlink(t, filepath.Join("..", "store", "opencode.db"), filepath.Join(disk, "opencode.db"))
 			return nil, filepath.Join(store, "disk", "store", "opencode.db")
+		},
+		"dotdot after a link": func(t *testing.T, _, store string) ([]string, string) {
+			t.Helper()
+			mustMkdir(t, filepath.Join(store, "external", "nested"))
+			mustMkdir(t, filepath.Join(store, "configured"))
+			mustSymlink(t, filepath.Join("..", "external", "nested"), filepath.Join(store, "configured", "jump"))
+			db := filepath.Join(store, "configured", "db")
+			mustSymlink(t, "jump/../oc.db", db)
+			return []string{"OPENCODE_DB=" + db}, filepath.Join(store, "external", "oc.db")
+		},
+		"dangling parent dir": func(t *testing.T, _, store string) ([]string, string) {
+			t.Helper()
+			mustMkdir(t, filepath.Join(store, "configured"))
+			mustSymlink(t, filepath.Join(store, "actual", "missing"), filepath.Join(store, "configured", "link"))
+			db := filepath.Join(store, "configured", "link", "opencode.db")
+			return []string{"OPENCODE_DB=" + db}, filepath.Join(store, "actual", "missing", "opencode.db")
+		},
+		"dangling data root": func(t *testing.T, home, store string) ([]string, string) {
+			t.Helper()
+			mustMkdir(t, filepath.Join(home, ".local"))
+			data := filepath.Join(store, "missing", "external", "data")
+			mustSymlink(t, data, filepath.Join(home, ".local", "share"))
+			return nil, filepath.Join(data, "opencode", "opencode.db")
 		},
 		"dangling data dir": func(t *testing.T, home, store string) ([]string, string) {
 			t.Helper()
