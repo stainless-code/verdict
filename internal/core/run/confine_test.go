@@ -501,12 +501,9 @@ func TestReviewEnvDropsTheOperatorsDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	abs, err := filepath.Abs("conf")
-	if err != nil {
-		t.Fatal(err)
-	}
+	conf := filepath.Join(resolvedTestCwd(t), "conf")
 	want := []string{
-		"PATH=/bin", "CLAUDE_CONFIG_DIR=" + abs, "PWD=" + v.cwd, "TMPDIR=" + v.tmp, "TMP=" + v.tmp, "TEMP=" + v.tmp,
+		"PATH=/bin", "CLAUDE_CONFIG_DIR=" + conf, "PWD=" + v.cwd, "TMPDIR=" + v.tmp, "TMP=" + v.tmp, "TEMP=" + v.tmp,
 	}
 	if !slices.Equal(got, want) {
 		t.Errorf("env = %q, want %q", got, want)
