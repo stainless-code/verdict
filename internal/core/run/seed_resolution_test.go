@@ -64,7 +64,8 @@ func checkSeedDotdot(t *testing.T, b, raw, variant string) {
 func TestConfigPathPolicyFailureIsTyped(t *testing.T) {
 	t.Chdir(t.TempDir())
 	req, cmdr := sandboxRequest(t, "codex", lookNoSandbox)
-	req.Environ = append(req.Environ, "CODEX_HOME=gone/../x")
+	sep := string(filepath.Separator)
+	req.Environ = append(req.Environ, "CODEX_HOME=gone"+sep+".."+sep+"x")
 	_, ref := Run(t.Context(), req)
 	assertUnavailable(t, ref, "CODEX_HOME")
 	if cmdr.calls != 0 {

@@ -395,6 +395,7 @@ func TestStateEntriesResolveRelativeRelocations(t *testing.T) {
 	}
 }
 
+// resolvedTestCwd avoids [filepath.Abs], which preserves symlink aliases.
 func resolvedTestCwd(t *testing.T) string {
 	t.Helper()
 	cwd, err := os.Getwd()
