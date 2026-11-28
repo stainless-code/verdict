@@ -53,6 +53,8 @@ const (
 
 	// codeBudgetUnknown is run's own code for spend it cannot measure.
 	codeBudgetUnknown = "budget-unknown"
+	// codeBudgetUnpriceable is run's code for a capped launch it cannot price.
+	codeBudgetUnpriceable = "budget-unpriceable"
 	// codeSpendCapped is run's code for a spawn the monthly ceiling refuses.
 	codeSpendCapped = "spend-capped"
 	// codeSandboxUnavailable is verify's code for a sandbox this host lacks.
@@ -196,6 +198,9 @@ func run(ctx context.Context, req *Request, ph phases) (*Response, *core.Refusal
 	// name refuses here rather than after a receipts directory exists.
 	plan, ref := lp.plan(ctx)
 	if ref != nil {
+		return nil, ref
+	}
+	if ref := lp.refuseUnpriceable(); ref != nil {
 		return nil, ref
 	}
 	lp.data.Plan = plan
@@ -459,6 +464,25 @@ func (lp *loop) afterFailedGate(rd *Round, dir string) (string, *Refusal) {
 		return StopCostBudget, lp.unmeasured(rd.Round)
 	}
 	return "", nil
+}
+
+// refuseUnpriceable refuses a loop under --max-cost-usd whose agent launch
+// verdict cannot price, before the first spawn and in the plan alike: the
+// ceiling could not be enforced over spend nothing measures, so round 1
+// would be paid for blind.
+func (lp *loop) refuseUnpriceable() *core.RefusalError {
+	if lp.req.MaxCostUSD == "" {
+		return nil
+	}
+	req := lp.req.Flow.RunRequest(lp.bundle(1), reviewflow.Launch{Agent: lp.req.Agent}, nil)
+	req.PassThrough = lp.req.AgentArgs
+	why := runcore.Unpriceable(req, lp.req.Flow.Agents)
+	if why == "" {
+		return nil
+	}
+	return &core.RefusalError{Code: codeBudgetUnpriceable, Message: core.Msgf("%s — --max-cost-usd %s cannot be "+
+		"enforced, so the loop refuses before any spawn: %s", why, lp.req.MaxCostUSD,
+		core.Trusted(runcore.UnpriceableFix(lp.req.Agent, "bound the loop with --max-rounds and --timeout")))}
 }
 
 // unmeasured is the refusal a cost-ceilinged loop stops with when a round's

@@ -172,6 +172,7 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 		".claude/.credentials.json", ".config/github-copilot", ".gemini/oauth_creds.json", ".config/git/credentials",
 		".local/share/opencode/mcp-auth.json", ".Xauthority", ".1password", ".bitwarden-ssh-agent.sock",
 		"Library/Group Containers/2BUA8C4S2C.com.1password", "Library/Containers/com.maxgoedjen.Secretive.SecretAgent",
+		".local/share/opencode",
 	}
 	var want []string
 	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {
@@ -189,13 +190,12 @@ func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
 	}
 }
 
-// TestSandboxCredentialHomesDedupe keeps one home answered three ways to one
-// set of locations, so the Linux argv carries no duplicate mount.
-func TestSandboxCredentialHomesDedupe(t *testing.T) {
+// Raw home spellings must survive until the resolver walks their links.
+func TestSandboxCredentialHomesPreserveRawSpellings(t *testing.T) {
 	in := sandboxInputs{childEnv: []string{"HOME=/h/same/"}, hostEnv: []string{"HOME=/h/same"}, accountHome: "/h/same"}
 	homes, ref := in.homes()
-	if ref != nil || !slices.Equal(homes, []string{"/h/same"}) {
-		t.Errorf("homes = %v, %v; want [/h/same]", homes, ref)
+	if ref != nil || !slices.Equal(homes, []string{"/h/same/", "/h/same"}) {
+		t.Errorf("homes = %v, %v; want [/h/same/ /h/same]", homes, ref)
 	}
 }
 

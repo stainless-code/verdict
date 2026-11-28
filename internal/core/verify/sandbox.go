@@ -1438,7 +1438,7 @@ func sandboxProfileDenials(b *strings.Builder, roots []string, in *sandboxProfil
 	if ref := unavailable(hostsandbox.WriteDenials(b, hostsandbox.ExpandRealpaths(in.shared))); ref != nil {
 		return ref
 	}
-	return unavailable(hostsandbox.WriteRules(b, "deny", hostsandbox.ExpandRealpaths(in.credentials)))
+	return unavailable(hostsandbox.WriteRules(b, "deny", in.credentials))
 }
 
 // sandboxProfileInputs is what one Seatbelt profile is built from.

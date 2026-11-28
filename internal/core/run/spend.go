@@ -88,6 +88,9 @@ func (st *state) authorizeProjection(ctx context.Context, dir string, captured *
 	if !spend.ValidLimit(policy.Budget) || !spend.ValidLimit(policy.Personal) || !spend.ValidLimit(policy.MonthlyCap) {
 		return st.refuse(codeBadFlags, "spend guards must be finite nonnegative USD amounts")
 	}
+	if ref := st.refuseUnpriceable(policy.MonthlyCap, policy.RequireKnown); ref != nil {
+		return ref
+	}
 	// Serialize the MTD scan and the receipt append under the repo-wide
 	// monthly lock: two concurrent runs in different bundles would
 	// otherwise both see the same month-to-date and both authorize. The

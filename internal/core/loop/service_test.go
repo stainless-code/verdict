@@ -1057,3 +1057,68 @@ func (hostAgents) Run(context.Context, *core.Command) (core.Result, error) { ret
 
 // SimulatesProcesses answers as a host commander does.
 func (hostAgents) SimulatesProcesses() bool { return false }
+
+// TestLoopRefusesAnUnpriceableCappedLaunch proves --max-cost-usd refuses,
+// before any spawn or receipt, a launch verdict cannot price — codex with no
+// model named, pi, which reports no cost — while a priced launch (claude,
+// codex on a table model) proceeds, and without the cap every one does.
+func TestLoopRefusesAnUnpriceableCappedLaunch(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		agent  string
+		cap    string
+		args   []string
+		refuse bool
+	}{
+		{agent: "codex", cap: "2", refuse: true},
+		{agent: "codex", cap: "2", args: []string{"-m", "gpt-5"}},
+		{agent: "pi", cap: "2", refuse: true},
+		{agent: "claude", cap: "2"},
+		{agent: "codex"},
+		{agent: "pi"},
+		{agent: "claude"},
+	} {
+		h := newHarness(t, 1)
+		h.req.Flow.Env["HOME"] = t.TempDir()
+		h.req.Agent, h.req.MaxCostUSD, h.req.AgentArgs = tc.agent, tc.cap, tc.args
+		resp, ref := run(t.Context(), h.req, &fake{t: t, s: h.script})
+		if !tc.refuse {
+			if ref != nil || resp == nil || !slices.Contains(h.script.calls, "fetch 1") {
+				t.Errorf("%s cap %q %q: refusal %v, calls %q; want round 1 run", tc.agent, tc.cap, tc.args, ref,
+					h.script.calls)
+			}
+			continue
+		}
+		assertUnpriceable(t, tc.agent, ref, h)
+	}
+}
+
+// assertUnpriceable checks one budget-unpriceable refusal: its remedy, and
+// that nothing ran or was written.
+func assertUnpriceable(t *testing.T, agent string, ref *core.RefusalError, h *harness) {
+	t.Helper()
+	if ref == nil || ref.Code != "budget-unpriceable" {
+		t.Fatalf("%s: refusal = %v, want budget-unpriceable", agent, ref)
+	}
+	assertRemedy(t, agent, ref.Message)
+	if len(h.script.calls) != 0 {
+		t.Errorf("%s ran %q before refusing", agent, h.script.calls)
+	}
+	if _, err := os.Stat(h.output); !os.IsNotExist(err) {
+		t.Errorf("%s wrote its receipts directory before refusing (err = %v)", agent, err)
+	}
+}
+
+// assertRemedy checks the refusal names every fix for the agent.
+func assertRemedy(t *testing.T, agent, msg string) {
+	t.Helper()
+	want := []string{"--max-cost-usd 2 cannot be enforced", "--max-rounds and --timeout", "STA-527/STA-543"}
+	if agent == "codex" {
+		want = append(want, "`-- -m <model>`", "`model` in its config.toml")
+	}
+	for _, w := range want {
+		if !strings.Contains(msg, w) {
+			t.Errorf("%s refusal %q lacks %q", agent, msg, w)
+		}
+	}
+}

@@ -333,6 +333,8 @@ func mustShareFS(t *testing.T, err error) {
 // must still win.
 func TestBwrapBindsSharesReadOnlyOverTheRoot(t *testing.T) {
 	root, home, target := gitRoot(t), t.TempDir(), t.TempDir()
+	home, err := filepath.EvalSymlinks(home)
+	mustShareFS(t, err)
 	mustShareFS(t, os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600))
 	held, err := os.Open(target)
 	mustShareFS(t, err)

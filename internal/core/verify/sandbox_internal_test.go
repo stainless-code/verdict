@@ -37,6 +37,10 @@ func TestSandboxArgvRefusesTheFilesystemRoot(t *testing.T) {
 func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 	root := gitRoot(t)
 	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600); err != nil {
 		t.Fatal(err)
 	}

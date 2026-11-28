@@ -158,15 +158,16 @@ In scope (highest priority first):
   refuses, and the state is re-checked before every launch). It cannot read
   the credential table `verify --sandbox` hides (`~/.ssh`, `~/.aws`, gh and
   glab tokens, `.netrc`, `.git-credentials`, the agent logins of codex,
-  opencode (and its MCP logins), pi, claude, copilot and gemini, the X11
+  opencode (its whole data directory: logins, MCP logins, and the database
+  that holds them), pi, claude, copilot and gemini, the X11
   cookie, the 1Password, Bitwarden and Secretive ssh-agent socket
   directories, the rest of that list and the variables that relocate them),
   except its own login, nor the host temp roots (and on Linux `/run`). On
   macOS it cannot connect to a unix socket beyond the resolver's and
   syslog's, and cannot look up a Mach service beyond the allowlist
-  (directory lookups, trustd, SystemConfiguration, and for claude the
-  keychain brokers) — so no preference write, pasteboard, keychain (but
-  claude's own), LaunchServices registration, login item, window server, or
+  (directory lookups, trustd, SystemConfiguration, and for claude without
+  `--allow-shell` the keychain brokers) — so no preference write,
+  pasteboard, keychain (but claude's own while its shell is denied), LaunchServices registration, login item, window server, or
   Shortcuts. On Linux it cannot reach a filesystem socket in `/tmp`,
   `/var/tmp`, `/run`, `/var/run`, or the table, and other processes'
   environments are hidden (a private PID namespace). It inherits no socket

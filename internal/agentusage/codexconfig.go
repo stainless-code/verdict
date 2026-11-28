@@ -28,24 +28,41 @@ const codexOpenAIProvider = "openai"
 // --local-provider) or any model_provider other than openai is never priced
 // from the OpenAI table.
 func CodexModel(home string, args []string) (string, bool) {
+	model, why := CodexModelWhy(home, args)
+	return model, why == ""
+}
+
+// CodexModelWhy is [CodexModel] with the reason a launch cannot be priced
+// from the OpenAI table, "" when it can: each names its cause and its fix.
+func CodexModelWhy(home string, args []string) (model, why string) {
 	flags := scanCodexArgs(args)
-	if flags.local || flags.unclear {
-		return "", false
+	switch {
+	case flags.local:
+		return "", "--oss or --local-provider runs a local model, which the OpenAI price table does not price"
+	case flags.unclear:
+		return "", "a `-c` override names a model, provider, or profile key verdict cannot place; " +
+			"pass the model as -m <model> instead"
 	}
 	cfg := readCodexFile(filepath.Join(home, "config.toml"), home != "")
 	sel, ok := cfg.selection(home, &flags)
-	if !ok || !openAI(flags.provider, sel.provider, cfg.top["model_provider"]) {
-		return "", false
+	switch {
+	case !ok:
+		return "", "its config.toml or selected profile has a model, provider, or profile key verdict " +
+			"cannot read, or names a profile it cannot find"
+	case !openAI(flags.provider, sel.provider, cfg.top["model_provider"]):
+		return "", "its model_provider is not openai, and only OpenAI models are in the price table"
+	case flags.model != "":
+		return flags.model, ""
 	}
-	if flags.model != "" {
-		return flags.model, true
-	}
-	model, ok := agreed(flags.cfgModel, sel.model)
+	model, ok = agreed(flags.cfgModel, sel.model)
 	if !ok {
-		return "", false
+		return "", "a `-c model=` override and its selected profile name different models; " +
+			"pass the model as -m <model>"
 	}
-	model = firstNonEmpty(model, cfg.top["model"])
-	return model, model != ""
+	if model = firstNonEmpty(model, cfg.top["model"]); model == "" {
+		return "", "no model is named (no -m/--model, no model in its config.toml or selected profile)"
+	}
+	return model, ""
 }
 
 // codexArgs is what a launch's own arguments say about model selection: the

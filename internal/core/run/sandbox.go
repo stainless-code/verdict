@@ -181,7 +181,12 @@ type reviewBox struct {
 	state       []statePath
 	readOnly    []statePath
 	dirs        []statePath
-	operator    bool
+	// hiddenDataDirs are the credential directories a Linux launch makes
+	// when missing, so bwrap, which mounts only what exists, hides them.
+	hiddenDataDirs []string
+	operator       bool
+	// shellKeychain marks a keychain login dropped for a launch's shell.
+	shellKeychain bool
 }
 
 // statePath is one resolved state path below its base (HOME or the
@@ -262,8 +267,49 @@ func (st *state) settleBox(ctx context.Context, def *agentcatalog.Launch) *core.
 	}
 	st.box = box
 	st.warnStateless(def)
+	st.warnKeychainLogin(def)
 	st.warnNested(def)
 	return nil
+}
+
+// warnKeychainLogin warns a macOS launch of a row whose saved sign-in is the
+// login keychain, which the profile keeps closed to it. Only a row's
+// documented API-key variable (KeyEnv: claude's ANTHROPIC_API_KEY) silences
+// it once set: a variable the CLI reads only when its own settings select
+// API-key sign-in (agy's GEMINI_API_KEY) proves nothing set alone.
+func (st *state) warnKeychainLogin(def *agentcatalog.Launch) {
+	env := def.KeychainLoginEnv
+	if env == "" || st.box.mechanism != hostsandbox.SandboxExecTool || st.box.keychain() ||
+		env == def.KeyEnv && hostsandbox.EnvLookup(st.childEnv(), env) != "" {
+		return
+	}
+	shell := def.Name + " keeps a shell in every review"
+	if st.box.shellKeychain {
+		shell = flagAllowShell + " gives " + def.Name + " a shell"
+	}
+	fix := "set " + env + " for its review launches"
+	if env != def.KeyEnv {
+		fix = "set " + env + " and configure " + def.Name + " to sign in with it rather than your saved account"
+	}
+	st.boxWarn(core.Msgf("%s's saved macOS sign-in is in your login keychain, which verdict's review sandbox keeps "+
+		"closed to it: %s, and with the keychain open a prompt-injected diff could read every token stored "+
+		"there (gh's among them) into review text; %s%s",
+		def.Name, shell, core.Trusted(fix), st.optOutRemedy()))
+}
+
+// flagAllowShell is the flag that restores a row's shell in its review.
+const flagAllowShell = "--allow-shell"
+
+// dropKeychain removes the keychain from the box's own state for a launch
+// with a shell, so the profile opens no keychain broker and the credential
+// table hides the keychain files again.
+func (b *reviewBox) dropKeychain() {
+	if !b.keychain() {
+		return
+	}
+	keychain := filepath.Join(b.home, keychainState)
+	b.state = slices.DeleteFunc(b.state, func(s statePath) bool { return !s.prefix && s.path == keychain })
+	b.shellKeychain = true
 }
 
 // valueFullAccess is codex's sandbox mode that starts no sandbox of its own.
@@ -368,9 +414,11 @@ func (st *state) boxWarn(msg string) {
 }
 
 // warnStateless names the one limit a row without state paths runs into in
-// the sandbox: it cannot save its own login or sessions.
+// the sandbox: it cannot save its own login or sessions. A row whose state is
+// all read-only (agy's) declared that it needs none writable.
 func (st *state) warnStateless(def *agentcatalog.Launch) {
-	if len(def.StateWritable) > 0 || len(def.StateEphemeral) > 0 || def.ProjectState != nil {
+	if len(def.StateWritable) > 0 || len(def.StateReadOnly) > 0 || len(def.StateEphemeral) > 0 ||
+		def.ProjectState != nil {
 		return
 	}
 	remedy := "it cannot run sandboxed"
@@ -395,14 +443,16 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if why != "" {
 		return nil, why, nil
 	}
-	env := absConfigHomes(st.childEnv())
-	credentials, err := hostsandbox.Inputs{
-		AccountHome: hostsandbox.AccountHome(), ChildEnv: env, HostEnv: st.req.Environ,
-	}.CredentialLocations(st.workDir(), mechanism == hostsandbox.SandboxExecTool)
+	env, err := absConfigHomes(st.childEnv())
+	if err != nil {
+		return nil, "", err
+	}
+	in := hostsandbox.Inputs{AccountHome: hostsandbox.AccountHome(), ChildEnv: env, HostEnv: st.req.Environ}
+	credentials, err := in.CredentialLocations(st.workDir(), mechanism == hostsandbox.SandboxExecTool)
 	if err != nil {
 		return nil, "", err //nolint:wrapcheck // the shared resolver's message is the refusal's reason
 	}
-	box, err := newReviewBox(def, env, credentials)
+	box, err := st.policyBox(def, env, credentials, in, mechanism)
 	if err != nil {
 		return nil, "", err
 	}
@@ -413,7 +463,34 @@ func (st *state) buildBox(ctx context.Context, def *agentcatalog.Launch) (*revie
 	if st.req.Print {
 		return box, "", nil
 	}
-	return box, st.probeBox(ctx, box), nil
+	// Made here, before the probe, so a directory that cannot be made is
+	// the policy's refusal, never a host without a sandbox.
+	if err := makeHiddenDirs(box.hiddenDataDirs); err != nil {
+		return nil, "", err
+	}
+	why, perr := st.probeBox(ctx, box)
+	return box, why, perr
+}
+
+// policyBox resolves the launch's state and what it must hide: on Linux
+// the credential directories a launch makes when missing, and under
+// --allow-shell no keychain.
+func (st *state) policyBox(def *agentcatalog.Launch, env, credentials []string, in hostsandbox.Inputs,
+	mechanism string,
+) (*reviewBox, error) {
+	box, err := newReviewBox(def, env, credentials)
+	if err != nil {
+		return nil, err
+	}
+	if mechanism == hostsandbox.BwrapTool {
+		if box.hiddenDataDirs, err = openCodeDataDirs(in); err != nil {
+			return nil, err
+		}
+	}
+	if st.req.AllowShell {
+		box.dropKeychain()
+	}
+	return box, nil
 }
 
 // reviewMechanism names the host's sandbox mechanism and the runner it
@@ -451,15 +528,19 @@ func bwrapMechanism(look func(string) (string, error)) (mechanism, runner, why s
 // before any agent starts, so a host that cannot build the sandbox (user
 // namespaces restricted, a profile Seatbelt rejects) is found here rather
 // than as a failed review.
-func (st *state) probeBox(ctx context.Context, box *reviewBox) string {
+func (st *state) probeBox(ctx context.Context, box *reviewBox) (string, error) {
 	private, err := hostsandbox.MakePrivateDir("")
 	if err != nil {
-		return err.Error()
+		return err.Error(), nil
 	}
 	defer st.removePrivate(private)
 	argv, err := box.prefix([]string{private}, "", true)
 	if err != nil {
-		return err.Error()
+		// Building the wrapper runs no mechanism: its failure is the
+		// policy's (a credential layout the sandbox cannot hide), which
+		// refuses every launch — never a host without a sandbox, which
+		// would let a self-confining row run unsandboxed.
+		return "", &policyError{err: err}
 	}
 	if box.mechanism == hostsandbox.SandboxExecTool {
 		argv = append(argv, "bash", "-c", reviewProbeScript)
@@ -474,17 +555,26 @@ func (st *state) probeBox(ctx context.Context, box *reviewBox) string {
 	})
 	switch {
 	case ctx.Err() != nil:
-		return ctx.Err().Error()
+		return ctx.Err().Error(), nil
 	case err != nil:
-		return fmt.Sprintf("%s could not start (%v)", box.mechanism, err)
+		return fmt.Sprintf("%s could not start (%v)", box.mechanism, err), nil
 	case res.TimedOut:
-		return fmt.Sprintf("%s did not finish its probe within %s", box.mechanism, reviewProbeTimeout)
+		return fmt.Sprintf("%s did not finish its probe within %s", box.mechanism, reviewProbeTimeout), nil
 	case res.ExitCode != 0:
 		detail, _, _ := strings.Cut(strings.TrimSpace(res.Stdout+res.Stderr), "\n")
-		return fmt.Sprintf("%s could not create the sandbox (exit %d: %s)", box.mechanism, res.ExitCode, detail)
+		return fmt.Sprintf("%s could not create the sandbox (exit %d: %s)", box.mechanism, res.ExitCode, detail), nil
 	}
-	return ""
+	return "", nil
 }
+
+// policyError is a review-sandbox policy that cannot be built — a credential
+// layout the sandbox cannot hide safely. It refuses every launch, a
+// self-confining row's included, unlike a host whose mechanism is missing
+// or fails its probe run.
+type policyError struct{ err error }
+
+func (e *policyError) Error() string { return e.err.Error() }
+func (e *policyError) Unwrap() error { return e.err }
 
 // removePrivate removes one private TMPDIR, warning when any of it survives
 // so a stranded directory is visible.
@@ -540,7 +630,11 @@ func stripSocketEnv(env []string) []string {
 // absConfigHomes resolves a relative agent configuration directory
 // (configHomes) where verdict runs, as the launch environment does, so the
 // sandbox names the directory the agent will use.
-func absConfigHomes(env []string) []string {
+func absConfigHomes(env []string) ([]string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, jq.NewErrf("configuration homes cannot be anchored to the working directory: %v", err)
+	}
 	out := slices.Clone(env)
 	for i, kv := range out {
 		name, value, _ := strings.Cut(kv, inlineValue)
@@ -548,11 +642,13 @@ func absConfigHomes(env []string) []string {
 			!slices.ContainsFunc(configHomes, func(h string) bool { return strings.EqualFold(h, name) }) {
 			continue
 		}
-		if abs, err := filepath.Abs(value); err == nil {
-			out[i] = name + inlineValue + abs
+		resolved, err := hostsandbox.ResolvePath(cwd + string(filepath.Separator) + value)
+		if err != nil {
+			return nil, jq.NewErrf("%s cannot be resolved: %v", name, err)
 		}
+		out[i] = name + inlineValue + resolved
 	}
-	return out
+	return out, nil
 }
 
 // launchBox is one launch's sandbox: the execution's box with the launch's
@@ -679,7 +775,7 @@ func (b *reviewBox) wrap(wrapper, bin string, argv []string) ([]string, error) {
 // written.
 func (b *reviewBox) prefix(writable []string, bin string, resolve bool) ([]string, error) {
 	if resolve {
-		if err := b.makeStateDirs(); err != nil {
+		if err := b.makeLaunchDirs(); err != nil {
 			return nil, err
 		}
 	}
@@ -726,7 +822,7 @@ func seatbeltReviewProfile(writable []string, bin string, box *reviewBox) (strin
 		func() error { return seatbeltBinaryRead(&b, bin, writable) },
 		func() error { return seatbeltAncestors(&b, writable, bin) },
 		func() error { b.WriteString(hostsandbox.SeatbeltDeviceWrites + seatbeltTTYDenial); return nil },
-		func() error { return hostsandbox.WriteRules(&b, "deny", hostsandbox.ExpandRealpaths(box.credentials)) },
+		func() error { return hostsandbox.WriteRules(&b, "deny", box.credentials) },
 		func() error { return seatbeltStateRules(&b, box.state, true) },
 		func() error { return seatbeltStateRules(&b, box.readOnly, false) },
 	}
@@ -918,9 +1014,10 @@ func seatbeltRegex(b *strings.Builder, rule, path, tail string) error {
 // directories bound writable and the agent binary read-only; the row's data
 // paths bound writable and its config and code read-only; then the
 // credential table hidden over all of them (empty tmpfs over a directory,
-// /dev/null over a file), but the agent's own login; then the hidden roots
-// remounted read-only. bwrap can bind only what exists: a missing writable
-// directory was created first, and a missing file stays read-only.
+// remounted read-only, /dev/null over a file), but the agent's own login;
+// then the hidden roots remounted read-only. bwrap can bind only what
+// exists: a missing writable directory was created first, and a missing file
+// stays read-only.
 func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 	hidden := hiddenRoots(lstatMode)
 	argv := slices.Concat(bwrapReviewHead, pairs(hostsandbox.Tmpfs, hidden))
@@ -936,9 +1033,16 @@ func bwrapReviewArgv(writable []string, bin string, box *reviewBox) []string {
 	// (~/.pi, ~/.codex) would otherwise expose the real file again — less the
 	// agent's own login, which its writable state binds.
 	others := slices.DeleteFunc(slices.Clone(box.credentials), box.ownLogin())
+	var hiddenDirs []string
 	for _, mount := range hostsandbox.CredentialMounts(others) {
 		argv = append(argv, mount.Argv()...)
+		if mount.Dir {
+			hiddenDirs = append(hiddenDirs, mount.Dest)
+		}
 	}
+	// A hidden directory stays empty and read-only: a directory an agent's
+	// own data binds read-only (opencode's) must not turn writable under it.
+	argv = append(argv, pairs("--remount-ro", hiddenDirs)...)
 	argv = append(argv, pairs("--remount-ro", hidden)...)
 	return append(argv, bwrapReviewTail...)
 }
@@ -1062,6 +1166,131 @@ func (b *reviewBox) makeStateDirs() error {
 	return nil
 }
 
+// makeLaunchDirs makes, before a real launch, the state directories the
+// launch binds and the credential directories it must hide.
+func (b *reviewBox) makeLaunchDirs() error {
+	if err := b.makeStateDirs(); err != nil {
+		return err
+	}
+	return makeHiddenDirs(b.hiddenDataDirs)
+}
+
+// openCodeDataDirs is every directory a host opencode may make and write
+// its database in during a launch: its data directory under every data root
+// the child and host environments and the homes name, and the directories
+// its database (default or OPENCODE_DB) resolves to.
+func openCodeDataDirs(in hostsandbox.Inputs) ([]string, error) {
+	homes, err := in.Homes()
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the shared resolver's message is the refusal's reason
+	}
+	var dirs []string
+	for _, env := range [][]string{in.ChildEnv, in.HostEnv} {
+		db, err := hostsandbox.OpenCodeDBDirs(env, homes)
+		if err != nil {
+			return nil, err //nolint:wrapcheck // as above
+		}
+		data, err := hostsandbox.ResolvedOpenCodeDataDirs(env, homes)
+		if err != nil {
+			return nil, err //nolint:wrapcheck // as above
+		}
+		dirs = slices.Concat(dirs, data, db)
+	}
+	return hostsandbox.ResolvePaths(dirs, false) //nolint:wrapcheck // the shared resolver names the offending location
+}
+
+// makeHiddenDirs makes each missing credential directory, and every missing
+// directory above it, before a Linux launch: bwrap mounts only what exists,
+// so a directory a host opencode makes on its first run during the review
+// — or makes a whole data root for — would otherwise be readable through
+// the host's read-only root. Each level is made empty and private below a
+// root handle on the deepest existing ancestor and kept (opencode uses it
+// later). An ancestor that is (still) a link or not a directory, or a level
+// that cannot be made, refuses the launch: the directory could not be
+// hidden.
+func makeHiddenDirs(dirs []string) error {
+	for _, dir := range dirs {
+		if err := makeHiddenDir(dir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// makeHiddenDir makes one missing directory and the missing chain above it.
+func makeHiddenDir(dir string) error {
+	// Resolved as the kernel walks it, so the chain is made below the real
+	// directory a linked data root names, and no link is followed after.
+	resolved, err := hostsandbox.ResolvePath(dir)
+	if err != nil {
+		return err //nolint:wrapcheck // the resolver's message names the path and the fix
+	}
+	ancestor, missing := missingChain(resolved)
+	if len(missing) == 0 {
+		return nil
+	}
+	if err := realDirectory(dir, ancestor); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(ancestor)
+	if err != nil {
+		return hiddenDirRefusal(dir, ancestor, err.Error())
+	}
+	defer func() { _ = root.Close() }()
+	return makeChain(root, dir, ancestor, missing)
+}
+
+// makeChain makes each missing level below the root handle, in order.
+func makeChain(root *os.Root, dir, ancestor string, missing []string) error {
+	rel := ""
+	for _, part := range missing {
+		rel = filepath.Join(rel, part)
+		if err := root.Mkdir(rel, hiddenDirMode); err != nil && !errors.Is(err, fs.ErrExist) {
+			return hiddenDirRefusal(dir, filepath.Join(ancestor, rel), err.Error())
+		}
+	}
+	return nil
+}
+
+// realDirectory refuses an ancestor the missing chain cannot be made below:
+// one that is (still) a link, or not a directory.
+func realDirectory(dir, ancestor string) error {
+	info, err := os.Lstat(ancestor)
+	switch {
+	case err != nil:
+		return hiddenDirRefusal(dir, ancestor, err.Error())
+	case info.Mode()&fs.ModeSymlink != 0:
+		return hiddenDirRefusal(dir, ancestor, "it is a symlink; replace the link with the directory it names")
+	case !info.IsDir():
+		return hiddenDirRefusal(dir, ancestor, "it is not a directory")
+	}
+	return nil
+}
+
+// missingChain splits dir into its deepest ancestor that exists (as
+// anything, a link included) and the missing components below it.
+func missingChain(dir string) (string, []string) {
+	var missing []string
+	for at := dir; ; at = filepath.Dir(at) {
+		// Any error walks up (ENOTDIR below a file included): the ancestor
+		// that does exist then decides, a file refusing.
+		if _, err := os.Lstat(at); err == nil || filepath.Dir(at) == at {
+			return at, missing
+		}
+		missing = append([]string{filepath.Base(at)}, missing...)
+	}
+}
+
+// hiddenDirRefusal is the refusal for a credential directory that cannot be
+// made where the review sandbox must hide it.
+func hiddenDirRefusal(dir, at, why string) error {
+	return jq.NewErrf("the review sandbox must hide %s, which does not exist yet, but cannot make it at %s (%s); "+
+		"create %s yourself, or fix that path", dir, at, why, dir)
+}
+
+// hiddenDirMode is a made credential directory's mode: the operator's own.
+const hiddenDirMode = 0o700
+
 // makeOwnDir makes a directory and confirms it is one, not a link.
 func makeOwnDir(path string) error {
 	_ = os.MkdirAll(path, viewDirMode) //nolint:errcheck // the check below decides
@@ -1110,7 +1339,11 @@ func (s statePath) prefixed() []string {
 // newReviewBox resolves the row's state under the child's HOME and its
 // relocation variables and checks it (checkState).
 func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewBox, error) {
-	box := &reviewBox{credentials: credentials, operator: def.Source == agentSourcePrefs}
+	resolved, err := hostsandbox.ResolvePaths(credentials, true)
+	if err != nil {
+		return nil, err //nolint:wrapcheck // the shared resolver names the offending location
+	}
+	box := &reviewBox{credentials: resolved, operator: def.Source == agentSourcePrefs}
 	if len(def.StateWritable) == 0 && len(def.StateReadOnly) == 0 {
 		return box, nil
 	}
@@ -1119,7 +1352,11 @@ func newReviewBox(def *agentcatalog.Launch, env, credentials []string) (*reviewB
 		return nil, jq.NewErrf("HOME is unset or relative in the child environment, so %s's state paths "+
 			"cannot be named", def.Name)
 	}
-	box.home = filepath.Clean(home)
+	resolvedHome, err := hostsandbox.ResolvePath(home)
+	if err != nil {
+		return nil, jq.NewErrf("HOME cannot be resolved: %v", err)
+	}
+	box.home = resolvedHome
 	if err := box.resolveState(def, env); err != nil {
 		return nil, err
 	}
@@ -1179,15 +1416,26 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 	base, tail, relocated := home, trimmed, false
 	for _, v := range def.StateEnv {
 		value := hostsandbox.EnvLookup(env, v.Name)
-		if below, ok := strings.CutPrefix(trimmed, v.Root); ok && filepath.IsAbs(value) &&
-			(below == "" || strings.HasPrefix(below, slash)) {
-			base, tail, relocated = filepath.Clean(value), strings.TrimPrefix(below, slash), true
-			break
+		if !strings.HasPrefix(trimmed+slash, v.Root+slash) || !filepath.IsAbs(value) {
+			continue
 		}
+		resolved, err := resolveStateRoot(value)
+		if err != nil {
+			return statePath{}, jq.NewErrf("%s cannot be resolved: %v", v.Name, err)
+		}
+		base, tail, relocated = resolved, strings.TrimPrefix(strings.TrimPrefix(trimmed, v.Root), slash), true
+		break
 	}
 	return statePath{
 		path: filepath.Join(base, filepath.FromSlash(tail)), base: base, prefix: trimmed != rel, relocated: relocated,
 	}, nil
+}
+
+func resolveStateRoot(value string) (string, error) {
+	if info, err := os.Lstat(value); err == nil && info.Mode()&fs.ModeSymlink != 0 {
+		return "", jq.NewErrf("the state root %s is a symlink; point the variable at the directory the link names", value)
+	}
+	return hostsandbox.ResolvePath(value) //nolint:wrapcheck // caller names the relocation variable
 }
 
 // checkState refuses a writable state path that would re-open more than the
@@ -1198,7 +1446,7 @@ func stateEntry(def *agentcatalog.Launch, home string, env []string, rel string)
 // the box is settled and again before every launch.
 func (b *reviewBox) checkState() error {
 	homes := hostsandbox.ExpandRealpaths([]string{b.home})
-	credentials := slices.DeleteFunc(hostsandbox.ExpandRealpaths(b.credentials), b.ownLogin())
+	credentials := slices.DeleteFunc(slices.Clone(b.credentials), b.ownLogin())
 	made := slices.Concat(b.state, b.dirs)
 	if b.projects != nil {
 		made = append(made, *b.projects)
@@ -1379,7 +1627,11 @@ var writeTools = []string{"Write", "Edit", "MultiEdit", "NotebookEdit"}
 // cannot name them, void it too. The settings directory is
 // CLAUDE_CONFIG_DIR, else ~/.claude.
 func claudeWidenedWrites(env []string) string {
-	dir := hostsandbox.EnvLookup(absConfigHomes(env), "CLAUDE_CONFIG_DIR")
+	anchored, err := absConfigHomes(env)
+	if err != nil {
+		return err.Error()
+	}
+	dir := hostsandbox.EnvLookup(anchored, "CLAUDE_CONFIG_DIR")
 	if !filepath.IsAbs(dir) {
 		home, ok := hostsandbox.Home(env)
 		if !ok || !filepath.IsAbs(home) {

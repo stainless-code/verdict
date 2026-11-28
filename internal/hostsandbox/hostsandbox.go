@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -120,6 +121,12 @@ var CredentialPaths = []string{
 	".bitwarden-ssh-agent.sock",
 	filepath.Join("Library", "Group Containers", "2BUA8C4S2C.com.1password"),
 	filepath.Join("Library", "Containers", "com.maxgoedjen.Secretive.SecretAgent"),
+	// opencode's whole data directory: its database keeps the logins in a
+	// credential table, the same tokens auth.json held, and SQLite makes and
+	// removes the database's journal and write-ahead log as connections come
+	// and go — a file that does not exist when bwrap starts gets no mount of
+	// its own — under a name a release channel may change.
+	filepath.Join(".local", "share", "opencode"),
 }
 
 // credentialVar is one environment variable that relocates a credential
@@ -133,6 +140,13 @@ type credentialVar struct {
 
 // xdgConfigHome relocates the XDG config directory several stores live in.
 const xdgConfigHome = "XDG_CONFIG_HOME"
+
+// xdgDataHome relocates the XDG data directory opencode keeps its logins
+// in, and envOpenCodeDB opencode's database alone.
+const (
+	xdgDataHome   = "XDG_DATA_HOME"
+	envOpenCodeDB = "OPENCODE_DB"
+)
 
 // credentialEnv is the relocation half of the table, read from both the
 // child environment and the verdict process environment, so a store moved by
@@ -150,13 +164,14 @@ var credentialEnv = []credentialVar{
 	{name: xdgConfigHome, suffix: "glab-cli"},
 	{name: "GLAB_CONFIG_DIR"},
 	{name: "CODEX_HOME", suffix: "auth.json"},
-	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "auth.json")},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "auth.json")},
 	{name: "PI_CODING_AGENT_DIR", suffix: "auth.json"},
 	{name: "CLAUDE_CONFIG_DIR", suffix: ".credentials.json"},
 	{name: xdgConfigHome, suffix: "github-copilot"},
 	{name: xdgConfigHome, suffix: filepath.FromSlash("git/credentials")},
-	{name: "XDG_DATA_HOME", suffix: filepath.Join("opencode", "mcp-auth.json")},
+	{name: xdgDataHome, suffix: filepath.Join("opencode", "mcp-auth.json")},
 	{name: "XAUTHORITY"},
+	{name: xdgDataHome, suffix: "opencode"},
 }
 
 // Inputs is what a policy resolves the credential table against: the
@@ -188,35 +203,322 @@ func (in Inputs) Homes() ([]string, error) {
 	if filepath.IsAbs(in.AccountHome) {
 		homes = append(homes, in.AccountHome)
 	}
-	return CleanUnique(homes), nil
+	return uniquePaths(homes), nil
 }
 
 // CredentialLocations resolves the shared table: every home-relative entry
 // under every home, then every relocation variable from the child and host
 // environments. A root inside a credential location refuses, since hiding
 // the location would hide the code under review and allowing the root would
-// expose the credential. expandHomes adds each home's realpath first
-// (Seatbelt matches resolved vnodes; bwrap follows the literal path itself).
-func (in Inputs) CredentialLocations(root string, expandHomes bool) ([]string, error) {
+// expose the credential. spellings retains as-written paths for Seatbelt;
+// Linux mounts use only resolved destinations.
+func (in Inputs) CredentialLocations(root string, spellings bool) ([]string, error) {
 	homes, err := in.Homes()
 	if err != nil {
 		return nil, err
 	}
-	if expandHomes {
-		homes = ExpandRealpaths(homes)
+	// Every home is checked before the filesystem is touched for it, so an
+	// unrepresentable one refuses typed, on every OS, before any Lstat.
+	if err := allRepresentable(homes); err != nil {
+		return nil, err
 	}
 	locations := homeCredentials(homes)
 	for _, env := range [][]string{in.ChildEnv, in.HostEnv} {
-		for _, v := range credentialEnv {
-			locations = append(locations, v.paths(env)...)
+		moved, err := envLocations(env, homes)
+		if err != nil {
+			return nil, err
 		}
+		locations = append(locations, moved...)
 	}
-	locations = CleanUnique(locations)
-	if location, ok := Enclosing(locations, root); ok {
+	written := locations
+	locations, err = ResolvePaths(locations, spellings)
+	if err != nil {
+		return nil, err
+	}
+	if location, ok := Enclosing(append(slices.Clone(written), locations...), root); ok {
 		return nil, jq.NewErrf(
 			"the reviewed root %s is inside the credential path %s; refusing to expose or hide it", root, location)
 	}
-	return locations, nil
+	return locations, coversAHome(locations, homes)
+}
+
+// envLocations is the credential stores one environment's relocation
+// variables move, opencode's database directories among them.
+func envLocations(env, homes []string) ([]string, error) {
+	var locations []string
+	for _, v := range credentialEnv {
+		for _, raw := range v.paths(env) {
+			resolved, err := ResolvePath(raw)
+			if err != nil {
+				return nil, jq.NewErrf("%s cannot be resolved: %v", v.name, err)
+			}
+			locations = append(locations, raw, resolved)
+		}
+	}
+	data, err := ResolvedOpenCodeDataDirs(env, homes)
+	if err != nil {
+		return nil, err
+	}
+	dirs, err := OpenCodeDBDirs(env, homes)
+	return slices.Concat(locations, data, dirs), err
+}
+
+// ResolvedOpenCodeDataDirs is every opencode data directory as written and
+// where the kernel lands for it (ResolvePath): a data directory that is a
+// link — dangling included, which no mount or realpath spelling would follow
+// — is hidden, and made on Linux, at its target.
+func ResolvedOpenCodeDataDirs(env, homes []string) ([]string, error) {
+	raw := OpenCodeDataDirs(env, homes)
+	out := slices.Clone(raw)
+	for _, dir := range raw {
+		resolved, err := ResolvePath(dir)
+		if err != nil {
+			return nil, jq.NewErrf("XDG_DATA_HOME or home data location cannot be resolved: %v", err)
+		}
+		out = append(out, resolved)
+	}
+	return out, nil
+}
+
+// OpenCodeDBDirs is the directory OPENCODE_DB puts opencode's database in,
+// with its journal and log beside it: an absolute value's own directory, a
+// relative one resolved against every opencode data directory, as opencode
+// resolves it, and for a value that is a link the target's directory too;
+// ":memory:" names no file.
+func OpenCodeDBDirs(env, homes []string) ([]string, error) {
+	value := EnvLookup(env, envOpenCodeDB)
+	switch {
+	case value == memoryDB:
+		return nil, nil
+	case filepath.IsAbs(value):
+		return dbDirs([]string{value})
+	case value == "":
+		value = defaultOpenCodeDB
+	}
+	dirs := OpenCodeDataDirs(env, homes)
+	paths := make([]string, 0, len(dirs))
+	for _, dir := range dirs {
+		paths = append(paths, rawAppend(dir, value))
+	}
+	return dbDirs(paths)
+}
+
+// defaultOpenCodeDB is the database opencode opens with OPENCODE_DB unset
+// (a release-channel build names its own beside it).
+const defaultOpenCodeDB = "opencode.db"
+
+// OpenCodeDataDirs is opencode's data directory under every data root the
+// environment and homes name: $XDG_DATA_HOME/opencode when absolute, and
+// <home>/.local/share/opencode.
+func OpenCodeDataDirs(env, homes []string) []string {
+	var dirs []string
+	if data := EnvLookup(env, xdgDataHome); filepath.IsAbs(data) {
+		dirs = append(dirs, rawAppend(data, openCodeDir))
+	}
+	for _, home := range homes {
+		dirs = append(dirs, rawAppend(home, filepath.FromSlash(".local/share/opencode")))
+	}
+	return dirs
+}
+
+// openCodeDir is opencode's directory under a data root.
+const openCodeDir = "opencode"
+
+// dbDirs is the directory of each database path as written and the one
+// the database's file actually lives in (ResolveDBDir): SQLite resolves a
+// link to the database and keeps its journal and log beside the target,
+// in a directory the path's own does not cover.
+func dbDirs(paths []string) ([]string, error) {
+	var dirs []string
+	for _, path := range paths {
+		resolved, err := ResolveDBDir(path)
+		if err != nil {
+			return nil, jq.NewErrf("OPENCODE_DB cannot be resolved: %v", err)
+		}
+		dirs = append(dirs, rawDir(path), resolved)
+	}
+	return dirs, nil
+}
+
+// maxLinkHops bounds the links a database path is followed through, as the
+// kernel bounds a path walk (ELOOP).
+const maxLinkHops = 40
+
+// ResolveDBDir is the directory a database path's file lives in, or will be
+// created in (ResolvePath's directory).
+func ResolveDBDir(path string) (string, error) {
+	resolved, err := ResolvePath(path)
+	return filepath.Dir(resolved), err
+}
+
+// ResolvePath is where the kernel lands for an absolute path, existing or
+// not — the one resolver every caller of the credential layout uses. It is a
+// realpath walk over a queue of components, keeping a prefix that is always
+// a real, existing, link-free directory: "." is skipped, ".." moves to the
+// prefix's parent (sound, the prefix being real), a link counts a hop
+// (refusing past maxLinkHops) and puts its target's components at the front
+// of the queue (an absolute target restarting from its root), a directory
+// becomes the prefix, and a file ends the walk only as the last component —
+// one mid-path refuses. A missing component ends it too: no link can exist
+// below a missing entry, so any ".." in the remaining tail refuses.
+// Its eventual target cannot be known before the missing directories exist.
+// The result is the real prefix plus that tail, the path
+// a file or directory created there will have.
+func ResolvePath(path string) (string, error) {
+	if err := Representable(path); err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(path) {
+		return "", jq.NewErrf("the path %s is not absolute, so the review sandbox cannot resolve it", path)
+	}
+	w := &realWalk{path: path, prefix: pathRoot(path), queue: components(path)}
+	for len(w.queue) > 0 {
+		done, err := w.step()
+		if err != nil || done {
+			return w.result, err
+		}
+	}
+	return w.prefix, nil
+}
+
+// realWalk is one ResolvePath walk: the real prefix, the components left,
+// and the links followed.
+type realWalk struct {
+	path, prefix, result string
+	queue                []string
+	hops                 int
+}
+
+// step takes the queue's first component; true once the walk ends early
+// (a missing tail, or a file as the last component) with w.result set.
+func (w *realWalk) step() (bool, error) {
+	comp := w.queue[0]
+	w.queue = w.queue[1:]
+	switch comp {
+	case "", ".":
+		return false, nil
+	case "..":
+		w.prefix = filepath.Dir(w.prefix)
+		return false, nil
+	}
+	next := filepath.Join(w.prefix, comp)
+	info, err := os.Lstat(next)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		w.result, err = missingTail(w.path, w.prefix, append([]string{comp}, w.queue...))
+		return true, err
+	case err != nil:
+		return true, jq.NewErrf("the path %s cannot be inspected at %s (%v); fix it or the directories above it",
+			w.path, next, err)
+	case info.Mode()&fs.ModeSymlink != 0:
+		return false, w.follow(next)
+	case info.IsDir():
+		w.prefix = next
+		return false, nil
+	case len(w.queue) == 0:
+		w.result = next
+		return true, nil
+	}
+	return true, jq.NewErrf("the path %s runs through the file %s, which is not a directory; fix the path",
+		w.path, next)
+}
+
+// follow puts a link's target at the front of the queue.
+func (w *realWalk) follow(link string) error {
+	if w.hops++; w.hops > maxLinkHops {
+		return jq.NewErrf("the path %s runs through more than %d links, so the review sandbox cannot pin down "+
+			"where it leads; point it at the real path directly", w.path, maxLinkHops)
+	}
+	target, err := os.Readlink(link)
+	if err != nil {
+		return jq.NewErrf("the link %s cannot be read (%v); remove it or point it at a real path", link, err)
+	}
+	if target == "" {
+		return jq.NewErrf("the link %s has an empty target; point it at a real path", link)
+	}
+	if err := Representable(target); err != nil {
+		return err
+	}
+	if filepath.IsAbs(target) {
+		w.prefix = pathRoot(target)
+	}
+	w.queue = append(components(target), w.queue...)
+	return nil
+}
+
+// A future directory could be replaced by a link before a later component
+// appears, so reducing any ".." in a missing tail would guess its target.
+func missingTail(path, prefix string, tail []string) (string, error) {
+	if slices.Contains(tail, "..") {
+		return "", jq.NewErrf("the path %s steps out of a directory that does not exist yet, "+
+			"so the sandbox cannot know where it will land; fix the path", path)
+	}
+	return filepath.Join(append([]string{prefix}, tail...)...), nil
+}
+
+// pathRoot is an absolute path's root: its volume and separator.
+func pathRoot(path string) string {
+	return filepath.VolumeName(path) + string(filepath.Separator)
+}
+
+// components splits a path below its root, unreduced: ".." must be applied
+// to the real prefix, never cleaned away lexically.
+func components(path string) []string {
+	return strings.Split(path[len(filepath.VolumeName(path)):], string(filepath.Separator))
+}
+
+// memoryDB is the OPENCODE_DB value that keeps the database in memory.
+const memoryDB = ":memory:"
+
+// ResolvePaths preserves optional spellings because Seatbelt must deny both
+// the link's name and its target, even before the target exists.
+func ResolvePaths(paths []string, spellings bool) ([]string, error) {
+	var out []string
+	if spellings {
+		out = slices.Clone(paths)
+	}
+	for _, path := range paths {
+		resolved, err := ResolvePath(path)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, resolved)
+	}
+	return uniquePaths(out), nil
+}
+
+// coversAHome refuses a credential location that is the filesystem root, a
+// home, or an ancestor of one, under every spelling either resolves to:
+// hiding it would hide every home below it (an OPENCODE_DB directly in HOME,
+// an opencode data directory linked to HOME).
+func coversAHome(locations, homes []string) error {
+	resolvedHomes, err := ResolvePaths(homes, true)
+	if err != nil {
+		return err
+	}
+	for _, location := range locations {
+		covers, err := coversOne(location, resolvedHomes)
+		if err != nil {
+			return err
+		}
+		if covers {
+			return jq.NewErrf("the credential path %s is the filesystem root, a home, or above one; move what "+
+				"it holds into a directory of its own (OPENCODE_DB=<dir>/opencode.db)", location)
+		}
+	}
+	return nil
+}
+
+// coversOne reports whether one location, as written or resolved, is the
+// filesystem root or at or above one of homes.
+func coversOne(location string, homes []string) (bool, error) {
+	if _, root := FilesystemRoot(location); root {
+		return true, nil
+	}
+	spellings, err := ResolvePaths([]string{location}, true)
+	return slices.ContainsFunc(spellings, func(spelled string) bool {
+		return slices.ContainsFunc(homes, func(home string) bool { return Within(home, spelled) })
+	}), err
 }
 
 // homeCredentials joins the home-relative table under every home.
@@ -224,7 +526,7 @@ func homeCredentials(homes []string) []string {
 	locations := make([]string, 0, len(homes)*len(CredentialPaths)+len(credentialEnv))
 	for _, home := range homes {
 		for _, rel := range CredentialPaths {
-			locations = append(locations, filepath.Join(home, rel))
+			locations = append(locations, rawAppend(home, rel))
 		}
 	}
 	return locations
@@ -233,8 +535,12 @@ func homeCredentials(homes []string) []string {
 // Enclosing returns the first location that is path or one of its
 // ancestors.
 func Enclosing(locations []string, path string) (string, bool) {
+	resolved, err := ResolvePath(path)
+	if err != nil {
+		resolved = path
+	}
 	for _, location := range locations {
-		if Within(path, location) {
+		if Within(path, location) || (resolved != "" && Within(resolved, location)) {
 			return location, true
 		}
 	}
@@ -257,7 +563,7 @@ func (v credentialVar) paths(env []string) []string {
 	var paths []string
 	for _, path := range values {
 		if filepath.IsAbs(path) {
-			paths = append(paths, filepath.Join(path, v.suffix))
+			paths = append(paths, rawAppend(path, v.suffix))
 		}
 	}
 	return paths
@@ -273,6 +579,34 @@ func EnvLookup(env []string, name string) string {
 		}
 	}
 	return value
+}
+
+// Lexical cleaning would apply ".." before the kernel follows preceding links.
+func rawAppend(base, tail string) string {
+	if tail == "" {
+		return base
+	}
+	return base + string(filepath.Separator) + tail
+}
+
+func rawDir(path string) string {
+	cut := strings.LastIndex(path, string(filepath.Separator))
+	if cut <= len(filepath.VolumeName(path)) {
+		return pathRoot(path)
+	}
+	return path[:cut]
+}
+
+func uniquePaths(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	var out []string
+	for _, path := range paths {
+		if path != "" && !seen[path] {
+			seen[path] = true
+			out = append(out, path)
+		}
+	}
+	return out
 }
 
 // CleanUnique cleans every path and drops empties and duplicates while
@@ -342,17 +676,33 @@ func (m Mount) Argv() []string {
 }
 
 // CredentialMounts resolves the locations against the host, so a missing
-// entry adds no mount and a file never gets a directory's tmpfs.
+// entry adds no mount, a file never gets a directory's tmpfs, and a link is
+// mounted at the path it resolves to.
 func CredentialMounts(locations []string) []Mount {
 	mounts := make([]Mount, 0, len(locations))
-	for _, dest := range locations {
-		info, err := os.Stat(dest)
-		if err != nil {
-			continue
+	seen := map[string]bool{}
+	for _, location := range locations {
+		mount, ok := credentialMount(location)
+		if ok && !seen[mount.Dest] {
+			seen[mount.Dest] = true
+			mounts = append(mounts, mount)
 		}
-		mounts = append(mounts, Mount{Dest: dest, Dir: info.IsDir()})
 	}
 	return mounts
+}
+
+// CredentialLocations has already resolved every destination. Missing targets
+// cannot be mounted by bwrap; non-opencode stores retain the STA-545 limit.
+func credentialMount(dest string) (Mount, bool) {
+	dest, err := ResolvePath(dest)
+	if err != nil {
+		return Mount{}, false
+	}
+	info, err := os.Stat(dest)
+	if err != nil {
+		return Mount{}, false
+	}
+	return Mount{Dest: dest, Dir: info.IsDir()}, true
 }
 
 // FilesystemRoot reports the spelling under which path is, or resolves to,
@@ -418,17 +768,39 @@ func Realpath(path string) (string, bool) {
 // UTF-8 refuses, because the profile must never be built from a path it
 // cannot represent.
 func SeatbeltLiteral(path string) (string, error) {
+	if err := Representable(path); err != nil {
+		return "", err
+	}
+	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
+	return `"` + quoted + `"`, nil
+}
+
+// allRepresentable is Representable over every path.
+func allRepresentable(paths []string) error {
+	for _, path := range paths {
+		if err := Representable(path); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Representable refuses a path no sandbox policy can name: invalid UTF-8,
+// or a control character (a newline included), which a Seatbelt profile
+// cannot spell and which no review needs. Every path is checked before the
+// filesystem is touched for it, so this refusal, not an operating system's
+// error at the path, is what the operator reads.
+func Representable(path string) error {
 	if !utf8.ValidString(path) {
-		return "", jq.NewErrf("the sandbox path %q is not valid UTF-8, which the Seatbelt profile cannot represent", path)
+		return jq.NewErrf("the sandbox path %q is not valid UTF-8, which the Seatbelt profile cannot represent", path)
 	}
 	if strings.ContainsFunc(path, func(r rune) bool {
 		return r < seatbeltFirstPrintable || r == seatbeltDelete
 	}) {
-		return "", jq.NewErrf(
-			"the sandbox path %q contains a control character the Seatbelt profile cannot represent", path)
+		return jq.NewErrf("the sandbox path %q contains a control character the Seatbelt profile cannot represent",
+			path)
 	}
-	quoted := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(path)
-	return `"` + quoted + `"`, nil
+	return nil
 }
 
 // SeatbeltRegexQuote escapes every regex metacharacter in a path so a

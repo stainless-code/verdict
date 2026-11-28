@@ -656,8 +656,8 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 
 // TestRunAgyWarnsOnStderrAtLaunch proves `run --agent agy` prints the one-line
 // headless warning on stderr at launch without refusing, and stays silent on
-// --print. agy declares no state paths, so the case opts out of the review
-// sandbox — the same posture on every host — and its warning leads.
+// --print. The case opts out of the review sandbox — the same posture on
+// every host — and its warning leads.
 func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 	const wantLine = "warn: --allow-unsandboxed-review: agy reviews without verdict's OS sandbox — a " +
 		"prompt-injected diff can make it write anywhere you can and read your credentials (~/.ssh, ~/.aws, " +
